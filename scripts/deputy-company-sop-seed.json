@@ -1,0 +1,829 @@
+{
+  "ok": true,
+  "resource": "Company",
+  "endpoint_called": "https://b4bbc204060738.na.deputy.com/api/v1/resource/Company/QUERY",
+  "token_source": "manual_token",
+  "count": 30,
+  "capped_to": 30,
+  "analysis": {
+    "row_count": 30,
+    "rows_with_company_name": 30,
+    "distinct_company_names": 30,
+    "non_generic_names": 30,
+    "example_names": [
+      "Pioneer Commercial Cleaning HQ",
+      "Pioneer Commercial Cleaning - Interviews",
+      "Baker Construction",
+      "Breakthrough Recovery Group",
+      "Clearwater Construction",
+      "Divco Inc",
+      "Flint Building",
+      "Gilman Family Practice (Bldg 4)",
+      "HD Fowler",
+      "Lydig Construction"
+    ]
+  },
+  "keys_observed": {
+    "row": [
+      "Active",
+      "Address",
+      "BusinessNumber",
+      "Code",
+      "CompanyName",
+      "CompanyNumber",
+      "Contact",
+      "Created",
+      "Creator",
+      "Id",
+      "IsPayrollEntity",
+      "IsWorkplace",
+      "Modified",
+      "ParentCompany",
+      "PayrollExportCode",
+      "Portfolio",
+      "TradingName",
+      "_DPMetaData"
+    ]
+  },
+  "raw": [
+    {
+      "Id": 1,
+      "Portfolio": null,
+      "Code": "HQ",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Pioneer Commercial Cleaning HQ",
+      "TradingName": "",
+      "BusinessNumber": "01-085239",
+      "CompanyNumber": null,
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "PayrollExportCode": "",
+      "Address": 236,
+      "Contact": 14,
+      "Creator": 2,
+      "Created": "2009-04-07T21:53:33-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 236,
+          "Street1": "1013 North Vista Road",
+          "City": "",
+          "State": "61",
+          "Postcode": "99212",
+          "Country": 224,
+          "Notes": "",
+          "Print": "1013 North Vista Road, WA, 99212, United States",
+          "PrintFull": "1013 North Vista Road, WA, 99212, United States"
+        }
+      }
+    },
+    {
+      "Id": 2,
+      "Code": "INTVWS",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Pioneer Commercial Cleaning - Interviews",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 237,
+      "Creator": 4,
+      "Created": "2024-10-07T09:23:49-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 237,
+          "Street1": "Spokane,  Washington , United States",
+          "Country": 224,
+          "Notes": "",
+          "Print": "Spokane,  Washington , United States, United States",
+          "PrintFull": "Spokane,  Washington , United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 3,
+      "Code": "B CONS",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Baker Construction",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 253,
+      "Creator": 2,
+      "Created": "2024-10-07T12:30:41-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 253,
+          "Street1": "2711 E Sprague Ave, Spokane, WA 99202, USA",
+          "Country": 224,
+          "Notes": "Alarms Information: Stanley Security 877-476-4968\nAlarm Code: 2630        \t\n\nScope of Work\n\nContact Person: Stevie Sloan \n\nFront Entry, Employee Entry, Reception and Waiting Area\n\n• Entry door glass cleaned, inside, and out.\n\n• Door handles wiped with disinfectant.\n\n• Window ledges wiped.\n\n• Removal of cobwebs in and around doorways.\n\n• Tables and counters wiped with disinfectant.\n\n• Carpeted flooring vacuumed (front door mats swept if saturated\n\nwith water).\n\n• Hard-surfaced flooring dust mopped and mopped, with special\n\nattention to areas under furniture.\n\nOffices, General Areas, Cubicles, Copy Areas, Bidding Room and Conference Rooms\n\n• Desks and tables wiped with disinfectant were cleared. Note:\n\nWe will not disturb papers and personal items on these surfaces.\n\nSurfaces prone to streaking will be cleaned with non-streak\n\ncleaner.\n\n• Cabinet tops, partition tops, windowsills, and tops of computers\n\ndusted.\n\n• Trash receptacles and recycle bins emptied and put in proper\n\nreceptacles.\n\n• Carpeted flooring and rugs vacuumed.\n\n• Hard-surfaced flooring dust mopped and mopped.\n\n• Window tracks in the five specified offices by customer inspected\n\nand cleaned with each service.\n\nStairwell\n\n• Hand railing wiped with disinfectant.\n\n• Hard-surfaced flooring dust mopped and mopped.\n\nKitchenette, Kitchen and Break Area\n\n• Tables, countertops, and chairs wiped with disinfectant. Surfaces\n\nprone to streaking will be cleaned with non-streak cleaner.\n\n• Faces and tops of appliances, i.e., refrigerator, any water\n\nstations, coffee machine wiped with disinfectant and top of\n\nRefrigerator, dusted, if cleared.\n\n• Microwaves wiped with disinfectant, inside and out.\n\n• Stainless steel sinks scrubbed free of mineral deposits and wiped\n\nwith disinfectant. Handles and faucets wiped with disinfectant.\n\n• Soap and paper towels refilled.\n\n• Faces of cabinets spot checked for fingerprints and/or drips and\n\nwiped with disinfectant, as needed.\n\n• Trash receptacles and recycling receptacle emptied and put in\n\nproper dumpsters.\n\n• Carpeted flooring and rugs vacuumed.\n\n• Hard-surfaced flooring dust mopped and mopped.\n\nRestrooms\n\n• Door handles, knobs, and light switches disinfected.\n\n• Porcelain sinks scrubbed free of mineral deposits and wiped with\n\ndisinfectant. Handles and faucets wiped with disinfectant\n\n• Toilets and urinals scrubbed, inside and wiped outside with\n\ndisinfectant from plumbing to the base. Base of walls and floor\n\naround toilets and urinals wiped with disinfectant.\n\n• Backsplash, partitions, and partition doors wiped with\n\ndisinfectant, as needed.\n\n• Soap, toilet paper and paper towels refilled. Dispensers wiped\n\ndown with disinfectant.\n\n• Garbage receptacles are emptied and wiped with disinfectant.\n\n• Hard-surfaced flooring dust mopped and mopped.\n\n• Stainless steel drinking fountains scrubbed free of mineral\n\ndeposits and wiped with disinfectant. Handles and faucets wiped\n\nwith disinfectant.\n\nGlass\n\n• Front entry glass is fully cleaned inside and out with each service.\n\n• Windows on interior walls between offices conference rooms and\n\nhallways inspected for handprints and/or smudges with each Sunday service. \n\nSunday service.",
+          "Print": "2711 E Sprague Ave, Spokane, WA 99202, USA, United States",
+          "PrintFull": "2711 E Sprague Ave, Spokane, WA 99202, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 4,
+      "Code": "BT REC",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Breakthrough Recovery Group",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 270,
+      "Creator": 2,
+      "Created": "2024-10-07T12:52:28-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 270,
+          "Street1": "11711 E Sprague Ave D4, Spokane Valley, WA 99206, United States",
+          "State": "61",
+          "Postcode": "99206",
+          "Country": 224,
+          "Notes": "*  Do not request access to the closet anymore. If we are unable to refill product we do not need to let them know since they are aware that we cannot fill their product with no access to the closet - the only thing we will need to inform them of is that we were unable to access our barrel if they forget to put it out.\n\nScope of Work\n\nFront Entryways, Reception, and Waiting Areas\n● Entry door handles, high-frequency touch points and\nglass cleaned, inside and out.\n● Removal of cobwebs in and around doorways.\n● Trash receptacles emptied and garbage put in the\ndumpster.\n● Window ledges dusted and/or wiped free of bugs and\ndebris.\n● Cleared surfaces dusted and/or wiped with disinfectant.\nNote: We will not disturb papers and personal items on\nthese surfaces.\n● Coffee station, coffee machine and coffee urns wiped with\ndisinfectant and surface wiped with disinfectant.\n● Carpeted flooring and rugs vacuumed (front door mats\nswept if saturated with water).\n\n\nOffices and Desks\n\n● Trash receptacles emptied and garbage put in the\ndumpster.\n● Window ledges dusted and/or wiped free of bugs and\ndebris.\n● Desks, countertops and cleared surfaces dusted and/or\nwiped with disinfectant. Note: We will not disturb papers\nand personal items on these surfaces.\n● Carpeted flooring and rugs vacuumed.\n\n \n\n \n\nKitchens and Break Areas\n\n● Soap, toilet paper, paper towels, and any and all paper\nproducts refilled as needed.\n● Trash receptacles emptied and garbage put in the\ndumpster.\n● Faces and tops of appliances, i.e., refrigerators, water\nstation, coffee machine and coffee urns wiped with\ndisinfectant.\n● Kitchen sink scrubbed, polished and wiped clean, if\ncleared of dishes.\n● Tables, countertops, and cleared surfaces sprayed and\nwiped with disinfectant\n● Faces of cabinets checked for fingerprints and/or drips\nand wiped with disinfectant, if needed.\n● Microwaves cleaned and wiped, inside and out.\n● Carpeted flooring and rugs vacuumed.\n● Hard-surfaced flooring dust mopped and mopped.\n\n \n\nGroup Rooms\n\n● Check chairs for debris, wiped if necessary.\n● Tables, countertops, and cleared surfaces sprayed and\nwiped with disinfectant.\n● Trash receptacles emptied and garbage put in the\ndumpster.\n● Carpeted flooring and rugs vacuumed.\n\n\nFull Restroom Cleaning\n\n● Door handles and high-frequency touch surfaces wiped\nwith disinfectant.\n● Fixtures, toilets (including bases), and urinals all sprayed\nand wiped with disinfectant and/or bleach cleaner.\n● Backsplash behind sinks and under paper towel\ndispensers and trash receptacles wiped with disinfectant,\nas needed.\n● Soap, toilet paper, paper towels, toilet seat covers and\nany and all paper products refilled as needed.\n\n3\n\n● All drinking fountains polished and disinfected if\napplicable.\n● All trash receptacles emptied and put in proper\ndumpsters.\n● Base of walls near toilets and urinals wiped with\ndisinfectant as needed.\n● Hard-surfaced flooring dust mopped and mopped.\n\n\nHallways, Commons & Sensory Room\n● Trash receptacles emptied and garbage put in the\ndumpster.\n● Coffee station, coffee machine and coffee urns wiped with\ndisinfectant and surface wiped.\n● Carpeted flooring and rugs vacuumed.",
+          "Print": "11711 E Sprague Ave D4, Spokane Valley, WA 99206, United States,",
+          "PrintFull": "11711 E Sprague Ave D4, Spokane Valley, WA 99206, United States, WA, 99206, United States"
+        }
+      }
+    },
+    {
+      "Id": 5,
+      "Code": "CL WTR",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Clearwater Construction",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 246,
+      "Creator": 2,
+      "Created": "2024-10-07T12:56:56-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 246,
+          "Street1": "5711 W Garden Springs Rd, Spokane, WA 99224, United States",
+          "State": "61",
+          "Postcode": "99224",
+          "Country": 224,
+          "Notes": "Alarm Code:  Clearwater Construction Security Info: Keys for entry, Alarm code 2665 Enter\n\nContact Person: Kellie Clary +1 (509) 793-8601\n \n1-Full Clean with Every Service.\n2-Full Clean on all Front Glass Panels Inside and Out and Desk Chair Glass Floor Protectors on the First Sunday of Each Month.\nScope of Work\nFront Entry, Employee Entry, Reception and Waiting Area\nEntry door glass cleaned, inside, and out. \nDoor handles wiped with disinfectant.\nWindow ledges wiped. \nRemoval of cobwebs in and around doorways.\nTables and counters wiped with disinfectant, unless otherwise specified.\nCarpeted flooring vacuumed (front door mats swept if saturated with water).\nHard-surfaced flooring dust mopped and mopped, with special attention to areas under furniture.\nOffices\nVacuuming of any carpeted flooring and rugs.\nInspecting door glass if glass door. Sanitize door handles. Fingerprints cleaned, as needed. \nWiping and/or dusting of window ledges free of bugs and debris. \nRemove cobwebs in and around doorways.\nFull Restroom Cleaning\nSanitizing all fixtures, toilets, and urinals. \nWiping backsplash, doors, and trash receptacles, as needed. \nRefilling soaps and paper products.\nSanitizing and polishing any drinking fountains.\nEmptying of trash receptacles and put in proper dumpsters.\nWashing base of walls near toilets and urinals, as needed. \nSanitizing all door handles, knobs, fixtures & light switches. \nSweeping and mopping of hard surfaced flooring.\nHallways and/or Walkways\nVacuuming of any carpeted flooring and rugs, including three rugs in the shop before entry into the office.\nWiping/dusting of handrails, window ledges and floor rail along stairwell landing and upstairs walkway. \nEmptying of trash receptacle outside of upstairs entry to shop.\nMopping of any hard surfaced flooring.\nWiping of stainless-steel foot door plates.\nFull Kitchen and Breakroom Cleaning\nWiping faces and tops of appliances, i.e., refrigerators, water station, coffee machine and coffee urns.\nDisinfecting and polishing the kitchen sink, if cleared of dishes.\nDisinfecting of tables unless another cleaning agent is specified.\nChecking faces of cabinets for fingerprints and/or drips.\nEmptying of trash receptacles and put in proper dumpsters.\nSweeping and mopping of any hard surface flooring.\nVacuuming of any carpeted flooring and rugs.\nConference Room and Bidding Room\nVacuuming of any carpeted flooring and rugs.\nSanitizing of conference room tables, countertops, and other horizontal surfaces unless another cleaning agent is specified.\nEmptying trash receptacles and putting them in the dumpster.\nSpecified Windows and Glass\nFront entry door glass inspected and cleaned inside and out, as needed, with each service.\nFoyer windows cleaned inside and out.\nGlass doors to kitchen and conference room cleaned inside and out.\nGlass chair mats cleaned.\nThis glass work will be performed on the 1st weekend cleaning of each month.",
+          "Print": "5711 W Garden Springs Rd, Spokane, WA 99224, United States, WA, ",
+          "PrintFull": "5711 W Garden Springs Rd, Spokane, WA 99224, United States, WA, 99224, United States"
+        }
+      }
+    },
+    {
+      "Id": 6,
+      "Code": "DIVCO",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Divco Inc",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 252,
+      "Creator": 2,
+      "Created": "2024-10-07T13:01:55-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 252,
+          "Street1": "715 N Madelia St, Spokane, WA 99202, United States",
+          "Country": 224,
+          "Notes": "Security Information\nAlarm Code: Enter code 3949 first, then press “CMD” and disarm all.\nAlarm Note: If there are problems with the alarms, call Libra at 509-981-7792.\n\nNOTES:\n\nDO NOT change tp and pt unless completely empty.  Customer does not want leftover tp and pt rolls building up.\nDO NOT empty blue recycle bins ONLY garbage.\nWarehouse:\nThere are two offices and one bathroom in warehouse.\nWe do not do garbages in warehouse.\nWATER ACCESS: In shower in warehouse.\nThere are 5 bathrooms total.\n\nFront Entryways and Reception Areas\n● Entry door handles, high-frequency touch points and glass\ncleaned, inside, and out.\n● Removal of cobwebs in and around doorways.\n● Trash receptacles emptied and garbage put in the dumpster.\n● Window ledges dusted and/or wiped free of bugs and debris.\n● Cleared surfaces dusted and/or wiped with disinfectant. Note:\nWe will not disturb papers and personal items on these surfaces.\n● Carpeted flooring and rugs vacuumed (front door mats swept if\nsaturated with water).\n● Hard-surfaced flooring dust mopped and mopped.\n\n \n\nOffices and Desk Areas\n● Interior door glass checked for spots inside and out and\ncleaned, where needed. Includes, doors leading to warehouse.\n● Trash receptacles emptied and garbage put in the dumpster.\n● Window ledges dusted and/or wiped free of bugs and debris.\n● Desks, countertops and cleared surfaces dusted and/or wiped\nwith disinfectant. Note: We will not disturb papers and personal\nitems on these surfaces.\n● Carpeted flooring and rugs vacuumed (front door mats swept if\nsaturated with water).\n● Hard-surfaced flooring dust mopped and mopped.\n\n\nKitchens and Break Areas\n● Soap, toilet paper, paper towels, and any and all paper\nproducts refilled if needed. Note: Paper towels and toilet paper\nwill not be changed unless 100% empty. NO paper towel and\ntoilet paper end rolls will be left out for use.\n● Trash receptacles emptied and garbage put in the dumpster.\n● Faces and tops of appliances, i.e., refrigerators, water station,\ncoffee machine and coffee urns wiped with disinfectant.\n● Kitchen sink scrubbed, polished and wiped clean, if cleared of\ndishes.\n● Tables, countertops, and cleared surfaces sprayed and wiped\nwith disinfectant\n● Faces of cabinets checked for fingerprints and/or drips and\nwiped with disinfectant, if needed.\n● Microwaves cleaned and wiped, inside and out.\n● Carpeted flooring and rugs vacuumed.\n● Hard-surfaced flooring dust mopped and mopped.\n\n\nPrinter Rooms\n● Interior door glass checked for spots inside and out and\ncleaned, where needed. Includes, door leading to warehouse.\n● Trash receptacles emptied and garbage put in the dumpster.\n● Desks, countertops and cleared surfaces dusted and/or wiped\nwith disinfectant. Note: We will not disturb papers and personal\nitems on these surfaces.\n● Carpeted flooring and rugs vacuumed.\n● Hard-surfaced flooring dust mopped and mopped.\n\n\nFull Restroom Cleaning\n● Trash receptacles emptied and garbage put in the dumpster.\n● Door handles and high-frequency touch surfaces wiped with\ndisinfectant.\n● Fixtures, toilets (including bases), and urinals all sprayed and\nwiped with disinfectant, with attention to area behind toilets.\n● Base of walls near toilets and urinals wiped with disinfectant as\nneeded.\n● Backsplash behind sinks and under paper towel dispensers and\ntrash receptacles wiped with disinfectant, as needed.\n● Soap, toilet paper, paper towels, toilet seat covers and any and\nall paper products refilled as needed. Note: Paper towels and\ntoilet paper will not be changed unless 100% empty. NO paper\ntowel and toilet paper end rolls will be left out for use.\n● Any drinking fountains polished and disinfected if applicable.\n● Base of walls near toilets and urinals wiped with disinfectant as\nneeded.\n● Hard-surfaced flooring dust mopped and mopped.\n\n\nHallways, Commons & Stairwells\n● Interior door glass checked for spots inside and out and\ncleaned, where needed. Includes, door leading to warehouse.\n● Trash receptacles emptied and garbage put in the dumpster.\n● Carpeted flooring and rugs vacuumed with every service.\n● Hard-surfaced flooring dust mopped and mopped with every service.",
+          "Print": "715 N Madelia St, Spokane, WA 99202, United States, United State",
+          "PrintFull": "715 N Madelia St, Spokane, WA 99202, United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 7,
+      "Code": "FLINT",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Flint Building",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 169,
+      "Creator": 2,
+      "Created": "2024-10-07T13:19:39-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 169,
+          "Street1": "1514 Flint Road, Spokane, WA, USA",
+          "Country": 224,
+          "Notes": "Contact Person: Rob Harnasch (509) 842-2315\n\nLobby \n·    Entry door glass cleaned, inside, and out.\n·    Door handles wiped with disinfectant.\n·    Window ledges wiped.\n·    Removal of cobwebs in and around doorways.\n·    Tables and counters wiped with disinfectant.\n·    Carpeted flooring vacuumed (front door mats swept if saturated with water)\n\nConference Rooms & Front Hallways - Daily\n·    Desks and tables wiped with disinfectant, where cleared. Note: We will not disturb papers and personal items on these surfaces.\n·    Cabinet tops, partition tops, windowsills, and tops of computers dusted.\n·    Trash receptacles, two paper shredders and recycle bins emptied and put in proper receptacles.\n·    Carpeted flooring and rugs vacuumed.\n·    Hard-surfaced flooring dust mopped and mopped.\n\nTownhall - Daily\n\n·    Tables, countertops, and chairs wiped with disinfectant. \n·    Faces and tops of appliances, i.e., refrigerator, any water stations, coffee machine wiped with disinfectant and top of refrigerated dusted, if cleared.\n·    Microwaves wiped with disinfectant, inside and out.\n·    Stainless steel sinks scrubbed free of mineral deposits and wiped with disinfectant.\n·    Handles and faucets wiped with disinfectant.\n \nPatio Tables - Monthly\n·    All exterior patio tables hard wiped with disinfectant cleaner.\nFront Restroom, Factory East Restrooms, Factory Center Restrooms, Family Restroom, & Factory West Restroom\n\nDaily\n·    Door handles, knobs, and light switches disinfected.\n·    Porcelain sinks scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n·    Toilets scrubbed, inside and wiped outside with disinfectant from plumbing to the base. Base of walls and floor around toilets wiped with disinfectant.\n·    Soap, toilet paper and paper towels refilled. Dispensers wiped down with disinfectant.\n·    Garbage receptacles emptied and wiped with disinfectant. \n·    Hard-surfaced flooring dust mopped and mopped.\n·    Shower checked for use and cleaned with disinfectant, if used.\n\nFactory Aisles No ServiceWest End Hallway \nWeekly·      \n·    Hallway Swept and Mopped weekly including stairs leading to upstairs conference rooms. \n·    Entry door glass cleaned, inside, and out.\nMonthly\n·    Floor scrubbed with walk behind auto scrubber.\n\n \nUpstairs Conference Rooms & Upstairs Hallway \nMonthly\n·    Garbage receptacles emptied and wiped with disinfectant. \n·    Hard-surfaced flooring dust mopped and mopped and or vacuumed.\n·    Conference tables wiped down.",
+          "Print": "1514 Flint Road, Spokane, WA, USA, United States",
+          "PrintFull": "1514 Flint Road, Spokane, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 8,
+      "Code": "GILMN",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Gilman Family Practice (Bldg 4)",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 283,
+      "Creator": 2,
+      "Created": "2024-10-07T13:25:00-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 283,
+          "Street1": "1414 North Vercler Road, Spokane Valley, WA, USA",
+          "State": "61",
+          "Postcode": "99216",
+          "Country": 224,
+          "Notes": "Alarm Code 7777\nTo enter: Type only code: 7777\n\nTo exit building: Type code. Then choose \"All\" (Not \"Perimeter\").\nSCOPE OF WORK\n\nFront Entryways, Reception, and Waiting Areas\n\nEntry door glass cleaned, inside, and out. Clean fingerprints and footprints off door.\nSweep away or vacuum debris and/or rug(if no rain or snow) on exterior of entry.\nWipe black ledges inside and outside of entry.\nSurfaces feather dusted and wiped clean if fingerprints or dirty.\nTrash receptacles emptied and garbage put in the dumpster.\nCarpeted flooring and rugs vacuumed.\nHard-surfaced flooring dust mopped and mopped.\n\nOffices and Desks\n\nTrash receptacles emptied and garbage put in the dumpster.\nCarpeted flooring and rugs vacuumed.\nHard-surfaced flooring dust mopped and mopped.\nNO WIPING ANY SURFACES AND NO FEATHER DUSTING.\n\nKitchens and Break Areas\n\nSoap, toilet paper, paper towels, and any and all paper products refilled as needed.\nMicrowaves cleaned inside and out.\nTrash receptacles emptied and garbage put in the dumpster.\nCarpeted flooring and rugs vacuumed.\nHard-surfaced flooring dust mopped and mopped.\n\nExam Rooms \n\nSoap, toilet paper, paper towels, and any and all paper products refilled as needed.\nTrash receptacles emptied and garbage put in the dumpster.\nCarpeted flooring and rugs vacuumed.\nHard-surfaced flooring dust mopped and mopped.\nNO WIPING ANY SURFACES AND NO FEATHER DUSTING.\n\nFull Restroom Cleaning\n\nDoor handles and high-frequency touch surfaces wiped with disinfectant.\nFixtures, toilets (including bases), and urinals all sprayed and wiped with disinfectant. \nBacksplash behind sinks and under paper towel dispensers and trash receptacles wiped with disinfectant, as needed. \nSoap, toilet paper, paper towels, toilet seat covers and any and all paper products refilled as needed.\nAll drinking fountains polished and disinfected if applicable.\nAll trash receptacles emptied and put in proper dumpsters.\nBase of walls near toilets and urinals wiped with disinfectant as needed. \nHard-surfaced flooring dust mopped and mopped.\n\nStairwells & Basement\n\nInside and outside of doors checked for spots and panels inside and outside cleaned, where needed.\nSoap, toilet paper, paper towels, and any and all paper products refilled as needed.\nTrash receptacles emptied and garbage put in the dumpster.\nCarpeted flooring and rugs vacuumed on the first weekend of each month.\nHard-surfaced flooring dust mopped and mopped on the first weekend of each month.",
+          "Print": "1414 North Vercler Road, Spokane Valley, WA, USA, WA, 99216, Uni",
+          "PrintFull": "1414 North Vercler Road, Spokane Valley, WA, USA, WA, 99216, United States"
+        }
+      }
+    },
+    {
+      "Id": 9,
+      "Code": "FWLR",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "HD Fowler",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 261,
+      "Creator": 2,
+      "Created": "2024-10-07T13:28:07-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 261,
+          "Street1": "410 North Park Road, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "EMERGENCY CONTACT FOR EMERGENCIES ONLY\nLance lancel@hdfowler.com\n\nScope of Work:\nFront Entry, Employee Entry, Reception and Waiting Area\n\n●       Entry door glass cleaned, inside, and out.\n\n●       Door handles wiped with disinfectant.\n\n●       Window ledges wiped.\n\n●       Removal of cobwebs in and around doorways.\n\n●       Stainless steel customer help counter disinfected and wiped free of fingerprints.\n\n●       Tables and counters wiped with disinfectant, unless otherwise specified.\n\n●       Carpeted flooring vacuumed (front door mats swept if saturated with water).\n\n●       Hard-surfaced flooring is dusted and mopped, with special attention to areas under furniture.\n\nOffices and Cubicles\n\n●       Vacuuming of any carpeted flooring and rugs.\n\n●       Inspecting door glass if glass door. Sanitize door handles. Fingerprints cleaned, as needed.\n\n●       Wiping and/or dusting of window ledges free of bugs and debris.\n\n●       Remove cobwebs in and around doorways.\n\nFull Restroom Cleaning\n\n●       Sanitizing all fixtures, toilets, and urinals.\n\n●       Wiping backsplash, doors, and trash receptacles, as needed.\n\n●       Refilling soaps and paper products.\n\n●       Sanitizing and polishing any drinking fountains.\n\n●       Emptying of trash receptacles and put in proper dumpsters.\n\n●       Washing base of walls near toilets and urinals, as needed.\n\n●       Sanitizing all door handles, knobs, fixtures & light switches.\n\n●       Sweeping and mopping of hard surfaced flooring.\n\nHallways, Walkways & Stairwells\n\n●       Vacuuming of any carpeted flooring and rugs, including three rugs in the shop before entry into the office.\n\n●       Wiping/dusting of handrails, window ledges and floor rail along stairwell landing and upstairs walkway.\n\n●       Emptying of trash receptacle outside of upstairs entry to shop.\n\n●       Mopping of any hard surfaced flooring.\n\n●       Wiping of stainless-steel foot door plates.\n\nFull Kitchen and Breakroom Cleaning\n\n●       Wiping faces and tops of appliances, i.e., refrigerators, water stations, coffee machines and coffee urns.\n\n●       Disinfecting and polishing the kitchen sink, if cleared of dishes.\n\n●       Disinfecting tables unless another cleaning agent is specified.\n\n●       Checking faces of cabinets for fingerprints and/or drips.\n\n●       Emptying of trash receptacles and putting them in proper dumpsters.\n\n●       Sweeping and mopping of any hard surface flooring.\n\n●       Vacuuming of any carpeted flooring and rugs.\n\nConference Room and Bidding Room\n\n●       Vacuuming of any carpeted flooring and rugs.\n\n●       Sanitizing of conference room tables, countertops, and other horizontal surfaces unless another cleaning agent is specified.\n\n●       Emptying of trash receptacles and putting them in the dumpster.",
+          "Print": "410 North Park Road, Spokane Valley, WA, USA, United States",
+          "PrintFull": "410 North Park Road, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 11,
+      "Code": "LYDIG",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Lydig Construction",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 248,
+      "Creator": 2,
+      "Created": "2024-10-07T13:34:50-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 248,
+          "Street1": "11001 East Montgomery Drive, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "ALARM INSTRUCTIONS: Enter 37655 on the keypad on the door in order to gain entry.\nAlarm Code 06784\n (Alarms present in each of the 3 buildings, with instructions next to each panel)\n\nEMERGENCY CONTACT\nJudy Ferry 509-535-6622 / 509-534-0451\nTuesday and Thursday Light Cleaning\n \nEntryways:\nLight cleaning (excluding floors and dusting)\n \nInspect entry glass and fingerprints cleaned, as needed.\nWindow ledges wiped.\nOutside Trash cans emptied and urns, if applicable.\n               \n Reception, Offices, Copy Areas and Conference Rooms:\nLight cleaning (excluding floors and dusting)\n \nTrash and recycle receptacles are emptied and put in proper dumpsters.\nTables wiped with special attention to fingerprints.                          \nDesks wiped where cleared. \nSpills and conspicuous messes on floors cleaned up.\n \nKitchen Areas and/or Break Rooms:\nLight Cleaning (excluding wiping of counters, tables and chairs, cleaning appliance faces and\nsink, as well as, floors and dusting)\n \nTrash and recycle receptacles are emptied and put in proper dumpsters.\n \nIT Building Offices and General Areas\n \nDesks wiped where cleared. \nTrash and recycle receptacles are emptied and put in proper dumpsters.\n \nRestrooms:\nFull Cleaning (excluding showers)\n \nDisinfecting all fixtures, toilets and urinals.\nWiping backsplash, doors and garbage receptacles, as needed.\nRefilling soaps and paper products.\nEmptying garbage and replacing bags, as needed. \nWashing base of walls near toilets and urinals, as needed.\nDisinfecting all door handles, knobs, fixtures & Light switches. \nSweeping and mopping of hard surfaced flooring.\n\nWeekend Full Cleaning\nEntry Ways:\n• Sweeping and mopping of hard surface flooring.\n• Vacuuming of any carpeted flooring and rugs.\n• Inspect entry glass and fingerprints cleaned, as needed.\n• Window ledges wiped.\n• Removal of cobwebs in and around doorways.\n• Outside trash cans emptied and urns, if applicable.\nReception, Offices, Copy Areas and Conference Rooms:\n• Sweeping and mopping of hard surface flooring.\n• Vacuuming of any carpeted flooring and rugs.\n• Trash and recycle receptacles are emptied and put in proper dumpsters.\n• Tables wiped with special attention to fingerprints.\n• Desks wiped where cleared.\n• Dusting of cabinet tops, partition tops, windowsills, and tops of computers.\n• Checking for fingerprints on television faces in reception areas.\n \nKitchen Areas and/or Break Rooms:\nLight Cleaning (excluding wiping of counters, tables and chairs, cleaning appliance faces and\nsink)\n• Sweeping and mopping of hard surface flooring.\n• Vacuuming of any carpeted flooring and rugs.\n• Trash and recycle receptacles are emptied and put in proper dumpsters.\nExercise Area and Stairwell:\nLight Cleaning (excluding wiping of machines and surfaces)\n• Vacuuming of any carpeted flooring and rugs.\n• Trash and recycle receptacles are emptied and put in proper dumpsters.\nIT Building Offices and General Areas\n• Desks wiped where cleared.\n• Dusting of cabinet tops, partition tops, windowsills, and tops of computers.\n• Vacuuming of any carpeted flooring and rugs.\n• Trash and recycle receptacles are emptied and put in proper dumpsters.\nRestrooms:\nFull Cleaning (including showers)\n• Disinfecting all fixtures, toilets and urinals.\n• Wiping backsplash, doors and garbage receptacles, as needed.\n• Refilling soaps and paper products.\n• Emptying garbage and replacing bags, as needed.\n• Washing base of walls near toilets and urinals, as needed.\n• Disinfecting all door handles, knobs, fixtures & Light switches.\n• Disinfecting of cleared shower surfaces (will not disturb people's personal items, i.e. soaps, .\n• Sweeping and mopping of hard surfaced flooring.",
+          "Print": "11001 East Montgomery Drive, Spokane Valley, WA, USA, United Sta",
+          "PrintFull": "11001 East Montgomery Drive, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 12,
+      "Code": "CEDAR",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Cedar/Molgard Merged Locations",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 265,
+      "Creator": 4,
+      "Created": "2024-10-08T03:48:22-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 265,
+          "Street1": "9817 North Cedar Street Spokane Spokane County Washington United",
+          "State": "61",
+          "Postcode": "99208",
+          "Country": 224,
+          "Notes": "Max Molgard Security Info:\nKeys for entry, Alarm code 1768\n(When re-arming, enter code and press “On”)\n\nNew alarm info!If set off alarm and it sounds:\n1-Call alarm company -\nADT 1(800)716-3640\n2-Tell them “My name is _______. I am with Pioneer Commercial Cleaning.\n3 - I am at Dr Max Molgard’s office at 6817 N Cedar Rd Suite #102.\n4 - I have the code word: TEETH.\n\nReception Areas, Treatment Rooms, Offices, Hallways and Staff Rooms\n\n• Vacuuming of all carpeted floors, removal of all debris and dust on hard floors and hard floors mopped.\n• Removal of all garbage, and replacement of trash bags, as needed,\n• Cleaning of exam rooms, lab, sterilization room, waiting room and offices. This includes removal or garbage, cleaning entry glass, dusting and/or disinfecting and hard wiping all cleared horizontal surfaces, tables and bases, sinks, phones, keyboards, window sills, as needed.\n• Full kitchen area and break room cleaning. Wiping tables, microwaves, and counters. Does not include washing of dishes and or loading dishwasher. Sink must be empty to be cleaned.\n• Full cleaning of bathroom, including, disinfecting all fixtures, tile backsplash, door handles and garbage receptacles, refilling soaps and paper products, emptying garbage and replacing bags.\n\nCedar LLC INFO:\n\nElsa Burke 1(509)326-8171\n\nBathroom Cleaning\n\n• Disinfecting all fixtures, commodes, door handles and garbage receptacles.\n• Cleaning mirrors.\n• Disinfecting sinks and countertops.\n• Refilling soaps and paper products.\n• Emptying garbage, replacing bags and hauling to dumpsters.\n• Debris and dirt removal from floors and full mopping of floors\n\nFoyer\n\n• Vacuuming of all carpeted floors, including interior and exterior rugs\n• Removal of all debris and dust on hard floors.\n• Hard surfaced floors mopped.\n• Cleaning entry glass, dusting and/or disinfecting and hard wiping windowsills all cleared horizontal surfaces",
+          "Print": "9817 North Cedar Street Spokane Spokane County Washington United",
+          "PrintFull": "9817 North Cedar Street Spokane Spokane County Washington United, WA, 99208, United States"
+        }
+      }
+    },
+    {
+      "Id": 14,
+      "Code": "MAX",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Max Molgard",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 195,
+      "Creator": 2,
+      "Created": "2024-10-08T03:56:35-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 195,
+          "Street1": "6817 North Cedar Road, Spokane, WA, USA",
+          "Country": 224,
+          "Notes": "Max Molgard Security Info:\nKeys for entry, Alarm code 1768\n(When re-arming, enter code and press “On”)\n\nNew alarm info!If set off alarm and it sounds:\n1-Call alarm company -\nADT 1(800)716-3640\n2-Tell them “My name is _______. I am with Pioneer Commercial Cleaning.\n3 - I am at Dr Max Molgard’s office at 6817 N Cedar Rd Suite #102.\n4 - I have the code word: TEETH.\n\nReception Areas, Treatment Rooms, Offices, Hallways and Staff Rooms\n\n• Vacuuming of all carpeted floors, removal of all debris and dust on hard floors and hard floors mopped.\n• Removal of all garbage, and replacement of trash bags, as needed,\n• Cleaning of exam rooms, lab, sterilization room, waiting room and offices. This includes removal or garbage, cleaning entry glass, dusting and/or disinfecting and hard wiping all cleared horizontal surfaces, tables and bases, sinks, phones, keyboards, window sills, as needed.\n• Full kitchen area and break room cleaning. Wiping tables, microwaves, and counters. Does not include washing of dishes and or loading dishwasher. Sink must be empty to be cleaned.\n• Full cleaning of bathroom, including, disinfecting all fixtures, tile backsplash, door handles and garbage receptacles, refilling soaps and paper products, emptying garbage and replacing bags.",
+          "Print": "6817 North Cedar Road, Spokane, WA, USA, United States",
+          "PrintFull": "6817 North Cedar Road, Spokane, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 15,
+      "Code": "NVLS",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Novelis MMP Spokane",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 251,
+      "Creator": 2,
+      "Created": "2024-10-08T03:59:17-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 251,
+          "Street1": "16004 E Euclid Ave, Spokane Valley, WA 99216, United States",
+          "Country": 224,
+          "Notes": "EMERGENCY CONTACT For Emergency use only:\n\nSusie Brittain\n509-927-2937\n\nAlarms: N/A ~ Allied and Fire Security 5096243154 \nThey have no security alarm code. CUSTOMER DOES HAVE FIRE ALARM! IF ALARM SOUNDS EVACUATE BUILDING IMMEDIATELY AND GREET EMERGENCY RESPONDERS. GATHER IN MAIN PARKING LOT ON THE NORTH SIDE OF THE BUILDING.  CALL EMERGENCY CONTACT: TYLER SWICEGOOD 208.220.2391. Do not touch the fire panel!\n\n\nMAINTENANCE AREAS\n\nEntryways\nReception Area\nGeneral Areas\nHallways\nStairwells\nRestrooms\nOffices & Cubicles\nConference Rooms\nKitchen & Break Area\nMain Building Shop Areas\nMachine Shop Areas\n\nFront Entry, Employee Entry, Reception and Waiting Area\n\n• Entry door glass cleaned, inside, and out. \n• Door handles wiped with disinfectant.\n• Window ledges wiped. \n• Removal of cobwebs in and around doorways.\n• Tables and counters wiped with disinfectant. \n• Carpeted flooring vacuumed (front door mats swept if saturated with water).\n• Hard-surfaced flooring dust mopped and mopped, with special attention to areas under furniture.\n\n\nOffices, Cubicles, Copy Areas, Conference Rooms and \nFront/Side Trailers\n \n• Desks and tables wiped with disinfectant, where cleared. Note: We will not disturb papers and personal items on these surfaces. \n• Cabinet tops, partition tops, windowsills, and tops of computers dusted.\n• Fingerprints on television cleaned.\n• Trash receptacles, two paper shredders and recycle bins emptied and put in proper receptacles.\n• Carpeted flooring and rugs vacuumed.\n• Hard-surfaced flooring dust mopped and mopped.\n\n\nStairwell\n\n\n• Hand railing wiped with disinfectant.\n• Hard-surfaced flooring dust mopped and mopped.\n\n\nKitchen and Break Area\n\n\n• Tables, countertops, and chairs wiped with disinfectant.  Surfaces prone to streaking will be cleaned with non-streak cleaner.\n• Faces and tops of appliances, i.e., refrigerator, any water stations, coffee machine wiped with disinfectant and top of refrigerated dusted, if cleared.\n• Microwaves wiped with disinfectant, inside and out. \n• Stainless steel sinks scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n• Soap and paper towels refilled.\n• Faces of cabinets spot checked for fingerprints and/or drips and wiped with disinfectant, as needed.\n• Trash receptacles and recycling receptacles emptied and put in proper dumpsters.\n• Fingerprints on television cleaned.\n• Carpeted flooring and rugs vacuumed.\n• Hard-surfaced flooring dust mopped and mopped.\n\n\nRestrooms\n\n\n• Door handles, knobs, and light switches disinfected. \n• Porcelain sinks scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant\n• Toilets and urinals scrubbed, inside and wiped outside with disinfectant from plumbing to the base. Base of walls and floor around toilets and urinals wiped with disinfectant.\n• Backsplash, partitions, and partition doors wiped with disinfectant, as needed.\n• Soap, toilet paper and paper towels refilled. Dispensers wiped down with disinfectant.\n• Garbage receptacles emptied and wiped with disinfectant.  \n• Hard-surfaced flooring dust mopped and mopped.\n• Stainless steel drinking fountains scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n\n\nMain Building Shop and Machine Shops\n\n\n• Walkways within painted lines dust mopped and mopped when needed.\n• Carpets flooring vacuumed.\n• Restrooms cleaned according to specifications, as outlined above.\n• Stainless steel drinking fountains scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n• Stainless steel sink in Main Building and utility sink in Machine Shop scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n• Soap, toilet paper and paper towels refilled. Dispensers wiped down with disinfectant.\n• Garbage receptacle at sinks emptied and wiped with disinfectant.  \n• Showers, sinks, and benches in Machine Shop wiped with disinfectant. wiped with disinfectant.",
+          "Print": "16004 E Euclid Ave, Spokane Valley, WA 99216, United States, Uni",
+          "PrintFull": "16004 E Euclid Ave, Spokane Valley, WA 99216, United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 16,
+      "Code": "NWBDA",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "NWBDA",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 250,
+      "Creator": 2,
+      "Created": "2024-10-08T04:02:31-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 250,
+          "Street1": "9019 East Appleway Boulevard, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "Press Command\nSelect Disarm\nEnter Alarm code 2665\nSECURITY COMPANY Code Word: Appleway\n\nAlarms additional info: \nThe 1st and 3rd floor doors by elevator to offices should be locked! Double check that you have turned the key to the lock position and check if doors are locked before arming. The supply closets are also locked doors opened by doors and the keys we have been provided.\nThere is a small key for the dumpster padlock, but we DO NOT lock it! We have the key in case someone else has locked it. You rock!!To disarm the alarm press the CMD key.\nLook at the display.\nPress the button directly under DISARM.\nThe display will say \"Enter Code\".\nEnter code 2665\nThe red light should go off! To arm press CMD.\nPress the button directly under ARM.\nEnter code 2665.\nThe red light should illuminate.\nIf the word FAULT appears, there is an open door or motion. \n\nEMERGENCY CONTACT FOR EMERGENCIES ONLY!\nTracy Bridgens 1(509)953-3355\n\nThe following will be done five times weekly, Monday through\nFriday:\n \nFront Entry and General Areas\n•    Entry door glass cleaned, inside, and out.\n•    Door handles wiped with disinfectant.\n•    Window ledges wiped.\n•    Removal of cobwebs in and around doorways.\n•    Carpeted flooring spot vacuumed for debris (front door mats\n•    swept if saturated with water).\n•    Hard-surfaced flooring spot checked for debris or spills.\n\nStairwells and Elevators\n•    Hand railing wiped with disinfectant.\n•    Elevator button panels wiped with disinfectant.\n•    Elevator doors checked for fingerprints.\n•    Carpeted flooring spot vacuumed for debris (front door mats\n•    swept if saturated with water).\n•    Hard-surfaced flooring spot checked for debris or spills.\n•    Reception and Waiting Areas\n•    Tables and counters wiped with disinfectant.\n•    Trash receptacles and recycle bins emptied and put in proper\n•    receptacles.\n•    Carpeted flooring spot vacuumed for debris (front door mats\n•    swept if saturated with water).\n\nBistro, Kitchen and Break Area\n•    Tables, countertops, and chairs spot checked for use and wiped\n•    with disinfectant. Surfaces prone to streaking will be cleaned with non-streak cleaner.\n•    Faces and tops of appliances, i.e., refrigerator, any water stations, coffee machine spot checked and wiped with disinfectant, if dirty.\n•    Top of refrigerated dusted, if cleared, once weekly.\n•    Microwaves spot checked and wiped with disinfectant, inside and out, if dirty.\n•    Stainless steel sinks spot checked and wiped with disinfectant, if dirty.\n•    Soap and paper towels refilled.\n•    Faces of cabinets spot checked for fingerprints and/or drips and wiped with disinfectant, as needed.\n•    Trash receptacles emptied and put in proper dumpsters.\n•    Hard-surfaced flooring spot cleaned.\n\nRestrooms\n•    Door handles, knobs, and light switches disinfected.\n•    Porcelain sinks scrubbed free of mineral deposits and wiped with disinfectant. Handles and faucets wiped with disinfectant.\n•    Toilets scrubbed, inside and wiped outside with disinfectant from plumbing to the base. \n•    Base of walls and floor around toilets wiped with disinfectant.\n•    Soap, toilet paper and paper towels refilled. Dispensers wiped down with disinfectant.\n•    Garbage receptacles emptied and wiped with disinfectant.\n•    Hard-surfaced flooring dust mopped and mopped.\n•    Stainless steel drinking fountains spot checked and wiped with\n•    disinfectant, if dirty. Handles and faucets wiped with disinfectant, if used.\n•    Shower checked for use and cleaned with disinfectant, if used.\n\nThe following will be done two times weekly:\nOffices, Cubicles, Copy Areas,\nand Conference Rooms\n•    Desks and tables wiped with disinfectant, where cleared. Note: We will not disturb papers and personal items on these surfaces.\n•    Cabinet tops, partition tops, windowsills, and tops of computers\n•    dusted.\n•    Trash receptacles emptied and put in proper receptacles.\n•    The following will be done one time weekly:\n•    Full Floor Cleaning\n•    Carpeted flooring wall to wall vacuumed (front door mats swept if saturated with water).\n•    Hard-surfaced flooring wall to wall dust mopped and mopped.",
+          "Print": "9019 East Appleway Boulevard, Spokane Valley, WA, USA, United St",
+          "PrintFull": "9019 East Appleway Boulevard, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 17,
+      "Code": "RLTY",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Reality Homes Inc.",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 202,
+      "Creator": 2,
+      "Created": "2024-10-08T04:05:46-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 202,
+          "Street1": "615 North McDonald Road, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "Door Code:1975 \nAlarm Code:1975\nEMERGENCY CONTACT FOR KEY PERSON\nMarie Herdt\n253-878-0979 / 253-722-2271\n\nMAINTENANCE AREAS\nEntry\nReception\nLiving Room\nDining Room\nBedrooms\nLaundry\nOffice\nRestrooms\nKitchen\nHallways & Walkways\nShowroom Floors\n\nFront Entry, Living, Dining and Bedrooms\n\n• Entry door glass cleaned, inside, and out.\n• Clearing door entry of debris, inside and out.\n• Door handles wiped with disinfectant.\n• Wiping and/or dusting of window ledges free of bugs and debris.\n• Removal of cobwebs in and around doorways.\n• Tables and counters wiped with disinfectant, where cleared. Note: We will not disturb papers and personal items on these surfaces.\n• Carpeted flooring vacuumed (front door mats swept if saturated with water).\n• Hard-surfaced flooring dust mopped and mopped.\n\nOffice & Laundry\n• Vacuuming of any carpeted flooring and rugs.\n• Hard-surfaced flooring dust mopped and mopped.\n• Tables and counters wiped with disinfectant, unless otherwise specified.\n• Desks. Note: We will not wipe this surface and disturb papers and personal items.\n• Wiping and/or dusting of window ledges free of bugs and debris.\n• Remove cobwebs in and around doorways.\n\nFull Restroom Cleaning\n• Disinfecting and wiping down sinks.\n• Disinfecting and wiping down toilets, including top and base.\n• Checking bathtubs and/or showers and wiping down and/or dusting, if needed.\n• Refilling soaps and paper products.\n• Emptying of trash receptacles and put in proper dumpsters.\n• Washing base of walls near toilets and urinals, as needed.\n• Disinfecting all door handles, knobs, fixtures & light switches.\n• Sweeping and mopping of hard surfaced flooring.\n\nHallways & Showroom\n• Vacuuming of any carpeted flooring and rugs.\n• Mopping of any hard surfaced flooring.\n• Checking for cobwebs.\n\nFull Kitchen Cleaning\n• Wiping faces and tops of appliances, i.e., refrigerators, water station, coffee machine and coffee urns.\n• Disinfecting and polishing of kitchen sink, if cleared of dishes.\n• Disinfecting of tables unless another cleaning agent is specified.\n• Checking faces of cabinets for fingerprints and/or drips.\n• Emptying of trash receptacles and put in proper dumpsters.\n• Sweeping and mopping of any hard surface flooring.\n• Vacuuming of any carpeted flooring and rugs.",
+          "Print": "615 North McDonald Road, Spokane Valley, WA, USA, United States",
+          "PrintFull": "615 North McDonald Road, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 18,
+      "Code": "T SOTH",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Tomlinson Sotheby's",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 204,
+      "Creator": 2,
+      "Created": "2024-10-08T04:09:27-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 204,
+          "Street1": "223 East Sherman Avenue, Coeur d'Alene, ID, USA",
+          "Country": 224,
+          "Notes": "NO EMERGENCY AFTER HOURS CONTACT\nNo Alarm\nUse Key Fob front door or back.",
+          "Print": "223 East Sherman Avenue, Coeur d'Alene, ID, USA, United States",
+          "PrintFull": "223 East Sherman Avenue, Coeur d'Alene, ID, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 19,
+      "Code": "VEHRS",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Vehr's",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 206,
+      "Creator": 1,
+      "Created": "2024-10-08T04:20:34-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 206,
+          "Street1": "5221 East 3rd Avenue, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "NEW ALARM INSTRUCTIONS! Enter code 2630 press “command” to disarm and arm!\n\nIf any issues call Larry 1st.Alarm sounding? Call Allied Security 1(800)752-2490\nGive building name and address:\nVehrs Distributing Company\n3200 E Trent, Bldg 5A, Spokane, WA 99202\nCode word: pioneerIf code entered wrong and alarm sounds, try retyping code, 2630.\nAlarm automatically sets at 11pm\n\nKim N /Larry Myers\n253-487-7158\n\nAFTER HOURS EMERGENCY CONTACT\nLarry Myers 1(208)755-5019\nKim Nelson 1(509)995-7179\n\nVehrs Distributing Company\nMAINTENANCE AREAS \nEntry \nReception \nCustomer Waiting Areas \nOffices/Cubicles \nRestrooms \nKitchen and Break Area \nHallways & Walkways \nConference Room\n\nSCOPE OF WORK \n\nFront Entry, Reception and Waiting Area \n\n• Entry door glass cleaned, inside, and out.  \n• Door handles wiped with disinfectant. \n• Window ledges wiped.  \n• Removal of cobwebs in and around doorways. • Tables and counters wiped with disinfectant, unless otherwise  specified. \n• Desks and tables wiped with disinfectant, where cleared. Note:  We will not disturb papers and personal items on these  surfaces. \n• Carpeted flooring vacuumed (front door mats swept if  saturated with water). \n• Hard-surfaced flooring dust mopped and mopped, with special  attention to areas under furniture. \n\nOffices & Cubicles \n\n• Vacuuming of any carpeted flooring and rugs. Make sure all paper clips are picked up off of floors.\n• Sanitize door handles. Fingerprints cleaned, as needed.  • Tables and counters wiped with disinfectant, unless otherwise  specified. \n• Desks and tables wiped with disinfectant, where cleared. Note:  We will not disturb papers and personal items on these  surfaces. \n• Wiping and/or dusting of window ledges free of bugs and  debris.  \n• Remove cobwebs in and around doorways. \n\nFull Restroom Cleaning \n\n• Sanitizing all fixtures, toilets, and urinals.  Make sure no mineral buildup or rust residue is left in toilets. Use “The Works” cleaner only in toilets or urinals. Be careful not to splash “The Works” cleaner on any surface except porcelain.\n• Wiping backsplash, doors, and trash receptacles, as needed. \n • Refilling soaps and paper products. \n• Sanitizing and polishing any drinking fountains.\n • Emptying of trash receptacles and put in proper dumpsters.\n • Washing base of walls near toilets and urinals, as needed. \n • Sanitizing all door handles, knobs, fixtures & light switches. \n • Sweeping and mopping of hard surfaced flooring.\n\nHallways & Walkways \n\n• Vacuuming of any carpeted flooring and rugs. \n• Wiping/dusting of handrails, window ledges and floor rail  along stairwell landing and upstairs walkway.  \n• Mopping of any hard surfaced flooring. \n\nFull Kitchen and Breakroom Cleaning \n\n• Wiping faces and tops of appliances, i.e., refrigerators, water  station, coffee machine and coffee urns. \n• Disinfecting and polishing of kitchen sink, if cleared of dishes. \n• Disinfecting of tables unless another cleaning agent is specified. \n• Checking faces of cabinets for fingerprints and/or drips. \n• Emptying of trash receptacles and put in proper dumpsters. \n• Sweeping and mopping of any hard surface flooring.\n • Vacuuming of any carpeted flooring and rugs. \n\nConference Room \n\n• Vacuuming of any carpeted flooring and rugs. \n• Sanitizing of conference room table, countertops, and other  horizontal surfaces unless another cleaning agent is specified. \n• Emptying of trash receptacles and put in dumpster.",
+          "Print": "5221 East 3rd Avenue, Spokane Valley, WA, USA, United States",
+          "PrintFull": "5221 East 3rd Avenue, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 20,
+      "Code": "WLLW",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Willow & Branch",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 208,
+      "Creator": 2,
+      "Created": "2024-10-08T04:25:50-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 208,
+          "Street1": "9222 East Valleyway Avenue, Spokane Valley, WA, USA",
+          "Country": 224,
+          "Notes": "Laundry Door Code:  9323\n\nAFTER HOURS EMERGENCY CONTACT!\nKelly Coe +1(509)999-0806\n\nWillow & Branch\n\nSCOPE OF WORK\n\nFront Entry Way\n\n● Vacuum any carpeted flooring and rugs.\n● Inspect glass at entry. Sanitize door handles. Fingerprints cleaned, as needed.\n● Dust signs and shelving.\n● Wipe/dust window ledges free of bugs and debris.\n● Remove cobwebs in and around doorways.\n● Vacuum seating in the waiting area.\n\nHallways/Corridors with Suites\n\n● Vacuum any carpeted flooring and rugs.\n● Wipe/dust window ledges.\n● Inspect windows and entry glass outside of medical suites and clean\n● fingerprints, as needed.\n● Dust and wipe furniture.\n\nMixing Room\n\n● Sweep and mop of hard surface flooring.\n● Sanitize counters, sinks and other horizontal surfaces.\n● Empty trash receptacles and put in the dumpster.\n\nFull Kitchen Cleaning\n\n● Wiping faces and tops of appliances, i.e., refrigerators, water station,\n● coffee machine and coffee urns.\n● Disinfecting and polishing the kitchen sink, if cleared of dishes.\n● Disinfecting tables and chairs.\n● Checking faces of cabinets for fingerprints and/or drips.\n● Trash receptacles emptied and put in proper dumpsters.\n● Sweeping and mopping of any hard surface flooring.\n● Vacuuming of any carpeted flooring and rugs.\n\nFull Restroom Cleaning\n\n● Sanitizing all fixtures, toilets, and urinals.\n● Wiping backsplash, doors and trash receptacles, as needed.\n● Refilling soaps and paper products.\n● Sanitizing and polishing any drinking fountains.\n● Trash receptacles emptied and put in proper dumpsters.\n● Washing base of walls near toilets and urinals, as needed.\n● Sanitizing all door handles, knobs, fixtures & light switches.\n● Sweeping and mopping of hard surfaced flooring.",
+          "Print": "9222 East Valleyway Avenue, Spokane Valley, WA, USA, United Stat",
+          "PrintFull": "9222 East Valleyway Avenue, Spokane Valley, WA, USA, United States"
+        }
+      }
+    },
+    {
+      "Id": 21,
+      "Code": "B COMM",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Baker Commodities Inc",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 271,
+      "Creator": 2,
+      "Created": "2024-10-08T09:30:03-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 271,
+          "Street1": "4423 East Hutton Avenue, Spokane, WA, USA",
+          "State": "61",
+          "Postcode": "99212",
+          "Country": 224,
+          "Notes": "Gate Code 4020#",
+          "Print": "4423 East Hutton Avenue, Spokane, WA, USA, WA, 99212, United Sta",
+          "PrintFull": "4423 East Hutton Avenue, Spokane, WA, USA, WA, 99212, United States"
+        }
+      }
+    },
+    {
+      "Id": 22,
+      "Code": "SUPPLY",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Supply Station - Max Storage",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 239,
+      "Creator": 2,
+      "Created": "2024-10-15T20:04:07-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 239,
+          "Street1": "214 S Eastern Rd, Spokane Valley, WA 99212, United States",
+          "Country": 224,
+          "Notes": "",
+          "Print": "214 S Eastern Rd, Spokane Valley, WA 99212, United States, Unite",
+          "PrintFull": "214 S Eastern Rd, Spokane Valley, WA 99212, United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 23,
+      "Code": "EMP MT",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Monthly Employee Meet",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 237,
+      "Creator": 4,
+      "Created": "2024-10-15T20:08:04-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 237,
+          "Street1": "Spokane,  Washington , United States",
+          "Country": 224,
+          "Notes": "",
+          "Print": "Spokane,  Washington , United States, United States",
+          "PrintFull": "Spokane,  Washington , United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 24,
+      "Code": "INSPEC",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Pioneer Commercial Cleaning - Inspections",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 237,
+      "Creator": 4,
+      "Created": "2024-10-15T20:33:32-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 237,
+          "Street1": "Spokane,  Washington , United States",
+          "Country": 224,
+          "Notes": "",
+          "Print": "Spokane,  Washington , United States, United States",
+          "PrintFull": "Spokane,  Washington , United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 25,
+      "Code": "NOT",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Note & Kidd PLLC",
+      "BusinessNumber": "5099348438",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 254,
+      "Creator": 2,
+      "Created": "2024-10-16T07:26:51-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 254,
+          "Street1": "901 N Adams St STE 101, Spokane, WA 99201, United States",
+          "Country": 224,
+          "Notes": "SCOPE OF WORK Front Entryways, \nReception and Common Areas \n● Entry door handles, high-frequency touch points and glass cleaned, inside, and out. \n● Removal of cobwebs around ceiling perimeter of room and around doorways. 1\n● Trash receptacles emptied and garbage put in the dumpster.\n ● Window ledges dusted and/or wiped free of bugs and debris.\n ● Cleared surfaces dusted and/or wiped with disinfectant. Note: We will not disturb papers and personal items on these surfaces. \n● Carpeted fl ooring and rugs vacuumed (front door mats swept if saturated with water). \n● Hard-surfaced fl ooring dust mopped and mopped. Offi ces and Desk Areas \n● Interior door glass checked for spots inside and out and cleaned, where needed. This includes doors leading to the back parking lot. \n● Removal of cobwebs around ceiling perimeter of room and around doorways.\n ● Trash receptacles emptied and garbage put in the dumpster\n. ● Window ledges dusted and/or wiped free of bugs and debris. \n● Desks, countertops and cleared surfaces dusted and/or wiped with disinfectant. Note: We will not disturb papers and personal items on these surfaces. \n● Carpeted fl ooring and rugs vacuumed. \n● Hard-surfaced fl ooring dust mopped and mopped. Kitchens and Break Areas\n ● Soap, toilet paper, paper towels, and any and all paper products refi lled if needed. \n● Removal of cobwebs around ceiling perimeter and around doorways.\n ● Trash receptacles emptied and garbage put in the dumpster. \n● Faces and tops of appliances, i.e., refrigerators, water station, coff ee machine and coff ee urns wiped with disinfectant.\n ● Kitchen sink scrubbed, polished and wiped clean, if cleared of dishes. (Note: If sink is full of dishes we do not move dishes to clean. If sink has a few dishes we will move them to clean sink!) 2\n● Tables, countertops, and cleared surfaces sprayed and wiped with disinfectant \n● Faces of cabinets checked for fi ngerprints and/or drips and wiped with disinfectant, if needed. \n● Microwaves cleaned and wiped, inside and out\n ● Carpeted fl ooring and rugs vacuumed\n. ● Hard-surfaced fl ooring dust mopped and mopped. Full Restroom Cleaning\n ● Trash receptacles emptied and garbage put in the dumpster\n. ● Removal of cobwebs around ceiling perimeters and doorways.\n ● Door handles and high-frequency touch surfaces wiped with disinfectant\n. ● Fixtures, toilets (including bases), and urinals all sprayed and wiped with disinfectant, with attention to area behind toilets.\n ● Base of walls near toilets and urinals wiped with disinfectant as needed\n. ● Backsplash behind sinks and under paper towel dispensers and trash receptacles wiped with disinfectant, as needed. \n● Soap, toilet paper, paper towels, toilet seat covers and any and all paper products refi lled as needed. Any drinking fountains polished and disinfected if applicable. \n● Base of walls near toilets and urinals wiped with disinfectant as needed. \n● Hard-surfaced fl ooring dust mopped and mopped. Hallways, Commons & Stairwells\n ● Interior door glass checked for spots inside and out and cleaned, where needed. Includes, door leading to warehouse\n. ● Trash receptacles emptied and garbage put in the dumpster.\n ● Removal of cobwebs around perimeter of ceiling, stair rails and doorways. (Note: This includes high ceiling above 15 ft.) ● Carpeted fl ooring and rugs vacuumed. ● Hard-surfaced fl ooring dust mopped and mopped.",
+          "Print": "901 N Adams St STE 101, Spokane, WA 99201, United States, United",
+          "PrintFull": "901 N Adams St STE 101, Spokane, WA 99201, United States, United States"
+        }
+      }
+    },
+    {
+      "Id": 26,
+      "Code": "CAS",
+      "Active": false,
+      "ParentCompany": 0,
+      "CompanyName": "Casa De Oro",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 260,
+      "Creator": 4,
+      "Created": "2024-11-07T13:51:41-08:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 260,
+          "Street1": "1611 N Mullan Rd, Spokane Valley, WA 99206, United States",
+          "City": "Spokane Valley",
+          "State": "61",
+          "Postcode": "99206",
+          "Country": 224,
+          "Notes": null,
+          "Print": "1611 N Mullan Rd, Spokane Valley, WA 99206, United States, Spoka",
+          "PrintFull": "1611 N Mullan Rd, Spokane Valley, WA 99206, United States, Spokane Valley, WA, 99206, United States"
+        }
+      }
+    },
+    {
+      "Id": 27,
+      "Code": "SPO",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Spokane Valley Library",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 264,
+      "Creator": 2,
+      "Created": "2024-12-19T13:54:05-08:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 264,
+          "Street1": "22 N Herald Rd Spokane Valley, WA 99206",
+          "City": "Spokane Valley",
+          "State": "61",
+          "Postcode": "99206",
+          "Country": 224,
+          "Notes": null,
+          "Print": "22 N Herald Rd Spokane Valley, WA 99206, Spokane Valley, WA, 992",
+          "PrintFull": "22 N Herald Rd Spokane Valley, WA 99206, Spokane Valley, WA, 99206, United States"
+        }
+      }
+    },
+    {
+      "Id": 28,
+      "Code": "HOR",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Hormann NW Door",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 274,
+      "Creator": 2,
+      "Created": "2025-05-08T06:50:47-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 274,
+          "Street1": "2526 North Fairway Road",
+          "City": "Liberty Lake",
+          "State": "61",
+          "Postcode": "99019",
+          "Country": 224,
+          "Notes": "SCOPE OF WORK:\nEntrances / Lobbies / Reception Areas/Showroom\n✔ Empty trash cans, remove waste to designated dumpster (replace liners as\nneeded)\n✔ Dust/disinfectant wipe cleared surfaces (desks, counters, shelves, tables, chairs)\n✔ Clean/polish door frames, handles\n✔ Clean interior/exterior door glass\n✔ Remove cobwebs/debris from thresholds, wipe window ledges\n✔ Spot-remove marks from walls/doors/glass\n✔ Vacuum interior and exterior carpets/rugs (exterior rugs/ mats swept if wet)\nGeneral Office Areas including Customer Service Rep Office\n✔ Empty trash cans, remove waste to designated dumpster (replace liners as\nneeded)\n✔ Dust/disinfectant wipe on cleared surfaces (desks, counters, shelves, tables,\nchairs)\n✔ Do not disturb personal papers or items\n✔ Clean interior/exterior customer window glass\n✔ Dust computer screens, tv monitors & equipment (no liquid)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Dust mop/sweep hard floors; spot clean spills\n✔ Full mop hard-surface floors (not including desk floor mats)\n✔ Disinfect high-touch surfaces (door handles, light switches, etc.)\n✔ Return chairs/waste containers to proper positions\n✔ Dust low-reach areas (chair rungs, windowsills)\n✔ Dust high-reach areas ( ledges, partitions)\n✔ Vacuum carpeted flooring & office chair floor mats\nKitchens / Break Areas\n✔ Dust/disinfectant wipe on cleared surfaces (counters, shelves, tables, chairs)\n✔ Disinfect and scrub, wipe out and polish kitchen sinks\n✔ Return chairs/waste containers to proper positions\n✔ Clean interior/exterior of microwaves\n✔ Empty trash cans, remove waste to designated area (replace liner as needed)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Refill soap/towels/paper products if needed\n✔ Wipe fronts/tops of appliances (fridge, coffee machine)\n✔ Clean/polish coffee urns/equipment\n✔ Dust/wipe windowsills, tops of vending machines\n✔ Spot clean walls and doors\n✔ Dust mop/sweep floors; spot clean spills\n✔ Full mop hard surface floors\nRestrooms\n✔ Clean/full disinfect and scrub toilets and urinals from top to bottom.\n✔ Clean/full disinfect and scrub sinks, vanities, mirrors\n✔ Wipe backsplash under paper towels and above trash cans (remove spills and\nwater spots)\n✔ Polish plumbing and faucets\n✔ Clean/spot-clean partitions, walls, doors, frames\n✔ Restock toilet paper, paper towels, supplies\n✔ Empty trash cans & sanitary receptacles; replace liner as needed\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Full mop all hard-surface floors with germicidal disinfectant\n✔ Check/add water to floor drain P-trap if sewer off-gassing smell present \n✔ Report leaks or broken fixtures to contact\n✔ Check/add water to floor drain P-trap if sewer off-gassing smell present\n✔ Report leaks or broken fixtures to contact",
+          "Print": "2526 North Fairway Road, Liberty Lake, WA, 99019, United States",
+          "PrintFull": "2526 North Fairway Road, Liberty Lake, WA, 99019, United States"
+        }
+      }
+    },
+    {
+      "Id": 29,
+      "Code": "MAR",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Mark Whittaker, CPA, PS",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 276,
+      "Creator": 2,
+      "Created": "2025-05-16T14:00:41-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 276,
+          "Street1": "13305 East Trent Avenue",
+          "City": "Spokane Valley",
+          "State": "61",
+          "Postcode": "99216",
+          "Country": 224,
+          "Notes": "SCOPE OF WORK:\nEntrances / Waiting Areas\n ✔ Vacuum interior and exterior carpets/rugs (excludes exterior rugs/ mats if wet)\n✔ Dust mop/sweep hard floors; spot clean spills\n✔ Full mop hard-surface floors \n✔ Empty trash cans, remove waste to designated area (replace liner as needed)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Dust/disinfectant wipe on cleared surfaces (desks, counters, shelves, tables)\n✔ Feather dust tops and faces of monitors, phones, printers and printer trays.\n✔ Disinfect high-touch surfaces (door handles, light switches, etc.)\n✔ Clean interior/exterior door glass\n✔ Remove cobwebs/debris from thresholds, and upper corners of doorways,  wipe window ledges inside and outside of doorways\n✔ Full window cleaning of glass on entry doorway/spot clean glass panels to sides of entry doorway\n✔ Return chairs/waste containers to proper positions\n✔ Spot-remove marks from walls/doors\nGeneral Office Areas\n✔ Vacuum carpets & floor mats\n✔ Dust mop/sweep hard floors; spot clean spills\n✔ Full mop hard-surface floors \n✔ Empty trash cans, remove waste to designated area (replace liner as needed)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Dust/disinfectant wipe on cleared surfaces (desks, counters, shelves, tables, chairs)\n✔ Do not disturb personal papers or items\n✔ Dust computer screens, tv monitors & equipment (no liquid)\n✔ Return chairs/waste containers to proper positions\n✔ Dust low-reach areas (chair rungs, windowsills)\n✔ Dust high-reach areas (ledges, partitions)\nKitchens / Break Areas\n✔ Vacuum carpets & floor mats\n✔ Dust mop/sweep hard floors; spot clean spills\n✔ Full mop hard-surface floors\n✔ Dust/disinfectant wipe on cleared surfaces (counters, shelves, tables, chairs)\n✔ Disinfect and scrub, wipe out and polish kitchen sinks\n✔ Return furniture/waste containers to proper positions\n✔ Clean interior/exterior of microwaves\n✔ Empty trash cans, remove waste to designated area (replace liner as needed)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Refill soap/towels/paper products if needed\n✔ Wipe fronts/tops of appliances (fridge, coffee machine)\n✔ Dust/wipe ledges, tops of appliances if cleared\n✔ Clean/wipe coffee urns/equipment\n✔ Spot-clean walls, door frames, fridge exterior\nRestrooms\n✔ Dust mop/sweep hard floors; spot clean spills\n✔Full mop all hard-surface floors with germicidal disinfectant Full mop hard-surface floors\n✔ Clean/full disinfect and scrub toilets and urinals from top to bottom.\n✔ Clean/full disinfect and scrub sinks, vanities, mirrors\n✔ Wipe backsplash under paper towels and above trash cans (remove spills/stains)\n✔Wipe plumbing/fittings\n✔ Clean/spot-clean partitions, walls, doors, frames\n✔ Restock toilet paper, paper towels, supplies\n✔ Empty trash cans & sanitary receptacles; replace liner as needed\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Clean/disinfect base of toilets/fixtures\n✔ Check/add water to floor drain P-trap if needed\n✔ Report leaks or broken fixtures to contact\nSPECIAL CLEANING INSTRUCTIONS:\nDusting and disinfectant wiping of surfaces and behind desks is extremely important to customer!  \n-We will move small mobile items like staplers, hole punches, keyboards, computer mouse, and pens.  \n-We will use ostreich feather duster on faces and backs of monitors, behind monitors and around cords when the computer stands are lifted, telephones, around plants, on ledges that are too small to wipe, bases of chairs and any other conspicuous areas that are dusty and reachable by feather duster.\n-We will not disturb papers, sticky notes, personal items that could break, baskets of papers, file folders, books, phones, printers, plants etc. \nYour satisfaction is our top priority. We take pride in maintaining a professional, hygienic, and welcoming workplace for your team, ensuring a seamless and worry-free cleaning experience.",
+          "Print": "13305 East Trent Avenue, Spokane Valley, WA, 99216, United State",
+          "PrintFull": "13305 East Trent Avenue, Spokane Valley, WA, 99216, United States"
+        }
+      }
+    },
+    {
+      "Id": 30,
+      "Code": "MAC",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "MacDonald-Miller",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 288,
+      "Creator": 2,
+      "Created": "2025-05-23T11:14:16-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 288,
+          "Street1": "421 North Freya Street",
+          "City": "Spokane",
+          "State": "61",
+          "Postcode": "99202",
+          "Country": 224,
+          "Notes": "Scope of Work\nAll areas that will be serviced:\n• Entrances / Lobbies / Reception Areas\n• General Office Areas (including cubicles and warehouse office)\n• Kitchen / Break Areas\n• Restrooms\n• Commons / Corridors\n• Conference & Training Rooms\nThe services include but are not limited to:\nEntrances / Lobbies / Reception Areas\n5xWeekly\n✔ Empty trash cans, remove waste to designated dumpster (replace liners as\nneeded)\n✔ Disinfect/polish high frequency touch points doors and door handles\n✔ Clean interior/exterior door glass\n2xWeekly\n\n✔ Vacuum interior and exterior carpets/rugs (exterior rugs/ mats swept if wet) as\nscheduled.\n✔ Disinfectant wipe cleared surfaces (desks, counters, shelves, tables, chairs)\n1xWeekly\n✔ Dust/disinfectant wipe cleared surfaces (windowsills, desks, counters, shelves,\ntables, chairs)\n✔ Remove cobwebs/debris from thresholds, wipe window ledges inside and outside\nof doorways\n✔ Spot-remove marks from walls/doors\nGeneral Office and Conference Areas\n5xWeekly\n✔ Empty trash cans, remove waste to designated dumpster (replace liners as\nneeded)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Return chairs/waste containers to proper positions\n✔ Disinfect/polish high frequency touch points doors and door handles\n✔ Clean interior/exterior door glass\n2xWeekly\n✔ Full vacuum any carpeted surfaces in all areas of office space\n✔ Disinfectant wipe on cleared surfaces (desks, counters, shelves, tables, chairs)\n✔ Disinfect high-touch surfaces (door handles, light switches, etc.)\n1xWeekly\n✔ Dust/disinfectant wipe on cleared surfaces (windowsills, desks, counters, shelves,\ntables, chairs)\n✔ Do not disturb personal papers or items\n✔ Dust computer screens, tv monitors, printers and miscellaneous equipment (no\nliquid used on electronics)\n\n✔ Dust low-reach areas (chair rungs, windowsills)\n✔ Dust high-reach areas ( ledges, partitions)\nKitchens / Breakroom\n5xWeekly\n✔ Dust/disinfectant wipe on cleared surfaces (counters, shelves, tables, chairs)\n✔ Disinfect and scrub, wipe out and polish kitchen sinks\n✔ Return chairs/waste containers to proper positions\n✔ Clean interior/exterior of microwaves\n✔ Empty trash cans, remove waste to designated area (replace liner as needed)\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Refill soap/towels/paper products if needed\n✔ Wipe fronts/tops of appliances (fridge, coffee machine)\n✔ Clean/polish coffee urns/equipment\n✔ Dust/wipe windowsills, tops of vending machines\n✔ Spot clean walls and doors\n3xWeekly\n✔Vacuuming of any rugs\n✔ Dust mop/sweep hard surfaced floors; spot clean spills\n✔ Full mop hard surface floors\n\nRestrooms\n\n5xWeekly\n✔ Clean/full disinfect and scrub toilets and urinals from top to bottom.\n✔ Clean/full disinfect and scrub sinks, vanities, mirrors\n✔ Wipe backsplash under paper towels and above trash cans (remove spills and\nwater spots)\n\n✔ Polish plumbing and faucets\n✔ Clean/spot-clean partitions, walls, doors, frames\n✔ Restock toilet paper, paper towels, supplies\n✔ Empty trash cans & sanitary receptacles; replace liner as needed\n✔ Spot clean tops and faces trash containers (remove spills/stains)\n✔ Check/add water to floor drain P-trap if sewer off-gassing smell present\n✔ Report leaks or broken fixtures to contact\n3xWeekly\n✔ Dust mop/sweep floors; spot clean spills including in front of drinking fountain and\nrestroom in warehouse\n✔ Full mop all hard-surface floors with germicidal disinfectant including in front of\ndrinking fountain and restroom in warehouse\nYour satisfaction is our top priority. We take pride in maintaining a professional,\nhygienic, and welcoming workplace for your team, ensuring a seamless and\nworry-free cleaning experience.",
+          "Print": "421 North Freya Street, Spokane, WA, 99202, United States",
+          "PrintFull": "421 North Freya Street, Spokane, WA, 99202, United States"
+        }
+      }
+    },
+    {
+      "Id": 31,
+      "Code": "REM",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Remote HQ",
+      "BusinessNumber": "",
+      "IsWorkplace": true,
+      "IsPayrollEntity": false,
+      "Address": 287,
+      "Creator": 2,
+      "Created": "2025-06-20T09:04:10-07:00",
+      "Modified": "2025-12-04T02:06:04-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": {
+          "Id": 287,
+          "Street1": "2808 S Assembly Rd. Apt 22 ",
+          "City": "Spokane",
+          "State": "61",
+          "Postcode": "99224",
+          "Country": 224,
+          "Notes": null,
+          "Print": "2808 S Assembly Rd. Apt 22 , Spokane, WA, 99224, United States",
+          "PrintFull": "2808 S Assembly Rd. Apt 22 , Spokane, WA, 99224, United States"
+        }
+      }
+    },
+    {
+      "Id": 32,
+      "Code": "DPC_1P",
+      "Active": true,
+      "ParentCompany": 0,
+      "CompanyName": "Default Pay Centre",
+      "BusinessNumber": null,
+      "IsWorkplace": false,
+      "IsPayrollEntity": true,
+      "Address": null,
+      "Creator": 1,
+      "Created": "2025-12-04T02:05:56-08:00",
+      "Modified": "2025-12-04T02:05:56-08:00",
+      "_DPMetaData": {
+        "System": "Company",
+        "AddressObject": null
+      }
+    }
+  ]
+}

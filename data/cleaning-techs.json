@@ -1,0 +1,68 @@
+[
+  {
+    "tech_slug": "drew-c",
+    "display_name": "Drew C.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "april-k",
+    "display_name": "April K.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "laura-j",
+    "display_name": "Laura J.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "jared-d",
+    "display_name": "Jared D.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "makaila-b",
+    "display_name": "Makaila B.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "mackenzie-s",
+    "display_name": "Mackenzie S.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "gene-f",
+    "display_name": "Gene F.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "nick-k",
+    "display_name": "Nick K.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "jacob-n",
+    "display_name": "Jacob N.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "bonnie-r",
+    "display_name": "Bonnie R.",
+    "active": true,
+    "dcr_enabled": true
+  },
+  {
+    "tech_slug": "kiana-l",
+    "display_name": "Kiana L.",
+    "active": true,
+    "dcr_enabled": true
+  }
+]

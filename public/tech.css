@@ -1,0 +1,1209 @@
+/* ==========================================================================
+   Pioneer DCR Hub — Cleaning Tech Hub styles.
+   ==========================================================================
+   Layered on top of styles.css (brand header, card, hero, footer, badges,
+   focus rings). Only adds tech-hub-specific chrome: customer picker, stat
+   grid, supply / issue / feedback row cards, big CTA, toast. */
+
+.tech-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 14px 80px;
+}
+.hero-tech {
+  padding: 26px 18px 8px;
+}
+.hero-tech h1 {
+  font-size: 28px;
+  letter-spacing: -0.5px;
+}
+.hero-tech .subtitle {
+  font-style: normal;
+  color: var(--pc-text-muted);
+}
+
+/* ==========================================================================
+   Customer picker card — always-visible entry point
+   ========================================================================== */
+.tech-picker-card {
+  padding: 18px;
+}
+.tech-picker-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-muted);
+  margin: 0 0 8px;
+}
+.tech-picker-select {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--pc-text);
+  border: 1.5px solid var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%230d1218' stroke-width='2' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px;
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+.tech-picker-select:focus {
+  border-color: var(--pc-teal);
+  box-shadow: var(--pc-focus-ring);
+}
+.tech-picker-hint {
+  margin: 8px 2px 0;
+  font-size: 12.5px;
+  color: var(--pc-text-subtle);
+}
+
+/* ==========================================================================
+   Loading state — visible spinner card during fetch
+   ==========================================================================
+   Replaces the prior "hide all content during fetch" pattern. Centered
+   spinner + friendly copy so the user gets immediate feedback after picking
+   a customer. Auto-hides when fetch resolves; the rendered content cards
+   appear in its place. */
+.tech-loading-card {
+  padding: 32px 20px;
+  text-align: center;
+}
+.tech-loading-spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 14px;
+  border: 3px solid var(--pc-silver-200);
+  border-top-color: var(--pc-teal);
+  border-radius: 50%;
+  animation: tech-spin 0.85s linear infinite;
+}
+@keyframes tech-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .tech-loading-spinner { animation: none; border-top-color: var(--pc-teal); }
+}
+.tech-loading-text {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+  letter-spacing: 0.1px;
+}
+
+/* ==========================================================================
+   Fetch-error banner
+   ========================================================================== */
+.tech-error {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  background: var(--pc-danger-soft);
+  border: 1px solid #ffd2d2;
+  border-left: 4px solid var(--pc-danger);
+  border-radius: var(--radius-input);
+  color: var(--pc-danger-700);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Snapshot card — customer name + 4-up stat tiles
+   ========================================================================== */
+.tech-snapshot {
+  padding: 18px 18px 14px;
+}
+.tech-snapshot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.tech-customer-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--pc-text);
+}
+.tech-customer-location {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--pc-text-muted);
+}
+.tech-snapshot-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+/* Wrapper around badges + Refresh button. Keeps them right-aligned on
+   desktop and stacked to the left on mobile when the snapshot head wraps. */
+.tech-snapshot-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tech-refresh-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--pc-text-muted);
+  background: transparent;
+  border: 1px solid var(--pc-border-strong);
+  border-radius: 6px;
+  padding: 6px 12px;
+  min-height: 32px;
+  cursor: pointer;
+  transition: border-color var(--t-base), color var(--t-base),
+              background var(--t-base), transform var(--t-fast);
+}
+.tech-refresh-btn:hover:not(:disabled) {
+  border-color: var(--pc-teal);
+  color: var(--pc-teal-700);
+  background: var(--pc-teal-50);
+}
+.tech-refresh-btn:active:not(:disabled) { transform: translateY(1px); }
+.tech-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* Reuses .badge.* variants from admin.css? — admin.css is NOT loaded here.
+   tech.css ships its own compact badge so the tech hub never depends on
+   admin styles bleeding through. */
+.tech-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tech-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tech-badge.is-on  { background: var(--pc-teal-100);   color: var(--pc-teal-700);   border-color: var(--pc-teal); }
+.tech-badge.is-off { background: var(--pc-silver-200); color: var(--pc-text-muted); border-color: var(--pc-silver); }
+.tech-badge.is-archived {
+  background: var(--pc-warning-soft);
+  color: var(--pc-warning);
+  border-color: #fbbf24;
+}
+
+/* Stat tiles — 2-up on phones, 4-up on tablet/desktop. */
+.tech-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (min-width: 560px) {
+  .tech-stat-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.tech-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, var(--pc-card) 0%, var(--pc-card-tint) 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--pc-shadow-sm);
+}
+.tech-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--pc-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.tech-stat-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+
+/* Budget tile — slightly smaller headline so longer labels ("On Budget"
+   / "Over Budget") fit on one line on phones without truncating, plus
+   tonal color cues that stay supportive (no scary reds). */
+.tech-stat-budget .tech-stat-value {
+  font-size: 17px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+.tech-stat-budget .tech-stat-value.is-on   { color: var(--pc-teal-700); }
+.tech-stat-budget .tech-stat-value.is-over { color: var(--pc-text); }   /* neutral — not punitive */
+.tech-stat-budget .tech-stat-label {
+  text-transform: none;        /* allow the friendlier sub-line phrasing */
+  letter-spacing: 0.15px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+
+/* ==========================================================================
+   Section cards (open supplies, recent issues, feedback, wins)
+   ========================================================================== */
+.tech-section {
+  padding: 18px;
+}
+.tech-section-head {
+  margin: 0 0 12px;
+}
+.tech-section-title {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--pc-text);
+}
+.tech-section-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  line-height: 1.45;
+}
+.tech-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.tech-empty {
+  margin: 8px 0 0;
+  padding: 16px 14px;
+  background: var(--pc-bg);
+  border: 1px dashed var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  color: var(--pc-text-muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Supply row
+   ========================================================================== */
+.tech-supply-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 8px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--pc-border);
+}
+.tech-supply-row:last-child { border-bottom: none; }
+.tech-supply-row .row-items {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pc-text);
+  line-height: 1.4;
+}
+.tech-supply-row .row-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--pc-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.tech-supply-row .row-meta strong { color: var(--pc-text); font-weight: 600; }
+.tech-supply-row .row-status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+
+/* Status pills mirror the admin labels exactly — single source of truth in
+   the JS, color treatment matched here so the tech sees the same status
+   chips the office sees. */
+.tech-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.tech-status.status-new                 { background: #fff1ea;             color: #c2410c;            border-color: #fb923c; }
+.tech-status.status-reviewed            { background: var(--pc-warning-soft); color: #92400e;        border-color: #fbbf24; }
+.tech-status.status-customer_contacted  { background: #ede9fe;             color: #5b21b6;            border-color: #a78bfa; }
+.tech-status.status-ordered             { background: var(--pc-teal-100);  color: var(--pc-teal-700); border-color: var(--pc-teal); }
+.tech-status.status-closed              { background: var(--pc-silver-200); color: var(--pc-text-muted); border-color: var(--pc-silver); }
+
+/* ==========================================================================
+   Issue row
+   ========================================================================== */
+.tech-issue-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--pc-border);
+}
+.tech-issue-row:last-child { border-bottom: none; }
+.tech-issue-row .row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tech-issue-row .row-where {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pc-text);
+  letter-spacing: -0.1px;
+}
+.tech-issue-row .row-when {
+  font-size: 12px;
+  color: var(--pc-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tech-issue-row .row-note {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  color: var(--pc-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.tech-issue-row .row-tech {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--pc-text-subtle);
+}
+
+/* ==========================================================================
+   Feedback row — placeholder shape for future feedback collection
+   ========================================================================== */
+.tech-feedback-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--pc-border);
+}
+.tech-feedback-row:last-child { border-bottom: none; }
+.tech-feedback-row .row-rating {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-teal-700);
+}
+.tech-feedback-row .row-comment {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--pc-text);
+}
+
+/* ==========================================================================
+   Wins / recognition card — morale section
+   ========================================================================== */
+.tech-wins-card {
+  background: linear-gradient(180deg, var(--pc-card) 0%, var(--pc-teal-50) 100%);
+  border-color: var(--pc-teal-100);
+}
+.tech-wins-card .tech-empty {
+  background: rgba(255, 255, 255, 0.6);
+  border-style: solid;
+  border-color: var(--pc-teal-100);
+  color: var(--pc-teal-700);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Ask-for-update CTA card
+   ========================================================================== */
+.tech-ask-card { padding: 22px; text-align: center; }
+.tech-ask-btn {
+  display: inline-block;
+  min-height: 52px;
+  padding: 14px 24px;
+  margin-top: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(180deg, var(--pc-ink-700) 0%, var(--pc-ink) 100%);
+  border: 1px solid var(--pc-ink);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  box-shadow:
+    0 6px 18px rgba(13, 18, 24, 0.18),
+    0 12px 28px rgba(20, 184, 166, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20);
+  transition: background var(--t-base), box-shadow var(--t-base), transform var(--t-fast);
+}
+.tech-ask-btn:hover {
+  background: linear-gradient(180deg, var(--pc-ink) 0%, #04070a 100%);
+  box-shadow:
+    0 10px 30px rgba(20, 184, 166, 0.34),
+    0 4px 12px rgba(13, 18, 24, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+.tech-ask-btn:active { transform: translateY(1px); }
+
+/* ==========================================================================
+   Toast — simpler than the admin one; teal pop-in at the bottom
+   ========================================================================== */
+.tech-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 20px);
+  z-index: 200;
+  padding: 12px 22px;
+  background: var(--pc-ink);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: var(--pc-shadow-md), 0 0 0 1px var(--pc-teal-100), 0 0 20px rgba(20, 184, 166, 0.30);
+  opacity: 0;
+  transition: opacity 0.3s var(--t-base), transform 0.3s var(--t-base);
+  pointer-events: none;
+}
+.tech-toast.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+/* ==========================================================================
+   Mobile niceties — tighten section padding + force 2-up stats
+   ========================================================================== */
+@media (max-width: 480px) {
+  .tech-main           { padding: 8px 14px 60px; }
+  .hero-tech           { padding: 22px 18px 6px; }
+  .hero-tech h1        { font-size: 26px; }
+  .tech-section        { padding: 16px; }
+  .tech-snapshot       { padding: 16px; }
+  .tech-customer-name  { font-size: 20px; }
+  .tech-stat           { padding: 10px 12px; }
+  .tech-stat-value     { font-size: 19px; }
+  .tech-ask-btn        { width: 100%; padding: 16px 18px; }
+}
+
+
+/* ==========================================================================
+   Important Cleaning Notes (tech-side) + Suggest Update modal
+   ========================================================================== */
+.tech-notes-card { border-left: 4px solid var(--pc-teal, #14b8a6); }
+.tech-section-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tech-suggest-btn {
+  appearance: none;
+  background: #fff;
+  color: var(--pc-teal-700, #0f766e);
+  border: 1px solid var(--pc-teal, #14b8a6);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tech-suggest-btn:hover { background: var(--pc-teal-50, #f0fdfa); }
+
+.tech-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tech-note-card {
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.tech-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.tech-note-cat {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: var(--pc-teal-50, #f0fdfa);
+  color: var(--pc-teal-700, #0f766e);
+  border: 1px solid var(--pc-teal-100, #ccfbf1);
+  white-space: nowrap;
+}
+.tech-note-suggest {
+  appearance: none;
+  background: transparent;
+  color: var(--pc-teal-700, #0f766e);
+  border: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.tech-note-suggest:hover { text-decoration: underline; }
+.tech-note-title {
+  margin: 2px 0 4px;
+  font-size: 14.5px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--pc-text, #111827);
+}
+.tech-note-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--pc-text, #111827);
+  white-space: pre-wrap;
+}
+.tech-note-meta {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--pc-text-muted, #6b7280);
+}
+
+/* Suggest Update modal — lightweight overlay; reuses no admin.css styles
+   since tech.css is the only stylesheet loaded by /tech.html. */
+.tech-suggest-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.tech-suggest-modal[hidden] { display: none; }
+.tech-suggest-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+.tech-suggest-dialog {
+  position: relative;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+.tech-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--pc-border, #e2e8f0);
+}
+.tech-suggest-head h2 { margin: 0; font-size: 16px; font-weight: 800; }
+.tech-suggest-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--pc-text-muted, #6b7280);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.tech-suggest-close:hover { color: var(--pc-text, #111827); }
+.tech-suggest-body {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tech-suggest-context {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--pc-text-muted, #6b7280);
+  line-height: 1.55;
+}
+.tech-suggest-existing {
+  padding: 10px 12px;
+  background: var(--pc-bg, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.tech-suggest-existing-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle, #94a3b8);
+  margin-bottom: 4px;
+}
+.tech-suggest-existing-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--pc-text, #111827);
+}
+.tech-suggest-existing-body {
+  color: var(--pc-text, #111827);
+  white-space: pre-wrap;
+}
+.tech-suggest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tech-suggest-field-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pc-text, #111827);
+}
+.tech-suggest-field-hint {
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+}
+.tech-suggest-field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  border: 1px solid var(--pc-border-strong, #cbd5e1);
+  border-radius: 8px;
+  resize: vertical;
+}
+.tech-suggest-field .req { color: #b91c1c; }
+.tech-suggest-err {
+  padding: 8px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 12.5px;
+}
+.tech-suggest-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--pc-border, #e2e8f0);
+}
+.tech-suggest-cancel,
+.tech-suggest-save {
+  appearance: none;
+  border-radius: 6px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--pc-border-strong, #cbd5e1);
+}
+.tech-suggest-cancel {
+  background: #fff;
+  color: var(--pc-text, #111827);
+}
+.tech-suggest-save {
+  background: var(--pc-teal, #14b8a6);
+  color: #fff;
+  border-color: var(--pc-teal, #14b8a6);
+}
+.tech-suggest-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Customer Quality tile (per-customer score in the snapshot card)
+   ==========================================================================
+   Metallic/glass card with tone-tinted glow. Smaller than the
+   Inspection Hub headline card but visually consistent. Sits below
+   the stat grid inside .tech-snapshot. */
+.tech-quality-tile {
+  position: relative;
+  margin: 14px 0 0;
+  padding: 16px 18px 14px;
+  background:
+    linear-gradient(160deg, #0f172a 0%, #111827 50%, #1e293b 100%);
+  border-radius: 14px;
+  color: #f1f5f9;
+  box-shadow:
+    0 16px 32px -18px rgba(15, 23, 42, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  isolation: isolate;
+}
+.tech-quality-glow {
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(closest-side, rgba(20, 184, 166, 0.45), transparent 70%);
+  filter: blur(20px);
+  z-index: 0;
+}
+.tech-quality-tile[data-tone="tone-1"] .tech-quality-glow { background: radial-gradient(closest-side, rgba(220, 38, 38, 0.4), transparent 70%); }
+.tech-quality-tile[data-tone="tone-2"] .tech-quality-glow { background: radial-gradient(closest-side, rgba(234, 88, 12, 0.4), transparent 70%); }
+.tech-quality-tile[data-tone="tone-3"] .tech-quality-glow { background: radial-gradient(closest-side, rgba(202, 138, 4, 0.4), transparent 70%); }
+.tech-quality-tile[data-tone="tone-4"] .tech-quality-glow { background: radial-gradient(closest-side, rgba(20, 184, 166, 0.45), transparent 70%); }
+.tech-quality-tile[data-tone="tone-5"] .tech-quality-glow { background: radial-gradient(closest-side, rgba(22, 163, 74, 0.5), transparent 70%); }
+.tech-quality-body { position: relative; z-index: 1; }
+.tech-quality-eyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 6px;
+}
+.tech-quality-row { display: flex; align-items: center; gap: 16px; }
+.tech-quality-value {
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: #fff;
+  min-width: 70px;
+  text-align: center;
+}
+.tech-quality-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tech-quality-label { font-size: 14px; font-weight: 800; }
+.tech-quality-sub   { font-size: 11.5px; color: rgba(255, 255, 255, 0.78); }
+.tech-quality-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+@media (max-width: 480px) {
+  .tech-quality-value { font-size: 42px; min-width: 56px; }
+}
+
+/* ----- Service Recovery pill (in tech-snapshot-badges) ----- */
+.tech-badge.is-recovery {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   Recent Inspections summary (per-customer history)
+   ========================================================================== */
+.tech-recent-insp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tech-recent-insp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.tech-recent-insp-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  color: #fff;
+  background: var(--pc-text-muted, #475569);
+}
+.tech-recent-insp-score.is-tone-1 { background: #dc2626; }
+.tech-recent-insp-score.is-tone-2 { background: #ea580c; }
+.tech-recent-insp-score.is-tone-3 { background: #ca8a04; }
+.tech-recent-insp-score.is-tone-4 { background: #14b8a6; }
+.tech-recent-insp-score.is-tone-5 { background: #16a34a; }
+.tech-recent-insp-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tech-recent-insp-date {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pc-text, #0f172a);
+}
+.tech-recent-insp-celebrate {
+  font-size: 12px;
+  color: #166534;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-left: 3px solid #16a34a;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.tech-recent-insp-attention {
+  font-size: 12px;
+  color: #6b3a09;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 3px solid #f59e0b;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.tech-recent-insp-attention strong { font-weight: 800; }
+
+/* ==========================================================================
+   Customer streak chip (inside .tech-quality-tile)
+   ========================================================================== */
+.tech-quality-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fde68a;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  align-self: flex-start;
+}
+
+/* ==========================================================================
+   Customer Health card
+   ==========================================================================
+   Sits below the Quality tile inside .tech-snapshot. Compact summary
+   with a single tone-tinted score and a short signals list. Stays
+   intentionally light — no coaching detail. */
+.tech-health-card {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.tech-health-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tech-health-eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle, #64748b);
+}
+.tech-health-score {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--pc-text, #0f172a);
+}
+.tech-health-label {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pc-text, #0f172a);
+}
+.tech-health-card[data-tone="tone-1"] { border-left: 4px solid #dc2626; }
+.tech-health-card[data-tone="tone-2"] { border-left: 4px solid #ea580c; }
+.tech-health-card[data-tone="tone-3"] { border-left: 4px solid #ca8a04; }
+.tech-health-card[data-tone="tone-4"] { border-left: 4px solid #14b8a6; }
+.tech-health-card[data-tone="tone-5"] { border-left: 4px solid #16a34a; }
+.tech-health-card[data-tone="tone-1"] .tech-health-score { color: #b91c1c; }
+.tech-health-card[data-tone="tone-2"] .tech-health-score { color: #c2410c; }
+.tech-health-card[data-tone="tone-3"] .tech-health-score { color: #a16207; }
+.tech-health-card[data-tone="tone-4"] .tech-health-score { color: #0f766e; }
+.tech-health-card[data-tone="tone-5"] .tech-health-score { color: #15803d; }
+.tech-health-signals {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--pc-text-muted, #475569);
+}
+.tech-health-signals li::before {
+  content: "•";
+  margin-right: 6px;
+  color: var(--pc-text-muted, #475569);
+}
+.tech-health-signal-good { color: #047857; }
+.tech-health-signal-good::before { content: "✓" !important; color: #047857; }
+
+/* ============ Security Info — launcher card + modal ============
+   Tech-approved, parsed-only access info. The launcher card sits
+   above the SOP block so techs never have to dig past cleaning
+   instructions when an alarm panel is beeping. Codes are NOT shown
+   on the launcher card itself — they only render inside the modal
+   once the tech taps the button. */
+
+.tech-security-launcher {
+  padding: 0;                       /* the button is the whole card */
+  overflow: hidden;
+}
+.tech-security-btn {
+  appearance: none;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: none;
+  background:
+    linear-gradient(135deg,
+      rgba(13, 148, 136, 0.10) 0%,
+      rgba(245, 158, 11, 0.08) 100%);
+  cursor: pointer;
+  text-align: left;
+  color: var(--pc-text, #0f172a);
+  transition: background-color .15s ease, transform .05s ease;
+}
+.tech-security-btn:hover {
+  background:
+    linear-gradient(135deg,
+      rgba(13, 148, 136, 0.15) 0%,
+      rgba(245, 158, 11, 0.12) 100%);
+}
+.tech-security-btn:active { transform: scale(0.997); }
+.tech-security-btn:focus-visible {
+  outline: 3px solid #5eead4;
+  outline-offset: -3px;
+}
+.tech-security-btn-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.tech-security-btn-label {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tech-security-btn-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--pc-text, #0f172a);
+  letter-spacing: -0.01em;
+}
+.tech-security-btn-sub {
+  font-size: 12.5px;
+  color: var(--pc-text-muted, #475569);
+  line-height: 1.35;
+}
+.tech-security-btn-arrow {
+  font-size: 28px;
+  line-height: 1;
+  color: #0d9488;
+  font-weight: 600;
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+
+/* ---- Modal overlay ---- */
+.tech-security-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 220;     /* above tech-suggest-modal (200) so it wins if both ever open */
+}
+.tech-security-modal[hidden] { display: none; }
+.tech-security-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(2px);
+}
+.tech-security-dialog {
+  position: relative;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #0f172a;      /* dark calm */
+  color: #f1f5f9;
+  border-radius: 16px;
+  border: 1px solid #1e293b;
+  box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+}
+.tech-security-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid #1e293b;
+}
+.tech-security-head-text { min-width: 0; flex: 1 1 auto; }
+.tech-security-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #f1f5f9;
+}
+.tech-security-customer {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.tech-security-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+.tech-security-close:hover { color: #f1f5f9; }
+.tech-security-close:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.tech-security-body {
+  padding: 14px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tech-security-block {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-left: 4px solid #0d9488;     /* teal accent for codes */
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.tech-security-block-notes {
+  border-left-color: #f59e0b;          /* amber for instructions */
+}
+.tech-security-block-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #5eead4;
+  margin-bottom: 8px;
+}
+.tech-security-block-notes .tech-security-block-label {
+  color: #fcd34d;
+}
+.tech-security-block-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tech-security-code {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #f8fafc;
+  letter-spacing: 0.2px;
+  word-break: break-word;
+}
+.tech-security-note {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+.tech-security-empty {
+  margin: 0;
+  font-size: 14px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.tech-security-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 18px;
+  border-top: 1px solid #1e293b;
+}
+.tech-security-done {
+  appearance: none;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  background: #5eead4;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color .15s ease;
+}
+.tech-security-done:hover  { background: #2dd4bf; }
+.tech-security-done:focus-visible {
+  outline: 3px solid #99f6e4;
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .tech-security-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    align-self: flex-end;
+    margin: auto 0 0;
+  }
+  .tech-security-modal { align-items: flex-end; }
+  .tech-security-btn { padding: 14px 14px; gap: 12px; }
+  .tech-security-btn-title { font-size: 16px; }
+  .tech-security-btn-sub   { font-size: 12px; }
+  .tech-security-code      { font-size: 18px; }
+}

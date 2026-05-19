@@ -1,0 +1,103 @@
+rules_version = '2';
+
+// Phase 1 storage rules:
+//   - Anyone can upload a DCR photo to:
+//       dcr-photos/{customerSlug}/{submissionId}/photo-{n}.{ext}
+//   - Uploads must be image/* and <= 10 MB.
+//   - Reads are open so Firebase download URLs render in customer email
+//     (Gmail / Outlook fetch images as anonymous clients).
+//   - All other paths are denied.
+//
+// We intentionally allow anonymous *writes* under dcr-photos/** because the
+// public DCR form has no auth in Phase 1. The Cloud Function is the system of
+// record — Storage is just the file backing for stable image URLs.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /dcr-photos/{customerSlug}/{submissionId}/{fileName} {
+      allow read: if true;
+
+      allow create: if
+        request.resource != null &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType != null &&
+        request.resource.contentType.matches('image/.*');
+
+      // No overwrites or deletes from clients.
+      allow update, delete: if false;
+    }
+
+    // Handwritten signature PNGs uploaded from the DCR form.
+    // Same anonymous-write contract as photos but with a much smaller size cap —
+    // signatures are tiny (a few KB), so 1 MB is a generous safety ceiling.
+    match /dcr-signatures/{customerSlug}/{submissionId}/{fileName} {
+      allow read: if true;
+
+      allow create: if
+        request.resource != null &&
+        request.resource.size < 1 * 1024 * 1024 &&
+        request.resource.contentType != null &&
+        request.resource.contentType.matches('image/.*');
+
+      allow update, delete: if false;
+    }
+
+    // Announcement attachments — admin-uploaded files (PDF / image /
+    // small office doc) that get linked from announcement cards on the
+    // Team Hub and inside the mandatory-announcement modal.
+    //
+    // Auth model:
+    //   • Read: any signed-in user. Mirrors the /announcements Firestore
+    //     read rule.
+    //   • Write/delete: admin allowlist only — same four emails as
+    //     firestore.rules → isPioneerAdmin(). Keep this list in sync.
+    //   • Size: hard cap 10 MB so a leaked admin credential can't fill
+    //     the bucket.
+    //   • Content-type: allow PDF, common images, and Word docs only.
+    //     Anything else is rejected before bytes hit storage.
+    //
+    // Path convention `announcements/{announcementId}/attachments/{fileName}`
+    // uses the Firestore doc ID of the parent announcement, so a future
+    // cleanup job can scan storage against the announcements collection
+    // and prune orphans when an announcement is deleted.
+    match /announcements/{announcementId}/attachments/{fileName} {
+      allow read: if request.auth != null;
+
+      // Uploads (create / update) — size + content-type validated.
+      allow create, update:
+        if request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com",
+          "kirby@pioneercomclean.com",
+          "mgies@pioneercomclean.com"
+        ]
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches(
+          "application/pdf|image/png|image/jpeg|image/webp|" +
+          "application/msword|" +
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+
+      // Delete needs the admin gate but no resource shape (request.resource
+      // is null on delete operations).
+      allow delete:
+        if request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com",
+          "kirby@pioneercomclean.com",
+          "mgies@pioneercomclean.com"
+        ];
+    }
+
+    // Default-deny everything else.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

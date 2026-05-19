@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Today's Work · Pioneer</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/work-overrides.css" />
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Today's Work</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <nav class="role-nav" id="role-nav" data-current-page="today-work" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Today's Work</h1>
+      <p class="subtitle">Your shifts, in order. One step at a time.</p>
+    </section>
+
+    <!-- ============ Staff auth screens (same gates as the other staff pages) ============ -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Welcome to PioneerOps. Sign in to see today's shifts.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer DCR access.
+      </p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content ============ -->
+    <div id="staff-auth-content" hidden>
+
+      <!-- Today's Work workflow section.
+           Mounted by today-work.js (window.PIONEER_TODAY_WORK.init).
+           Same DOM ids the old Team Hub embedding used — keep so the
+           init code path stays identical. Phase 2 normalization adds:
+             • KPI strip + Day Health card above the list
+             • filter row (All / Not Started / In Progress / Completed / Unassigned)
+             • .empty-state replacement for the "no work" message
+           No data path changes; everything below renders from the same
+           workShiftsByShiftId + workSessionByShiftId in today-work.js. -->
+      <section class="card team-hub-section team-hub-assignments work-page-section"
+               id="team-hub-assignments-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">📅 Today's Work</h2>
+          <p class="team-hub-section-sub" id="team-hub-assignments-sub">
+            Start work, finish the DCR, and clock out — one step at a time.
+          </p>
+        </header>
+
+        <!-- Admin-preview callout — only painted by today-work.js when
+             staff.role === "admin" AND ?work_date=… is on the URL. Stays
+             hidden in the normal tech flow. -->
+        <div class="team-hub-assignments-callout" id="team-hub-assignments-callout" hidden></div>
+
+        <!-- ============ KPI strip (Phase 2 polish) ============
+             Populated by today-work.js renderWorkCards(). Values stay
+             "—" until init() resolves so the strip doesn't flash 0s
+             during load. Five tiles per the Phase 2 spec. -->
+        <div class="kpi-grid work-kpi-strip" id="work-kpi-strip" data-cols="4">
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Shifts today</span>
+            <span class="kpi-value" id="work-kpi-shifts">—</span>
+            <span class="kpi-meta"  id="work-kpi-shifts-meta">Scheduled</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Hours scheduled</span>
+            <span class="kpi-value is-medium" id="work-kpi-hours">—</span>
+            <span class="kpi-meta">Sum of start–end</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Techs on</span>
+            <span class="kpi-value is-medium" id="work-kpi-techs">—</span>
+            <span class="kpi-meta" id="work-kpi-techs-meta">Distinct employees</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Not started</span>
+            <span class="kpi-value is-medium" id="work-kpi-not-started">—</span>
+            <span class="kpi-meta" id="work-kpi-not-started-meta">Awaiting Start</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">In progress · Completed</span>
+            <span class="kpi-value is-medium" id="work-kpi-progress-done">—</span>
+            <span class="kpi-meta" id="work-kpi-progress-done-meta">Working / Finished</span>
+          </article>
+        </div>
+
+        <!-- ============ Day Health card ============
+             Dark .health-card from ui-cards.css. Tone + summary +
+             checklist driven by today-work.js based on the SAME shift
+             counts the KPI strip uses. Hidden until init() finishes. -->
+        <section class="health-card work-day-health" id="work-day-health" data-status="healthy" hidden>
+          <header class="health-head">
+            <span class="health-eyebrow" id="work-day-health-eyebrow">Day Health</span>
+            <h3 class="health-title" id="work-day-health-title">Day is on track.</h3>
+          </header>
+          <p class="health-summary" id="work-day-health-summary">—</p>
+          <ul class="health-checklist" id="work-day-health-checklist">
+            <li data-state="ok" id="work-day-health-li-started">All shifts started</li>
+            <li data-state="ok" id="work-day-health-li-assigned">All customers assigned</li>
+            <li data-state="muted" id="work-day-health-li-wrapped">All work wrapped up</li>
+          </ul>
+          <footer class="health-foot">
+            <span id="work-day-health-foot-left">Updated just now</span>
+            <span id="work-day-health-foot-right"></span>
+          </footer>
+        </section>
+
+        <!-- ============ Filter row ============
+             Pill-style buttons. Default = "all". Click → today-work.js
+             updates currentWorkFilter and calls renderWorkCards(). KPI
+             counts are NOT filter-affected — they always reflect the
+             full day. Filter changes only affect which cards render. -->
+        <div class="work-filter" id="work-filter" role="tablist" aria-label="Filter shifts">
+          <button type="button" class="work-filter-btn is-active" data-filter="all" role="tab" aria-selected="true">All
+            <span class="work-filter-count" id="work-filter-count-all">0</span>
+          </button>
+          <button type="button" class="work-filter-btn" data-filter="not_started" role="tab" aria-selected="false">Not Started
+            <span class="work-filter-count" id="work-filter-count-not_started">0</span>
+          </button>
+          <button type="button" class="work-filter-btn" data-filter="in_progress" role="tab" aria-selected="false">In Progress
+            <span class="work-filter-count" id="work-filter-count-in_progress">0</span>
+          </button>
+          <button type="button" class="work-filter-btn" data-filter="completed" role="tab" aria-selected="false">Completed
+            <span class="work-filter-count" id="work-filter-count-completed">0</span>
+          </button>
+          <button type="button" class="work-filter-btn" data-filter="unassigned" role="tab" aria-selected="false">Unassigned
+            <span class="work-filter-count" id="work-filter-count-unassigned">0</span>
+          </button>
+        </div>
+
+        <p class="team-hub-assignments-status"
+           id="team-hub-assignments-loading">Loading today's work…</p>
+        <p class="team-hub-assignments-status team-hub-assignments-error"
+           id="team-hub-assignments-error" hidden></p>
+
+        <!-- No-work empty state (the day has zero shifts at all). -->
+        <div class="empty-state" data-tone="neutral"
+             id="team-hub-assignments-empty" hidden>
+          <div class="empty-state-icon" aria-hidden="true">🧘</div>
+          <h3 class="empty-state-title">No work scheduled today</h3>
+          <p class="empty-state-body">Once Deputy posts shifts for today, they'll appear here.</p>
+        </div>
+
+        <!-- Filtered-to-zero empty state (there ARE shifts today, but
+             none match the current filter). today-work.js toggles this
+             vs the main list as the filter changes. -->
+        <div class="empty-state is-inline" data-tone="neutral"
+             id="team-hub-assignments-filter-empty" hidden>
+          <div class="empty-state-icon" aria-hidden="true">🔍</div>
+          <h3 class="empty-state-title" id="team-hub-assignments-filter-empty-title">No shifts match that filter</h3>
+          <p class="empty-state-body">Try a different filter, or tap All to see every shift.</p>
+        </div>
+
+        <div class="team-hub-assignments-list"
+             id="team-hub-assignments-list" role="list"></div>
+      </section>
+
+    </div><!-- /#staff-auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Today's Work</p>
+    </footer>
+  </main>
+
+  <!-- Mandatory announcement modal — work.js calls window.MANDATORY_ANN.check()
+       on authorize so unread mandatory announcements still pop here. -->
+  <div id="mandatory-announcement-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop"></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mandatory-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="mandatory-modal-title">📣 Required Announcement</h2>
+      </header>
+      <div class="admin-modal-body">
+        <p class="staff-auth-sub" id="mandatory-modal-progress" style="text-align:left;margin-bottom:6px;"></p>
+        <h3 id="mandatory-modal-ann-title" style="font-size:17px;font-weight:800;margin:6px 0 8px;"></h3>
+        <p id="mandatory-modal-ann-message" style="white-space:pre-wrap;line-height:1.55;font-size:14px;"></p>
+        <p id="mandatory-modal-ann-attachment" style="margin-top:10px;"></p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="mandatory-modal-err" hidden></div>
+        <button type="button" class="modal-btn-save" id="mandatory-modal-mark-read">Mark as read and continue</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="mandatory-modal.js"></script>
+  <script src="walkthrough.js"></script>
+  <script src="customer-sop.js"></script>
+  <script src="today-work.js"></script>
+  <script src="work.js"></script>
+</body>
+</html>

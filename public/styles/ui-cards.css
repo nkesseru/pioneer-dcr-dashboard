@@ -1,0 +1,251 @@
+/* ====================================================================
+ * ui-cards.css — shared card surfaces.
+ *
+ * Two systems:
+ *
+ *   1. `.ui-card`        — the everyday content surface. Same intent
+ *      as the legacy `.card` rule in styles.css but on the new
+ *      namespace + token base. We don't touch `.card`; pages
+ *      migrate when ready.
+ *
+ *   2. `.health-card`    — the dark "OSHA meets Apple" headline card
+ *      used at the top of operational surfaces (Day Health, Customer
+ *      Health, Safety Status, Operations Status). Calm dark
+ *      background, restrained teal/amber accents, a single primary
+ *      sentence, optional checklist.
+ *
+ * Both card systems share the same head/body/foot rhythm via
+ * `.ui-card-head` / `.ui-card-foot` so swapping between the two
+ * doesn't break layout.
+ * ================================================================== */
+
+/* ---------- Generic card surface ---------- */
+.ui-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: var(--card-pad);
+  color: var(--text);
+}
+.ui-card.is-compact   { padding: var(--card-pad-compact); }
+.ui-card.is-cozy      { padding: var(--card-pad-cozy); }
+.ui-card.is-flush     { padding: 0; }     /* for cards that own their own internal padding */
+.ui-card.is-tint      { background: var(--surface-card-tint); }
+.ui-card.is-soft      { background: var(--surface-card-soft); }
+.ui-card.is-elevated  { box-shadow: var(--shadow-card); }
+.ui-card.is-floating  { box-shadow: var(--shadow-lift); }
+
+/* Optional tone rails — uses the same status palette as .kpi-card. */
+.ui-card[data-tone] { border-left-width: 4px; }
+.ui-card[data-tone="positive"]  { border-left-color: var(--status-success); }
+.ui-card[data-tone="attention"] { border-left-color: var(--status-attention); }
+.ui-card[data-tone="critical"]  { border-left-color: var(--status-critical); }
+.ui-card[data-tone="info"]      { border-left-color: var(--status-info); }
+
+/* Card head: title row + optional subtitle. Sits at the top of a card. */
+.ui-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ui-card-head-text { min-width: 0; }
+.ui-card-eyebrow {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.ui-card-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.ui-card-sub {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+.ui-card-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ui-card-body {
+  /* Use .ui-stack on the body when you need vertical rhythm. */
+}
+.ui-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.ui-card-foot.is-borderless { border-top: none; padding-top: 0; }
+
+/* ============ Dark headline "health" card ============
+ *
+ * Markup contract:
+ *
+ *   <section class="health-card" data-status="healthy">
+ *     <header class="health-head">
+ *       <span class="health-eyebrow">Day health</span>
+ *       <h2 class="health-title">Operations are healthy today.</h2>
+ *     </header>
+ *     <p class="health-summary">42 shifts on schedule, 0 open service recoveries.</p>
+ *     <ul class="health-checklist">
+ *       <li data-state="ok">All techs clocked in</li>
+ *       <li data-state="ok">No open service recoveries</li>
+ *       <li data-state="watch">2 supply requests pending</li>
+ *     </ul>
+ *     <footer class="health-foot">Updated 6:12 AM</footer>
+ *   </section>
+ *
+ * data-status: "healthy" | "attention" | "critical" — controls the
+ * accent (left bar + glow). Default is healthy. Default text colors
+ * stay light so the card reads at-a-glance even from across a room.
+ * ============================================================ */
+.health-card {
+  position: relative;
+  background: linear-gradient(180deg, var(--surface-dark) 0%, #0c1424 100%);
+  color: var(--text-on-dark);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6) var(--space-7);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.health-card::before {
+  /* Subtle accent rail on the left. Color is data-status driven below. */
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--status-success);
+}
+.health-card[data-status="healthy"]::before    { background: var(--status-success); }
+.health-card[data-status="attention"]::before  { background: var(--status-attention); }
+.health-card[data-status="critical"]::before   { background: var(--status-critical); }
+.health-card[data-status="info"]::before       { background: var(--status-info); }
+
+.health-card::after {
+  /* Calm color glow so the card reads as "alive" but not buzzy. */
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto auto;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(
+    closest-side,
+    rgba(45, 212, 191, 0.16) 0%,
+    rgba(45, 212, 191, 0) 70%
+  );
+  pointer-events: none;
+}
+.health-card[data-status="attention"]::after {
+  background: radial-gradient(
+    closest-side,
+    rgba(245, 158, 11, 0.16) 0%,
+    rgba(245, 158, 11, 0) 70%
+  );
+}
+.health-card[data-status="critical"]::after {
+  background: radial-gradient(
+    closest-side,
+    rgba(248, 113, 113, 0.18) 0%,
+    rgba(248, 113, 113, 0) 70%
+  );
+}
+
+.health-head { margin-bottom: var(--space-3); position: relative; z-index: 1; }
+.health-eyebrow {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-glow);
+  margin-bottom: var(--space-1);
+}
+.health-card[data-status="attention"] .health-eyebrow { color: #fbbf24; }
+.health-card[data-status="critical"]  .health-eyebrow { color: #fca5a5; }
+
+.health-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-on-dark);
+  line-height: var(--leading-tight);
+}
+.health-summary {
+  position: relative; z-index: 1;
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-md);
+  color: var(--text-on-dark-muted);
+  line-height: var(--leading-base);
+}
+.health-checklist {
+  position: relative; z-index: 1;
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.health-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-on-dark);
+  line-height: var(--leading-snug);
+}
+.health-checklist li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--status-success);
+  flex-shrink: 0;
+}
+.health-checklist li[data-state="ok"]::before      { background: var(--status-success); }
+.health-checklist li[data-state="watch"]::before   { background: var(--status-attention); }
+.health-checklist li[data-state="block"]::before   { background: var(--status-critical); }
+.health-checklist li[data-state="info"]::before    { background: #38bdf8; }
+.health-checklist li[data-state="muted"]::before   { background: #475569; }
+
+.health-foot {
+  position: relative; z-index: 1;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: var(--text-xs);
+  color: var(--text-on-dark-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.health-foot a { color: var(--accent-glow); text-decoration: none; font-weight: 700; }
+.health-foot a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .health-card { padding: var(--space-5); border-radius: var(--radius-xl); }
+  .health-title { font-size: var(--text-xl); }
+  .health-summary { font-size: var(--text-base); }
+}

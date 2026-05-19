@@ -1,0 +1,1808 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer DCR Hub — Admin</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="training.css" />
+  <link rel="stylesheet" href="styles/admin-overrides.css" />
+</head>
+<body class="admin-body">
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">DCR Hub · Admin</div>
+      </div>
+      <!-- Signed-in user chip — populated by admin.js once Firebase Auth
+           resolves. Hidden by default so the unauthenticated header is clean.
+           `header-account-name` is the display name from Firebase Auth
+           (`user.displayName`), with the email beneath as a fallback. -->
+      <div class="header-account" id="header-account" hidden>
+        <div class="header-account-identity">
+          <span class="header-account-name"  id="header-account-name"></span>
+          <span class="header-account-email" id="header-account-email">—</span>
+        </div>
+        <button class="header-account-btn" id="header-signout-btn" data-signout>Sign out</button>
+      </div>
+    </div>
+
+    <!-- Role-aware nav. Always renders as admin here since the page is
+         already gated by the admin allowlist. Populated by admin.js when
+         the user reaches the "content" auth state.
+
+         Future placeholders:
+           • Announcements
+           • Company Updates
+           • Training Notes -->
+    <nav class="role-nav" id="role-nav" data-current-page="admin" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main class="admin-main">
+    <section class="hero hero-admin">
+      <h1>DCR Hub — Admin</h1>
+      <p class="subtitle">Customers, techs, and recent submissions.</p>
+    </section>
+
+    <!-- Phase-1 access warning. Now backed by an auth gate (Google sign-in
+         + email allowlist); kept visible as a reminder that this page is
+         internal-only. -->
+    <div class="admin-warning" role="status">
+      <strong>Internal use only.</strong>
+      Sign in with your Pioneer Google account. Don't share this URL externally.
+    </div>
+
+    <!-- ================== Auth views (mutually exclusive) ================== -->
+
+    <!-- 1. Initial check — shown while Firebase Auth resolves the current user. -->
+    <section class="card auth-screen" id="auth-checking">
+      <div class="auth-icon"><div class="auth-spinner" aria-hidden="true"></div></div>
+      <p class="auth-title">Checking access…</p>
+      <p class="auth-sub">One sec.</p>
+    </section>
+
+    <!-- 2. Sign-in — visible when no Firebase user is signed in. -->
+    <section class="card auth-screen" id="auth-signin" hidden>
+      <div class="auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="auth-title">Pioneer Admin sign-in</p>
+      <p class="auth-sub">
+        Sign in with your <strong>@pioneercomclean.com</strong> Google account
+        to view customers, techs, and recent DCRs.
+      </p>
+      <button class="auth-google-btn" id="signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Sign in with Google</span>
+      </button>
+      <p class="auth-help">Access is limited to Pioneer Commercial Cleaning admins.</p>
+    </section>
+
+    <!-- 3. Denied — visible when signed in but the email isn't on the allowlist. -->
+    <section class="card auth-screen" id="auth-denied" hidden>
+      <div class="auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="auth-title">Access not authorized</p>
+      <p class="auth-sub">
+        <code id="auth-denied-email" class="auth-denied-email">—</code> isn't on
+        the Pioneer admin allowlist. If this is wrong, ask another admin to
+        add you.
+      </p>
+      <button class="auth-google-btn auth-google-btn--secondary" type="button" data-signout>
+        Sign out
+      </button>
+    </section>
+
+    <!-- 4. Authorized — the actual admin content. Hidden until the signed-in
+         user's email matches the allowlist. -->
+    <div id="auth-content" hidden>
+
+    <!-- ============ Admin ops overview (Phase 2 normalization) ============
+         Top-of-page command-center summary. Three modules in one block:
+           1. .health-card  — dark "Today's Operations" headline + checklist
+           2. global search — proxies the active tab's per-tab search input
+           3. .kpi-grid     — six normalized KPI cards
+         All counts come from the existing in-memory caches (customers,
+         techs, dcrs, supplyRequests, dcrIssues) plus a single lightweight
+         inspections-this-week query. The Zapier-failures signal moved into
+         the Day Health checklist so the KPI strip stays focused on the six
+         tiles the spec calls for. -->
+    <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
+
+      <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
+        <header class="health-head">
+          <span class="health-eyebrow">Today's Operations</span>
+          <h2 class="health-title" id="admin-day-health-title">Everything looks stable today.</h2>
+        </header>
+        <p class="health-summary" id="admin-day-health-summary">Loading the day's operational signals…</p>
+        <ul class="health-checklist" id="admin-day-health-checklist">
+          <li data-state="ok"    id="admin-day-health-li-assigned">All active techs assigned</li>
+          <li data-state="ok"    id="admin-day-health-li-dcr">DCR delivery healthy</li>
+          <li data-state="ok"    id="admin-day-health-li-issues">No new operational issues</li>
+        </ul>
+        <footer class="health-foot">
+          <span id="admin-day-health-foot-left">Live summary from open caches</span>
+          <a href="#admin-ops-overview" id="admin-day-health-foot-right" hidden>Review</a>
+        </footer>
+      </section>
+
+      <div class="admin-global-search" role="search">
+        <span class="admin-global-search-icon" aria-hidden="true">🔎</span>
+        <input type="search" id="admin-global-search-input"
+               class="admin-global-search-input"
+               placeholder="Search customers, techs, DCRs…"
+               autocomplete="off"
+               aria-label="Search across the active admin tab" />
+        <span class="admin-global-search-hint" id="admin-global-search-hint" aria-live="polite">
+          Filtering: Customers
+        </span>
+      </div>
+
+      <!-- The strip keeps id="attention-strip" so the existing
+           wireAttentionStrip() click delegator and every
+           refreshAttentionStrip() call site keep working. The painter
+           updates inside admin.js were swapped to the new IDs. -->
+      <div class="kpi-grid admin-kpi-strip" id="attention-strip" data-cols="3">
+        <button type="button" class="kpi-card" data-interactive="true"
+                data-attention="new-issues" data-tone="neutral"
+                title="Issues from recent DCRs awaiting review — opens Quality → Issues">
+          <span class="kpi-label">New Issues</span>
+          <span class="kpi-value" id="attn-new-issues">—</span>
+          <span class="kpi-meta"  id="attn-new-issues-meta">Awaiting review</span>
+        </button>
+        <button type="button" class="kpi-card" data-interactive="true"
+                data-attention="open-supply" data-tone="neutral"
+                title="Open supply requests — opens Core Ops → Supply Requests">
+          <span class="kpi-label">Open Supply</span>
+          <span class="kpi-value" id="attn-open-supply">—</span>
+          <span class="kpi-meta"  id="attn-open-supply-meta">Not yet closed</span>
+        </button>
+        <button type="button" class="kpi-card" data-interactive="true"
+                data-attention="email-off" data-tone="neutral"
+                title="Active customers with DCR email off — opens Core Ops → Customers">
+          <span class="kpi-label">DCR Email Off</span>
+          <span class="kpi-value" id="attn-email-off">—</span>
+          <span class="kpi-meta"  id="attn-email-off-meta">Active customers</span>
+        </button>
+        <button type="button" class="kpi-card" data-interactive="true"
+                data-attention="needs-assign" data-tone="neutral"
+                title="Active techs without assignments — opens Core Ops → Cleaning Techs">
+          <span class="kpi-label">Need Assignments</span>
+          <span class="kpi-value" id="attn-needs-assign">—</span>
+          <span class="kpi-meta"  id="attn-needs-assign-meta">Active techs unassigned</span>
+        </button>
+        <a class="kpi-card" data-attention="inspections-week"
+           data-tone="neutral" href="/inspections.html"
+           title="Inspection count for the last 7 days — opens the Inspections page">
+          <span class="kpi-label">Inspections This Week</span>
+          <span class="kpi-value" id="attn-inspections-week">—</span>
+          <span class="kpi-meta"  id="attn-inspections-week-meta">Last 7 days</span>
+        </a>
+        <article class="kpi-card" data-tone="neutral"
+                 title="Month-to-date budget integration is not yet wired">
+          <span class="kpi-label">MTD Budget Health</span>
+          <span class="kpi-value" id="attn-mtd-budget">—</span>
+          <span class="kpi-meta">Not connected yet</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- Control-center microcopy — calmer feel than landing on a wall
+         of tabs. The grouped nav below partitions tabs into three
+         operational buckets so the page reads as a tool, not a
+         spreadsheet. -->
+    <div class="admin-control-intro">
+      <span class="admin-control-eyebrow">Pioneer Control Center</span>
+      <p class="admin-control-sub">Operational tabs grouped by intent. Counts on the right are calm signals — they grow as work piles up, not alarms.</p>
+    </div>
+
+    <nav class="admin-tabs admin-tabs-grouped" role="tablist" aria-label="Admin sections">
+      <!-- ---- Core Ops ---- -->
+      <div class="admin-tabs-group" data-group="core">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">🧭</span>
+          Core Ops
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab is-active" data-tab="customers" role="tab" aria-selected="true">Customers</button>
+          <button class="admin-tab"           data-tab="techs"     role="tab" aria-selected="false">Cleaning Techs</button>
+          <button class="admin-tab"           data-tab="dcrs"      role="tab" aria-selected="false">Recent DCRs</button>
+          <button class="admin-tab"           data-tab="supply"    role="tab" aria-selected="false">
+            Supply Requests
+            <span class="admin-tab-badge" id="supply-tab-badge"
+                  title="Open supply requests (everything not yet Closed / Received)"
+                  aria-label="Open supply requests"
+                  hidden>0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- Quality ---- -->
+      <div class="admin-tabs-group" data-group="quality">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">⭐</span>
+          Quality
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="issues"    role="tab" aria-selected="false">
+            Issues
+            <span class="admin-tab-badge" id="issues-tab-badge"
+                  title="New issues from recent DCRs awaiting review"
+                  aria-label="New issues"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="recoveries" role="tab" aria-selected="false">
+            Service Recoveries
+            <span class="admin-tab-badge" id="recoveries-open-badge"
+                  title="Open service recoveries"
+                  aria-label="Open service recoveries"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="notes"     role="tab" aria-selected="false">
+            Customer Notes
+            <span class="admin-tab-badge" id="notes-overdue-badge"
+                  title="Notes that haven't been reviewed in 60+ days"
+                  aria-label="Notes needing review"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="suggestions" role="tab" aria-selected="false">
+            Note Suggestions
+            <span class="admin-tab-badge" id="suggestions-pending-badge"
+                  title="Pending tech suggestions awaiting review"
+                  aria-label="Pending suggestions"
+                  hidden>0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- System ---- -->
+      <div class="admin-tabs-group" data-group="system">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">⚙</span>
+          System
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="feed"          role="tab" aria-selected="false">Feed</button>
+          <button class="admin-tab"           data-tab="announcements" role="tab" aria-selected="false">Announcements</button>
+          <button class="admin-tab"           data-tab="admins"        role="tab" aria-selected="false">Admins</button>
+          <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
+          <button class="admin-tab"           data-tab="deputy"        role="tab" aria-selected="false">Deputy</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ================== Customers ================== -->
+    <section class="card admin-panel" data-panel="customers" role="tabpanel">
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Customers</h2>
+          <p class="panel-sub" id="customer-count">— customers</p>
+        </div>
+        <button class="panel-action" id="customer-create-open" type="button"
+                title="Create a new customer record">
+          + Add customer
+        </button>
+      </header>
+
+      <input type="search" class="admin-search" id="customer-search"
+             placeholder="Search by name, slug, or email…" />
+
+      <div class="admin-status admin-loading" id="customer-loading">Loading customers…</div>
+      <div class="admin-status admin-error"   id="customer-error" hidden></div>
+      <div class="admin-status admin-empty"   id="customer-empty" hidden>No customers in Firestore yet.</div>
+
+      <div class="admin-list" id="customer-list" role="list"></div>
+    </section>
+
+    <!-- ================== Cleaning Techs ================== -->
+    <section class="card admin-panel" data-panel="techs" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Cleaning Techs</h2>
+          <p class="panel-sub" id="tech-count">— techs</p>
+        </div>
+        <button class="panel-action" id="tech-create-open" type="button"
+                title="Create a Firebase Auth login AND a cleaning_techs document in one step">
+          + Add tech / Login setup
+        </button>
+      </header>
+
+      <input type="search" class="admin-search" id="tech-search"
+             placeholder="Search by name or slug…" />
+
+      <div class="admin-status admin-loading" id="tech-loading">Loading techs…</div>
+      <div class="admin-status admin-error"   id="tech-error" hidden></div>
+      <div class="admin-status admin-empty"   id="tech-empty" hidden>No cleaning techs in Firestore yet.</div>
+
+      <div class="admin-list" id="tech-list" role="list"></div>
+    </section>
+
+    <!-- ================== Issues ================== -->
+    <section class="card admin-panel" data-panel="issues" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Issues</h2>
+          <p class="panel-sub" id="issues-count">— issues</p>
+        </div>
+        <button class="panel-action" id="issues-refresh" type="button"
+                title="Re-fetch the dcr_issues collection">Refresh</button>
+      </header>
+
+      <!-- Status filter pills. Click to filter the list below to one
+           status. "All" shows everything (default). Counts in parentheses
+           are populated by admin.js once the collection loads. -->
+      <div class="issues-filter" id="issues-filter" role="tablist" aria-label="Filter by status">
+        <button class="issues-filter-pill is-active" type="button" data-status="all"               role="tab">All <span class="issues-filter-count" data-count-for="all">—</span></button>
+        <button class="issues-filter-pill"           type="button" data-status="new"               role="tab">New <span class="issues-filter-count" data-count-for="new">—</span></button>
+        <button class="issues-filter-pill"           type="button" data-status="reviewed"          role="tab">Reviewed <span class="issues-filter-count" data-count-for="reviewed">—</span></button>
+        <button class="issues-filter-pill"           type="button" data-status="customer_contacted" role="tab">Customer contacted <span class="issues-filter-count" data-count-for="customer_contacted">—</span></button>
+        <button class="issues-filter-pill"           type="button" data-status="resolved"          role="tab">Resolved <span class="issues-filter-count" data-count-for="resolved">—</span></button>
+        <button class="issues-filter-pill"           type="button" data-status="closed_no_action"  role="tab">Closed / No action <span class="issues-filter-count" data-count-for="closed_no_action">—</span></button>
+      </div>
+
+      <!-- Compound filters: customer / tech / time window. Stack with the
+           status pills above + the search input below. All applied
+           client-side from the loaded dcrIssues cache. -->
+      <div class="supply-filters" id="issues-extra-filters">
+        <label class="supply-filter">
+          <span>Customer</span>
+          <select id="issues-filter-customer"><option value="all">All</option></select>
+        </label>
+        <label class="supply-filter">
+          <span>Tech</span>
+          <select id="issues-filter-tech"><option value="all">All</option></select>
+        </label>
+        <label class="supply-filter">
+          <span>Window</span>
+          <select id="issues-filter-window">
+            <option value="all">All-time</option>
+            <option value="month">Current month</option>
+            <option value="30">Last 30 days</option>
+            <option value="7">Last 7 days</option>
+          </select>
+        </label>
+      </div>
+
+      <input type="search" class="admin-search" id="issues-search"
+             placeholder="Search by customer, tech, or summary…" />
+
+      <div class="admin-status admin-loading" id="issues-loading">Loading issues…</div>
+      <div class="admin-status admin-error"   id="issues-error" hidden></div>
+      <div class="admin-status admin-empty"   id="issues-empty" hidden>No issues found for this filter.</div>
+
+      <div class="admin-list issues-list" id="issues-list" role="list"></div>
+    </section>
+
+    <!-- ================== Recent DCRs ================== -->
+    <section class="card admin-panel" data-panel="dcrs" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Recent DCRs</h2>
+          <p class="panel-sub" id="dcr-count">— submissions (most recent first)</p>
+        </div>
+        <button class="panel-action" id="dcr-refresh" title="Re-fetch the most recent submissions">
+          Refresh
+        </button>
+      </header>
+
+      <input type="search" class="admin-search" id="dcr-search"
+             placeholder="Search by customer, tech, or submission ID…" />
+
+      <div class="admin-status admin-loading" id="dcr-loading">Loading recent DCRs…</div>
+      <div class="admin-status admin-error"   id="dcr-error" hidden></div>
+      <div class="admin-status admin-empty"   id="dcr-empty" hidden>No DCR submissions yet.</div>
+
+      <div class="admin-list" id="dcr-list" role="list"></div>
+    </section>
+
+    <!-- ================== Supply Requests ================== -->
+    <section class="card admin-panel" data-panel="supply" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Supply Requests</h2>
+          <p class="panel-sub" id="supply-count">— requests</p>
+        </div>
+        <button class="panel-action" id="supply-refresh" title="Re-fetch all supply requests">
+          Refresh
+        </button>
+      </header>
+
+      <!-- Quick metrics row -->
+      <div class="supply-metrics" id="supply-metrics">
+        <div class="supply-metric is-new">
+          <span class="metric-value" id="metric-new">—</span>
+          <span class="metric-label">New</span>
+        </div>
+        <div class="supply-metric is-today">
+          <span class="metric-value" id="metric-ordered-today">—</span>
+          <span class="metric-label">Ordered today</span>
+        </div>
+        <div class="supply-metric is-open">
+          <span class="metric-value" id="metric-open">—</span>
+          <span class="metric-label">Open</span>
+        </div>
+      </div>
+
+      <input type="search" class="admin-search" id="supply-search"
+             placeholder="Search by customer, tech, order #, vendor, or items…" />
+
+      <!-- Compound filters: source / status / customer / tech / window.
+           Applied client-side from the loaded supplyRequests cache so
+           filter changes are instant. Source distinguishes between
+           customer-driven supply requests (auto-created from DCRs with
+           needs_supplies) and supply-station orders submitted from
+           /supply-station.html — they live in the same collection but
+           render with different badges. Customer + tech option lists
+           are populated by admin.js once those caches load. -->
+      <div class="supply-filters" id="supply-filters">
+        <label class="supply-filter">
+          <span>Source</span>
+          <select id="supply-filter-source">
+            <option value="all">All</option>
+            <option value="customer_supply">Customer supply</option>
+            <option value="supply_station">Supply Station</option>
+          </select>
+        </label>
+        <label class="supply-filter">
+          <span>Status</span>
+          <select id="supply-filter-status">
+            <option value="all">All</option>
+            <option value="open">Open (not closed)</option>
+            <option value="new">New</option>
+            <option value="reviewed">Reviewed by PCC</option>
+            <option value="customer_contacted">Customer notified</option>
+            <option value="ordered">Pioneer Commercial Cleaning will order</option>
+            <option value="closed">Closed / Received</option>
+          </select>
+        </label>
+        <label class="supply-filter">
+          <span>Customer</span>
+          <select id="supply-filter-customer"><option value="all">All</option></select>
+        </label>
+        <label class="supply-filter">
+          <span>Tech</span>
+          <select id="supply-filter-tech"><option value="all">All</option></select>
+        </label>
+        <label class="supply-filter">
+          <span>Window</span>
+          <select id="supply-filter-window">
+            <option value="all">All-time</option>
+            <option value="30">Last 30 days</option>
+            <option value="7">Last 7 days</option>
+          </select>
+        </label>
+      </div>
+
+      <details class="dm-diagnostics" id="supply-notices-disclosure">
+        <summary>Recent supply notices (admin-only) <span class="dm-counter" id="supply-notices-counter">—</span></summary>
+        <p class="deputy-mapping-help" style="margin-top:8px;">
+          Admin-only awareness layer. One notice per new supply request, audience <code>admin</code>.
+          Customers never see these. The full work queue is below — this disclosure is just a quick
+          glance at the latest 14 days.
+        </p>
+        <div class="admin-list" id="supply-notices-list" role="list"></div>
+      </details>
+
+      <div class="admin-status admin-loading" id="supply-loading">Loading supply requests…</div>
+      <div class="admin-status admin-error"   id="supply-error" hidden></div>
+      <div class="admin-status admin-empty"   id="supply-empty" hidden>No supply requests yet.</div>
+
+      <!-- Grouped <details> sections, one per status, populated by admin.js. -->
+      <div class="admin-list supply-list" id="supply-list" role="list"></div>
+    </section>
+
+    <!-- ================== Operational Feed (Phase 1) ================== -->
+    <!-- Structured, action-linked communication stream. Replaces ad-hoc
+         Slack threads for supply / shift / inspection / safety /
+         recognition / scheduler / hiring / training / policy. NOT a
+         chat app — every item is attached to an operational object
+         or a clear audience. -->
+    <section class="card admin-panel" data-panel="feed" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Operational Feed</h2>
+          <p class="panel-sub">
+            Action-linked items: supply requests, shift notes, inspections,
+            safety, recognition, scheduler / hiring / training / policy.
+            Every item is tied to an operational object or audience —
+            no general chat.
+          </p>
+        </div>
+        <select class="panel-action" id="op-feed-list-filter">
+          <option value="open">Open</option>
+          <option value="all">All</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </header>
+
+      <details class="dm-diagnostics" id="op-feed-demo-disclosure">
+        <summary>Create a test item (admin demo)</summary>
+        <p class="deputy-mapping-help" style="margin-top:8px;">
+          Each demo writes a feed item visible to <strong>you</strong>
+          (audience_user_ids contains your uid) so you can try the
+          acknowledge / "I'm on it" / "All set" flow end-to-end.
+          Real production items will be created by upstream operational
+          events (supply requests already wired; inspection / scheduler /
+          safety follow in Phase 2).
+        </p>
+        <div class="dm-probe-actions">
+          <button type="button" class="dm-btn dm-btn-secondary" data-feed-demo="recognition">
+            Test recognition
+          </button>
+          <button type="button" class="dm-btn dm-btn-secondary" data-feed-demo="scheduler_notice">
+            Test scheduler notice
+          </button>
+          <button type="button" class="dm-btn dm-btn-primary"   data-feed-demo="safety_alert">
+            Test safety alert (requires ack)
+          </button>
+        </div>
+        <p class="dm-seed-status" id="op-feed-demo-status" aria-live="polite"></p>
+      </details>
+
+      <div class="admin-list" id="op-feed-list" role="list"></div>
+    </section>
+
+    <!-- ================== Announcements ================== -->
+    <section class="card admin-panel" data-panel="announcements" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Announcements</h2>
+          <p class="panel-sub" id="announcements-count">— announcements</p>
+        </div>
+        <button class="panel-action" id="announcements-create-open" type="button"
+                title="Compose a new announcement for all staff">
+          + New announcement
+        </button>
+      </header>
+
+      <input type="search" class="admin-search" id="announcements-search"
+             placeholder="Search by title or message…" />
+
+      <div class="admin-status admin-loading" id="announcements-loading">Loading announcements…</div>
+      <div class="admin-status admin-error"   id="announcements-error" hidden></div>
+      <div class="admin-status admin-empty"   id="announcements-empty" hidden>No announcements yet. Click "+ New announcement" to compose one.</div>
+
+      <div class="admin-list" id="announcements-list" role="list"></div>
+    </section>
+
+    <!-- ================== Customer Notes ================== -->
+    <!-- Persistent operational notes per customer/location. Office
+         maintains; techs read through /tech.html (gated by their
+         assigned_customer_slugs) and can submit suggestions which
+         show up in the Note Suggestions tab below. -->
+    <section class="card admin-panel" data-panel="notes" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Customer Notes</h2>
+          <p class="panel-sub" id="notes-count">— notes</p>
+        </div>
+        <button class="panel-action" id="note-create-open" type="button"
+                title="Add a standing note for a customer">
+          + Add note
+        </button>
+      </header>
+
+      <!-- Subtle review-overdue reminder. Painted by admin.js when any
+           note has last_reviewed_at (or updated_at fallback) older than
+           60 days. Soft styling — informational, not blocking. -->
+      <div class="notes-review-reminder" id="notes-review-reminder" hidden></div>
+
+      <div class="notes-filter-row">
+        <label class="notes-filter">
+          <span>Customer</span>
+          <select id="notes-filter-customer"><option value="all">All customers</option></select>
+        </label>
+        <label class="notes-filter">
+          <span>Category</span>
+          <select id="notes-filter-category">
+            <option value="all">All</option>
+            <option>Security</option>
+            <option>Access</option>
+            <option>Cleaning Preference</option>
+            <option>Sensitive Area</option>
+            <option>Equipment</option>
+            <option>Customer Request</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label class="notes-filter">
+          <span>Status</span>
+          <select id="notes-filter-status">
+            <option value="active" selected>Active</option>
+            <option value="archived">Archived</option>
+            <option value="overdue">Review overdue (60+ days)</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+      </div>
+
+      <input type="search" class="admin-search" id="notes-search"
+             placeholder="Search by title or body…" />
+
+      <div class="admin-status admin-loading" id="notes-loading">Loading notes…</div>
+      <div class="admin-status admin-error"   id="notes-error" hidden></div>
+      <div class="admin-status admin-empty"   id="notes-empty" hidden>No customer notes yet. Click "+ Add note" to capture standing instructions.</div>
+
+      <div class="admin-list" id="notes-list" role="list"></div>
+    </section>
+
+    <!-- ================== Note Suggestions ================== -->
+    <!-- Tech-submitted suggestions for new or updated notes. Admin
+         reviews each one and either approves (manually applies to a
+         customer_notes doc) or rejects. The suggestion doc itself is
+         append-only — we update status/reviewed_* but never delete. -->
+    <section class="card admin-panel" data-panel="suggestions" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Customer Note Suggestions</h2>
+          <p class="panel-sub" id="suggestions-count">— suggestions</p>
+        </div>
+        <button class="panel-action" id="suggestions-refresh" type="button"
+                title="Re-fetch tech suggestions">Refresh</button>
+      </header>
+
+      <div class="notes-filter-row">
+        <label class="notes-filter">
+          <span>Status</span>
+          <select id="suggestions-filter-status">
+            <option value="pending" selected>Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+        <label class="notes-filter">
+          <span>Customer</span>
+          <select id="suggestions-filter-customer"><option value="all">All customers</option></select>
+        </label>
+      </div>
+
+      <div class="admin-status admin-loading" id="suggestions-loading">Loading suggestions…</div>
+      <div class="admin-status admin-error"   id="suggestions-error" hidden></div>
+      <div class="admin-status admin-empty"   id="suggestions-empty" hidden>No pending suggestions. Techs can submit them from the Customer Info Hub.</div>
+
+      <div class="admin-list" id="suggestions-list" role="list"></div>
+    </section>
+
+    <!-- ================== Admins ================== -->
+    <!-- Runtime-editable admin allowlist. Doc IDs in /admins are the
+         lowercased emails. The hardcoded "root" allowlist in
+         functions/index.js + firestore.rules + admin.js still works
+         and survives Firestore outages; this tab lets root admins
+         invite additional operational admins without a code deploy. -->
+    <section class="card admin-panel" data-panel="admins" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Admins</h2>
+          <p class="panel-sub" id="admins-count">— admins</p>
+        </div>
+        <button class="panel-action" id="admin-create-open" type="button"
+                title="Invite a new admin: creates the Firebase Auth login, writes /admins/{email}, and emails a password reset link.">
+          + Add admin
+        </button>
+      </header>
+
+      <input type="search" class="admin-search" id="admins-search"
+             placeholder="Search by name or email…" />
+
+      <div class="admin-status admin-loading" id="admins-loading">Loading admins…</div>
+      <div class="admin-status admin-error"   id="admins-error" hidden></div>
+      <div class="admin-status admin-empty"   id="admins-empty" hidden>No additional admins yet. The four root admins always have access (managed in source).</div>
+
+      <div class="admin-list" id="admins-list" role="list"></div>
+    </section>
+
+    <!-- ================== Training Reports ================== -->
+    <!-- Read-only view of Safety Training completions across every
+         signed-in user. Reads via collectionGroup("training_progress")
+         which is admin-gated by firestore.rules. Lessons come from
+         public/data/training-lessons.json (same source the tech viewer
+         uses); progress rows come from
+         users/{uid}/training_progress/{lessonId}. -->
+    <section class="card admin-panel" data-panel="training" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Training Reports</h2>
+          <p class="panel-sub" id="training-report-sub">— completions tracked</p>
+        </div>
+        <button class="panel-action" id="training-report-refresh" type="button"
+                title="Reload completions and lesson catalog">Refresh</button>
+      </header>
+
+      <div class="training-report-loading" id="training-report-loading" hidden>Loading training progress…</div>
+      <div class="training-report-error"   id="training-report-error"   hidden></div>
+      <div class="training-report-empty"   id="training-report-empty"   hidden>
+        No one has started a lesson yet. Once techs sign in at <code>/training.html</code> and complete a lesson, they'll appear here.
+      </div>
+
+      <div class="training-report-wrap" id="training-report-wrap" hidden>
+        <table class="training-report-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Lesson</th>
+              <th>Status</th>
+              <th>Score</th>
+              <th>Completed</th>
+            </tr>
+          </thead>
+          <tbody id="training-report-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================== Deputy Mapping ================== -->
+    <!-- Read-only diagnostic. Compares Deputy's roster for a chosen
+         sync_date against Pioneer's cleaning_techs + customers, and
+         lists what isn't mapped yet plus a normalized-name suggestion
+         (suggestion is informational; the admin still applies the fix
+         by editing the tech / customer record). Does NOT auto-write. -->
+    <section class="card admin-panel" data-panel="deputy" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Deputy Mapping</h2>
+          <p class="panel-sub">
+            Deputy tells us <strong>who</strong> is working and <strong>when</strong>. The customer for each shift is chosen by the tech on the DCR (PioneerOps-native). The only thing to map here is the link between each Deputy person and a Pioneer cleaning tech.
+          </p>
+        </div>
+        <button class="panel-action" id="deputy-mapping-refresh" type="button"
+                title="Reload unmapped people from the last 14 days of cache">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="deputy-mapping-loading">Loading Deputy data…</div>
+      <div class="admin-status admin-error"   id="deputy-mapping-error" hidden></div>
+      <div class="admin-status admin-empty"   id="deputy-mapping-empty" hidden>No Deputy shifts cached yet. Wait for the next scheduled sync (every 10 min).</div>
+
+      <div id="deputy-mapping-content" hidden>
+        <section class="deputy-mapping-section" id="deputy-connection-health">
+          <div class="deputy-mapping-section-head">
+            <h3 class="deputy-mapping-subhead">A. Connection Health</h3>
+            <span class="dm-counter" id="deputy-health-summary">—</span>
+          </div>
+          <div id="deputy-health-warnings"></div>
+          <div id="deputy-health-stats" class="dm-health-stats"></div>
+        </section>
+
+        <section class="deputy-mapping-section">
+          <div class="deputy-mapping-section-head">
+            <h3 class="deputy-mapping-subhead">Unmapped Deputy people</h3>
+            <span class="dm-counter" id="deputy-mapping-employees-total">—</span>
+          </div>
+          <p class="deputy-mapping-help">
+            One row per Deputy person we've seen who isn't yet linked to a Pioneer cleaning tech. Map once; the link persists for every future shift.
+          </p>
+          <div class="admin-list" id="deputy-mapping-employees" role="list"></div>
+        </section>
+
+        <section class="deputy-mapping-section">
+          <div class="deputy-mapping-section-head">
+            <h3 class="deputy-mapping-subhead">B. Deputy Companies → Pioneer customers</h3>
+            <span class="dm-counter" id="deputy-companies-total">—</span>
+          </div>
+          <p class="deputy-mapping-help">
+            Every Deputy shift carries a <code>Company.Id</code> in
+            <code>_DPMetaData.OperationalUnitInfo</code>. Map each Deputy
+            company to a Pioneer customer <strong>once</strong> and every
+            future shift auto-resolves with
+            <code>matchSource: "deputy_company_id"</code>.
+          </p>
+          <div class="admin-list" id="deputy-companies-list" role="list"></div>
+        </section>
+
+        <section class="deputy-mapping-section">
+          <details class="dm-diagnostics" id="fallback-aliases">
+            <summary>C. Advanced / Debug (collapsed)</summary>
+            <p class="deputy-mapping-help" style="margin-top:8px;">
+              Aliases are now <strong>supplemental</strong> — they only fire when no
+              <code>deputy_company_id</code> is set on the Pioneer customer doc for
+              the shift's Deputy company. Prefer mapping Deputy Companies above;
+              use this panel only for edge cases (one-off shorthand codes,
+              testing, or migration from older alias data).
+            </p>
+
+            <section class="deputy-mapping-section">
+              <div class="deputy-mapping-section-head">
+                <h3 class="deputy-mapping-subhead">Customer Alias Manager</h3>
+                <span class="dm-counter" id="alias-manager-total">—</span>
+              </div>
+              <form class="alias-create-row" id="alias-create-form" autocomplete="off">
+                <input type="text" id="alias-create-alias" class="alias-input"
+                       placeholder='Alias (e.g. "NOTL" or "Note and Kidd")'
+                       maxlength="80" required />
+                <select id="alias-create-customer" class="alias-input" required>
+                  <option value="">— Pick a Pioneer customer —</option>
+                </select>
+                <button type="submit" class="dm-btn dm-btn-primary">Add alias</button>
+              </form>
+
+              <details class="dm-diagnostics" id="alias-seed-disclosure">
+                <summary>Seed aliases</summary>
+                <p class="deputy-mapping-help" style="margin-top:8px;">
+                  <strong>Pilot seed:</strong> writes the curated Pioneer alias list
+                  from <code>customer_aliases</code> Cloud Function source.
+                </p>
+                <button type="button" class="dm-btn dm-btn-primary" id="alias-seed-pilot">
+                  Seed pilot aliases
+                </button>
+                <p class="deputy-mapping-help" style="margin-top:14px;">
+                  <strong>Legacy seed:</strong> harvests
+                  <code>customers.aliases[]</code> and
+                  <code>customers.deputy_customer_codes[]</code> arrays into this table.
+                </p>
+                <button type="button" class="dm-btn dm-btn-secondary" id="alias-seed-run">
+                  Seed from existing customer fields
+                </button>
+                <p class="dm-seed-status" id="alias-seed-status" aria-live="polite"></p>
+              </details>
+
+              <div class="admin-list" id="alias-list" role="list"></div>
+            </section>
+
+            <section class="deputy-mapping-section">
+              <div class="deputy-mapping-section-head">
+                <h3 class="deputy-mapping-subhead">Audit &amp; review</h3>
+                <span class="dm-counter" id="alias-audit-summary">—</span>
+              </div>
+              <button type="button" class="dm-btn dm-btn-secondary"
+                      id="alias-audit-disable-conflicts" hidden>
+                Disable all flagged conflicts
+              </button>
+              <div class="admin-list" id="alias-audit-list" role="list"></div>
+            </section>
+
+            <section class="deputy-mapping-section">
+              <div class="deputy-mapping-section-head">
+                <h3 class="deputy-mapping-subhead">Unmapped Deputy locations (legacy)</h3>
+                <span class="dm-counter" id="unmapped-deputy-locations-total">—</span>
+              </div>
+              <div class="admin-list" id="unmapped-deputy-locations" role="list"></div>
+            </section>
+
+            <section class="deputy-mapping-section" id="deputy-api-probe">
+              <h3 class="deputy-mapping-subhead">Deputy API probe (read-only)</h3>
+              <p class="deputy-mapping-help" style="margin-top:8px;">
+                Hits Deputy's API with your token and dumps the raw JSON.
+                Use for verifying entity field availability without re-coding.
+              </p>
+              <div class="dm-probe-actions">
+                <button type="button" class="dm-btn dm-btn-secondary" data-probe="Company">
+                  Fetch Companies
+                </button>
+                <button type="button" class="dm-btn dm-btn-secondary" data-probe="OperationalUnit">
+                  Fetch Operational Units
+                </button>
+                <button type="button" class="dm-btn dm-btn-secondary" data-probe="Roster">
+                  Fetch sample rosters (today)
+                </button>
+              </div>
+              <p class="dm-seed-status" id="deputy-api-probe-status" aria-live="polite"></p>
+              <pre class="dm-probe-output" id="deputy-api-probe-output" aria-label="Deputy API response"></pre>
+            </section>
+
+            <section class="deputy-mapping-section">
+              <h3 class="deputy-mapping-subhead">Raw sync diagnostics</h3>
+              <p class="deputy-mapping-summary" id="deputy-mapping-summary"></p>
+            </section>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <!-- ================== Service Recoveries ================== -->
+    <!-- Operational board for follow-up tasks tied to a customer
+         (and optionally an inspection). Admin-only — service
+         recoveries are a coaching surface, not a public one. -->
+    <section class="card admin-panel" data-panel="recoveries" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Service Recoveries</h2>
+          <p class="panel-sub" id="recoveries-count">— recoveries</p>
+        </div>
+        <button class="panel-action" id="recoveries-refresh" type="button"
+                title="Re-fetch service recoveries">Refresh</button>
+      </header>
+
+      <div class="notes-filter-row">
+        <label class="notes-filter">
+          <span>Status</span>
+          <select id="recoveries-filter-status">
+            <option value="open"          selected>Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="active">Active (Open + In progress)</option>
+            <option value="resolved">Resolved</option>
+            <option value="cannot_resolve">Cannot resolve</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+        <label class="notes-filter">
+          <span>Customer</span>
+          <select id="recoveries-filter-customer"><option value="all">All customers</option></select>
+        </label>
+        <label class="notes-filter">
+          <span>Severity</span>
+          <select id="recoveries-filter-severity">
+            <option value="all">All</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </label>
+      </div>
+
+      <input type="search" class="admin-search" id="recoveries-search"
+             placeholder="Search description / customer / assignee…" />
+
+      <div class="admin-status admin-loading" id="recoveries-loading">Loading recoveries…</div>
+      <div class="admin-status admin-error"   id="recoveries-error" hidden></div>
+      <div class="admin-status admin-empty"   id="recoveries-empty" hidden>No service recoveries yet. Create one from an inspection's detail view.</div>
+
+      <div class="admin-list" id="recoveries-list" role="list"></div>
+    </section>
+
+    </div><!-- /#auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Admin</p>
+    </footer>
+  </main>
+
+  <!-- ================== Customer edit modal ================== -->
+  <!-- Customer modal — handles BOTH edit and create. Mode is tracked on
+       the modal element via data-mode="edit" or "create". The slug row
+       below has data-create-only — admin.css/admin.js hide it in edit
+       mode (slug is the Firestore doc ID and cannot change after create). -->
+  <div id="customer-edit-modal" class="admin-modal" hidden aria-hidden="true" data-mode="edit">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="customer-modal-title">Edit customer</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="cust-edit-id" />
+
+        <div class="field-row">
+          <label for="cust-edit-name">Customer name</label>
+          <input type="text" id="cust-edit-name" autocomplete="off" required />
+        </div>
+        <div class="field-row">
+          <label for="cust-edit-location">Location name</label>
+          <input type="text" id="cust-edit-location" autocomplete="off"
+                 placeholder="(falls back to customer name)" />
+        </div>
+        <!-- Slug — create mode only. Auto-derived from customer/location
+             name as the admin types, but editable before save. The
+             Firestore doc ID is the slug, so it cannot be changed after
+             create (admin.js hides this row when data-mode="edit"). -->
+        <div class="field-row" data-create-only hidden>
+          <label for="cust-create-slug">Customer slug</label>
+          <input type="text" id="cust-create-slug" autocomplete="off"
+                 placeholder="auto-generated from name" />
+          <p class="field-hint">
+            Lowercase letters, digits, and dashes only. Becomes the
+            Firestore document ID and cannot be changed later. Must be
+            unique across all customers.
+          </p>
+        </div>
+        <div class="field-row">
+          <label for="cust-edit-email">Customer email</label>
+          <input type="email" id="cust-edit-email" autocomplete="off"
+                 placeholder="ops@example.com" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Visibility &amp; delivery</div>
+          <label class="check-field"><input type="checkbox" id="cust-edit-active" />
+            <span><strong>Active</strong> &mdash; uncheck to archive</span></label>
+          <label class="check-field"><input type="checkbox" id="cust-edit-dcr-enabled" />
+            <span><strong>DCR enabled</strong> &mdash; show in DCR form dropdown</span></label>
+          <label class="check-field"><input type="checkbox" id="cust-edit-dcr-email-enabled" />
+            <span><strong>Send daily DCR email to customer</strong> &mdash; Zapier skips the Gmail step when off; Slack / Sheets / GHL still run</span></label>
+        </div>
+
+        <div class="field-row">
+          <label for="cust-edit-slack">Slack channel</label>
+          <input type="text" id="cust-edit-slack" autocomplete="off"
+                 placeholder="#customer-acme" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">GHL review links</div>
+          <div class="field-row">
+            <label for="cust-edit-five-star">5-star review URL</label>
+            <input type="url" id="cust-edit-five-star" autocomplete="off"
+                   placeholder="https://…" />
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-issue-url">Issue-report URL</label>
+            <input type="url" id="cust-edit-issue-url" autocomplete="off"
+                   placeholder="https://…" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label for="cust-edit-notes">Internal notes</label>
+          <textarea id="cust-edit-notes" rows="3"
+                    placeholder="Notes for the office — never seen by the customer."></textarea>
+        </div>
+
+        <div class="field-group" id="cust-edit-deputy-integration">
+          <div class="field-group-title">Deputy Integration</div>
+          <p class="field-helper" id="cust-edit-deputy-help"></p>
+          <dl class="cust-edit-deputy-list">
+            <dt>Deputy Company Name</dt>
+            <dd id="cust-edit-deputy-name">—</dd>
+            <dt>Deputy Company ID</dt>
+            <dd id="cust-edit-deputy-id">—</dd>
+            <dt>Last matched shift</dt>
+            <dd id="cust-edit-deputy-last-shift">—</dd>
+            <dt>Most recent match source</dt>
+            <dd id="cust-edit-deputy-match-source">—</dd>
+            <dt>Mapping health</dt>
+            <dd id="cust-edit-deputy-health">—</dd>
+          </dl>
+        </div>
+
+        <div class="field-group" id="cust-edit-sop-block">
+          <div class="field-group-title">Customer SOP — Public</div>
+          <p class="field-helper">
+            Tech-safe SOP imported from Deputy. Quick Glance, Critical
+            Notes, Scope by Area, public notes. To import or re-import,
+            run <code>scripts/seedCustomerSopsFromDeputy.js</code>
+            against the latest Deputy <code>/Company/QUERY</code> response.
+          </p>
+          <div id="cust-edit-sop-body"></div>
+        </div>
+
+        <div class="field-group" id="cust-edit-secure-block">
+          <div class="field-group-title">Admin-only Secure Ops</div>
+          <p class="field-helper">
+            Sensitive operational info — alarm / door / gate codes,
+            emergency contacts, raw Deputy notes, and any code-bearing
+            instructions. Read from <code>customer_secure/{slug}</code>
+            (admin-only by firestore.rules). Never appears in customer-facing
+            emails or tech-side pages.
+          </p>
+          <div id="cust-edit-secure-body"></div>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="customer-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="customer-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Cleaning tech edit modal ================== -->
+  <div id="tech-edit-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="tech-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="tech-modal-title">Edit cleaning tech</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="tech-edit-id" />
+
+        <div class="field-row">
+          <label for="tech-edit-display-name">Display name</label>
+          <input type="text" id="tech-edit-display-name" autocomplete="off" required />
+        </div>
+        <div class="field-row">
+          <label for="tech-edit-email">Email</label>
+          <input type="email" id="tech-edit-email" autocomplete="off"
+                 placeholder="tech@pioneercomclean.com" />
+        </div>
+        <div class="field-row">
+          <label for="tech-edit-phone">Phone</label>
+          <input type="tel" id="tech-edit-phone" autocomplete="off"
+                 placeholder="555-555-5555" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Visibility</div>
+          <label class="check-field"><input type="checkbox" id="tech-edit-active" />
+            <span><strong>Active</strong> &mdash; uncheck to archive</span></label>
+          <label class="check-field"><input type="checkbox" id="tech-edit-dcr-enabled" />
+            <span><strong>DCR enabled</strong> &mdash; show in DCR form dropdown</span></label>
+        </div>
+
+        <!-- Assigned customers — multi-select. Drives what this tech can
+             submit DCRs for AND what they see in the Tech Hub. Server-side
+             enforcement lives in submitDcrV1's assignment gate. -->
+        <div class="field-group">
+          <div class="field-group-title">Assigned Customers / Trained Locations</div>
+          <p class="field-group-sub" id="tech-assignments-help">
+            This tech can submit DCRs and view Tech Hub data only for the
+            customers checked below.
+          </p>
+          <input type="search" class="tech-assignments-search"
+                 id="tech-assignments-search"
+                 placeholder="Search customers…" />
+          <div class="tech-assignments-list" id="tech-assignments-list" role="list">
+            <p class="tech-assignments-empty">Loading customers…</p>
+          </div>
+          <p class="tech-assignments-count" id="tech-assignments-count">0 of 0 assigned</p>
+        </div>
+
+        <div class="field-row">
+          <label for="tech-edit-notes">Internal notes</label>
+          <textarea id="tech-edit-notes" rows="3"
+                    placeholder="Notes for the office — never seen on the form."></textarea>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="tech-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="tech-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Cleaning tech CREATE / Login Setup modal ================== -->
+  <!-- Separate from the Edit modal so the create flow has its own validation
+       state, its own "tech_slug" field (locked after create, editable now),
+       and its own login-provisioning options. The Save button calls the
+       server-side createCleaningTechLoginV1 — there is NO direct Firebase
+       Auth user creation from the client. -->
+  <div id="tech-create-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="tech-create-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="tech-create-modal-title">Add tech / Login setup</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+
+      <!-- BODY: two-pane structure. Pane 1 is the form. Pane 2 is the
+           success screen with copy-to-clipboard for the temp password OR
+           the reset link. Pane 2 only shows after a successful save. -->
+      <div class="admin-modal-body">
+
+        <!-- Pane 1: form -->
+        <div id="tech-create-form-pane">
+          <p class="field-group-sub">
+            Creates a Firebase Auth login AND the matching
+            <code>cleaning_techs/{tech_slug}</code> document so the tech can sign
+            in immediately. Safe to re-run for an existing email — the function
+            reuses the Auth user and updates the document.
+          </p>
+
+          <div class="field-row">
+            <label for="tech-create-display-name">Display name <span class="req">*</span></label>
+            <input type="text" id="tech-create-display-name" autocomplete="off" required
+                   placeholder="e.g. Jane Smith" />
+          </div>
+          <div class="field-row">
+            <label for="tech-create-email">Email <span class="req">*</span></label>
+            <input type="email" id="tech-create-email" autocomplete="off" required
+                   placeholder="jane@example.com" inputmode="email" autocapitalize="off"
+                   spellcheck="false" />
+          </div>
+          <div class="field-row">
+            <label for="tech-create-phone">Phone</label>
+            <input type="tel" id="tech-create-phone" autocomplete="off"
+                   placeholder="555-555-5555" />
+          </div>
+          <div class="field-row">
+            <label for="tech-create-slug">Tech slug</label>
+            <input type="text" id="tech-create-slug" autocomplete="off"
+                   placeholder="auto-generated from display name" />
+            <p class="field-hint">
+              Lowercase letters, digits, and dashes only. Auto-filled from the
+              display name if you leave it blank. This is the Firestore doc ID
+              and cannot be changed later.
+            </p>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-title">Assigned Customers / Trained Locations</div>
+            <p class="field-group-sub">
+              This tech will be able to submit DCRs and view Tech Hub data only
+              for the customers checked below. You can change this later from
+              Edit.
+            </p>
+            <input type="search" class="tech-assignments-search"
+                   id="tech-create-assignments-search"
+                   placeholder="Search customers…" />
+            <div class="tech-assignments-list" id="tech-create-assignments-list" role="list">
+              <p class="tech-assignments-empty">Loading customers…</p>
+            </div>
+            <p class="tech-assignments-count" id="tech-create-assignments-count">0 of 0 assigned</p>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-title">Login setup</div>
+            <!-- Pilot default: temporary password. Reset emails depend on
+                 inbox delivery + Safari handling of the reset link, both
+                 of which have been unreliable in the field. The temp-
+                 password flow gives the tech a credential they can use
+                 immediately, which they then change via "Forgot password"
+                 once signed in. Reset email is still available for techs
+                 the office prefers to onboard hands-off. -->
+            <label class="check-field">
+              <input type="radio" name="tech-create-login-mode" value="temp" id="tech-create-mode-temp" checked />
+              <span>
+                <strong>Set a temporary password</strong> &mdash; you'll see and
+                copy it on the next screen. Share privately with the tech.
+                <em>(Recommended for pilot — works without an inbox.)</em>
+              </span>
+            </label>
+            <label class="check-field">
+              <input type="radio" name="tech-create-login-mode" value="reset" id="tech-create-mode-reset" />
+              <span>
+                <strong>Send password reset email</strong> &mdash; Firebase emails
+                the tech a reset link. Works for any personal email but
+                requires the tech to open the inbox.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Pane 2: success / share-credentials -->
+        <div id="tech-create-success-pane" hidden>
+          <div class="tech-create-success-banner">
+            <strong id="tech-create-success-title">Tech created.</strong>
+            <span id="tech-create-success-sub"></span>
+          </div>
+
+          <!-- Reset-link block (only shown when reset flow was used). -->
+          <div class="field-group" id="tech-create-reset-block" hidden>
+            <div class="field-group-title">Password reset link (backup)</div>
+            <p class="field-group-sub">
+              Firebase has already emailed this reset link to the tech. Copy it
+              here if you'd prefer to send it via text or Slack as a backup. The
+              link expires according to Firebase's default policy (typically
+              one hour).
+            </p>
+            <div class="tech-create-copy-row">
+              <input type="text" id="tech-create-reset-link" readonly />
+              <button type="button" class="row-btn" id="tech-create-copy-reset">Copy</button>
+            </div>
+          </div>
+
+          <!-- Temp-password block (only shown when temp-password flow was used). -->
+          <div class="field-group" id="tech-create-temp-block" hidden>
+            <div class="field-group-title">Temporary password</div>
+            <p class="field-group-sub">
+              <strong>This is the only time you'll see this password.</strong>
+              Share it privately with the tech (text/Signal — not group chat).
+              They should sign in and immediately tap <em>Forgot password</em>
+              on the sign-in screen to set their own.
+            </p>
+            <div class="tech-create-copy-row">
+              <input type="text" id="tech-create-temp-password" readonly />
+              <button type="button" class="row-btn" id="tech-create-copy-temp">Copy</button>
+            </div>
+          </div>
+
+          <p class="field-group-sub" id="tech-create-success-note"></p>
+        </div>
+
+      </div>
+
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="tech-create-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close id="tech-create-cancel">Cancel</button>
+        <button type="button" class="modal-btn-save"   id="tech-create-save">Create login</button>
+        <button type="button" class="modal-btn-save"   id="tech-create-done" data-modal-close hidden>Done</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Admin CREATE / Login Setup modal ================== -->
+  <!-- Companion to the tech-create-modal but for admins. Calls the
+       server-side createAdminLoginV1 which creates the Firebase Auth
+       user (if needed), writes /admins/{email}, and triggers the
+       password-reset email so the new admin can set their password. -->
+  <div id="admin-create-modal" class="admin-modal" hidden aria-hidden="true" data-mode="create">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-create-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="admin-create-modal-title">Add admin</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+
+      <div class="admin-modal-body">
+
+        <!-- Pane 1: form -->
+        <div id="admin-create-form-pane">
+          <p class="field-group-sub" id="admin-create-form-intro">
+            Creates a Firebase Auth login AND a <code>/admins/{email}</code>
+            document so the new admin can sign in immediately. Firebase
+            sends a password-reset email so they set their own password.
+            Safe to re-run for an existing email — reuses the Auth user
+            and updates the doc.
+          </p>
+
+          <div class="field-row">
+            <label for="admin-create-display-name">Display name <span class="req">*</span></label>
+            <input type="text" id="admin-create-display-name" autocomplete="off" required
+                   placeholder="e.g. April Smith" />
+          </div>
+          <div class="field-row">
+            <label for="admin-create-email">Email <span class="req">*</span></label>
+            <input type="email" id="admin-create-email" autocomplete="off" required
+                   placeholder="april@pioneercomclean.com" inputmode="email" autocapitalize="off"
+                   spellcheck="false" />
+            <p class="field-hint">Lowercased automatically. The email is the Firestore doc ID and cannot be changed later.</p>
+          </div>
+          <div class="field-row">
+            <label for="admin-create-phone">Phone</label>
+            <input type="tel" id="admin-create-phone" autocomplete="off"
+                   placeholder="555-555-5555" />
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-title">Status</div>
+            <label class="check-field"><input type="checkbox" id="admin-create-active" checked />
+              <span><strong>Active</strong> &mdash; can sign in to /admin. Uncheck to revoke access without deleting the record.</span></label>
+          </div>
+        </div>
+
+        <!-- Pane 2: success / share-link -->
+        <div id="admin-create-success-pane" hidden>
+          <div class="tech-create-success-banner">
+            <strong id="admin-create-success-title">Admin created.</strong>
+            <span id="admin-create-success-sub"></span>
+          </div>
+
+          <div class="field-group" id="admin-create-reset-block" hidden>
+            <div class="field-group-title">Password reset link (backup)</div>
+            <p class="field-group-sub">
+              Firebase has already emailed this reset link to the new admin.
+              Copy it here if you'd prefer to send it via text or Slack as a
+              backup. Expires per Firebase's default policy (typically one
+              hour).
+            </p>
+            <div class="tech-create-copy-row">
+              <input type="text" id="admin-create-reset-link" readonly />
+              <button type="button" class="row-btn" id="admin-create-copy-reset">Copy</button>
+            </div>
+          </div>
+
+          <p class="field-group-sub" id="admin-create-success-note"></p>
+        </div>
+
+      </div>
+
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="admin-create-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close id="admin-create-cancel">Cancel</button>
+        <button type="button" class="modal-btn-save"   id="admin-create-save">Create admin login</button>
+        <button type="button" class="modal-btn-save"   id="admin-create-done" data-modal-close hidden>Done</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Admin EDIT modal ================== -->
+  <!-- Edit an existing /admins/{email} doc. Email is locked (it's the
+       doc ID). Toggling active is the soft-deactivation path; there is
+       NO delete button here — workflow is "set active: false" rather
+       than removing the record, so the audit trail stays intact. -->
+  <div id="admin-edit-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-edit-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="admin-edit-modal-title">Edit admin</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+
+      <div class="admin-modal-body">
+        <input type="hidden" id="admin-edit-doc-id" />
+
+        <div class="field-row">
+          <label for="admin-edit-email">Email</label>
+          <input type="email" id="admin-edit-email" readonly />
+          <p class="field-hint">Email is the Firestore doc ID and cannot be changed. Create a new admin record if the address changes.</p>
+        </div>
+        <div class="field-row">
+          <label for="admin-edit-display-name">Display name <span class="req">*</span></label>
+          <input type="text" id="admin-edit-display-name" autocomplete="off" required />
+        </div>
+        <div class="field-row">
+          <label for="admin-edit-phone">Phone</label>
+          <input type="tel" id="admin-edit-phone" autocomplete="off" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Status</div>
+          <label class="check-field"><input type="checkbox" id="admin-edit-active" />
+            <span><strong>Active</strong> &mdash; can sign in to /admin. Uncheck to revoke access without deleting the record.</span></label>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Account status</div>
+          <p class="field-group-sub" id="admin-edit-status-summary">—</p>
+          <button type="button" class="row-btn" id="admin-edit-resend">Resend invite / reset link</button>
+          <p class="field-hint" id="admin-edit-resend-feedback" hidden></p>
+        </div>
+      </div>
+
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="admin-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close id="admin-edit-cancel">Cancel</button>
+        <button type="button" class="modal-btn-save"   id="admin-edit-save">Save changes</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Customer Note edit/create modal ================== -->
+  <!-- Single modal handles BOTH create and edit. data-mode controls
+       which fields show (customer locked in edit). All writes go
+       through the Firestore Web SDK gated by firestore.rules
+       isPioneerAdmin(). -->
+  <div id="note-edit-modal" class="admin-modal" hidden aria-hidden="true" data-mode="create">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="note-modal-title">New customer note</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="note-edit-id" />
+
+        <div class="field-row">
+          <label for="note-edit-customer">Customer <span class="req">*</span></label>
+          <select id="note-edit-customer" required>
+            <option value="" disabled selected>— Pick a customer —</option>
+          </select>
+          <p class="field-hint">Locked in edit mode — create a new note if a note needs to move customers.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="note-edit-title">Title <span class="req">*</span></label>
+          <input type="text" id="note-edit-title" autocomplete="off" required
+                 placeholder="e.g. Alarm code is in the cabinet by the back door" maxlength="120" />
+        </div>
+
+        <div class="field-row">
+          <label for="note-edit-category">Category</label>
+          <select id="note-edit-category">
+            <option>Security</option>
+            <option>Access</option>
+            <option>Cleaning Preference</option>
+            <option>Sensitive Area</option>
+            <option>Equipment</option>
+            <option>Customer Request</option>
+            <option selected>Other</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="note-edit-body">Body <span class="req">*</span></label>
+          <textarea id="note-edit-body" rows="6" required maxlength="4000"
+                    placeholder="The full note. Plain text, line breaks preserved."></textarea>
+          <p class="field-hint">Plain text. Line breaks preserved. Max 4,000 characters.</p>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Status</div>
+          <label class="check-field"><input type="checkbox" id="note-edit-active" checked />
+            <span><strong>Active</strong> &mdash; visible to assigned techs. Uncheck to archive.</span></label>
+        </div>
+
+        <div class="field-row">
+          <label for="note-edit-review-due">Review due (optional)</label>
+          <input type="date" id="note-edit-review-due" autocomplete="off" />
+          <p class="field-hint">Leave blank to use the default 60-day cadence. The Customer Notes tab shows reminders past this date.</p>
+        </div>
+
+        <p class="field-hint" id="note-edit-meta-line"></p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="note-edit-err" hidden></div>
+        <button type="button" class="row-btn" id="note-edit-mark-reviewed" hidden>
+          Mark reviewed today
+        </button>
+        <button type="button" class="modal-btn-cancel" data-modal-close id="note-edit-cancel">Cancel</button>
+        <button type="button" class="modal-btn-save"   id="note-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Suggestion review modal ================== -->
+  <!-- Shows the suggestion text + linked customer/note context. Admin
+       chooses Approve or Reject. Approve writes status="approved" only
+       — applying the change to the matching note is a separate manual
+       step (admin clicks "Apply to note" which pre-fills note-edit-modal). -->
+  <div id="suggestion-review-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="suggestion-review-title">
+      <header class="admin-modal-header">
+        <h2 id="suggestion-review-title">Review suggestion</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="suggestion-review-id" />
+        <p class="field-hint" id="suggestion-review-meta"></p>
+
+        <div class="field-group">
+          <div class="field-group-title">Customer</div>
+          <p class="field-group-sub" id="suggestion-review-customer">—</p>
+        </div>
+
+        <div class="field-group" id="suggestion-review-existing-block" hidden>
+          <div class="field-group-title">Existing note</div>
+          <p class="field-group-sub" id="suggestion-review-existing-title"></p>
+          <pre class="suggestion-existing-body" id="suggestion-review-existing-body"></pre>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Tech suggestion</div>
+          <pre class="suggestion-body" id="suggestion-review-body"></pre>
+        </div>
+
+        <div class="field-row">
+          <label for="suggestion-review-notes">Review notes (optional)</label>
+          <textarea id="suggestion-review-notes" rows="3" maxlength="1000"
+                    placeholder="Optional context for the audit log. Not shown to techs."></textarea>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="suggestion-review-err" hidden></div>
+        <button type="button" class="row-btn" id="suggestion-apply-to-note" hidden
+                title="Open the note editor with the tech's text pre-filled">
+          Apply to note…
+        </button>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="row-btn row-btn-danger" id="suggestion-reject">Reject</button>
+        <button type="button" class="modal-btn-save" id="suggestion-approve">Approve</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Service Recovery review modal ==================
+       Edit status / assignment / resolution. Cannot change customer
+       or the linked inspection_id (immutable after create). -->
+  <div id="recovery-edit-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-edit-title">
+      <header class="admin-modal-header">
+        <h2 id="recovery-edit-title">Service Recovery</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="recovery-edit-id" />
+
+        <p class="field-hint" id="recovery-edit-meta"></p>
+
+        <div class="field-group">
+          <div class="field-group-title">Description</div>
+          <pre class="suggestion-existing-body" id="recovery-edit-desc"></pre>
+        </div>
+
+        <div class="field-row">
+          <label for="recovery-edit-status">Status</label>
+          <select id="recovery-edit-status">
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="cannot_resolve">Cannot resolve</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="recovery-edit-assigned">Assigned tech</label>
+          <select id="recovery-edit-assigned"><option value="">— Unassigned —</option></select>
+        </div>
+
+        <div class="field-row">
+          <label for="recovery-edit-due">Due date</label>
+          <input type="date" id="recovery-edit-due" autocomplete="off" />
+        </div>
+
+        <div class="field-row">
+          <label for="recovery-edit-resolution">Resolution notes</label>
+          <textarea id="recovery-edit-resolution" rows="3" maxlength="2000"
+                    placeholder="What was done. Filled in when marking Resolved or Cannot resolve."></textarea>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="recovery-edit-err" hidden></div>
+        <button type="button" class="row-btn" id="recovery-mark-resolved"
+                title="Set status to Resolved and stamp resolved_at + resolved_by">
+          Mark resolved
+        </button>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save" id="recovery-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Announcement create / edit modal ================== -->
+  <!-- Shared edit/create modal. data-mode="create" or "edit" — create
+       mode auto-stamps created_at + created_by; edit mode preserves
+       those fields and stamps updated_at + updated_by only. Archive is
+       a one-click action on the row (not in this modal). -->
+  <div id="announcement-edit-modal" class="admin-modal" hidden aria-hidden="true" data-mode="create">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="announcement-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="announcement-modal-title">New announcement</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="announcement-edit-id" />
+
+        <div class="field-row">
+          <label for="announcement-edit-title">Title <span class="req">*</span></label>
+          <input type="text" id="announcement-edit-title" autocomplete="off" required
+                 placeholder="e.g. Holiday schedule update" maxlength="120" />
+        </div>
+        <div class="field-row">
+          <label for="announcement-edit-message">Message <span class="req">*</span></label>
+          <textarea id="announcement-edit-message" rows="5" required
+                    placeholder="The full announcement body. Plain text, no HTML."
+                    maxlength="2000"></textarea>
+          <p class="field-hint">Plain text. Line breaks preserved. Max 2,000 characters.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="announcement-edit-priority">Priority</label>
+          <select id="announcement-edit-priority">
+            <option value="normal" selected>Normal</option>
+            <option value="important">Important</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">Visibility &amp; behavior</div>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-active" checked />
+            <span><strong>Active</strong> &mdash; visible to staff. Uncheck to hide.</span></label>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-mandatory" />
+            <span><strong>Mandatory</strong> &mdash; pops a blocking modal staff must read before continuing.</span></label>
+        </div>
+
+        <div class="field-row">
+          <label for="announcement-edit-starts-at">Starts at (optional)</label>
+          <input type="datetime-local" id="announcement-edit-starts-at" autocomplete="off" />
+          <p class="field-hint">Leave blank for "active immediately."</p>
+        </div>
+        <div class="field-row">
+          <label for="announcement-edit-expires-at">Expires at (optional)</label>
+          <input type="datetime-local" id="announcement-edit-expires-at" autocomplete="off" />
+          <p class="field-hint">Leave blank for "never expires."</p>
+        </div>
+
+        <!-- Optional attachment. Two paths:
+             1. Upload a file → admin.js writes to Firebase Storage at
+                announcements/{announcementId}/attachments/{filename},
+                then auto-fills the URL + name + type + storage_path
+                fields below.
+             2. Paste an external https:// URL into the URL field.
+             Either way, attachment_url is the canonical signal staff
+             see as a "View attachment" button. -->
+        <div class="field-group">
+          <div class="field-group-title">Attachment (optional)</div>
+          <p class="field-group-sub">
+            Upload a file (PDF / image / Word doc, max 10 MB) OR paste a
+            URL. Staff see a "View attachment" button on the announcement
+            card and inside the mandatory modal.
+          </p>
+
+          <!-- File picker — preferred path. Hidden file input + styled
+               button + status line + Remove control. admin.js handles
+               validation, upload, and auto-fill of the fields below. -->
+          <div class="field-row">
+            <label for="announcement-edit-attachment-file">Upload attachment</label>
+            <div class="attachment-upload-row">
+              <input type="file" id="announcement-edit-attachment-file"
+                     accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                     style="display:none;" />
+              <button type="button" class="row-btn" id="announcement-edit-attachment-pick">Choose file…</button>
+              <span class="attachment-upload-status" id="announcement-edit-attachment-status">No file uploaded.</span>
+              <button type="button" class="row-btn row-btn-reactivate"
+                      id="announcement-edit-attachment-remove" hidden>Remove attachment</button>
+            </div>
+            <p class="field-hint">
+              PDF, PNG, JPG, WEBP, or DOC/DOCX. Max 10&nbsp;MB. After upload, the
+              fields below auto-fill — adjust if you want a different label.
+            </p>
+          </div>
+
+          <div class="field-row">
+            <label for="announcement-edit-attachment-name">Attachment name</label>
+            <input type="text" id="announcement-edit-attachment-name" autocomplete="off"
+                   placeholder="e.g. Week of May 12 schedule" maxlength="120" />
+            <p class="field-hint">Optional. Defaults to "View attachment" if left blank.</p>
+          </div>
+          <div class="field-row">
+            <label for="announcement-edit-attachment-url">Attachment URL</label>
+            <input type="url" id="announcement-edit-attachment-url" autocomplete="off"
+                   placeholder="https://..." inputmode="url" maxlength="2048" />
+            <p class="field-hint">Auto-filled by Upload. Or paste an external URL (must start with <code>https://</code>).</p>
+          </div>
+          <div class="field-row">
+            <label for="announcement-edit-attachment-type">Attachment type</label>
+            <select id="announcement-edit-attachment-type">
+              <option value="">(none)</option>
+              <option value="pdf">PDF</option>
+              <option value="image">Image</option>
+              <option value="schedule">Schedule</option>
+              <option value="safety">Safety</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <!-- Hidden field — populated by the upload flow with the
+               Storage path so we can delete the file on Remove or on
+               replace. Stays empty for externally-pasted URLs. -->
+          <input type="hidden" id="announcement-edit-attachment-storage-path" />
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Audience: <strong>All active staff</strong> (admins + cleaning techs). Per-audience
+          targeting will arrive in a future version.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="announcement-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="announcement-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Toast container — top-right slide-ins for success/error notifications. -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Firebase Web SDK — app + auth + firestore (no storage needed on this page). -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+
+  <!-- Same firebase-config.js the DCR form uses (gitignored real values). -->
+  <script src="firebase-config.js"></script>
+  <script src="mandatory-modal.js"></script>
+  <script src="info-tip.js"></script>
+  <script src="operational-feed.js"></script>
+  <script src="customer-sop.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

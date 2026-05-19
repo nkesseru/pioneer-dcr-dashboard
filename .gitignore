@@ -1,0 +1,42 @@
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+firestore-debug.log
+storage-debug.log
+
+# Real Firebase web config — never commit
+public/firebase-config.js
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+
+# Env
+.env
+.env.local
+node_modules/
+.firebase/
+.DS_Store
+.env
+.env.*
+*.log
+
+service-account*.json
+firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+
+functions/node_modules/
+
+keys/
+*.pem
+*.keyo
+
+serviceAccountKey.json

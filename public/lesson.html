@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer Safety Training — Lesson</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="training.css" />
+  <link rel="stylesheet" href="styles/training-overrides.css" />
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Safety Training</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <nav class="role-nav" id="role-nav" data-current-page="training" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="lesson-back-row">
+        <a class="lesson-back-link" href="/training.html">← All lessons</a>
+      </p>
+      <h1 id="lesson-page-title">Lesson</h1>
+      <p class="subtitle" id="lesson-page-sub">Read, quiz, acknowledge.</p>
+    </section>
+
+    <!-- ============ Staff auth screens (identical pattern) ============ -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Sign in to view this lesson and record your completion.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer access.
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content ============ -->
+    <div id="staff-auth-content" hidden>
+
+      <div class="lesson-state" id="lesson-loading">Loading lesson…</div>
+      <div class="lesson-state lesson-error" id="lesson-error" hidden></div>
+      <div class="lesson-state" id="lesson-not-found" hidden>
+        That lesson doesn't exist. <a href="/training.html">Back to lesson library</a>.
+      </div>
+
+      <article class="lesson-card card" id="lesson-card" hidden>
+        <!-- Populated by training.js renderLesson() -->
+      </article>
+
+    </div><!-- /#staff-auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Training</p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="training.js"></script>
+</body>
+</html>

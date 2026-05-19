@@ -1,0 +1,3467 @@
+/* ==========================================================================
+   Pioneer DCR Hub — visual theme v2 (black / white / teal / graphite).
+   ==========================================================================
+
+   Design intent
+   -------------
+   Replaces the earlier earthy green/gold/tan palette with a black/white/teal/
+   graphite system inspired by Apple + modern field-ops SaaS. Reads as: clean,
+   premium, geometric, slightly metallic, trustworthy.
+
+   Token naming
+   ------------
+   All theme tokens use the `--pc-*` prefix ("Pioneer Commercial"). Where the
+   palette has tiers (ink, teal, silver) the suffix is the *role*, not a raw
+   Tailwind step — so future re-shading doesn't require renaming every rule.
+
+   How to re-skin
+   --------------
+   Change values in `:root` only. The rest of this file references tokens, so
+   a different brand could be dropped in by swapping ~30 lines at the top.
+   ========================================================================== */
+
+:root {
+  /* ----- Primary surface: graphite / near-black ----------------------------
+     Used for the brand header, primary buttons, key body text. Slightly cool
+     so it pairs cleanly with teal without looking warm-brown. */
+  --pc-ink:            #0d1218;
+  --pc-ink-700:        #1a2129;   /* hover / secondary dark surface         */
+  --pc-ink-600:        #2a323c;   /* tertiary dark surface                  */
+  --pc-ink-50:         #f1f4f6;   /* very light surface tint                */
+
+  /* ----- Accent: teal ----------------------------------------------------- */
+  --pc-teal:           #14b8a6;
+  --pc-teal-600:       #0d9488;
+  --pc-teal-700:       #0f766e;
+  --pc-teal-200:       #99f6e4;
+  --pc-teal-100:       #ccfbf1;
+  --pc-teal-50:        #ecfdf7;
+
+  /* ----- Secondary accent: cool silver -----------------------------------
+     For hairlines, secondary chrome, dividers, "N/A" states. Reads as
+     "metal" rather than "warm gray". */
+  --pc-silver:         #94a3b8;
+  --pc-silver-300:     #cbd5e1;
+  --pc-silver-200:     #e2e8f0;
+  --pc-silver-100:     #f1f5f9;
+
+  /* ----- Semantic --------------------------------------------------------- */
+  --pc-danger:         #ef4444;
+  --pc-danger-700:     #b91c1c;
+  --pc-danger-soft:    #fee2e2;
+  --pc-warning:        #d97706;
+  --pc-warning-soft:   #fef3c7;
+  /* Success aliases to teal — in our palette "clean / done / shipped" reads
+     teal, not green. */
+  --pc-success:        var(--pc-teal);
+  --pc-success-700:    var(--pc-teal-700);
+  --pc-success-soft:   var(--pc-teal-100);
+
+  /* ----- Surfaces --------------------------------------------------------- */
+  --pc-bg:             #f5f7fa;          /* cool off-white page background */
+  --pc-bg-strong:      #eef1f4;
+  --pc-card:           #ffffff;
+  --pc-card-tint:      #fafbfc;          /* used as the bottom stop of a
+                                            barely-perceptible card gradient */
+
+  /* ----- Text ------------------------------------------------------------- */
+  --pc-text:           #0d1218;
+  --pc-text-muted:     #5b6573;
+  --pc-text-subtle:    #94a3b8;
+
+  /* ----- Borders ---------------------------------------------------------- */
+  --pc-border:         #e4e8ec;
+  --pc-border-strong:  #c7cdd5;
+
+  /* ----- Shadows (cool-tinted, layered for liquid-glass feel) ------------- */
+  --pc-shadow-sm:      0 1px 2px rgba(13, 18, 24, 0.05);
+  --pc-shadow-md:      0 6px 18px rgba(13, 18, 24, 0.08);
+  --pc-shadow-lg:      0 14px 36px rgba(13, 18, 24, 0.14);
+  --pc-shadow-teal:    0 8px 28px rgba(20, 184, 166, 0.28);
+  /* 3-px feathered focus halo. Reused on inputs, signature, file-drop. */
+  --pc-focus-ring:     0 0 0 3px rgba(20, 184, 166, 0.22);
+
+  /* ----- Radii / spacing / motion (unchanged from v1) -------------------- */
+  --radius-card:       14px;
+  --radius-input:      10px;
+  --radius-pill:       999px;
+  --tap:               48px;
+  --t-fast:            0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --t-base:            0.2s  cubic-bezier(0.4, 0, 0.2, 1);
+  --t-slow:            0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==========================================================================
+   Base reset + typography
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--pc-bg);
+  color: var(--pc-text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+button { font-family: inherit; }
+
+/* ==========================================================================
+   Brand header — dark graphite with a faint teal sheen + thin teal accent
+   ========================================================================== */
+
+.brand-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 14px 16px;
+  color: #fff;
+  /* Stacked backgrounds (read bottom-up): graphite diagonal ramp, then a
+     brushed-metal sheen across the upper-left, then a faint silver hairline
+     at the bottom that catches light. Pure CSS — no raster textures. */
+  background:
+    linear-gradient(180deg,
+      transparent 0%,
+      transparent calc(100% - 1px),
+      rgba(255, 255, 255, 0.07) calc(100% - 1px),
+      rgba(255, 255, 255, 0.07) 100%),
+    linear-gradient(115deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.02) 22%,
+      transparent 45%),
+    linear-gradient(135deg,
+      #04070a    0%,
+      var(--pc-ink) 55%,
+      var(--pc-ink-700) 100%);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.4),
+    0 6px 18px rgba(13, 18, 24, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);  /* top edge highlight */
+}
+/* Faint radial teal glow at the bottom-right. Pseudo-element so it doesn't
+   affect layout. Pointer-events disabled so it never blocks clicks. */
+.brand-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 100% 100%,
+      rgba(20, 184, 166, 0.22) 0%,
+      transparent 55%);
+}
+.brand-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  /* Slightly wider gap to give the framed plaque visual room from the
+     wordmark text — the plaque now reads as a distinct brand element. */
+  gap: 16px;
+}
+/* ----- Brand mark — framed glass plaque -------------------------------
+   The supplied 2304×2304 PNG has a white background. Instead of fighting
+   that, we lean into it: .brand-mark becomes a polished white plaque set
+   into the dark graphite header. The logo's own white bleeds seamlessly
+   into the plaque face, so the previous "white rectangle on dark header"
+   clash reads as an intentional luxury badge.
+
+   Anatomy of the plaque:
+     • subtle white → cool-white vertical gradient (paper depth)
+     • thin silver hairline border
+     • inner top highlight + inner bottom shadow (glassy bevel)
+     • close-in drop shadow + wider depth shadow
+     • soft teal aura extending past the edge (brand glow)               */
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 7px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #eef2f6 100%);
+  border: 1px solid var(--pc-silver-300);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(13, 18, 24, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    0 0 26px rgba(20, 184, 166, 0.24);
+  /* SVG fallback (when the PNG 404s) inherits this as graphite strokes on
+     the white plaque face. */
+  color: var(--pc-ink);
+}
+.brand-logo-img {
+  display: block;
+  /* Square 2304×2304 source — render as a clean 48×48 badge. Explicit
+     width keeps the layout deterministic regardless of any future logo
+     swap-ins; `object-fit: contain` preserves the original aspect ratio
+     inside that box, so the logo can never distort. */
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  /* No filter — the logo carries its own colors against the white plaque. */
+}
+.brand-mark.show-fallback .brand-logo-img { display: none; }
+.brand-mark-fallback { display: none; align-items: center; }
+.brand-mark.show-fallback .brand-mark-fallback { display: inline-flex; }
+.brand-mark-fallback svg {
+  display: block;
+  width: 48px;
+  height: auto;
+  /* Strokes in graphite (via currentColor on .brand-mark). Tiny teal halo
+     keeps brand continuity with the real logo's framed glow. */
+  filter: drop-shadow(0 1px 4px rgba(20, 184, 166, 0.28));
+}
+.brand-meta { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-name {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.brand-tag {
+  font-size: 12px;
+  opacity: 0.72;
+  margin-top: 2px;
+  color: var(--pc-silver-300);
+}
+/* Thin teal light-line across the bottom edge of the header. The box-shadow
+   adds a soft glow that spills a few pixels into the page below — reads as
+   "the header is glowing teal from underneath", not just a colored bar. */
+.brand-accent {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--pc-teal) 28%,
+    var(--pc-teal-200) 50%,
+    var(--pc-teal) 72%,
+    transparent 100%);
+  box-shadow:
+    0 0 8px rgba(20, 184, 166, 0.55),
+    0 6px 18px rgba(20, 184, 166, 0.18);
+  opacity: 0.95;
+}
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+
+.hero {
+  padding: 30px 18px 12px;
+  text-align: center;
+}
+.hero h1 {
+  font-size: 30px;
+  font-weight: 800;
+  margin: 0 0 6px;
+  color: var(--pc-text);                /* graphite, not teal — let teal pop */
+  letter-spacing: -0.7px;
+  line-height: 1.1;
+}
+.hero .subtitle {
+  margin: 0;
+  color: var(--pc-text-muted);
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.1px;
+}
+
+main { max-width: 680px; margin: 0 auto; padding: 8px 14px 120px; }
+
+/* ==========================================================================
+   Draft-restored toast — neutral teal/silver, not warm gold
+   ========================================================================== */
+
+.draft-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: var(--pc-teal-50);
+  border: 1px solid var(--pc-teal-100);
+  border-radius: var(--radius-input);
+  color: var(--pc-teal-700);
+  font-size: 13px;
+  animation: toast-in var(--t-slow);
+}
+.draft-toast-clear {
+  background: transparent;
+  border: none;
+  color: var(--pc-teal-700);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-decoration: underline;
+}
+.draft-toast-clear:hover { background: rgba(20, 184, 166, 0.08); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   Validation summary
+   ==========================================================================
+   Lives at the top of the form, hidden by default. Appears after a failed
+   submit attempt with a bulleted list of exactly what's left to do.
+   Coral border + soft tint reads as "needs attention" without scolding. */
+
+.validation-summary {
+  background: linear-gradient(180deg, #ffffff 0%, #fff7f7 100%);
+  border: 1px solid var(--pc-danger);
+  border-left: 4px solid var(--pc-danger);
+  border-radius: var(--radius-input);
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  color: var(--pc-text);
+  box-shadow: var(--pc-shadow-sm);
+  animation: validation-in 0.25s ease;
+}
+.validation-head {
+  font-weight: 700;
+  color: var(--pc-danger-700);
+  margin: 0 0 8px;
+  font-size: 14px;
+  letter-spacing: 0.1px;
+}
+.validation-list {
+  margin: 0;
+  padding: 0 0 0 22px;
+  list-style: disc;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--pc-text);
+}
+.validation-list li { margin-bottom: 2px; }
+@keyframes validation-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Deputy-shift banner — visible only when the DCR form was launched
+   from a Today's Assignments card. Two states:
+     default (mapped)     — teal, "Deputy shift attached" + details
+     .is-unmapped         — amber, asks the tech to confirm customer
+   Sits between the validation summary and the form sections so it's
+   the first thing the tech sees and the customer dropdown is right
+   below it.
+
+   Structure (set in index.html — see comment there):
+     .deputy-shift-banner
+       .deputy-shift-banner-icon       (📅)
+       .deputy-shift-banner-body
+         .deputy-shift-banner-title    ("Deputy shift attached")
+         .deputy-shift-banner-meta     (location / time / shift id …)
+         .deputy-shift-banner-actions  (Open in Deputy link) */
+.deputy-shift-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--pc-teal-50);
+  color: var(--pc-teal-700);
+  border: 1px solid var(--pc-teal-100);
+  border-left: 4px solid var(--pc-teal);
+  border-radius: var(--radius-input);
+}
+.deputy-shift-banner.is-unmapped {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+  border-left-color: #f97316;
+}
+.deputy-shift-banner-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.deputy-shift-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.deputy-shift-banner-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  color: inherit;
+}
+.deputy-shift-banner-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  color: inherit;
+}
+.deputy-shift-banner-line { line-height: 1.5; }
+.deputy-shift-banner-key {
+  display: inline-block;
+  min-width: 78px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.deputy-shift-banner-confirm {
+  margin-top: 4px;
+  font-size: 12px;
+  font-style: italic;
+}
+.deputy-shift-banner-link-note {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.95;
+}
+.deputy-shift-banner-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.deputy-shift-banner-link {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+}
+.deputy-shift-banner-link:hover { text-decoration: none; }
+
+/* ==========================================================================
+   Cards — clean glass-on-paper with a barely-perceptible vertical gradient
+   ========================================================================== */
+
+.card {
+  /* Two-stop gradient gives a hint of "lit from above" depth without looking
+     gradient-y. Most viewers won't consciously notice — they just feel it. */
+  background: linear-gradient(180deg, var(--pc-card) 0%, var(--pc-card-tint) 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: var(--radius-card);
+  padding: 18px;
+  margin-bottom: 14px;
+  /* Smooth-scroll target offset: when validation scrolls to an incomplete
+     card, the sticky brand header (~76 px) must not cover the card title. */
+  scroll-margin-top: 84px;
+  /* Layered shadow stack reads as "card floating just above paper":
+       1. Hairline outer ring — silver, almost imperceptible
+       2. Tight close-in shadow — ground
+       3. Wide diffuse shadow — depth */
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 1px 2px rgba(13, 18, 24, 0.05),
+    0 8px 24px rgba(13, 18, 24, 0.04);
+  transition: box-shadow var(--t-base), transform var(--t-base), border-color var(--t-base);
+}
+/* Hover lift on desktop with a real pointer — never on touch devices, since
+   :hover sticks weirdly after taps on phones. Adds a faint teal hint via
+   the outer ring on hover. */
+@media (hover: hover) and (min-width: 700px) {
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: var(--pc-border-strong);
+    box-shadow:
+      0 0 0 1px var(--pc-teal-100),
+      0 6px 18px rgba(13, 18, 24, 0.08),
+      0 16px 38px rgba(13, 18, 24, 0.06);
+  }
+}
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--pc-text);
+  letter-spacing: -0.2px;
+}
+.card-sub {
+  margin: 0 0 14px;
+  color: var(--pc-text-muted);
+  font-size: 13px;
+}
+.hint {
+  margin: 0 0 12px;
+  color: var(--pc-text-muted);
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   Form fields — teal focus ring, graphite text
+   ========================================================================== */
+
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field-helper {
+  margin: -4px 0 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--pc-text-muted, #6b7280);
+}
+
+label, .label-text {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--pc-text);
+}
+
+input[type="text"],
+input[type="date"],
+select,
+textarea {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 14px;
+  font-size: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--pc-text);
+  border: 1px solid var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--pc-teal);
+  box-shadow: var(--pc-focus-ring);
+}
+textarea { min-height: 96px; resize: vertical; }
+
+/* Dropdown chevron is inlined as a data URI so we can tint it with the brand
+   color. Stroke is graphite (matches body text) for a clean monochrome feel. */
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%230d1218' stroke-width='2' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px;
+}
+
+/* ==========================================================================
+   Yes/No segmented control — graphite for "no", teal for "yes"
+   ========================================================================== */
+
+.question {
+  font-weight: 600;
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--pc-text);
+}
+.seg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.seg-btn {
+  flex: 1;
+  min-height: var(--tap);
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  background: #fff;
+  color: var(--pc-text);
+  border: 1.5px solid var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  transition: transform var(--t-fast), background var(--t-base),
+              border-color var(--t-base), color var(--t-base), box-shadow var(--t-base);
+}
+.seg-btn:hover { border-color: var(--pc-teal); }
+.seg-btn:active { transform: scale(0.98); }
+/* Active "Yes" → teal (positive affirmation).
+   Active "No"  → graphite (neutral / monochrome). */
+.seg-btn.is-active {
+  background: var(--pc-ink);
+  color: #fff;
+  border-color: var(--pc-ink);
+  box-shadow: var(--pc-shadow-md);
+}
+.seg-btn[data-value="yes"].is-active {
+  background: var(--pc-teal);
+  border-color: var(--pc-teal);
+  box-shadow: var(--pc-shadow-teal);
+}
+
+/* ==========================================================================
+   Checklist progress — teal gradient bar + count badge
+   ========================================================================== */
+
+.checklist-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.progress-count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pc-text-muted);
+  background: var(--pc-bg-strong);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.3px;
+  transition: background var(--t-base), color var(--t-base);
+}
+.progress-count.is-complete {
+  background: var(--pc-teal-100);
+  color: var(--pc-teal-700);
+}
+.progress-bar {
+  height: 4px;
+  background: var(--pc-bg-strong);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 10px 0 14px;
+}
+.progress-bar-fill {
+  height: 100%;
+  width: 0;
+  /* Teal gradient — modern, "shipping bar" energy. */
+  background: linear-gradient(90deg, var(--pc-teal-700), var(--pc-teal));
+  border-radius: 2px;
+  transition: width var(--t-slow), background var(--t-base);
+}
+.checklist-card.is-complete .progress-bar-fill {
+  /* Slightly brighter when fully complete — small "you did it" reward. */
+  background: linear-gradient(90deg, var(--pc-teal), var(--pc-teal-200));
+}
+
+/* ==========================================================================
+   Checklist — compact row + 3-state segmented control
+     Done   = teal     (✓ icon, success state)
+     Issue  = coral    (! icon, expands inline note area below the row)
+     N/A    = silver   (text glyph, neutral / not applicable)
+
+   Design notes:
+     • Items are bare rows separated by bottom hairlines (iOS Settings density),
+       not individually bordered cards — gives the section card a single
+       sheet of content instead of stacked sub-cards.
+     • Pills are fixed-width 44 × 40 buttons with iconic content. Three of
+       them = a tight 140-px wide segmented control on the right edge.
+     • The label area is fluid (grid 1fr) so long labels wrap to 2 lines
+       without pushing the controls.
+     • Tap target is 44 × 40 — under Apple's 44pt rec, but the row padding
+       around each pill makes the effective hit area >44 px in both axes,
+       and the row itself fields stray taps gracefully.
+   ========================================================================== */
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  /* No row gap — rows are separated by their own bottom hairline. */
+  gap: 0;
+  margin-top: 2px;
+}
+.checklist-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 9px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--pc-border);
+  border-radius: 0;
+  transition: background var(--t-base);
+}
+.checklist-item:last-child { border-bottom: none; }
+.checklist-item .item-label {
+  font-size: 14.5px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--pc-text);
+  min-width: 0;
+  /* Tighten to 2 lines max before wrapping — keeps row height predictable. */
+}
+/* Status-driven label tone. N/A reads as lower-priority on a glance scan;
+   done and issue keep the label at full strength so the eye lands on
+   actionable rows first. */
+.checklist-item.status-na .item-label { color: var(--pc-text-subtle); }
+
+.checklist-item .pills {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--pc-silver-100);
+  color: var(--pc-text-muted);
+  border: 1.5px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: transform var(--t-fast), background var(--t-base),
+              color var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
+}
+.pill:active { transform: scale(0.92); }
+.pill svg { display: block; width: 18px; height: 18px; }
+.pill .pill-text { letter-spacing: 0.5px; line-height: 1; }
+
+/* Active states: faint outer halo + tight inner shadow = "lit from within".
+   N/A stays neutral on purpose — it shouldn't compete with the meaningful
+   states for scanning. */
+.pill.is-active--done {
+  background: var(--pc-teal-100);
+  color: var(--pc-teal-700);
+  border-color: var(--pc-teal);
+  box-shadow:
+    0 0 0 3px rgba(20, 184, 166, 0.10),
+    0 2px 6px rgba(20, 184, 166, 0.20);
+}
+.pill.is-active--issue {
+  background: var(--pc-danger-soft);
+  color: var(--pc-danger-700);
+  border-color: var(--pc-danger);
+  box-shadow:
+    0 0 0 3px rgba(239, 68, 68, 0.10),
+    0 2px 6px rgba(239, 68, 68, 0.18);
+}
+.pill.is-active--na {
+  background: var(--pc-silver-200);
+  color: var(--pc-text-muted);
+  border-color: var(--pc-silver);
+}
+
+@keyframes pill-pop {
+  0%   { transform: scale(1);    }
+  40%  { transform: scale(1.12); }
+  100% { transform: scale(1);    }
+}
+.pill.just-tapped { animation: pill-pop 0.24s ease; }
+
+/* ---------- Inline issue-detail area ----------
+   Sits in the same row using a full-width grid-column span — keeps the
+   note visually tethered to the item it describes. Hidden by default;
+   the row's `.has-issue` class reveals it when Issue is selected. */
+.checklist-item .issue-detail {
+  grid-column: 1 / -1;
+  display: none;
+  padding: 6px 0 6px;
+}
+.checklist-item.has-issue .issue-detail { display: block; }
+.issue-note {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--pc-text);
+  border: 1px solid var(--pc-border-strong);
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+.issue-note:focus {
+  border-color: var(--pc-danger);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+}
+.issue-hint {
+  font-size: 11px;
+  color: var(--pc-text-subtle);
+  margin: 4px 2px 0;
+}
+
+/* ----- Resolved-issue visual state ------------------------------------
+   A checklist item with status="issue" is only *complete* once a note has
+   been written. When the row gets `.issue-resolved`:
+     • the note's border + background flip to teal (visually "noted")
+     • the hint ("Tip: add a photo…") swaps for an "Issue noted ✓" line
+   The row's underlying status-issue + has-issue classes stay — this is
+   just an additive "resolution acknowledged" treatment, not a status flip. */
+.checklist-item.issue-resolved .issue-note {
+  border-color: var(--pc-teal-600);
+  background: var(--pc-teal-50);
+}
+.checklist-item.issue-resolved .issue-note:focus {
+  border-color: var(--pc-teal);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
+}
+.issue-confirmed {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--pc-teal-700);
+  letter-spacing: 0.15px;
+  margin: 4px 2px 0;
+}
+.issue-confirmed-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+}
+.checklist-item.issue-resolved .issue-hint      { display: none;        }
+.checklist-item.issue-resolved .issue-confirmed { display: inline-flex; }
+
+/* ---------- Collapsible section header ----------
+   The whole top row of a section card is one big <button> that toggles
+   the section's collapsed state. Manual toggle is always available even
+   when auto-collapse fired. */
+.checklist-header {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.checklist-card .header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.checklist-card .chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--pc-text-subtle);
+  /* Expanded state: chevron points down. */
+  transform: rotate(90deg);
+  transition: transform var(--t-base), color var(--t-base);
+}
+.checklist-card .chevron svg { width: 14px; height: 14px; display: block; }
+.checklist-card.is-collapsed .chevron { transform: rotate(0deg); }
+
+.checklist-sub {
+  font-size: 12px;
+  color: var(--pc-text-subtle);
+  margin: 0 0 6px;
+  letter-spacing: 0.2px;
+}
+
+/* Collapsed state: items, sub-text, and progress bar all hide. The header
+   row stays visible — its progress-count badge tells the user the section
+   is complete (and coral-tinted if it has issues). */
+.checklist-card.is-collapsed .checklist,
+.checklist-card.is-collapsed .checklist-sub,
+.checklist-card.is-collapsed .progress-bar { display: none; }
+.checklist-card.is-collapsed .checklist-header { margin-bottom: 0; }
+
+/* When the section is complete-with-issues, the badge AND the progress-bar
+   fill flip to coral so the issue presence is unmissable at a glance. */
+.progress-count.is-complete.has-issues {
+  background: var(--pc-danger-soft);
+  color: var(--pc-danger-700);
+}
+.checklist-card.is-complete.has-issues .progress-bar-fill {
+  background: linear-gradient(90deg, var(--pc-danger-700), var(--pc-danger));
+}
+
+/* ==========================================================================
+   Rating cards
+   ========================================================================== */
+
+.rating-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 560px) { .rating-grid { grid-template-columns: repeat(4, 1fr); } }
+.rating-card {
+  min-height: 64px;
+  padding: 14px 12px;
+  background: #fff;
+  border: 1.5px solid var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--pc-text);
+  cursor: pointer;
+  transition: transform var(--t-fast), background var(--t-base),
+              color var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
+}
+.rating-card:hover { border-color: var(--pc-teal); }
+.rating-card:active { transform: scale(0.98); }
+.rating-card.is-active {
+  background: var(--pc-teal);
+  color: #fff;
+  border-color: var(--pc-teal);
+  box-shadow: var(--pc-shadow-teal);
+}
+/* "Difficult / need help" stays amber — semantically distinct from a
+   positive rating, but not as alarming as red (which we save for actual
+   issues). */
+.rating-card[data-value="difficult"].is-active {
+  background: var(--pc-warning);
+  border-color: var(--pc-warning);
+  box-shadow: 0 6px 18px rgba(217, 119, 6, 0.28);
+}
+
+/* ==========================================================================
+   Photo upload drop zone
+   ========================================================================== */
+
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 16px;
+  border: 2px dashed var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  background: linear-gradient(180deg, #fff 0%, var(--pc-bg) 100%);
+  cursor: pointer;
+  transition: border-color var(--t-base), background var(--t-base), box-shadow var(--t-base);
+}
+.file-drop:hover,
+.file-drop:focus-within {
+  border-color: var(--pc-teal);
+  background: linear-gradient(180deg, #fff 0%, var(--pc-teal-50) 100%);
+  box-shadow: var(--pc-focus-ring);
+}
+.file-drop-icon {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: var(--pc-teal-700);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.95;
+  transition: transform var(--t-base), stroke var(--t-base);
+}
+.file-drop:hover .file-drop-icon { transform: translateY(-1px); stroke: var(--pc-teal); }
+.file-drop-cta { font-weight: 700; color: var(--pc-text); font-size: 16px; }
+.file-drop-sub { font-size: 12px; color: var(--pc-text-muted); }
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.photo-grid:empty { margin-top: 0; }
+.photo-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--pc-silver-100);
+  border: 1px solid var(--pc-border);
+  transition: transform var(--t-fast), box-shadow var(--t-base);
+}
+.photo-thumb:hover { transform: translateY(-1px); box-shadow: var(--pc-shadow-sm); }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb .remove {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: rgba(13, 18, 24, 0.66);
+  color: #fff;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  transition: background var(--t-base);
+}
+.photo-thumb .remove:hover { background: var(--pc-ink); }
+.photo-counter { font-size: 12px; color: var(--pc-text-muted); margin-top: 8px; }
+
+/* Inline notice card for "videos go in Slack". Neutral silver block with a
+   teal left-edge marker — replaces the previous warm-gold pill. */
+.video-note {
+  margin: 10px 0 0;
+  padding: 10px 12px 10px 14px;
+  background: var(--pc-silver-100);
+  color: var(--pc-text-muted);
+  border-radius: 8px;
+  border-left: 3px solid var(--pc-teal);
+  font-size: 13px;
+}
+.video-note strong { color: var(--pc-text); font-weight: 700; }
+
+/* ==========================================================================
+   Reason groups + affirmation row
+   ========================================================================== */
+
+.reason-group { margin-bottom: 14px; }
+.reason-group:last-child { margin-bottom: 0; }
+.reason-group-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 4px 0 8px;
+  color: var(--pc-text);
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--pc-border);
+  border-radius: var(--radius-input);
+  background: #fff;
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pc-text);
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.check-row:hover { border-color: var(--pc-border-strong); background: #fbfcfd; }
+.check-row input[type="checkbox"] {
+  width: 20px; height: 20px;
+  margin: 1px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--pc-teal);
+}
+.check-row span { flex: 1; }
+
+/* The affirmation row used to be green-tinted. Now it's a confident teal
+   panel — "this is the commit step, sign here". */
+.check-row.affirm-row {
+  background: var(--pc-teal-50);
+  border-color: var(--pc-teal);
+  font-weight: 600;
+  color: var(--pc-teal-700);
+  margin-bottom: 14px;
+}
+.check-row.affirm-row:hover { background: var(--pc-teal-50); }
+
+/* ==========================================================================
+   Signature pad — premium drop-zone feel, teal focus
+   ========================================================================== */
+
+.signature-pad {
+  position: relative;
+  border: 1.5px solid var(--pc-border-strong);
+  border-radius: var(--radius-input);
+  background: #fff;
+  overflow: hidden;
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+/* Focused (drawing) state — teal ring, just like input focus. */
+.signature-pad.is-focused {
+  border-color: var(--pc-teal);
+  box-shadow: var(--pc-focus-ring);
+}
+.signature-canvas {
+  display: block;
+  width: 100%;
+  height: 180px;
+  background: #fff;
+  /* Disable browser pan/zoom while signing. */
+  touch-action: none;
+  cursor: crosshair;
+}
+.signature-baseline {
+  position: absolute;
+  left: 18px; right: 18px;
+  bottom: 64px;
+  height: 1px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--pc-border-strong) 0 6px,
+    transparent 6px 12px);
+  pointer-events: none;
+  opacity: 0.55;
+}
+.signature-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--pc-border);
+  background: var(--pc-bg);
+  min-height: 44px;
+}
+.signature-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pc-text-muted);
+}
+.signature-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.signature-clear {
+  background: transparent;
+  border: 1.5px solid var(--pc-border-strong);
+  color: var(--pc-text);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 36px;
+  transition: border-color var(--t-base), color var(--t-base),
+              background var(--t-base), transform var(--t-fast);
+}
+.signature-clear:hover {
+  background: #fff;
+  border-color: var(--pc-teal);
+  color: var(--pc-teal-700);
+}
+.signature-clear:active { transform: scale(0.98); }
+
+/* Auto-attributed signature line. Replaces the previous typed-name input —
+   the cleaning tech selected at the top of the form is the name of record.
+   Small, muted, sits just below the pen-stroke pad. */
+.signature-attribution {
+  margin: 8px 2px 0;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  letter-spacing: 0.1px;
+}
+.signature-attribution strong {
+  color: var(--pc-text);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   Conditional reveal
+   ========================================================================== */
+
+.conditional { display: none; padding-top: 14px; }
+.conditional.is-shown { display: block; }
+
+/* ==========================================================================
+   Upload progress
+   ========================================================================== */
+
+.upload-progress {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--pc-border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--pc-shadow-sm);
+}
+.upload-progress-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.upload-progress-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pc-text);
+}
+.upload-progress-pct {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pc-teal-700);
+}
+.upload-progress-bar {
+  height: 6px;
+  background: var(--pc-bg-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.upload-progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--pc-teal-700), var(--pc-teal));
+  border-radius: 3px;
+  transition: width var(--t-base);
+}
+
+/* ==========================================================================
+   Submit bar + primary button — graphite with teal glow on hover
+   ========================================================================== */
+
+.submit-bar {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.submit-btn {
+  width: 100%;
+  min-height: 56px;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  /* Graphite gradient + thin inset highlight up top = "milled metal" look. */
+  background: linear-gradient(180deg, var(--pc-ink-700) 0%, var(--pc-ink) 100%);
+  border: 1px solid var(--pc-ink);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  /* Resting state: layered shadow + visible top edge highlight + a hairline
+     teal hint under the button (so it feels lit even before hover). */
+  box-shadow:
+    0 6px 18px rgba(13, 18, 24, 0.18),
+    0 12px 28px rgba(20, 184, 166, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20);
+  transition: background var(--t-base), box-shadow var(--t-base),
+              transform var(--t-fast), opacity var(--t-base);
+}
+.submit-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--pc-ink) 0%, #04070a 100%);
+  /* Teal glow on hover — "ready to ship" cue without changing base color. */
+  box-shadow:
+    0 10px 30px rgba(20, 184, 166, 0.34),
+    0 4px 12px rgba(13, 18, 24, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+/* Pressed state: button visibly compresses + shadow collapses, like real
+   mechanical key travel. */
+.submit-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 6px rgba(13, 18, 24, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.submit-btn:disabled { opacity: 0.55; cursor: progress; }
+
+/* ==========================================================================
+   Status pill (busy / ok / err)
+   ========================================================================== */
+
+#status {
+  margin: 14px 4px 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  border-radius: var(--radius-input);
+  text-align: center;
+  min-height: 22px;
+  display: none;
+}
+#status.busy { display: block; background: var(--pc-silver-100);  color: var(--pc-text-muted); }
+#status.ok   { display: block; background: var(--pc-teal-100);    color: var(--pc-teal-700); }
+#status.err  { display: block; background: var(--pc-danger-soft); color: var(--pc-danger-700);
+               white-space: pre-wrap; text-align: left; }
+
+/* ==========================================================================
+   Mobile sticky submit bar — translucent + backdrop-blur for that
+   "premium app footer" feel.
+   ========================================================================== */
+
+@media (max-width: 700px) {
+  .submit-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    margin: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top,
+      rgba(245, 247, 250, 0.98) 70%,
+      rgba(245, 247, 250, 0.6));
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+            backdrop-filter: blur(12px) saturate(140%);
+    border-top: 1px solid var(--pc-border);
+    z-index: 50;
+  }
+  .submit-bar #status { margin: 8px 0 0; }
+  main { padding-bottom: 130px; }
+}
+
+/* ==========================================================================
+   Success card — luxury confirmation
+     • Pioneer logo at top
+     • Teal stroke-drawn check mark
+     • Submission ID chip
+     • Zapier pill (teal sent / amber failed)
+   ========================================================================== */
+
+.success-card {
+  position: relative;
+  text-align: center;
+  padding: 36px 22px 28px;
+  border-color: var(--pc-teal);
+  /* Four-layer rim/glow stack reads as a "framed in light" presentation:
+       1. Outer feathered teal aura
+       2. Inner crisp teal hairline
+       3. Silver under-ring for refinement
+       4. Deep grounded shadow */
+  box-shadow:
+    0 0 0 6px rgba(20, 184, 166, 0.08),
+    0 0 0 1px var(--pc-teal-100),
+    0 0 0 2px rgba(203, 213, 225, 0.35),
+    0 18px 44px rgba(13, 18, 24, 0.14);
+  animation: success-in 0.45s var(--t-slow) both;
+}
+
+/* ----- Confetti burst (CSS-only, lightweight) ---------------------------
+   12 dots injected by JS at submit time. Each gets a custom --angle and
+   --distance; the keyframe flies the dot outward along that angle then
+   fades. Pure CSS — no canvas, no extra libraries. */
+.success-confetti {
+  position: absolute;
+  top: 32%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.confetti-dot {
+  position: absolute;
+  top: 0; left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pc-teal);
+  opacity: 0;
+  --angle: 0deg;
+  --distance: 140px;
+  --delay: 0s;
+}
+.success-card.is-celebrating .confetti-dot {
+  animation: confetti-fly 1.25s cubic-bezier(0.2, 0.65, 0.4, 1) forwards;
+  animation-delay: var(--delay);
+}
+@keyframes confetti-fly {
+  0%   { transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0)                          scale(0.4); opacity: 0;   }
+  12%  {                                                                                                          opacity: 1;   }
+  85%  {                                                                                                          opacity: 0.95;}
+  100% { transform: translate(-50%, -50%) rotate(var(--angle)) translateY(calc(-1 * var(--distance))) scale(0.85); opacity: 0;   }
+}
+
+/* ----- Accent "OK" Lottie ----------------------------------------------
+   Tiny secondary celebration in the corner. Plays ~700 ms after the main
+   fist-bump so the two moments don't compete. If assets/okay.json is
+   missing the element renders empty — graceful no-op. */
+.success-ok-lottie {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 56px;
+  height: 56px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  z-index: 2;
+}
+.success-card.is-celebrating .success-ok-lottie {
+  opacity: 1;
+}
+@keyframes success-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Mirrors the .brand-mark pattern, but on a light card surface so the SVG
+   fallback inherits graphite (not white) via currentColor. */
+.success-mark {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto 18px;
+  color: var(--pc-ink);
+}
+.success-logo {
+  display: block;
+  /* Square 2304×2304 source — rendered larger than the header version so
+     the brand is the hero of the celebratory screen. Square dimensions
+     are explicit so future logo swaps can't change the layout. */
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  /* The logo's own white blends into the white success card — clean and
+     intentional, no plaque needed here. */
+}
+.success-mark.show-fallback .success-logo { display: none; }
+.success-mark-fallback { display: none; align-items: center; }
+.success-mark.show-fallback .success-mark-fallback { display: inline-flex; }
+.success-mark-fallback svg {
+  display: block;
+  width: 84px;
+  height: auto;
+  /* Faint teal halo behind the mark, ties the fallback to the celebratory
+     palette of the success card without recoloring the strokes. */
+  filter: drop-shadow(0 0 8px rgba(20, 184, 166, 0.30));
+}
+/* ----- Success animation container ------------------------------------
+   Wraps the Lottie fist-bump and the SVG-check fallback. The fallback is
+   hidden whenever the <lottie-player> custom element is defined (script
+   loaded); shown otherwise. */
+.success-animation {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Faint teal aura — ties the moment into the brand palette. Behind the
+     animation, so it never overlaps the strokes. */
+  background: radial-gradient(
+    circle at center,
+    rgba(20, 184, 166, 0.16) 0%,
+    rgba(20, 184, 166, 0.06) 40%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  /* Subtle entrance in sync with the success-card slide-in. */
+  animation: success-anim-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both;
+}
+@keyframes success-anim-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+.success-lottie {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Fallback SVG check — hidden by default. The sibling selector below shows
+   it only if the <lottie-player> custom element has NOT been defined (script
+   missing / offline / blocked). When Lottie is working, this stays hidden. */
+.success-check {
+  display: none;
+  position: absolute;
+  width: 80px;
+  height: 80px;
+}
+.success-animation lottie-player:not(:defined) ~ .success-check {
+  display: block;
+}
+.success-check-circle {
+  stroke: var(--pc-teal);
+  stroke-width: 2;
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: stroke-draw 0.5s cubic-bezier(0.65, 0, 0.45, 1) 0.1s forwards;
+}
+.success-check-path {
+  stroke: var(--pc-teal);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: stroke-draw 0.4s cubic-bezier(0.65, 0, 0.45, 1) 0.5s forwards;
+}
+@keyframes stroke-draw {
+  to { stroke-dashoffset: 0; }
+}
+.success-card h2 {
+  color: var(--pc-teal-700);
+  margin: 0 0 6px;
+  font-size: 24px;
+  letter-spacing: -0.3px;
+}
+.success-card .success-lede { color: var(--pc-text);       margin: 0 0 4px;  font-size: 16px; font-weight: 600; }
+.success-card .success-sub  { color: var(--pc-text-muted); margin: 0 0 18px; font-size: 14px; }
+
+.submission-id-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  margin: 0 0 18px;
+  font-size: 13px;
+}
+.submission-id-label { color: var(--pc-text-muted); font-weight: 600; }
+.success-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--pc-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.success-zapier {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 18px;
+  letter-spacing: 0.2px;
+}
+.success-zapier::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.success-zapier.is-sent   { background: var(--pc-teal-100);    color: var(--pc-teal-700); }
+.success-zapier.is-failed { background: var(--pc-warning-soft); color: var(--pc-warning); }
+
+/* Mirrors the .submit-btn tactile spec (same milled-metal/teal-glow pair)
+   so the two primary CTAs in the app feel consistent. */
+.success-card .new-dcr-btn {
+  padding: 12px 24px;
+  color: #fff;
+  background: linear-gradient(180deg, var(--pc-ink-700) 0%, var(--pc-ink) 100%);
+  border: 1px solid var(--pc-ink);
+  border-radius: var(--radius-input);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  box-shadow:
+    0 4px 12px rgba(13, 18, 24, 0.16),
+    0 8px 20px rgba(20, 184, 166, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  transition: background var(--t-base), transform var(--t-fast), box-shadow var(--t-base);
+}
+.success-card .new-dcr-btn:hover {
+  background: linear-gradient(180deg, var(--pc-ink) 0%, #04070a 100%);
+  box-shadow:
+    0 8px 24px rgba(20, 184, 166, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20);
+}
+.success-card .new-dcr-btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 6px rgba(13, 18, 24, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* ==========================================================================
+   App footer
+   ========================================================================== */
+
+/* ==========================================================================
+   Team Hub — employee portal page (/team-hub.html)
+   ==========================================================================
+   Lightweight card-grid layout for training links + team forms +
+   placeholder announcements + help. Inherits .card / .hero / footer
+   styles from above; this block adds the inner section structure and
+   the per-link card treatment. Mobile-first: cards stack on phones,
+   grid out to 2-up at 560px+. */
+
+.team-hub-section {
+  margin-bottom: 14px;
+}
+.team-hub-section-head {
+  margin-bottom: 12px;
+}
+.team-hub-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--pc-text);
+}
+.team-hub-section-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--pc-text-muted);
+  line-height: 1.5;
+}
+
+.team-hub-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .team-hub-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.team-hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  min-height: 84px;
+  background: linear-gradient(180deg, var(--pc-card) 0%, var(--pc-card-tint) 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  color: var(--pc-text);
+  text-decoration: none;
+  position: relative;
+  box-shadow: var(--pc-shadow-sm);
+  transition:
+    border-color var(--t-base),
+    box-shadow var(--t-base),
+    transform var(--t-fast);
+  /* Reserve room for the top-right arrow icon. */
+  padding-right: 38px;
+}
+.team-hub-card:hover {
+  border-color: var(--pc-teal);
+  box-shadow: 0 6px 18px rgba(20, 184, 166, 0.22);
+}
+.team-hub-card:active { transform: translateY(1px); }
+.team-hub-card-eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.team-hub-card.is-form .team-hub-card-eyebrow {
+  color: var(--pc-teal-700);
+}
+.team-hub-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pc-text);
+  line-height: 1.3;
+}
+.team-hub-card-desc {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--pc-text-muted);
+  margin-top: 2px;
+}
+.team-hub-card-arrow {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-text-subtle);
+  transition: color var(--t-base), transform var(--t-fast);
+}
+.team-hub-card:hover .team-hub-card-arrow {
+  color: var(--pc-teal-700);
+  transform: translate(2px, -2px);
+}
+
+/* ==========================================================================
+   Today's Assignments — compact cards rendered by team-hub.js
+   ==========================================================================
+   Lives in the .team-hub-assignments-section. One card per shift; sorted
+   chronologically by start_time. Read-only — the buttons just deep-link
+   out (DCR form + Deputy roster). */
+.team-hub-assignments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.team-hub-assignments-status {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--pc-text-muted);
+  background: var(--pc-bg);
+  border: 1px dashed var(--pc-border);
+  border-radius: 10px;
+  text-align: center;
+}
+.team-hub-assignments-error  { color: var(--pc-danger-700); border-color: #ffd2d2; background: #fff5f5; }
+.team-hub-assignments-empty  { font-style: italic; }
+
+/* Admin-preview callout — visible only when an admin opens
+   /work.html?work_date=… . Distinct from the section sub-copy so the
+   "this is preview, not your shifts" message can't be missed. */
+.team-hub-assignments-callout {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #6b3a09;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+}
+
+.assign-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--pc-card);
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  box-shadow: var(--pc-shadow-sm);
+}
+.assign-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.assign-card-customer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.assign-card-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--pc-text);
+  line-height: 1.25;
+}
+.assign-card-name.is-placeholder {
+  font-style: italic;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+.assign-card-name.is-suggested {
+  /* HIGH-confidence alias-matched suggestion. Dotted underline cues
+     "auto-filled, confirm or change on DCR". The muted "Suggested:"
+     prefix carries the meta — kept calm, never alarming. */
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--pc-text-muted, #6b7280);
+  cursor: help;
+}
+.assign-card-name.is-unknown {
+  /* UNKNOWN-customer state — Deputy shift has no Pioneer customer
+     match. Amber warning style: tech MUST pick before Start Work. */
+  color: #92400e;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 12.5px;
+}
+.work-card .assign-card-customer:has(.assign-card-name.is-unknown) {
+  /* Lift the whole customer block when UNKNOWN — caller eye-catch. */
+  padding: 6px 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 3px solid #b45309;
+  border-radius: 6px;
+}
+.assign-card-unknown-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.assign-card-unknown-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pc-text, #111827);
+}
+.assign-card-unknown-select {
+  padding: 8px 10px;
+  font-size: 13.5px;
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 8px;
+  background: #fff;
+}
+.assign-card-notes {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--pc-bg, #f9fafb);
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-left: 3px solid var(--pc-teal-100, #ccfbf1);
+  border-radius: 6px;
+}
+.assign-card-notes-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle, #6b7280);
+  margin-bottom: 2px;
+}
+.assign-card-notes-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--pc-text, #111827);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.assign-card-suggested-label {
+  font-weight: 600;
+  color: var(--pc-text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+  margin-right: 4px;
+}
+.assign-card-loc {
+  font-size: 12px;
+  color: var(--pc-text-muted);
+}
+.assign-card-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pc-text);
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  border-radius: 999px;
+}
+.assign-card-time-icon { font-size: 12px; line-height: 1; }
+.assign-card-instructions {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--pc-text);
+  background: var(--pc-bg);
+  border-left: 3px solid var(--pc-teal);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+.assign-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.assign-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.assign-card-btn.is-primary {
+  background: var(--pc-teal);
+  color: #fff;
+  border: 1px solid var(--pc-teal);
+}
+.assign-card-btn.is-primary:hover {
+  background: var(--pc-teal-700);
+  border-color: var(--pc-teal-700);
+}
+/* Deputy "Clock in/out" — secondary affordance. Outlined teal so it
+   reads as the system-of-record link, not the primary CTA. */
+.assign-card-btn.is-deputy {
+  background: #fff;
+  color: var(--pc-teal-700);
+  border: 1px solid var(--pc-teal);
+}
+.assign-card-btn.is-deputy:hover {
+  background: var(--pc-teal-50);
+}
+.assign-card-btn.is-disabled {
+  background: var(--pc-bg);
+  color: var(--pc-text-muted);
+  border: 1px solid var(--pc-border);
+  cursor: not-allowed;
+}
+.assign-card-helper {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--pc-text-subtle);
+  line-height: 1.4;
+}
+
+/* ---------- Work-card workflow extras ----------
+   Layered on top of .assign-card by team-hub.js. The base card already
+   handles the box/shadow; these rules add the progress stepper, the
+   finished-state polish, and the optional "DCR submitted" footer. */
+
+/* State-tinted left border so the card's status is readable from a
+   glance even when the chip is below the fold on long lists. */
+.work-card.is-state-working      { border-left: 4px solid #c2410c; }
+.work-card.is-state-needs_finish { border-left: 4px solid var(--pc-teal); }
+.work-card.is-state-finished     { border-left: 4px solid #16a34a; background: var(--pc-bg); }
+.work-card.is-state-finished .assign-card-name { color: var(--pc-text-muted); }
+
+/* Stepper — a 3-step horizontal track. Each step shows a numeric
+   bubble + a label. is-todo (muted) / is-active (teal) / is-done
+   (filled green). The connector line between steps is the ::after on
+   each LI; the last step has no connector. */
+.work-stepper {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.work-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+}
+.work-step + .work-step::before {
+  content: "";
+  display: block;
+  flex: 0 0 12px;
+  height: 2px;
+  background: var(--pc-border);
+}
+.work-step.is-done + .work-step::before { background: #16a34a; }
+.work-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--pc-bg);
+  color: var(--pc-text-muted);
+  border: 1.5px solid var(--pc-border);
+  flex-shrink: 0;
+}
+.work-step.is-active .work-step-num { background: var(--pc-teal); color: #fff; border-color: var(--pc-teal); }
+.work-step.is-done   .work-step-num { background: #16a34a;       color: #fff; border-color: #16a34a; }
+.work-step.is-done   .work-step-num::before { content: "✓"; }
+.work-step.is-done   .work-step-num { font-size: 0; }    /* hide the digit when ✓ shows */
+.work-step.is-done   .work-step-num::before { font-size: 14px; line-height: 1; }
+.work-step-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work-step.is-active .work-step-label { color: var(--pc-teal-700); }
+.work-step.is-done   .work-step-label { color: #166534; }
+
+/* Finished state — subtle inline confirmation instead of a button. */
+.assign-card-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.assign-card-footer {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--pc-text-muted);
+  line-height: 1.5;
+}
+.assign-card-footer-label {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.assign-card-footer code {
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* Mobile — collapse the stepper labels to just numbers under 480px so
+   the row stays single-line. Numbers still tell the tech where they
+   are; the CTA below carries the verb. */
+@media (max-width: 480px) {
+  .work-step-label { display: none; }
+  .work-step       { gap: 0; flex: 0 0 auto; }
+  .work-step + .work-step::before { flex-basis: 18px; }
+  .work-stepper    { gap: 0; justify-content: flex-start; }
+}
+
+/* Status chip — small pill that mirrors the admin .badge family but
+   sized for this card's tighter type scale. */
+.assign-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.assign-chip.is-scheduled { background: var(--pc-teal-50);  color: var(--pc-teal-700);   border-color: var(--pc-teal-100); }
+.assign-chip.is-progress  { background: #fff7ed;            color: #c2410c;              border-color: #fed7aa; }
+.assign-chip.is-done      { background: #ecfdf5;            color: #047857;              border-color: #a7f3d0; }
+.assign-chip.is-cancelled { background: var(--pc-danger-soft); color: var(--pc-danger-700); border-color: #ffd2d2; }
+
+/* Mobile — stack head + chip cleanly; let the time pill wrap below
+   the customer name instead of squishing. */
+@media (max-width: 480px) {
+  .assign-card-head { flex-direction: column; align-items: stretch; gap: 6px; }
+  .assign-chip      { align-self: flex-start; }
+}
+
+/* Announcements section — cards rendered by team-hub.js. The placeholder
+   empty-state styles below still exist for any future use; the new
+   .ann-card rules cover the live v1 layout. */
+.team-hub-announcement-list { display: block; }
+.team-hub-empty {
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pc-text-muted);
+  background: var(--pc-bg);
+  border: 1px dashed var(--pc-border);
+  border-radius: 10px;
+}
+
+.ann-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  box-shadow: var(--pc-shadow-sm);
+}
+.ann-card:last-child { margin-bottom: 0; }
+
+/* Compact card variant — used inside the collapsed "Past announcements"
+   section. Tighter padding, smaller title/body, no image previews.
+   The is-compact class is added by announcementCardHtml when called
+   with { compact: true }. */
+.ann-card.is-compact {
+  padding: 9px 12px;
+  gap: 4px;
+  box-shadow: none;
+  border-color: var(--pc-border);
+  background: var(--pc-bg);
+}
+.ann-card.is-compact .ann-card-title { font-size: 13.5px; }
+.ann-card.is-compact .ann-card-body  { font-size: 12.5px; line-height: 1.45; }
+.ann-card.is-compact .ann-card-pills .ann-pill {
+  font-size:  9.5px;
+  padding:    1px 6px;
+}
+/* Belt-and-suspenders — JS already omits the preview HTML for compact
+   cards, but if a future code path slips one in we still hide it. */
+.ann-card.is-compact .ann-attachment-preview { display: none !important; }
+
+/* Past-announcements section — collapsed toggle + list. */
+.team-hub-past-section { /* inherits .card from the markup */ }
+.team-hub-past-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  color: var(--pc-text);
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.team-hub-past-toggle:hover {
+  background: var(--pc-bg-strong);
+  border-color: var(--pc-border-strong);
+}
+.team-hub-past-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 6px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--pc-text-muted);
+  background: var(--pc-silver-100);
+  border-radius: 999px;
+}
+.team-hub-past-list {
+  margin-top: 10px;
+}
+.team-hub-past-list[hidden] { display: none !important; }
+.ann-card-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+.ann-card-title {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--pc-text);
+  letter-spacing: -0.1px;
+  flex: 1 1 60%;
+  min-width: 0;
+}
+.ann-card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.ann-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--pc-border);
+  background: var(--pc-silver-100);
+  color: var(--pc-text-muted);
+}
+.ann-pill.is-normal    { /* default styling already applies */ }
+.ann-pill.is-important { background: var(--pc-warning-soft); color: var(--pc-warning);    border-color: #fde68a; }
+.ann-pill.is-urgent    { background: var(--pc-danger-soft);  color: var(--pc-danger-700); border-color: #ffd2d2; }
+.ann-pill.is-mandatory { background: var(--pc-ink-700);       color: #fff;                 border-color: var(--pc-ink); }
+.ann-pill.is-unread    { background: var(--pc-teal-100);     color: var(--pc-teal-700);   border-color: var(--pc-teal); }
+
+.ann-card-body {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--pc-text);
+  white-space: pre-wrap;
+}
+.ann-card-actions {
+  margin-top: 4px;
+}
+.ann-mark-read-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(180deg, var(--pc-teal) 0%, var(--pc-teal-700) 100%);
+  border: 1px solid var(--pc-teal-700);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ann-mark-read-btn:disabled { opacity: 0.6; cursor: progress; }
+
+/* Inline image preview for image-typed attachments. Subtle, clean,
+   operational — NOT a gallery. Wrapped in an <a> so a tap opens the
+   full file in a new tab. Broken images self-remove via inline onerror
+   so the layout doesn't show a broken-image icon. */
+.ann-attachment-preview {
+  display: block;
+  margin: 4px 0 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--pc-bg);
+  border: 1px solid var(--pc-border);
+  /* Keep the click target obvious but not bouncy. */
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+}
+.ann-attachment-preview:hover {
+  border-color: var(--pc-teal);
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.18);
+}
+.ann-attachment-preview img {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  /* Avoid the brief 0-height "image not loaded yet" jump. */
+  background: var(--pc-bg-strong);
+}
+
+/* "View attachment" button on announcement cards + inside mandatory
+   modal. Visually paired with the mark-as-read button but neutral so
+   it doesn't compete for attention. */
+.ann-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  margin-right: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--pc-text);
+  background: var(--pc-silver-100);
+  border: 1px solid var(--pc-silver-300);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.ann-attachment-btn:hover {
+  background: var(--pc-silver-200);
+  border-color: var(--pc-border-strong);
+}
+
+/* Unread-count badge on the Pioneer Team Hub nav pill (cross-page). */
+.role-nav-link .role-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  height: 18px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--pc-danger);
+  border-radius: 999px;
+  letter-spacing: 0;
+}
+
+/* Quick Help section — tighter than the section-default. */
+.team-hub-help { padding-bottom: 18px; }
+.team-hub-help-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--pc-text);
+}
+.team-hub-help-line a {
+  color: var(--pc-teal-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.team-hub-help-line a:hover { color: var(--pc-ink); }
+
+.app-footer {
+  text-align: center;
+  color: var(--pc-text-subtle);
+  font-size: 12px;
+  padding: 24px 14px 32px;
+}
+.app-footer p { margin: 0 0 4px; }
+.app-footer p:last-child { margin-bottom: 0; }
+.app-footer-help {
+  font-size: 13px;
+  color: var(--pc-text-muted);
+  font-weight: 600;
+}
+.app-footer-help a {
+  color: var(--pc-teal-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.app-footer-help a:hover { color: var(--pc-ink); }
+.app-footer code {
+  background: var(--pc-bg-strong);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+/* ==========================================================================
+   Phone-only spacing — a touch more breathing room and tap comfort
+   ==========================================================================
+   Cards get slightly bigger padding, the gap between them grows a hair, and
+   the hero tightens up so it doesn't eat the fold. Everything still passes
+   the 48-px tap-target check. */
+@media (max-width: 480px) {
+  .hero       { padding: 22px 18px 6px; }
+  .hero h1    { font-size: 27px; letter-spacing: -0.5px; }
+  main        { padding: 8px 16px 140px; }
+  .card       { padding: 20px; margin-bottom: 16px; }
+  /* Checklist rows on phones: stack label above the pill row so long item
+     labels (e.g. "Toilets cleaned & disinfected") never clip against the
+     pills cluster. Pills expand with flex: 1 so each is a generous thumb
+     target across the full row width. Tablet / desktop keep the compact
+     two-column grid via the base rules. */
+  .checklist-item {
+    grid-template-columns: 1fr;   /* single column → label, then pills */
+    column-gap: 0;
+    row-gap: 8px;
+    padding: 10px 0;
+  }
+  .checklist-item .item-label {
+    font-size: 14px;
+    /* Allow natural wrap. No truncation. */
+    white-space: normal;
+  }
+  .checklist-item .pills {
+    width: 100%;
+    gap: 6px;
+  }
+  .pill {
+    flex: 1;          /* each pill grows to ~1/3 of the row */
+    width: auto;
+    min-width: 0;     /* let flex shrink past intrinsic size when needed */
+    height: 42px;     /* slightly taller — full-width buttons can afford it */
+  }
+  .pill svg { width: 16px; height: 16px; }
+  .seg-btn    { min-height: 50px; }
+  .submit-btn { min-height: 58px; }
+  /* Scale the framed plaque down on phones so the header stays balanced
+     with the smaller hero type. Success-card logo also dialed back so the
+     animated check stays the anchor element on the confirmation screen. */
+  .brand-mark      { padding: 6px; border-radius: 11px; }
+  .brand-logo-img  { width: 42px; height: 42px; }
+  .brand-mark-fallback svg { width: 42px; }
+  .success-logo    { width: 64px; height: 64px; }
+  /* Scale the celebration animation down on phones so the headline and the
+     submission-id chip stay above the fold. */
+  .success-animation { width: 170px; height: 170px; margin-bottom: 8px; }
+  /* Tighter accent + confetti so the burst stays within the card on phones. */
+  .success-ok-lottie { width: 44px; height: 44px; top: 10px; right: 10px; }
+  .confetti-dot     { width: 6px; height: 6px; }
+}
+
+/* ==========================================================================
+   Staff auth screens — shared by /index.html (DCR form) + /tech.html
+   ==========================================================================
+   Same visual pattern as admin.css's auth-screen block. Pages render one of
+   four states: checking / signed-out / denied / content. staff-auth.js
+   toggles `hidden` on the corresponding section — the .card[hidden] override
+   below ensures that wins over the default `display: …` rules. */
+.staff-auth-screen {
+  max-width: 440px;
+  margin: 18px auto;
+  padding: 32px 24px;
+  text-align: center;
+}
+.staff-auth-screen[hidden],
+#staff-auth-content[hidden] { display: none !important; }
+
+.staff-auth-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--pc-teal-50);
+  color: var(--pc-teal-700);
+  border: 1px solid var(--pc-teal-100);
+  display: flex; align-items: center; justify-content: center;
+}
+.staff-auth-icon svg { width: 26px; height: 26px; }
+.staff-auth-icon.is-denied {
+  background: var(--pc-danger-soft);
+  color: var(--pc-danger-700);
+  border-color: #ffd2d2;
+}
+
+.staff-auth-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--pc-text);
+  margin: 0 0 6px;
+  letter-spacing: -0.2px;
+}
+.staff-auth-sub {
+  font-size: 13.5px;
+  color: var(--pc-text-muted);
+  margin: 0 0 18px;
+  line-height: 1.55;
+}
+.staff-auth-help { margin: 14px 0 0; font-size: 12px; color: var(--pc-text-subtle); }
+.staff-auth-help a {
+  color: var(--pc-teal-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.staff-auth-help a:hover { color: var(--pc-ink); }
+/* Secondary help line under the "active staff only" notice. Slightly
+   bolder + warmer than the muted line above so it reads as the canonical
+   "stuck? here's how to reach us" affordance. */
+.staff-auth-temp-hint {
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+
+/* ==========================================================================
+   Animated login backdrop
+   ==========================================================================
+   Goal: a quiet, premium "polished metal / glass" feel behind the sign-in
+   card without distracting from the form. Pure CSS — three soft diagonal
+   light streaks drift slowly across a fixed-position layer at the bottom
+   of the stacking context (z-index: 0; sign-in card sits above at the
+   default z-index).
+
+   Visibility is gated by `body.is-signing-in`, toggled by app.js +
+   tech.js inside setStaffAuthState(). So the streaks never paint on the
+   checking/denied/content states, and never on admin pages (admin pages
+   don't load app.js/tech.js).
+
+   Performance: only three streaks, animated via `transform` + `opacity`
+   (compositor-friendly, no layout/paint thrash). Animation durations are
+   long (18–28s) so per-frame deltas are tiny. `will-change: transform`
+   hints the GPU on capable browsers. The whole layer is `display: none`
+   when not signing in, so the work goes to zero between sessions.
+
+   Accessibility: aria-hidden on the wrapper; pointer-events: none so the
+   layer never intercepts taps; prefers-reduced-motion disables all
+   animation and leaves only the soft gradient. */
+.login-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  /* z-index: -1 puts the layer behind ALL in-flow content. Combined with
+     `body.is-signing-in { background: transparent }` below, the backdrop
+     becomes visible through the (otherwise opaque) body. No need to lift
+     individual cards/footers with positive z-indexes — they paint on top
+     naturally. Safari honors negative-z-index correctly as long as body
+     and html have no transform/filter/opacity, which they don't here. */
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  /* Soft metallic gradient — same cool-silver tones as the brand plaque
+     so the streaks look like reflections playing across brushed metal. */
+  background:
+    radial-gradient(ellipse at 80% -10%, rgba(20, 184, 166, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 0% 110%, rgba(13, 18, 24, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%);
+}
+body.is-signing-in { background: transparent; }
+body.is-signing-in .login-bg { display: block; }
+
+/* Each streak is a long, narrow, low-opacity light bar set on a 22° tilt
+   and translated diagonally. Different sizes, opacities, durations, and
+   delays so the motion feels organic rather than synchronized. */
+.login-streak {
+  position: absolute;
+  top: -40%;
+  left: -25%;
+  width: 60vmax;
+  height: 110px;
+  border-radius: 999px;
+  /* Soft white-to-teal sheen with very low opacity. */
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0)    0%,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(20, 184, 166, 0.22)  55%,
+    rgba(255, 255, 255, 0)    100%);
+  filter: blur(18px);
+  transform: rotate(22deg) translate3d(-30vmax, -20vmax, 0);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: login-streak-drift 22s linear infinite;
+}
+.login-streak-1 { animation-duration: 22s; animation-delay: 0s;   top: -30%; height: 90px;  }
+.login-streak-2 { animation-duration: 28s; animation-delay: -6s;  top: 10%;  height: 130px; opacity: 0.85; }
+.login-streak-3 { animation-duration: 25s; animation-delay: -14s; top: 55%;  height: 100px; }
+
+@keyframes login-streak-drift {
+  0%   { transform: rotate(22deg) translate3d(-30vmax, -10vmax, 0); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: rotate(22deg) translate3d( 30vmax,  20vmax, 0); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Static layer only — gradient stays for the visual texture, all
+     streak motion stops, opacity dropped further so the page feels
+     calm and the streaks don't read as ghosted artifacts. */
+  .login-streak { animation: none; opacity: 0; }
+}
+
+.staff-auth-spinner {
+  width: 28px;
+  height: 28px;
+  margin: 4px auto 14px;
+  border: 3px solid var(--pc-silver-200);
+  border-top-color: var(--pc-teal);
+  border-radius: 50%;
+  animation: staff-auth-spin 0.85s linear infinite;
+}
+@keyframes staff-auth-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .staff-auth-spinner { animation: none; } }
+
+.staff-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(180deg, var(--pc-ink-700) 0%, var(--pc-ink) 100%);
+  border: 1px solid var(--pc-ink);
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  box-shadow: var(--pc-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  transition: background var(--t-base), transform var(--t-fast), box-shadow var(--t-base);
+}
+.staff-google-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--pc-ink) 0%, #04070a 100%);
+  box-shadow: 0 8px 22px rgba(20, 184, 166, 0.22),
+              inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.staff-google-btn:active:not(:disabled) { transform: translateY(1px); }
+.staff-google-btn:disabled { opacity: 0.6; cursor: progress; }
+.staff-google-btn .g-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  background: #fff;
+  border-radius: 50%;
+  padding: 2px;
+}
+.staff-google-btn.is-secondary {
+  background: var(--pc-silver-100);
+  color: var(--pc-text);
+  border-color: var(--pc-silver-300);
+  box-shadow: none;
+}
+.staff-google-btn.is-secondary:hover:not(:disabled) {
+  background: var(--pc-silver-200);
+  border-color: var(--pc-border-strong);
+  box-shadow: none;
+}
+
+/* ----- Email/password sign-in form (DCR form + Tech Hub) ----- */
+
+.staff-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  margin: 0 0 16px;
+}
+.staff-field { display: flex; flex-direction: column; gap: 4px; }
+.staff-field-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--pc-text-muted);
+}
+.staff-field input {
+  font-family: inherit;
+  font-size: 16px; /* 16px prevents iOS Safari auto-zoom on focus */
+  padding: 11px 12px;
+  border: 1px solid var(--pc-border-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--pc-text);
+  transition: border-color var(--t-base), box-shadow var(--t-base);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.staff-field input:focus {
+  outline: none;
+  border-color: var(--pc-teal);
+  box-shadow: 0 0 0 3px var(--pc-teal-100);
+}
+.staff-field input:disabled { background: var(--pc-bg); opacity: 0.75; }
+
+.staff-auth-inline-msg {
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-radius: 8px;
+  background: var(--pc-danger-soft);
+  color: var(--pc-danger-700);
+  border: 1px solid #ffd2d2;
+  text-align: left;
+}
+.staff-auth-inline-msg.is-ok {
+  background: var(--pc-teal-50);
+  color: var(--pc-teal-700);
+  border-color: var(--pc-teal-100);
+}
+.staff-auth-inline-msg[hidden] { display: none !important; }
+
+.staff-password-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* min-width pegs the button at "Signing in…" width so the swap from
+     "Sign in" → "Signing in…" doesn't cause a layout jump. 180px holds
+     the longer label comfortably at our 15px/700-weight type stack. */
+  min-width: 180px;
+  min-height: 46px;
+  padding: 12px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(180deg, var(--pc-teal) 0%, var(--pc-teal-700) 100%);
+  border: 1px solid var(--pc-teal-700);
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  box-shadow: var(--pc-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: background var(--t-base), transform var(--t-fast), box-shadow var(--t-base);
+  margin-top: 4px;
+  align-self: center;
+}
+.staff-password-btn:hover:not(:disabled) {
+  box-shadow: 0 8px 22px rgba(20, 184, 166, 0.28),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.staff-password-btn:active:not(:disabled) { transform: translateY(1px); }
+.staff-password-btn:disabled { opacity: 0.6; cursor: progress; }
+
+.staff-forgot-link {
+  align-self: center;
+  background: none;
+  border: 0;
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--pc-teal-700);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.staff-forgot-link:hover { color: var(--pc-ink); }
+
+.staff-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--pc-text-subtle);
+}
+.staff-auth-divider::before,
+.staff-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--pc-border);
+}
+.staff-auth-divider span { padding: 0 2px; }
+
+/* Header account chip — shown on the brand header once signed in. */
+.staff-header-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.staff-header-account[hidden] { display: none !important; }
+.staff-header-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  gap: 1px;
+}
+.staff-header-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+.staff-header-name:empty { display: none; }
+.staff-header-email {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.staff-header-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  white-space: nowrap;            /* never split "Sign out" across two lines */
+  flex: 0 0 auto;                 /* don't shrink — keeps button tappable */
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.staff-header-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+@media (max-width: 700px) {
+  .staff-header-email { max-width: 140px; font-size: 11.5px; }
+  .staff-header-name  { max-width: 140px; font-size: 12px;   }
+}
+@media (max-width: 480px) {
+  /* Mobile: if we have a display_name, that's enough — hide the email
+     to keep the chip compact. If display_name is empty (`.staff-header-name`
+     is `:empty`), the next-sibling rule below doesn't match and the email
+     stays visible as the fallback identifier. */
+  .staff-header-name:not(:empty) ~ .staff-header-email { display: none; }
+  .staff-header-email { max-width: 160px; font-size: 11.5px; }
+
+  /* Sign-out button: bump to a real 44px tap target, tighten padding so
+     the row still fits at 320px, and force single-line so the label
+     never breaks across two lines. */
+  .staff-header-btn {
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+  /* Tighten gap inside the chip so the chip doesn't push past the
+     viewport when both name and sign-out are showing. */
+  .staff-header-account { gap: 8px; }
+}
+
+/* ==========================================================================
+   Role-aware navigation
+   ==========================================================================
+   Lives inside the brand-header as a second row below the brand/account
+   row. Rendered by JS on each page (app.js / tech.js / admin.js) using the
+   current user's role from STAFF_AUTH (or the admin allowlist for the
+   admin page). Buttons wrap on narrow screens. */
+
+.role-nav {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 680px;
+  margin: 10px auto 0;
+  padding: 0 0 2px;
+}
+.admin-body .role-nav { max-width: 980px; }
+.role-nav[hidden] { display: none !important; }
+.role-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  min-height: 34px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.4px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--t-base),
+    border-color var(--t-base),
+    color var(--t-base),
+    box-shadow var(--t-base);
+}
+.role-nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+.role-nav-link:focus-visible {
+  outline: 2px solid var(--pc-teal);
+  outline-offset: 2px;
+}
+.role-nav-link.is-active {
+  background: linear-gradient(180deg, var(--pc-teal) 0%, var(--pc-teal-700) 100%);
+  border-color: var(--pc-teal-700);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 4px 14px rgba(20, 184, 166, 0.32);
+  /* Active page should feel "pressed" — disable pointer cursor so it
+     reads as a label rather than another tap target. */
+  cursor: default;
+}
+.role-nav-link.is-active:hover {
+  background: linear-gradient(180deg, var(--pc-teal) 0%, var(--pc-teal-700) 100%);
+  border-color: var(--pc-teal-700);
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+  .role-nav { gap: 5px; margin-top: 8px; }
+  .role-nav-link { padding: 6px 11px; font-size: 12px; min-height: 32px; }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Team Hub — Pioneer Quality section (public morale surface)
+   ==========================================================================
+   Compact darker card matching the Inspection Hub aesthetic. NO inspector
+   identity. NO per-area detail. NO low-score callouts on this surface. */
+.team-hub-quality { padding: 16px 18px; }
+.th-quality-card {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 18px 18px 16px;
+  background: linear-gradient(160deg, #0f172a 0%, #111827 50%, #1e293b 100%);
+  border-radius: 14px;
+  color: #f1f5f9;
+  box-shadow: 0 18px 36px -16px rgba(15, 23, 42, 0.45);
+  overflow: hidden;
+  isolation: isolate;
+}
+.th-quality-glow {
+  position: absolute;
+  inset: -40% -15% auto auto;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(closest-side, rgba(20, 184, 166, 0.45), transparent 70%);
+  filter: blur(20px);
+  z-index: 0;
+}
+.th-quality-card[data-tone="tone-1"] .th-quality-glow { background: radial-gradient(closest-side, rgba(220, 38, 38, 0.4), transparent 70%); }
+.th-quality-card[data-tone="tone-2"] .th-quality-glow { background: radial-gradient(closest-side, rgba(234, 88, 12, 0.4), transparent 70%); }
+.th-quality-card[data-tone="tone-3"] .th-quality-glow { background: radial-gradient(closest-side, rgba(202, 138, 4, 0.4), transparent 70%); }
+.th-quality-card[data-tone="tone-4"] .th-quality-glow { background: radial-gradient(closest-side, rgba(20, 184, 166, 0.45), transparent 70%); }
+.th-quality-card[data-tone="tone-5"] .th-quality-glow { background: radial-gradient(closest-side, rgba(22, 163, 74, 0.5), transparent 70%); }
+.th-quality-body { position: relative; z-index: 1; }
+.th-quality-eyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 6px;
+}
+.th-quality-row { display: flex; align-items: center; gap: 16px; }
+.th-quality-value {
+  font-size: 56px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: #fff;
+}
+.th-quality-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.th-quality-label { font-size: 14px; font-weight: 800; }
+.th-quality-sub   { font-size: 11.5px; color: rgba(255, 255, 255, 0.78); }
+@media (max-width: 480px) {
+  .th-quality-value { font-size: 46px; }
+}
+
+/* Recent 5-star wins list */
+.th-wins { padding: 0 2px; }
+.th-wins-head {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle, #64748b);
+}
+.th-wins-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.th-wins-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--pc-bg, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-left: 4px solid #16a34a;
+  border-radius: 10px;
+}
+.th-wins-emoji { font-size: 18px; line-height: 1; }
+.th-wins-text  { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.th-wins-customer { font-size: 13.5px; font-weight: 800; color: var(--pc-text, #0f172a); }
+.th-wins-meta     { font-size: 11.5px; color: var(--pc-text-muted, #475569); }
+.th-wins-empty    { margin: 6px 0 0; font-size: 12.5px; font-style: italic; color: var(--pc-text-muted, #475569); }
+
+/* Team Hub Pioneer Quality — streak chip inside the score card */
+.th-quality-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fde68a;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  align-self: flex-start;
+}
+
+/* ==========================================================================
+   Score-explanation tooltips (.info-tip + .info-tip-popover)
+   ==========================================================================
+   Small ⓘ trigger next to any scored card. Click / tap toggles a
+   text popover positioned via JS so parent overflow / transform
+   contexts don't clip it. Mobile-friendly: 32px tap target. */
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: middle;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.info-tip:hover,
+.info-tip[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+/* Light-surface variant — for cards that sit on white backgrounds (Customer
+   Health, Customer Notes, etc.). Add class .info-tip.is-light next to the
+   base. */
+.info-tip.is-light {
+  color: var(--pc-text-muted, #475569);
+  background: var(--pc-bg, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+}
+.info-tip.is-light:hover,
+.info-tip.is-light[aria-expanded="true"] {
+  color: var(--pc-text, #0f172a);
+  background: #fff;
+  border-color: var(--pc-text-muted, #475569);
+}
+
+/* Popover lives at <body>; positioned by JS. */
+.info-tip-popover {
+  position: absolute;
+  z-index: 9999;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: #0f172a;
+  color: #f1f5f9;
+  font-size: 12.5px;
+  line-height: 1.55;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.5);
+  pointer-events: auto;
+}
+.info-tip-popover[hidden] { display: none; }
+@media (max-width: 480px) {
+  .info-tip-popover { max-width: calc(100vw - 32px); }
+}
+
+/* ==========================================================================
+   Pilot walkthrough modal (.pw-* shared across all signed-in staff pages)
+   ==========================================================================
+   Loaded by walkthrough.js. Auto-pops once per user (localStorage gate).
+   Dark glassy card mirroring the Pioneer Quality aesthetic; teal glow;
+   seven feature rows. Single dismiss action. */
+.pw-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw-root[hidden] { display: none; }
+.pw-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.65);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.pw-dialog {
+  position: relative;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: linear-gradient(160deg, #0f172a 0%, #111827 50%, #1e293b 100%);
+  color: #f1f5f9;
+  border-radius: 16px;
+  box-shadow: 0 28px 56px -20px rgba(2, 6, 23, 0.55);
+  isolation: isolate;
+}
+.pw-glow {
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 200%;
+  background: radial-gradient(closest-side, rgba(20, 184, 166, 0.4), transparent 70%);
+  filter: blur(28px);
+  z-index: 0;
+  pointer-events: none;
+}
+.pw-head {
+  position: relative;
+  z-index: 1;
+  padding: 22px 22px 8px;
+}
+.pw-eyebrow {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  margin-bottom: 6px;
+}
+.pw-title {
+  margin: 4px 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+.pw-sub {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.55;
+}
+.pw-list {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pw-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+.pw-item-icon { font-size: 20px; line-height: 1.2; flex-shrink: 0; }
+.pw-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pw-item-title { font-size: 13.5px; font-weight: 800; letter-spacing: 0.1px; }
+.pw-item-body  { font-size: 12px; color: rgba(255, 255, 255, 0.82); line-height: 1.5; }
+.pw-foot {
+  position: relative;
+  z-index: 1;
+  padding: 16px 22px 22px;
+  display: flex;
+  justify-content: flex-end;
+}
+.pw-close-btn {
+  appearance: none;
+  background: linear-gradient(180deg, #14b8a6 0%, #0f766e 100%);
+  color: #fff;
+  border: 1px solid #0f766e;
+  border-radius: 10px;
+  padding: 11px 22px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px -10px rgba(20, 184, 166, 0.55);
+}
+.pw-close-btn:hover { filter: brightness(1.05); }
+@media (max-width: 480px) {
+  .pw-title { font-size: 20px; }
+  .pw-head, .pw-foot { padding-left: 16px; padding-right: 16px; }
+  .pw-list { padding-left: 16px; padding-right: 16px; }
+}
+
+/* ====================================================================
+   Customer SOP renderer (public/customer-sop.js)
+   Renders the customers/{slug}.sop block: Quick Glance / Access &
+   Security (tap to reveal) / Critical Notes / Scope by Area /
+   Service Profile / Raw notes (admin only) / Footer.
+   ================================================================== */
+
+/* Status chips (also used by admin row badges via SOP: <label>) */
+.sop-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.sop-chip.is-info { background: #ecfeff; color: #155e75; border-color: #a5f3fc; }
+.sop-chip.is-warn { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.sop-chip.is-err  { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
+/* Generic SOP card */
+.sop-card {
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 10px;
+  background: #fff;
+}
+.sop-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sop-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-text, #111827);
+}
+.sop-card-sub {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  line-height: 1.5;
+}
+
+/* Bullet lists inside cards — short, scannable */
+.sop-bullets {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  list-style: disc outside;
+}
+.sop-bullets li {
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 2px 0;
+  color: var(--pc-text, #111827);
+  word-break: break-word;
+}
+
+/* Quick Glance — green/teal accent */
+.sop-card-quick {
+  border-left: 3px solid var(--pc-teal-500, #14b8a6);
+  background: var(--pc-teal-50, #ecfdf7);
+}
+.sop-card-quick .sop-card-title { color: var(--pc-teal-700, #0f766e); }
+
+/* Access & Security — amber accent + redact-on-tap */
+.sop-card-access {
+  border-left: 3px solid #b45309;
+  background: #fffbeb;
+}
+.sop-card-access .sop-card-title { color: #92400e; }
+.sop-access-details summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #92400e;
+  padding: 4px 0;
+}
+.sop-access-grid { display: grid; gap: 8px; margin-top: 8px; }
+.sop-access-row {
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+.sop-access-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #92400e;
+  margin-bottom: 2px;
+}
+.sop-bullets-redact li .sop-redact {
+  /* Background-color mask. Hover/tap to reveal. The text is in the
+     DOM (page is access-gated), so screen readers + clipboard work. */
+  background: #44403c;
+  color: transparent;
+  border-radius: 3px;
+  padding: 1px 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+.sop-bullets-redact li:hover .sop-redact,
+.sop-bullets-redact li:focus-within .sop-redact,
+.sop-bullets-redact li .sop-redact:hover,
+.sop-bullets-redact li .sop-redact:focus,
+.sop-bullets-redact li .sop-redact:active {
+  background: transparent;
+  color: var(--pc-text, #111827);
+  user-select: auto;
+}
+
+/* Critical Notes — color per block */
+.sop-card-critical { border-left: 3px solid #b91c1c; }
+.sop-critical-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.sop-critical-block {
+  padding: 8px 10px;
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 8px;
+  background: #fff;
+}
+.sop-critical-block h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-muted, #6b7280);
+}
+.sop-critical-block.is-dont   { background: #fee2e2; border-color: #fecaca; }
+.sop-critical-block.is-dont   h4 { color: #991b1b; }
+.sop-critical-block.is-must   { background: #ecfdf5; border-color: #a7f3d0; }
+.sop-critical-block.is-must   h4 { color: #064e3b; }
+.sop-critical-block.is-safety { background: #fffbeb; border-color: #fde68a; }
+.sop-critical-block.is-safety h4 { color: #92400e; }
+.sop-critical-block.is-pref   { background: #f5f3ff; border-color: #ddd6fe; }
+.sop-critical-block.is-pref   h4 { color: #5b21b6; }
+
+/* Scope by Area — collapsed details, one per section */
+.sop-card-sections .sop-sections { display: grid; gap: 6px; margin-top: 4px; }
+.sop-section {
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: #fff;
+}
+.sop-section summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.sop-section-title { font-weight: 600; color: var(--pc-text, #111827); }
+.sop-section-freq {
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--pc-bg, #f3f4f6);
+  color: var(--pc-text-muted, #6b7280);
+  border: 1px solid var(--pc-border, #e5e7eb);
+}
+.sop-section-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--pc-text-muted, #6b7280);
+}
+
+/* Service Profile */
+.sop-card-service .sop-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.sop-card-service h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-muted, #6b7280);
+}
+
+/* Raw notes (admin only) */
+.sop-card-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  padding: 4px 0;
+}
+.sop-raw {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  background: var(--pc-bg, #f3f4f6);
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.sop-footer {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+}
+.sop-empty {
+  padding: 12px;
+  background: var(--pc-bg, #f9fafb);
+  border: 1px dashed var(--pc-border, #e5e7eb);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--pc-text-muted, #6b7280);
+}
+
+/* ---------- Tech-view simple SOP (v1) ----------
+   Single collapsible "Customer SOP" block. Designed to be calm and
+   readable: regular body font, generous spacing, line-breaks
+   preserved. No section labels — the seed redacts the raw Deputy
+   notes and we render them as-is. */
+.sop-simple {
+  background: #fff;
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.sop-simple-head { margin-bottom: 10px; }
+.sop-simple-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-text, #111827);
+  letter-spacing: -0.01em;
+}
+.sop-simple-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pc-text-muted, #6b7280);
+}
+.sop-simple-toggle {
+  margin-top: 4px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--pc-teal-700, #0f766e);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color .15s ease;
+}
+.sop-simple-toggle:hover  { background: var(--pc-teal-800, #115e59); }
+.sop-simple-toggle:focus-visible {
+  outline: 3px solid var(--pc-teal-200, #99f6e4);
+  outline-offset: 2px;
+}
+.sop-simple-body {
+  margin-top: 12px;
+  background: var(--pc-bg, #f9fafb);
+  border: 1px solid var(--pc-border, #e5e7eb);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.sop-simple-text {
+  margin: 0;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--pc-text, #111827);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sop-simple-empty {
+  background: #fff;
+  border: 1px dashed var(--pc-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.sop-simple-empty .sop-simple-title { margin-bottom: 6px; }
+.sop-simple-empty-msg {
+  margin: 0;
+  font-size: 14px;
+  color: var(--pc-text-muted, #6b7280);
+}
+@media (max-width: 720px) {
+  .sop-simple { padding: 12px 14px; }
+  .sop-simple-body { padding: 12px 14px; }
+  .sop-simple-text { font-size: 14.5px; }
+}
+
+/* Inline preview used by Today's Work shift cards */
+.sop-inline-quick {
+  list-style: disc inside;
+  padding-left: 0;
+  margin: 4px 0 0;
+}
+.sop-inline-quick li {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--pc-text, #111827);
+  word-break: break-word;
+}
+.assign-card-sop-quick { border-left-color: var(--pc-teal-100, #ccfbf1); }
+.assign-card-notes-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.assign-card-sop-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pc-teal-700, #0f766e);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--pc-teal-100, #ccfbf1);
+}

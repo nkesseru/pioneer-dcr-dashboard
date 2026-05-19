@@ -1,0 +1,154 @@
+/* ====================================================================
+ * inspections-overrides.css — Phase 2 polish for /inspections.html ONLY.
+ *
+ * Layered on top of inspections.css. Scope is intentionally narrow:
+ * only targets the Inspection Hub view + the recent-cards list +
+ * empty messaging. The intake form (insp-intake-view) and its step
+ * cards are deliberately untouched — the inspector's flow is
+ * battle-tested and a re-skin there would be churn for no gain.
+ *
+ * Three jobs:
+ *   1. Rhythm + spacing for the new snapshot KPI strip beneath the
+ *      Pioneer Quality Score card.
+ *   2. Bridge legacy chip / score markers to the shared chip language:
+ *        • .insp-recent-attention-chip → .status-chip[data-state="attention"]
+ *      The `.insp-recent-score is-tone-*` badges stay as-is — they
+ *      are score readouts, not state chips, and the size + tone-band
+ *      treatment is intentional.
+ *   3. Bridge the legacy `.insp-recent-status.insp-recent-empty`
+ *      paragraph to the foundation .empty-state visual so the
+ *      "no inspections yet" copy reads the same as on /work + /admin.
+ *
+ * Nothing here changes selectors used outside /inspections.html.
+ * ================================================================== */
+
+/* ---------- Snapshot strip rhythm ---------- */
+.insp-hub-view > .insp-snapshot-strip {
+  margin: var(--space-3) 0 var(--space-5);
+}
+@media (max-width: 720px) {
+  /* ui-kpi.css drops to 2 columns at ≤600px; we step the same way
+     slightly earlier so a 720px tablet doesn't squeeze 4 narrow tiles. */
+  .insp-snapshot-strip { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ---------- Section header rhythm tighten ----------
+   .insp-step-head is the recurring icon + title + sub pattern used
+   inside hub cards (Recent Inspections, Archive) and inside intake
+   steps (Setup / Score each area / Overall). Light polish only —
+   tokenize spacing and tighten the title size so it reads as a
+   foundation .ui-section-header when stacked. */
+.insp-hub-view .insp-card .insp-step-head {
+  margin-bottom: var(--space-3);
+}
+.insp-hub-view .insp-card .insp-step-head .insp-step-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.insp-hub-view .insp-card .insp-step-head .insp-step-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+  margin-top: 2px;
+}
+
+/* ---------- Status chip bridge ----------
+   The "Attention" admin-quiet flag on inspection cards adopts the
+   foundation chip visual: rounded pill + leading dot + warm amber
+   palette. Reads identically to .status-chip[data-state="attention"]
+   on /work.html and /admin.html. */
+.insp-hub-view .insp-recent-attention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  margin-left: var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  background: var(--status-attention-soft);
+  color:      var(--status-attention-ink);
+  border: 1px solid transparent;
+  /* The legacy emoji ("🚩") is part of the text. Keep it; just
+     render the chip in the calmer foundation visual. */
+}
+.insp-hub-view .insp-recent-attention-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+/* ---------- Empty-state bridge ----------
+   The hub uses inline status paragraphs:
+     <div class="insp-recent-status insp-recent-empty">…</div>
+   Promote the *empty* variant to the foundation .empty-state shape
+   (dashed border, centered, calm emoji leader). Loading + error
+   states keep their existing treatment — they're transient. */
+.insp-hub-view .insp-recent-status.insp-recent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card-soft);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+.insp-hub-view .insp-recent-status.insp-recent-empty::before {
+  content: "🔭";
+  font-size: 24px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 2px;
+}
+.insp-hub-view .insp-recent-status.insp-recent-empty strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ---------- Archive "no matches" status calm ----------
+   The archive uses #insp-archive-status as a results readout. When
+   it carries the "No inspections match" sentence it reads as an
+   empty state; otherwise it's the count summary. We DON'T want to
+   render either as a dashed tile — they're inline result counters —
+   so keep typography aligned with the foundation muted text but
+   no shape change. */
+.insp-hub-view #insp-archive-status {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+  padding: var(--space-2) var(--space-1);
+}
+
+/* ---------- Quality card calmer rhythm ----------
+   The dark .insp-quality-card already matches the foundation
+   `.health-card` aesthetic visually (dark surface, restrained teal
+   accent). Two tiny polish nudges so it sits in the foundation
+   spacing system: tighten outer margin, align the score eyebrow
+   letter-spacing with .health-eyebrow. */
+.insp-hub-view > .insp-quality-card {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.insp-hub-view .insp-quality-eyebrow {
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+/* ---------- Mobile safety ---------- */
+@media (max-width: 600px) {
+  .insp-hub-view > .insp-snapshot-strip { margin: var(--space-3) 0; }
+  .insp-hub-view .insp-card .insp-step-head .insp-step-title { font-size: var(--text-md); }
+  /* Recent inspection rows already responsive — no change here. */
+}

@@ -1,0 +1,155 @@
+/* ====================================================================
+ * ui-empty-states.css — calm, operational empty-state blocks.
+ *
+ * Empty states are where the UI says "nothing to show" — and tone
+ * matters. PioneerOps empty states are warm and slightly human, never
+ * apologetic. The shape is the same across every page: a soft tile
+ * with a single emoji, a one-line title, and an optional sub-line.
+ *
+ * Markup contract:
+ *
+ *   <div class="empty-state">
+ *     <div class="empty-state-icon" aria-hidden="true">🎉</div>
+ *     <h3 class="empty-state-title">No issues reported in the last 30 days</h3>
+ *     <p class="empty-state-body">Solid run — we'll keep watching.</p>
+ *   </div>
+ *
+ * Tones (data-tone):
+ *   "positive"    — green-tinted, "nothing wrong" feel  (default)
+ *   "neutral"     — gray, "nothing yet" feel
+ *   "info"        — sky blue, "here's what to do next"
+ *
+ * Sizes:
+ *   default — fits inside a card body
+ *   .is-sm  — for tight list slots
+ *   .is-lg  — for hero-empty surfaces (e.g. a fresh tech with no
+ *             assigned customers)
+ * ================================================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card-soft);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+}
+/* Defensive: `display: flex` above outranks the user-agent
+   `[hidden] { display: none }` at equal specificity (author > UA).
+   This explicit rule restores the hidden-attribute behavior so JS
+   that toggles `el.hidden = true/false` works as expected.
+   Required for /supply-station.html's success card, /work.html's
+   filter-empty state, /tech.html section empties, etc. */
+.empty-state[hidden] { display: none; }
+.empty-state.is-sm {
+  padding: var(--space-4) var(--space-4);
+  gap: 6px;
+}
+.empty-state.is-lg {
+  padding: var(--space-9) var(--space-6);
+  gap: var(--space-3);
+}
+
+.empty-state-icon {
+  font-size: 28px;
+  line-height: 1;
+  /* Emoji renders slightly off-vertically in some fonts — tiny nudge. */
+  margin-bottom: 2px;
+}
+.empty-state.is-sm .empty-state-icon { font-size: 22px; }
+.empty-state.is-lg .empty-state-icon { font-size: 40px; }
+
+.empty-state-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-snug);
+}
+.empty-state.is-sm .empty-state-title { font-size: var(--text-sm); }
+.empty-state.is-lg .empty-state-title { font-size: var(--text-xl); }
+
+.empty-state-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-base);
+  max-width: 42ch;
+}
+
+.empty-state-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.empty-state-actions a,
+.empty-state-actions button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.empty-state-actions a:hover,
+.empty-state-actions button:hover { background: var(--accent-hover); }
+.empty-state-actions .is-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.empty-state-actions .is-secondary:hover {
+  background: var(--accent-soft);
+}
+
+/* ---------- Tones ---------- */
+.empty-state[data-tone="positive"] {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: var(--status-success-ink);
+}
+.empty-state[data-tone="positive"] .empty-state-title { color: var(--status-success-ink); }
+.empty-state[data-tone="positive"] .empty-state-body  { color: #065f46; }
+
+.empty-state[data-tone="info"] {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  color: var(--status-info-ink);
+}
+.empty-state[data-tone="info"] .empty-state-title { color: var(--status-info-ink); }
+.empty-state[data-tone="info"] .empty-state-body  { color: #075985; }
+
+.empty-state[data-tone="neutral"],
+.empty-state:not([data-tone]) {
+  /* default — matches base rule above; declared explicitly for clarity */
+}
+
+/* ---------- Inline / list-row variant ----------
+   When the empty state sits inside a list (e.g. "no recent DCRs"
+   under a heading), the dashed-border tile feels heavy. The inline
+   variant drops the border, keeps the text centered. */
+.empty-state.is-inline {
+  background: transparent;
+  border: none;
+  padding: var(--space-5) var(--space-3);
+}
+
+@media (max-width: 600px) {
+  .empty-state    { padding: var(--space-5) var(--space-4); }
+  .empty-state-title { font-size: var(--text-base); }
+}

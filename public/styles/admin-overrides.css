@@ -1,0 +1,236 @@
+/* ====================================================================
+ * admin-overrides.css — Phase 2 polish for /admin.html ONLY.
+ *
+ * Layered on top of admin.css. Scope is intentionally narrow: only
+ * targets the new .admin-ops-overview block + existing chips / empty
+ * states so the rest of the admin layout is unaffected. Tokens come
+ * from ui-tokens.css.
+ *
+ * Three jobs:
+ *   1. Rhythm + spacing for the new ops overview block (.health-card
+ *      + global search + .kpi-grid sit at the top of #auth-content
+ *      directly above the tabs nav).
+ *   2. Bridge legacy admin chips (.badge, .admin-status admin-empty)
+ *      to the shared .status-chip / .empty-state visual language so
+ *      pages adopt foundation styling without an HTML rewrite.
+ *   3. Polished section header rhythm so admin panels read as
+ *      structured modules, not floating cards.
+ *
+ * Nothing here changes selectors used outside /admin.html.
+ * ================================================================== */
+
+/* ---------- Ops overview rhythm ---------- */
+.admin-ops-overview {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+  /* health card + search stack on the left, kpi-grid takes the right
+     on wide screens. Below 960px the two columns stack so the strip
+     keeps its full-width 3-col grid. */
+}
+@media (max-width: 960px) {
+  .admin-ops-overview { grid-template-columns: 1fr; }
+}
+.admin-ops-overview > .admin-day-health {
+  grid-column: 1 / 2;
+}
+.admin-ops-overview > .admin-global-search {
+  grid-column: 1 / 2;
+}
+.admin-ops-overview > .admin-kpi-strip {
+  grid-column: 2 / 3;
+  align-self: start;
+}
+@media (max-width: 960px) {
+  .admin-ops-overview > .admin-day-health,
+  .admin-ops-overview > .admin-global-search,
+  .admin-ops-overview > .admin-kpi-strip {
+    grid-column: 1 / -1;
+  }
+}
+.admin-day-health { /* dark .health-card already styled by ui-cards */ }
+.admin-kpi-strip  { /* .kpi-grid already styled by ui-kpi */ }
+
+/* On very narrow screens, drop the kpi-grid from 3 columns to 2 so
+   the value tiles stay readable. ui-kpi.css already handles ≤600px;
+   this is a softer breakpoint to keep the tiles square-ish at tablet. */
+@media (max-width: 720px) {
+  .admin-kpi-strip { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ---------- Global search ---------- */
+.admin-global-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
+}
+.admin-global-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.admin-global-search-icon {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.admin-global-search-input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--text-strong);
+  padding: 0;
+}
+.admin-global-search-input::placeholder { color: var(--text-subtle); }
+.admin-global-search-input:disabled { color: var(--text-subtle); cursor: not-allowed; }
+.admin-global-search-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+@media (max-width: 520px) {
+  .admin-global-search-hint { display: none; }
+}
+
+/* ---------- Section header polish ----------
+   Tighten the panel header rhythm so each admin panel reads as a
+   structured operational module. .panel-header / .panel-sub already
+   exist in admin.css — we just clean the spacing without rewriting. */
+.admin-panel > .panel-header {
+  margin-bottom: var(--space-3);
+}
+.admin-panel > .panel-header h2.card-title,
+.admin-panel > .panel-header .card-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.admin-panel > .panel-header .panel-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+  margin-top: 2px;
+}
+
+/* ---------- Status chip bridge for legacy .badge ----------
+   admin.js emits status pills using `<span class="badge is-on">` /
+   `is-off` / `is-warn`. The .status-chip selector from ui-chips.css
+   uses a `data-state` attribute, which legacy markup doesn't carry.
+   Rather than rewrite every emitter, we elevate the legacy classes
+   to the new visual language by piggybacking on the cascade.
+
+   IMPORTANT: admin.css already styles .badge with its own ruleset.
+   This bridge only ADDS rounded-pill polish, calmer colors, and
+   the small leading dot — without removing any existing rules. */
+.admin-panel .badge,
+.admin-modal .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;          /* legacy uppercase → calm Title Case */
+  font-size: var(--text-xs);
+  padding: 3px 10px 3px 8px;
+  border: 1px solid transparent;
+}
+.admin-panel .badge::before,
+.admin-modal .badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.admin-panel .badge.is-on,
+.admin-modal .badge.is-on {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+.admin-panel .badge.is-off,
+.admin-modal .badge.is-off {
+  background: var(--surface-card-soft);
+  color: var(--text-subtle);
+  border-color: var(--border-soft);
+}
+.admin-panel .badge.is-off::before { opacity: 0.35; }
+.admin-panel .badge.is-warn,
+.admin-modal .badge.is-warn {
+  background: var(--status-attention-soft);
+  color:      var(--status-attention-ink);
+}
+
+/* ---------- Empty state bridge for .admin-status admin-empty ----------
+   admin.js renders empty panels with:
+     <div class="admin-status admin-empty">No customers in Firestore yet.</div>
+   Promote them visually to the foundation .empty-state shape so
+   admins see the same calm tile they see on /work.html and /tech.html. */
+.admin-panel .admin-status.admin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card-soft);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+.admin-panel .admin-status.admin-empty::before {
+  /* Calm emoji leader. .admin-empty has no icon DOM, so we add one
+     via ::before. Matches the foundation .empty-state visual. */
+  content: "🌿";
+  font-size: 24px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Loading + error stay where admin.css put them (they're temporary
+   states; not part of the calm-empty visual). */
+
+/* ---------- KPI strip + tab badge mobile sanity ----------
+   At narrow widths the existing admin-tab-badge counts already wrap
+   under the tab labels — keep that working. The new .kpi-card data-
+   tone rails should remain visible even when packed tight. */
+@media (max-width: 600px) {
+  .admin-ops-overview { gap: var(--space-3); }
+  .admin-day-health   { padding: var(--space-5); }
+  .admin-day-health .health-title { font-size: var(--text-lg); }
+}
+
+/* ---------- Tightly-coupled tab-badge tone parity ----------
+   The legacy .admin-tab-badge stays where it is (next to the tab
+   label inside the .admin-tab button). Add a subtle parity rule so
+   the badge font and rounding match the new chip language. Pure
+   visual; no markup or JS change. */
+.admin-tab .admin-tab-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0;
+  border-radius: var(--radius-pill);
+}

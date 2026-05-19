@@ -1,0 +1,245 @@
+/* ====================================================================
+ * tech-overrides.css — Phase 2 polish for /tech.html ONLY.
+ *
+ * Layered on top of tech.css. Scope is intentionally narrow: only
+ * promotes the two dark "headline" cards (.tech-quality-tile +
+ * .tech-health-card) to the foundation .health-card visual language,
+ * and bridges legacy empty / chip surfaces to the shared chip +
+ * empty-state language.
+ *
+ * The audit ranked /tech.html at ★★★★ — already partially aligned.
+ * No new sections, no markup rewrites, no JS changes. Existing IDs
+ * and tech.js painters (renderQualityTile, renderHealthCard, etc.)
+ * keep working unchanged.
+ *
+ * Five jobs:
+ *   1. Bring .tech-quality-tile and .tech-health-card up to the
+ *      foundation .health-card radius / accent rail / spacing.
+ *   2. Promote .tech-empty paragraphs to the .empty-state shape so
+ *      "No supply requests" / "No issues" / etc. read the same as
+ *      empties on /work, /admin, /inspections.
+ *   3. Normalize .tech-badge.is-on / is-off / is-archived / is-recovery
+ *      to the foundation .status-chip visual (rounded pill + dot).
+ *   4. Tighten .tech-section-head typography to foundation tokens
+ *      (same nudge done on /admin and /inspections section heads).
+ *   5. Wire data-tone → foundation accent colors on both cards so
+ *      the existing tone-1..5 scale produces the calmer foundation
+ *      palette without touching tech.js.
+ *
+ * Nothing here changes selectors used outside /tech.html.
+ * ================================================================== */
+
+/* ---------- Snapshot card outer rhythm ----------
+   .tech-snapshot already uses .card.tech-snapshot — tokenize the
+   inner spacing so the snapshot reads as a foundation surface. */
+.tech-snapshot > .tech-snapshot-head { margin-bottom: var(--space-3); }
+
+/* ---------- Quality tile → foundation health-card visual ----------
+   The tile is the customer's quality score headline. Bump radius,
+   align padding scale, add the foundation left-accent rail driven
+   by [data-tone]. Keep the existing glow + value typography — they
+   are the page's signature element and the audit specifically
+   called them already on-brand. */
+.tech-quality-tile {
+  /* Match foundation .health-card radius for visual parity with /work
+     and /admin. Existing 14px gets bumped to --radius-2xl (20px). */
+  border-radius: var(--radius-2xl);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  /* Soften the inner shadow for a calmer feel. */
+  box-shadow: var(--shadow-card);
+}
+.tech-quality-tile::before {
+  /* 4-px left accent rail driven by the existing tone scale. Maps
+     to foundation status colors so the bar reads the same as
+     .health-card[data-status="…"] rails on /work and /admin. */
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
+  background: var(--status-success);
+  z-index: 2;
+}
+.tech-quality-tile[data-tone="tone-1"]::before { background: var(--status-critical); }
+.tech-quality-tile[data-tone="tone-2"]::before { background: var(--status-attention); }
+.tech-quality-tile[data-tone="tone-3"]::before { background: var(--status-attention); }
+.tech-quality-tile[data-tone="tone-4"]::before { background: var(--status-success); }
+.tech-quality-tile[data-tone="tone-5"]::before { background: var(--status-success); }
+
+.tech-quality-eyebrow {
+  /* Foundation eyebrow tracking — same as .health-eyebrow on /work. */
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+/* ---------- Health card → foundation health-card visual ----------
+   The customer health card is already conceptually a foundation
+   .health-card — calm surface, score + label + checklist. Token-
+   align the radius and accent rail. */
+.tech-health-card {
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+}
+/* Replace the legacy 4-px solid border-left rail with status tokens
+   so it matches the rest of the platform. */
+.tech-health-card[data-tone="tone-1"] { border-left-color: var(--status-critical); }
+.tech-health-card[data-tone="tone-2"] { border-left-color: var(--status-attention); }
+.tech-health-card[data-tone="tone-3"] { border-left-color: var(--status-attention); }
+.tech-health-card[data-tone="tone-4"] { border-left-color: var(--status-success); }
+.tech-health-card[data-tone="tone-5"] { border-left-color: var(--status-success); }
+
+.tech-health-eyebrow {
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+/* The score number itself reads as a kpi-value. Token-align without
+   changing the size (mobile rules in tech.css still apply). */
+.tech-health-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Section head rhythm ----------
+   .tech-section-head is the recurring "h2 + sub" header for every
+   tech section card. Tokenize spacing + typography so /tech reads
+   the same as /admin and /inspections section heads. */
+.tech-section-head {
+  margin-bottom: var(--space-3);
+}
+.tech-section-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.tech-section-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+/* ---------- Empty state bridge ----------
+   Promote .tech-empty paragraphs (no notes / no supply / no issues /
+   no feedback / no inspections) to the foundation .empty-state shape:
+   flex-column with a calm leading emoji + tokenized spacing. */
+.tech-section .tech-empty,
+.tech-snapshot .tech-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card-soft);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+.tech-section .tech-empty::before,
+.tech-snapshot .tech-empty::before {
+  /* A single calm emoji leader. Per-section IDs let us tint the
+     leader emoji to match the section subject without rewriting
+     copy. */
+  content: "🌿";
+  font-size: 24px;
+  line-height: 1;
+  display: block;
+  margin-bottom: 2px;
+}
+#tech-notes-empty::before        { content: "📌"; }
+#tech-supply-empty::before       { content: "🧴"; }
+#tech-issues-empty::before       { content: "🌿"; }
+#tech-feedback-empty::before     { content: "🌟"; }
+#tech-recent-insp-empty::before  { content: "🔭"; }
+
+/* ---------- Status chip bridge ----------
+   The snapshot badges + DCR / archive / recovery flags emit
+   `<span class="tech-badge is-on|is-off|is-archived|is-recovery">`.
+   Promote them to the foundation chip visual (rounded pill, leading
+   dot, calm tokens, Title Case) so they read the same as chips on
+   /work and /admin. */
+.tech-snapshot-badges .tech-badge,
+.tech-section .tech-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  border: 1px solid transparent;
+}
+.tech-snapshot-badges .tech-badge::before,
+.tech-section .tech-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.tech-snapshot-badges .tech-badge.is-on,
+.tech-section .tech-badge.is-on {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+.tech-snapshot-badges .tech-badge.is-off,
+.tech-section .tech-badge.is-off {
+  background: var(--surface-card-soft);
+  color: var(--text-subtle);
+  border-color: var(--border-soft);
+}
+.tech-snapshot-badges .tech-badge.is-off::before,
+.tech-section .tech-badge.is-off::before { opacity: 0.35; }
+.tech-snapshot-badges .tech-badge.is-archived,
+.tech-section .tech-badge.is-archived {
+  background: var(--surface-card-soft);
+  color: var(--text-muted);
+  border-color: var(--border-soft);
+}
+.tech-snapshot-badges .tech-badge.is-recovery,
+.tech-section .tech-badge.is-recovery {
+  background: var(--status-critical-soft);
+  color:      var(--status-critical-ink);
+  border-color: transparent;
+}
+
+/* ---------- Health-card signals list (foundation checklist parity) ----
+   tech.js writes signals as <li> with class is-good for ✓ items and
+   plain <li> for "watch" items. Promote both to the foundation
+   .health-checklist dot leader so the list reads the same as the
+   Day Health checklist on /work and /admin. */
+.tech-health-signals { padding-left: 0; list-style: none; margin: 0; }
+.tech-health-signals li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+.tech-health-signals li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--status-attention);   /* default: watch */
+  flex-shrink: 0;
+}
+.tech-health-signals li.tech-health-signal-good::before {
+  background: var(--status-success);
+  content: "";        /* override the legacy "✓" character set by tech.css */
+}
+
+/* ---------- Mobile safety ---------- */
+@media (max-width: 600px) {
+  .tech-quality-tile { padding: var(--space-4) var(--space-5) var(--space-3); }
+  .tech-health-card  { padding: var(--space-4) var(--space-5); }
+  .tech-section .tech-empty,
+  .tech-snapshot .tech-empty { padding: var(--space-5) var(--space-4); }
+}

@@ -1,0 +1,184 @@
+/* ====================================================================
+ * ui-tokens.css — PioneerOps shared design tokens.
+ *
+ * Foundation layer. Loaded BEFORE every other stylesheet in the
+ * cascade so other files can `var(--space-3)` etc. with confidence.
+ *
+ * Values alias to the pre-existing `--pc-*` palette where one exists
+ * — so the new token surface is a thin re-naming layer, not a second
+ * color world. If a token's `--pc-*` source moves, every UI
+ * component that uses the new name moves with it automatically.
+ *
+ * Design language: calm operational software. OSHA meets Apple.
+ *   • Restrained teal accents (already in --pc-teal-*)
+ *   • Subtle borders, soft shadows
+ *   • Rounded cards, plain dark text on near-white surfaces
+ *   • Status colors are warm, not alarming (success green, warm amber,
+ *     measured red — never strobing red-alert).
+ *
+ * Cross-page consumers should reference these tokens (not raw hex)
+ * so the next palette refresh is one-file deep.
+ * ================================================================== */
+:root {
+  /* ---------- Spacing (4-px base, geometric) ---------- */
+  /* Use these everywhere a px gap/margin/padding is needed. The 4-px
+     base keeps math tidy at typical content widths and matches the
+     existing card paddings already in use across pages. */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  32px;
+  --space-8:  40px;
+  --space-9:  48px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+
+  /* ---------- Border radius ---------- */
+  --radius-sm:    6px;     /* chips, small buttons */
+  --radius-md:    8px;     /* inputs, inline blocks */
+  --radius-lg:    12px;    /* default card corner */
+  --radius-xl:    16px;    /* hero cards, modals */
+  --radius-2xl:   20px;    /* dark health cards */
+  --radius-pill:  999px;   /* status chips, nav pills */
+
+  /* ---------- Shadows ---------- */
+  /* "Soft" is the everyday card. "Lift" is hover/active. "Modal"
+     is a real overlay. Built on rgba(15, 23, 42, …) so they sit
+     calmly on the gray-50 page background without reading as
+     drop shadows on white-on-white. */
+  --shadow-soft:  0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-card:  0 2px 4px rgba(15, 23, 42, 0.05), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
+  --shadow-lift:  0 4px 8px rgba(15, 23, 42, 0.06), 0 8px 20px -4px rgba(15, 23, 42, 0.10);
+  --shadow-modal: 0 24px 48px -12px rgba(2, 6, 23, 0.35);
+
+  /* Direct alias for legacy --pc-shadow-* if any code still queries them.
+     Keep aliases at the same intent strength so nothing visually shifts. */
+  /* (Existing pages can keep using --pc-shadow-md etc. — these don't
+      replace, they coexist.) */
+
+  /* ---------- Surfaces ---------- */
+  /* Surfaces are what cards/strips sit on. `page` is the outer
+     background (typically gray-50). `card` is what cards are. `tint`
+     is the slightly-warmer card for KPI strips. `dark` is the
+     operational headline surface ("OSHA meets Apple"). */
+  --surface-page:      var(--pc-bg, #f8fafc);
+  --surface-page-2:    #f1f5f9;
+  --surface-card:      var(--pc-card, #ffffff);
+  --surface-card-tint: var(--pc-card-tint, #fdfdfd);
+  --surface-card-soft: #f9fafb;
+  --surface-dark:      #0f172a;       /* operational dark card */
+  --surface-dark-2:    #1e293b;       /* nested blocks inside dark card */
+  --surface-overlay:   rgba(2, 6, 23, 0.72);
+
+  /* ---------- Borders ---------- */
+  --border-subtle: var(--pc-border, #e5e7eb);
+  --border-soft:   var(--pc-border, #e5e7eb);
+  --border-strong: var(--pc-border-strong, #cbd5e1);
+  --border-dark:   #1e293b;
+  --border-focus:  var(--pc-teal-200, #99f6e4);
+
+  /* ---------- Text ---------- */
+  --text-strong:   var(--pc-ink, #0f172a);
+  --text:          var(--pc-text, #111827);
+  --text-muted:    var(--pc-text-muted, #6b7280);
+  --text-subtle:   var(--pc-text-subtle, #94a3b8);
+  --text-inverse:  #f1f5f9;
+  --text-on-dark:  #f8fafc;
+  --text-on-dark-muted: #94a3b8;
+
+  /* ---------- Accent (teal-restrained) ---------- */
+  --accent:        var(--pc-teal-700, #0d9488);
+  --accent-hover:  var(--pc-teal, #115e59);
+  --accent-soft:   var(--pc-teal-100, #ccfbf1);
+  --accent-ink:    var(--pc-teal-700, #0f766e);
+  --accent-glow:   #5eead4;
+
+  /* ---------- Status colors ----------
+     Each status has THREE forms:
+       --status-X        — the saturated color (text/icon on white)
+       --status-X-soft   — calm fill behind chips/empty-states
+       --status-X-ink    — readable text on the soft fill
+     The intent is: never strobe. Critical reads as "real, but measured." */
+  --status-healthy:        #047857;
+  --status-healthy-soft:   #d1fae5;
+  --status-healthy-ink:    #065f46;
+
+  --status-success:        var(--status-healthy);
+  --status-success-soft:   var(--status-healthy-soft);
+  --status-success-ink:    var(--status-healthy-ink);
+
+  --status-attention:      #b45309;     /* warm amber, not orange-red */
+  --status-attention-soft: #fef3c7;
+  --status-attention-ink:  #92400e;
+
+  --status-warning:        var(--status-attention);
+  --status-warning-soft:   var(--status-attention-soft);
+  --status-warning-ink:    var(--status-attention-ink);
+
+  --status-critical:       #b91c1c;     /* measured red, not 0xff0000 */
+  --status-critical-soft:  #fee2e2;
+  --status-critical-ink:   #991b1b;
+
+  --status-info:           #0369a1;
+  --status-info-soft:      #e0f2fe;
+  --status-info-ink:       #0c4a6e;
+
+  --status-neutral:        #475569;
+  --status-neutral-soft:   #f1f5f9;
+  --status-neutral-ink:    #334155;
+
+  --status-progress:       #92400e;     /* "in progress" reads as amber */
+  --status-progress-soft:  #fef3c7;
+  --status-progress-ink:   #92400e;
+
+  /* ---------- Typography hierarchy ---------- */
+  /* Sizes are deliberately conservative — operational software
+     should read at fast-scan distance. Use --text-* in components. */
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                  Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs:   11px;
+  --text-sm:   12.5px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   17px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  30px;
+  --text-4xl:  38px;
+  --text-5xl:  48px;
+
+  --leading-tight: 1.25;
+  --leading-snug:  1.4;
+  --leading-base:  1.55;
+  --leading-loose: 1.7;
+
+  --tracking-tight: -0.01em;
+  --tracking-eyebrow: 0.6px;
+  --tracking-label:   1px;
+
+  /* ---------- Card padding ---------- */
+  /* Two scales — default for content cards, compact for KPI tiles
+     and dense lists. Pages should prefer these tokens over hand-
+     rolled padding values. */
+  --card-pad:           var(--space-5) var(--space-6);
+  --card-pad-compact:   var(--space-3) var(--space-4);
+  --card-pad-cozy:      var(--space-4) var(--space-5);
+  --card-gap:           var(--space-3);
+  --section-gap:        var(--space-7);
+
+  /* ---------- Motion ---------- */
+  --motion-fast:    120ms;
+  --motion-base:    180ms;
+  --motion-slow:    240ms;
+  --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:    cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ---------- Focus ring (a11y, keyboard) ---------- */
+  --focus-ring: 0 0 0 3px var(--border-focus);
+}

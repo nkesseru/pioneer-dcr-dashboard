@@ -1,0 +1,197 @@
+/* ====================================================================
+ * work-overrides.css — Phase 2 polish for /work.html ONLY.
+ *
+ * Layered on top of styles.css. Scope is intentionally narrow: only
+ * targets the Today's Work section so the rest of the app is
+ * unaffected. Pulls tokens from ui-tokens.css.
+ *
+ * Three jobs:
+ *   1. KPI strip / Day Health card spacing inside the Today's Work
+ *      section (the cards themselves are already styled by ui-kpi /
+ *      ui-cards; this file just sizes the gaps around them).
+ *   2. Filter row — pill buttons with a count badge, matching the
+ *      .status-chip visual language.
+ *   3. Shift card polish — left-edge status stripe driven by the
+ *      existing `.work-card.is-state-*` modifier, and the small
+ *      top-right tech chip used in admin-preview mode.
+ *
+ * Nothing here overrides selectors used outside /work.html.
+ * ================================================================== */
+
+/* ---------- Section rhythm inside the work card ---------- */
+.work-page-section .team-hub-section-head { margin-bottom: var(--space-3); }
+.work-page-section > .work-kpi-strip      { margin: var(--space-3) 0; }
+.work-page-section > .work-day-health     { margin: var(--space-3) 0 var(--space-4); }
+.work-page-section > .work-filter         { margin: 0 0 var(--space-3); }
+
+/* ---------- Filter row ---------- */
+.work-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1);
+  border-bottom: 1px solid var(--border-soft);
+}
+.work-filter-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+}
+.work-filter-btn:hover {
+  background: var(--surface-card-soft);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.work-filter-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.work-filter-btn.is-active {
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: var(--text-inverse);
+}
+.work-filter-btn.is-active:hover { background: var(--text-strong); }
+
+.work-filter-count {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(15, 23, 42, 0.06);
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 18px;
+}
+.work-filter-btn.is-active .work-filter-count {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* ---------- Shift card left-edge status stripe ----------
+   Reuses the existing `.is-state-*` modifier that today-work.js
+   already paints on every `.work-card`. The stripe replaces the
+   ambiguous "what state am I in?" by-color cue with a calm 4-px
+   rail in the shared status palette. */
+.assign-card.work-card {
+  position: relative;
+  /* Add interior left padding so the stripe doesn't crowd content.
+     Existing styles.css gives `.assign-card` a base padding; this
+     scoped rule only nudges the left side. */
+  padding-left: calc(var(--space-5) + 4px);
+}
+.assign-card.work-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
+  background: var(--status-neutral);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.assign-card.work-card.is-state-not_started::before  { background: var(--status-neutral); }
+.assign-card.work-card.is-state-working::before      { background: var(--status-info); }
+.assign-card.work-card.is-state-needs_finish::before { background: var(--status-attention); }
+.assign-card.work-card.is-state-finished::before     { background: var(--status-success); }
+
+/* ---------- Status chip bridge ----------
+   today-work.js emits both classes on shift status chips:
+     <span class="status-chip assign-chip is-progress" data-state="…">
+   Why dual class: the JS swap is in flight, and any external CSS (an
+   admin theme, a print stylesheet, etc.) that targeted the legacy
+   `.assign-chip` selector still has a hook.
+
+   The cascade tricky bit: styles.css loads AFTER ui-chips.css and
+   carries `.assign-chip.is-progress` rules whose specificity equals
+   `.status-chip[data-state=...]` — so the legacy rules win by
+   later-in-cascade. The block below forces the new visual back on top
+   by raising specificity to (0,2,1) per state-specific rule. */
+.assign-card .assign-chip.status-chip {
+  text-transform: none;            /* legacy was uppercase; new is calm Title Case */
+  letter-spacing: 0.2px;
+  padding: 3px 10px 3px 8px;
+  font-size: var(--text-xs);
+  border: 1px solid transparent;
+}
+.assign-card .status-chip[data-state="completed"] {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+.assign-card .status-chip[data-state="in-progress"] {
+  background: var(--status-progress-soft);
+  color:      var(--status-progress-ink);
+}
+.assign-card .status-chip[data-state="attention"] {
+  background: var(--status-attention-soft);
+  color:      var(--status-attention-ink);
+}
+.assign-card .status-chip[data-state="not-started"] {
+  background: var(--status-neutral-soft);
+  color:      var(--status-neutral-ink);
+}
+
+/* ---------- Top-right tech identity chip (admin-preview only) ---------- */
+.assign-card-tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 4px;
+  background: var(--surface-card-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+  max-width: 220px;
+  overflow: hidden;
+}
+.assign-card-tech-chip-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.assign-card-tech-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* The card header has a customer block on the left + status chip on
+   the right. Add room for the tech chip by allowing the right-side
+   group to wrap on narrow widths. */
+.assign-card .assign-card-head {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+@media (max-width: 520px) {
+  .assign-card-tech-chip { max-width: 140px; }
+}

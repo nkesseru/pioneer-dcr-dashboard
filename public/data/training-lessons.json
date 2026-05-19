@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-18",
+  "lessons": [
+    {
+      "id": "A1",
+      "title": "Pioneer Safety Promise",
+      "category": "Foundation",
+      "estimatedMinutes": 5,
+      "summary": "Pioneer's commitment to a safe day for every tech, every shift. Read this first.",
+      "sections": [
+        {
+          "heading": "Why this lesson exists",
+          "body": "Cleaning sites are real workplaces with real hazards: wet floors, electrical equipment, sharp objects, chemicals, and unfamiliar building layouts. The Pioneer Safety Promise is the shared agreement that lets you stop work, ask for help, or call the office whenever something feels off — without fear of pushback."
+        },
+        {
+          "heading": "Our promise to you",
+          "body": "1. You have authority to stop any task that looks unsafe.\n2. You will never be punished for refusing dangerous work.\n3. If you get hurt, report it the same shift — we will help, not blame.\n4. PPE we require is PPE we provide. If you're missing gloves, masks, or eye protection, tell the office and we'll deliver.\n5. We tell the truth about hazards. If a site has a problem, you'll hear about it before you walk in."
+        },
+        {
+          "heading": "Your promise back",
+          "body": "1. Use the PPE the lesson tells you to use.\n2. Tell us when something at a site changes (new chemicals, broken floors, alarm changes).\n3. Don't take shortcuts that put yourself or a teammate at risk.\n4. If you see another tech doing something unsafe, say something — kindly. We coach, we don't shame."
+        }
+      ],
+      "quiz": [
+        {
+          "q": "If a task feels unsafe, what should you do?",
+          "options": [
+            "Finish it as fast as possible and move on",
+            "Stop, and call the office before continuing",
+            "Wait until your next shift to mention it"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "If you don't have the PPE a lesson requires, who provides it?",
+          "options": [
+            "You buy it yourself",
+            "The customer",
+            "Pioneer provides it — tell the office"
+          ],
+          "answer": 2
+        }
+      ],
+      "acknowledgmentText": "I have read the Pioneer Safety Promise. I understand I have authority to stop unsafe work, and I will report hazards, injuries, and missing PPE to the office the same shift."
+    },
+    {
+      "id": "C1",
+      "title": "Lift, Bend, Move",
+      "category": "Body Mechanics",
+      "estimatedMinutes": 6,
+      "summary": "How to lift, carry, and move equipment without injuring your back, knees, or shoulders.",
+      "sections": [
+        {
+          "heading": "The two-rule lift",
+          "body": "1. Test the weight first by tipping a corner. If you can't easily tip it, get help or split it.\n2. Lift with your legs, not your back: feet shoulder-width, squat down, keep the load close to your body, stand up by pushing the floor away with your legs."
+        },
+        {
+          "heading": "Above shoulder, below knee",
+          "body": "Lifts above your shoulders and below your knees are where most injuries happen. For above-shoulder work (ceiling fans, high shelves), use a step stool — never stretch on tiptoes. For below-knee lifts, squat — don't bend at the waist."
+        },
+        {
+          "heading": "Carrying loads",
+          "body": "Keep the load close to your belt-line. Don't twist while carrying — turn with your feet. For long carries (mop buckets, vacuums up stairs), take breaks and switch hands."
+        },
+        {
+          "heading": "When to ask for help",
+          "body": "Anything over 50 lbs. Anything awkward — long ladders, large mop buckets full of water, bagged trash that's heavier than expected. If it takes two hands to control the load, it probably takes two people to lift it safely."
+        }
+      ],
+      "quiz": [
+        {
+          "q": "Where do most lifting injuries happen?",
+          "options": [
+            "Lifts between knee and shoulder height",
+            "Lifts above your shoulders or below your knees",
+            "Lifts of objects under 10 lbs"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "You need to lift something that feels heavier than expected. What's the right first move?",
+          "options": [
+            "Power through — you're already in position",
+            "Tip a corner to test the weight, then split or get help if needed",
+            "Lift fast so your back is under load for less time"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "While carrying a mop bucket you need to face the other way. What should you do?",
+          "options": [
+            "Twist at the waist — it's faster",
+            "Turn with your feet, keep your hips and shoulders aligned",
+            "Set the bucket down only if it's spilling"
+          ],
+          "answer": 1
+        }
+      ],
+      "acknowledgmentText": "I have read Lift, Bend, Move. I will test loads before lifting, use my legs not my back, avoid twisting while carrying, and ask for help on anything over 50 lbs or awkward."
+    },
+    {
+      "id": "NEW-1",
+      "title": "Bloodborne Pathogens",
+      "category": "Biohazard",
+      "estimatedMinutes": 8,
+      "summary": "What to do — and not do — if you encounter blood, body fluids, or sharps on a cleaning site.",
+      "sections": [
+        {
+          "heading": "Treat all body fluids as infectious",
+          "body": "Blood, vomit, urine, feces, and any unknown body fluid must be treated as potentially infectious. You cannot tell by sight whether a fluid carries HIV, Hepatitis B, Hepatitis C, or another bloodborne pathogen. Always assume yes."
+        },
+        {
+          "heading": "Stop and call the office first",
+          "body": "Before cleaning ANY visible blood or body fluid spill, call the office. We may need to dispatch a specially-equipped tech, notify the customer, or document the incident for our biohazard log. Cleaning blood is not a standard part of nightly service unless it's been specifically scoped for that site."
+        },
+        {
+          "heading": "If you must clean — required PPE",
+          "body": "Disposable nitrile gloves (double-glove for larger spills), splash-resistant safety glasses, and a fluid-resistant mask. If the spill is on porous material (carpet, fabric), call the office; that often needs replacement, not cleaning."
+        },
+        {
+          "heading": "Sharps — never bare hands",
+          "body": "Needles, broken glass, razor blades: never pick up with bare hands or fingers. Use a dustpan and broom, or tongs. Place in a rigid puncture-proof container (sharps container, hard plastic bottle). Tape the lid shut. Tell the office where it is. Do not put sharps in regular trash."
+        },
+        {
+          "heading": "If you get exposed",
+          "body": "Skin contact: wash immediately with soap and water for at least 15 seconds. Eye / mouth splash: flush with water for 15 minutes. Needlestick or cut from a contaminated sharp: wash, then call the office immediately — we will take you to a medical provider for evaluation. Document everything: what happened, when, where, what fluid, what was used to clean it up."
+        }
+      ],
+      "quiz": [
+        {
+          "q": "You walk into a customer's bathroom and there's blood on the floor. What's your first step?",
+          "options": [
+            "Put on gloves and clean it up so you can stay on schedule",
+            "Stop, do not touch it, and call the office before doing anything",
+            "Cover it with paper towels and move on"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "You find a used needle on the floor of an exam room. What do you do?",
+          "options": [
+            "Pick it up carefully with gloved fingers and put it in the trash",
+            "Use a dustpan and broom to move it into a rigid puncture-proof container, then call the office",
+            "Leave it and warn the next shift"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "You got splashed in the eye while cleaning up a body-fluid spill. What's correct?",
+          "options": [
+            "Rub it off with a paper towel and finish the shift",
+            "Flush your eye with water for 15 minutes and call the office for medical evaluation",
+            "Wait until you get home to rinse it"
+          ],
+          "answer": 1
+        },
+        {
+          "q": "Can you tell whether a body fluid is infectious by looking at it?",
+          "options": [
+            "Yes, if it looks fresh it's safe",
+            "No — always treat all body fluids as potentially infectious",
+            "Only blood is infectious; other fluids are fine"
+          ],
+          "answer": 1
+        }
+      ],
+      "acknowledgmentText": "I have read Bloodborne Pathogens. I will treat all body fluids as infectious, call the office before cleaning any blood or sharps, use the required PPE, and report any exposure to the office immediately for medical follow-up."
+    }
+  ]
+}

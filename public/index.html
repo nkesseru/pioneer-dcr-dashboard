@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b3d2e" />
+  <title>Pioneer Commercial Cleaning — Daily Cleaning Report</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS).
+       New `.ui-*` / `.kpi-*` / `.health-*` / `.status-chip` / `.empty-state`
+       classes live in /styles/. Existing classes in styles.css and
+       page CSS are untouched; pages adopt the new namespace gradually. -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/index-overrides.css" />
+
+  <!-- LottieFiles web component — drives the success-screen fist-bump.
+       Loads async during form fill so it's ready by the time submit succeeds.
+       If unavailable (offline / ad blocker / CDN miss), the success card
+       falls back to an animated SVG check via the `:not(:defined)` CSS rule. -->
+  <script async src="https://unpkg.com/@lottiefiles/lottie-player@2.0.8/dist/lottie-player.js"></script>
+</head>
+<body>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <!-- Vector mountain mark — shown only if assets/pioneer-logo2.png 404s.
+             `currentColor` makes it inherit the brand-mark's color (graphite on
+             the white plaque face, or graphite on the success card). -->
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Daily Cleaning Report</div>
+      </div>
+      <!-- Signed-in staff chip — appears once STAFF_AUTH reports authorized.
+           `staff-header-name` is the friendly display_name from whoAmIV1's
+           tech payload; `staff-header-email` falls back if the name is
+           empty. Both are populated by app.js. -->
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <!-- Role-aware nav. Populated by app.js once STAFF_AUTH fires
+         onAuthorized. Hidden for signed-out users (no rendering happens
+         until we know the role). Security-wise, this is convenience
+         only — the admin page is still gated by its own allowlist and
+         all server functions re-verify the ID token.
+
+         Future placeholders (renderer can add them when ready):
+           • Announcements
+           • Company Updates
+           • Training Notes
+         To wire one up, add an entry to `ROLE_NAV` in app.js with a
+         page key + label + URL + role filter. -->
+    <nav class="role-nav" id="role-nav" data-current-page="dcr" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <!-- Animated login backdrop. Visible ONLY while the sign-in card is on
+       screen (body.is-signing-in toggled by app.js). Three soft diagonal
+       light streaks drift slowly to give the brand a "polished metal /
+       glass" feel without distracting from the form. CSS-only — no JS
+       animation, no external libs. Streaks are aria-hidden and disabled
+       under prefers-reduced-motion. -->
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <main>
+    <section class="hero">
+      <h1>Daily Cleaning Report</h1>
+      <p class="subtitle">Less mess. Less stress. More clean.</p>
+    </section>
+
+    <!-- ============ Staff auth screens (one of these is visible) ============ -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">
+        Welcome to PioneerOps. Sign in with the email + password your office sent to start a DCR.
+      </p>
+
+      <!-- Email/password form. Wrapped in <form> so Enter submits and
+           browser password managers see it as a real login. -->
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email"
+                 id="staff-email"
+                 name="email"
+                 autocomplete="username"
+                 inputmode="email"
+                 autocapitalize="off"
+                 spellcheck="false"
+                 placeholder="you@example.com"
+                 required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password"
+                 id="staff-password"
+                 name="password"
+                 autocomplete="current-password"
+                 required />
+        </label>
+
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">
+          Sign in
+        </button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">
+          Forgot password?
+        </button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer DCR access.
+      </p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content wrapper ============ -->
+    <div id="staff-auth-content" hidden>
+
+    <!-- Draft-restored toast slot -->
+    <div id="draft-toast" class="draft-toast" hidden>
+      <span id="draft-toast-text">Draft restored.</span>
+      <button type="button" id="draft-toast-clear" class="draft-toast-clear">Clear draft</button>
+    </div>
+
+    <form id="dcr-form" class="dcr-form" novalidate>
+
+      <!-- Validation summary — shown after a failed submit attempt. Lists
+           exactly what still needs attention so the cleaner doesn't have to
+           hunt for the missing piece. Hidden again once submit succeeds. -->
+      <div id="validation-summary" class="validation-summary" role="status" aria-live="polite" hidden>
+        <div class="validation-head" id="validation-head">Almost there — please finish these:</div>
+        <ul id="validation-list" class="validation-list"></ul>
+      </div>
+
+      <!-- Deputy-shift banner — visible only when the page was opened
+           from a Today's Assignments card (i.e. ?deputy_shift_id=… in
+           the URL). app.js parses the query string, attempts to prefill
+           the customer dropdown, and stamps the snapshot fields onto
+           the submission. Two visual states:
+              default      — customer prefilled from query params (teal)
+              .is-unmapped — could not match a customer; tech confirms (amber)
+
+           Structure is intentionally explicit: title is hardcoded so
+           it always shows even if JS is slow / errors out partway. Meta
+           lines (location, scheduled time, sync date, shift id) and
+           actions (Open in Deputy link) are filled by app.js. -->
+      <div id="deputy-shift-banner" class="deputy-shift-banner" role="status" aria-live="polite" hidden>
+        <span class="deputy-shift-banner-icon" aria-hidden="true">📅</span>
+        <div class="deputy-shift-banner-body">
+          <strong class="deputy-shift-banner-title">Deputy shift attached</strong>
+          <div class="deputy-shift-banner-meta" id="deputy-shift-banner-meta"></div>
+          <div class="deputy-shift-banner-actions" id="deputy-shift-banner-actions"></div>
+        </div>
+      </div>
+
+
+      <!-- 1. Visit details -->
+      <section class="card">
+        <h2 class="card-title">Visit details</h2>
+        <p class="card-sub">Who, where, and when.</p>
+
+        <div class="field">
+          <label for="customer" id="customer-label">Customer</label>
+          <p class="field-helper" id="customer-helper" hidden></p>
+          <select id="customer" required aria-describedby="customer-helper">
+            <option value="">— Select customer —</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="tech">Cleaning tech</label>
+          <select id="tech" required>
+            <option value="">— Select tech —</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="clean_date">Clean date</label>
+          <input type="date" id="clean_date" required />
+        </div>
+      </section>
+
+      <!-- 2-6. Checklist cards (rendered by JS into this container) -->
+      <div id="checklist-cards"></div>
+
+      <!-- 7. Supplies -->
+      <section class="card">
+        <h2 class="card-title">Supplies</h2>
+        <p class="question">Do you need any supplies?</p>
+        <div class="seg" data-name="needs_supplies" role="radiogroup" aria-label="Need supplies?">
+          <button type="button" class="seg-btn" data-value="yes">Yes</button>
+          <button type="button" class="seg-btn" data-value="no">No</button>
+        </div>
+        <div class="conditional" data-show-when="needs_supplies=yes">
+          <div class="field" style="margin-top: 12px;">
+            <label for="supply_request_text">What do you need?</label>
+            <textarea id="supply_request_text"
+                      placeholder="e.g. 2 cases of TP, 1 case of trash bags, 1 gallon of glass cleaner"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. Cleaning experience -->
+      <section class="card">
+        <h2 class="card-title">How was the clean?</h2>
+        <p class="card-sub">Tap one.</p>
+        <div class="rating-grid" id="experience-rating" role="radiogroup" aria-label="Cleaning experience rating"></div>
+      </section>
+
+      <!-- 9. Problem -->
+      <section class="card">
+        <h2 class="card-title">Any problems?</h2>
+        <p class="question">Was there a problem on this visit?</p>
+        <div class="seg" data-name="has_problem" role="radiogroup" aria-label="Was there a problem?">
+          <button type="button" class="seg-btn" data-value="yes">Yes</button>
+          <button type="button" class="seg-btn" data-value="no">No</button>
+        </div>
+
+        <div class="conditional" data-show-when="has_problem=yes">
+          <div class="field" style="margin-top: 12px;">
+            <label for="problem_category">Category</label>
+            <select id="problem_category">
+              <option value="">— Select —</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="problem_summary">Short summary</label>
+            <input type="text" id="problem_summary" placeholder="One-line description" />
+          </div>
+
+          <div class="field">
+            <label for="problem_details">Details</label>
+            <textarea id="problem_details" placeholder="What happened? What's needed?"></textarea>
+          </div>
+
+          <div class="field">
+            <label for="problem_location">Where in the building?</label>
+            <input type="text" id="problem_location" placeholder="Room / area / floor" />
+          </div>
+
+          <p class="question">Was it our fault?</p>
+          <div class="seg" data-name="problem_our_fault" role="radiogroup" aria-label="Our fault?">
+            <button type="button" class="seg-btn" data-value="yes">Yes</button>
+            <button type="button" class="seg-btn" data-value="no">No</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10. Photos -->
+      <section class="card">
+        <h2 class="card-title">Photos</h2>
+        <p class="card-sub">Up to <span id="max-photos-label">12</span> photos.</p>
+
+        <label class="file-drop" for="photos">
+          <svg class="file-drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 7l3 -3h12l3 3v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-12z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+          <span class="file-drop-cta">Add photos</span>
+          <span class="file-drop-sub">JPG, PNG, HEIC, WebP &middot; up to 10&nbsp;MB each</span>
+          <input type="file" id="photos" accept="image/*" multiple hidden />
+        </label>
+        <div id="photo-preview" class="photo-grid" aria-live="polite"></div>
+        <div class="photo-counter"><span id="photo-counter-text">0 of 12</span></div>
+
+        <p class="video-note"><strong>Note:</strong> videos go in Slack — this form is for photos only.</p>
+      </section>
+
+      <!-- 11. Occupancy -->
+      <section class="card">
+        <h2 class="card-title">Occupancy</h2>
+        <p class="question">Was anyone in the building while you cleaned?</p>
+        <div class="seg" data-name="anyone_in_building" role="radiogroup" aria-label="Anyone in building?">
+          <button type="button" class="seg-btn" data-value="yes">Yes</button>
+          <button type="button" class="seg-btn" data-value="no">No</button>
+        </div>
+
+        <div class="conditional" data-show-when="anyone_in_building=yes">
+          <div class="field" style="margin-top: 12px;">
+            <label for="occupancy_level">How busy was it?</label>
+            <select id="occupancy_level">
+              <option value="">— Select —</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 12. Time budget -->
+      <section class="card">
+        <h2 class="card-title">Time</h2>
+        <p class="question">Were you able to stick to your time budget?</p>
+        <div class="seg" data-name="on_time_budget" role="radiogroup" aria-label="On time budget?">
+          <button type="button" class="seg-btn" data-value="yes">Yes</button>
+          <button type="button" class="seg-btn" data-value="no">No</button>
+        </div>
+
+        <div class="conditional" data-show-when="on_time_budget=no">
+          <p class="hint" style="margin-top: 14px;">What threw the timing off? (Tap all that apply.)</p>
+          <div id="time-budget-reasons"></div>
+        </div>
+      </section>
+
+      <!-- 13. Notes -->
+      <section class="card">
+        <h2 class="card-title">Notes</h2>
+        <div class="field">
+          <textarea id="notes" placeholder="Anything else the office should know..."></textarea>
+        </div>
+      </section>
+
+      <!-- 14. Affirmation -->
+      <section class="card">
+        <h2 class="card-title">Sign &amp; submit</h2>
+
+        <label class="check-row affirm-row">
+          <input type="checkbox" id="affirm" required />
+          <span>I take pride in my work, did my best, and stand by the quality of my cleaning.</span>
+        </label>
+
+        <div class="field">
+          <span class="label-text">Signature</span>
+          <div class="signature-pad">
+            <canvas id="signature-canvas" class="signature-canvas" aria-label="Sign here with your finger or stylus"></canvas>
+            <div class="signature-baseline" aria-hidden="true"></div>
+            <div class="signature-actions">
+              <span class="signature-hint">
+                <svg class="signature-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                </svg>
+                Sign with your finger or stylus
+              </span>
+              <button type="button" class="signature-clear" id="clear-signature">Clear</button>
+            </div>
+          </div>
+          <!-- The cleaning tech selected at the top of the form is automatically
+               used as the signature name on the submitted DCR. No retype needed. -->
+          <p class="signature-attribution">
+            Signing as <strong id="signature-attribution-name">—</strong>
+          </p>
+        </div>
+      </section>
+
+      <!-- Upload progress (visible during photo + signature uploads) -->
+      <div id="upload-progress" class="upload-progress" hidden>
+        <div class="upload-progress-row">
+          <span class="upload-progress-label" id="upload-progress-label">Uploading…</span>
+          <span class="upload-progress-pct" id="upload-progress-pct">0%</span>
+        </div>
+        <div class="upload-progress-bar">
+          <div class="upload-progress-bar-fill" id="upload-progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- Submit bar (sticky on mobile, inline on desktop) -->
+      <div class="submit-bar">
+        <button type="submit" class="submit-btn" id="submit-btn">Submit DCR</button>
+        <div id="status" role="status" aria-live="polite"></div>
+      </div>
+
+    </form>
+
+    <!-- Success card (hidden until submission succeeds) -->
+    <section id="success-card" class="card success-card" hidden>
+      <!-- CSS confetti container. Twelve dots are injected by app.js at submit
+           time and animate outward via the .is-celebrating class on the card. -->
+      <div id="success-confetti" class="success-confetti" aria-hidden="true"></div>
+      <!-- Optional "OK" accent Lottie (assets/okay.json). If the file is
+           missing, the player renders empty — no broken icon, no harm. -->
+      <lottie-player
+        id="success-ok-lottie"
+        class="success-ok-lottie"
+        src="assets/okay.json"
+        background="transparent"
+        speed="1"
+        mode="normal"
+        aria-hidden="true"></lottie-player>
+      <span class="success-mark">
+        <img class="success-logo"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="success-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <!-- Pioneer fist-bump celebration. Plays once on submit; if the Lottie
+           player script didn't load, the fallback SVG check (sibling below)
+           is revealed automatically by `:not(:defined)` in styles.css. -->
+      <div class="success-animation">
+        <lottie-player
+          id="success-lottie"
+          class="success-lottie"
+          src="assets/pioneer-fist-bump.json"
+          background="transparent"
+          speed="1"
+          mode="normal"
+          aria-hidden="true"></lottie-player>
+        <svg class="success-check" viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="success-check-circle" cx="26" cy="26" r="24" fill="none" />
+          <path class="success-check-path" fill="none" d="M14 27 l8 8 l16 -16" />
+        </svg>
+      </div>
+      <h2>DCR submitted</h2>
+      <p class="success-lede">Thanks for helping keep Pioneer excellent.</p>
+      <p class="success-sub">Photos and signature saved.</p>
+      <div class="submission-id-row">
+        <span class="submission-id-label">Submission ID</span>
+        <code id="success-submission-id"></code>
+      </div>
+      <!-- Populated by app.js when the function returns a zapier status. -->
+      <div id="success-zapier" class="success-zapier" hidden></div>
+      <button type="button" class="new-dcr-btn" id="new-dcr-btn">Start another DCR</button>
+    </section>
+
+    </div><!-- /#staff-auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning &middot; <code>pioneer-dcr-hub</code></p>
+    </footer>
+  </main>
+
+  <!-- Firebase Web SDK (compat build keeps this no-frameworks-friendly).
+       auth-compat drives the staff sign-in gate; firestore-compat is needed
+       for the customer + tech dropdowns; storage-compat handles photo +
+       signature uploads. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+
+  <!-- Local config + helpers (vanilla, no build). -->
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="dcr-form-config.js"></script>
+  <script src="submit-dcr-v1.js"></script>
+  <script src="mandatory-modal.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer Customer Info Hub</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="tech.css" />
+  <link rel="stylesheet" href="styles/tech-overrides.css" />
+</head>
+<body class="tech-body">
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Customer Info Hub</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <!-- Role-aware nav. Populated by tech.js once STAFF_AUTH fires
+         onAuthorized. Hidden for signed-out users.
+
+         Future placeholders (renderer can add them when ready):
+           • Announcements
+           • Company Updates
+           • Training Notes -->
+    <nav class="role-nav" id="role-nav" data-current-page="customer-info" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <!-- Animated login backdrop (visible only while body.is-signing-in is set).
+       See index.html for the full rationale + accessibility notes. -->
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <main class="tech-main">
+    <section class="hero hero-tech">
+      <h1>Customer Info Hub</h1>
+      <p class="subtitle">Everything you need for tonight's clean.</p>
+    </section>
+
+    <!-- ============ Staff auth screens ============ -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Welcome to PioneerOps. Sign in to view tonight's customer details.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email"
+                 id="staff-email"
+                 name="email"
+                 autocomplete="username"
+                 inputmode="email"
+                 autocapitalize="off"
+                 spellcheck="false"
+                 placeholder="you@example.com"
+                 required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password"
+                 id="staff-password"
+                 name="password"
+                 autocomplete="current-password"
+                 required />
+        </label>
+
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">
+          Sign in
+        </button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">
+          Forgot password?
+        </button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer DCR access.
+      </p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content wrapper ============ -->
+    <div id="staff-auth-content" hidden>
+
+    <!-- Customer picker — always visible. Acts as the entry point for every
+         section below. Future v2: pre-select from per-tech assignment. -->
+    <section class="card tech-picker-card">
+      <label for="tech-customer-select" class="tech-picker-label">Pick your customer</label>
+      <select id="tech-customer-select" class="tech-picker-select">
+        <option value="" disabled selected>Loading customers…</option>
+      </select>
+      <p class="tech-picker-hint" id="tech-picker-hint">
+        Pick the customer you're heading to. Everything below updates instantly.
+      </p>
+    </section>
+
+    <!-- Top-level error banner for fetch failures. Hidden by default. -->
+    <div id="tech-fetch-error" class="tech-error" hidden role="status"></div>
+
+    <!-- Visible loading state. Shown while the techHubViewV1 fetch is in
+         flight after a customer pick. Replaces the prior "hide everything"
+         pattern that briefly looked broken on slow networks. -->
+    <section id="tech-loading" class="card tech-loading-card" hidden aria-live="polite">
+      <div class="tech-loading-spinner" aria-hidden="true"></div>
+      <p class="tech-loading-text">Loading account details…</p>
+    </section>
+
+    <!-- All content below is hidden until a customer is selected and the
+         tech-hub-view payload arrives. Each section has its own loading
+         skeleton + empty state. -->
+    <div id="tech-content" hidden>
+
+      <!-- ===== Snapshot card ===== -->
+      <section class="card tech-snapshot">
+        <header class="tech-snapshot-head">
+          <div>
+            <h2 class="tech-customer-name" id="tech-customer-name">—</h2>
+            <p class="tech-customer-location" id="tech-customer-location">—</p>
+          </div>
+          <div class="tech-snapshot-actions">
+            <div class="tech-snapshot-badges" id="tech-snapshot-badges"></div>
+            <!-- Refresh re-fetches the currently selected customer in place
+                 (no full content reset, no flicker). Useful mid-shift when
+                 the office has just updated a supply request status. -->
+            <button class="tech-refresh-btn" id="tech-refresh-btn" type="button"
+                    title="Reload this customer's data">
+              Refresh
+            </button>
+          </div>
+        </header>
+        <div class="tech-stat-grid">
+          <div class="tech-stat">
+            <span class="tech-stat-value" id="stat-supply">—</span>
+            <span class="tech-stat-label">Open supply requests</span>
+          </div>
+          <div class="tech-stat">
+            <span class="tech-stat-value" id="stat-issues">—</span>
+            <span class="tech-stat-label">Open issues · 30 d</span>
+          </div>
+          <div class="tech-stat">
+            <span class="tech-stat-value" id="stat-last-clean">—</span>
+            <span class="tech-stat-label">Last clean</span>
+          </div>
+          <!-- Budget snapshot — supportive tone, customer-level only.
+               Top line shows the last clean's status (On Budget /
+               Over Budget / Unknown). Sub-line below shows the MTD
+               percentage for this customer. We deliberately do NOT
+               surface the tech's own budget rate here — that's an
+               admin-only metric. -->
+          <div class="tech-stat tech-stat-budget">
+            <span class="tech-stat-value" id="stat-budget-last">—</span>
+            <span class="tech-stat-label" id="stat-budget-month">Budget · this month —</span>
+          </div>
+          <div class="tech-stat">
+            <span class="tech-stat-value" id="stat-feedback">—</span>
+            <span class="tech-stat-label">Recent compliments</span>
+          </div>
+          <!-- New: Last inspected. Populated from quality.last_inspection_at;
+               reads "—" when this customer has never been inspected. -->
+          <div class="tech-stat">
+            <span class="tech-stat-value" id="stat-last-inspected">—</span>
+            <span class="tech-stat-label">Last inspected</span>
+          </div>
+        </div>
+
+        <!-- ===== Customer Quality tile =====
+             Public-safe per-customer score from techHubViewV1.quality.
+             Dark glassy card with tone-tinted glow, large score, and
+             a "Quality trend coming soon" placeholder. Hidden until
+             the customer's data lands. -->
+        <div class="tech-quality-tile" id="tech-quality-tile" data-tone="tone-3" hidden>
+          <div class="tech-quality-glow" aria-hidden="true"></div>
+          <div class="tech-quality-body">
+            <span class="tech-quality-eyebrow">Customer Quality Score
+              <button type="button" class="info-tip" aria-label="About Customer Quality Score"
+                      data-info-tip="Customer Quality is the rolling 30-day average of inspection overall scores for this customer. It rises with strong recent inspections and softens when newer inspections score lower. It's a directional operations signal — low scores are used for coaching and admin follow-up, not public shaming."
+              >ⓘ</button>
+            </span>
+            <div class="tech-quality-row">
+              <span class="tech-quality-value" id="tech-quality-value">—</span>
+              <div class="tech-quality-meta">
+                <span class="tech-quality-label" id="tech-quality-label">Awaiting first inspection</span>
+                <span class="tech-quality-sub"   id="tech-quality-sub">Rolling 30-day average</span>
+                <span class="tech-quality-trend"
+                      title="Trend analysis lands in a follow-up build">
+                  <span aria-hidden="true">→</span> Quality trend coming soon
+                </span>
+                <span class="tech-quality-streak" id="tech-quality-streak" hidden></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Customer Health — composite signal =====
+             Computed client-side from existing data points:
+             quality score (-0.0..-1.0 penalties for opens/complaints/
+             service recoveries). Operationally summarises "is this
+             customer in a good place right now?" without leaking
+             coaching detail. Rendered as a tone-pilled card with a
+             short signals list. -->
+        <div class="tech-health-card" id="tech-health-card" data-tone="tone-3" hidden>
+          <div class="tech-health-head">
+            <span class="tech-health-eyebrow">Customer Health
+              <button type="button" class="info-tip is-light" aria-label="About Customer Health"
+                      data-info-tip="Customer Health is based on recent inspection quality, open service recoveries, open issues, supply requests, and recent complaints. It is a directional operations signal, not a customer-facing grade. Low scores are used for coaching and admin follow-up, not public shaming."
+              >ⓘ</button>
+            </span>
+            <span class="tech-health-score" id="tech-health-score">—</span>
+          </div>
+          <p class="tech-health-label" id="tech-health-label">Awaiting data</p>
+          <ul class="tech-health-signals" id="tech-health-signals"></ul>
+        </div>
+      </section>
+
+      <!-- ===== Important Cleaning Notes ===== -->
+      <!-- Pinned operational knowledge for this customer/location.
+           Populated by tech.js from techHubViewV1's customer_notes
+           array (server gates the read by the tech's assigned
+           customers). Each card shows category, title, body, who
+           last updated, and when. Techs can submit a suggestion via
+           the per-card or per-section "Suggest update" button — that
+           writes to /customer_note_suggestions for admin review. -->
+      <!-- Security Info launcher (tech-approved).
+           Hidden by default; shown when techHubViewV1 returns a
+           securityInfo.hasInfo=true. Sits above the SOP block so techs
+           never have to dig through cleaning instructions while an
+           alarm panel is beeping. Codes themselves are NEVER inlined
+           on the page — they only render inside the modal when the
+           tech taps the button. -->
+      <section class="card tech-section tech-security-launcher" id="tech-security-launcher" hidden>
+        <button type="button" class="tech-security-btn" id="tech-security-btn"
+                aria-haspopup="dialog" aria-controls="tech-security-modal">
+          <span class="tech-security-btn-icon" aria-hidden="true">🔐</span>
+          <span class="tech-security-btn-label">
+            <span class="tech-security-btn-title">Security Info</span>
+            <span class="tech-security-btn-sub">Alarm, door, gate codes &amp; key info for this site</span>
+          </span>
+          <span class="tech-security-btn-arrow" aria-hidden="true">›</span>
+        </button>
+      </section>
+
+      <!-- Customer SOP block (tech view v1).
+           Single collapsible block rendered by
+           CustomerSop.renderPublicSimple(). Source priority is
+           sopRawPublicText > sopPublicNotes > sopSections; codes and
+           emergency contacts are never present here (the seed
+           redacts them and keeps them in customer_secure/{slug},
+           which firestore.rules denies tech reads of). -->
+      <section class="card tech-section tech-sop-card" id="tech-sop-card" hidden>
+        <header class="tech-section-head">
+          <div class="tech-section-head-row">
+            <h2 class="tech-section-title">🗂 Customer SOP</h2>
+          </div>
+          <p class="tech-section-sub">
+            Cleaning instructions for this location. For codes or emergency contacts, ping the office.
+          </p>
+        </header>
+        <div id="tech-sop-body"></div>
+      </section>
+
+      <section class="card tech-section tech-notes-card">
+        <header class="tech-section-head">
+          <div class="tech-section-head-row">
+            <h2 class="tech-section-title">📌 Important Cleaning Notes</h2>
+            <button type="button" class="tech-suggest-btn"
+                    id="tech-notes-suggest-new"
+                    data-action="suggest-new"
+                    title="Suggest a brand-new note for this customer">
+              Suggest update
+            </button>
+          </div>
+          <p class="tech-section-sub">
+            Standing instructions for this location — security, access,
+            cleaning preferences. Office-maintained.
+          </p>
+        </header>
+        <div id="tech-notes-list" class="tech-notes-list" role="list"></div>
+        <p id="tech-notes-empty" class="tech-empty" hidden>
+          No standing notes for this customer yet. Tap "Suggest update" if you have something the office should add.
+        </p>
+      </section>
+
+      <!-- ===== Open supply requests ===== -->
+      <section class="card tech-section">
+        <header class="tech-section-head">
+          <h2 class="tech-section-title">Open Supply Requests</h2>
+          <p class="tech-section-sub">What the office is working on for this customer.</p>
+        </header>
+        <div id="tech-supply-list" class="tech-list"></div>
+        <p id="tech-supply-empty" class="tech-empty" hidden>
+          No open supply requests right now. Nice work.
+        </p>
+      </section>
+
+      <!-- ===== Recent Inspection Summary =====
+           Public-safe per-customer history from
+           techHubViewV1.quality.recent_inspections. Each row shows
+           score + date + tone glow; low-score rows surface broad
+           area names only; high-score rows get celebratory copy.
+           No inspector identity, no per-task blame. -->
+      <section class="card tech-section tech-recent-insp-card">
+        <header class="tech-section-head">
+          <h2 class="tech-section-title">Recent Inspections</h2>
+          <p class="tech-section-sub">Last 3 quality audits for this customer.</p>
+        </header>
+        <div id="tech-recent-insp-list" class="tech-recent-insp-list" role="list"></div>
+        <p id="tech-recent-insp-empty" class="tech-empty" hidden>
+          No inspections yet — first inspection will create this customer's quality baseline.
+        </p>
+      </section>
+
+      <!-- ===== Recent notes & issues ===== -->
+      <section class="card tech-section">
+        <header class="tech-section-head">
+          <h2 class="tech-section-title">Recent Notes &amp; Issues</h2>
+          <p class="tech-section-sub">From the last 30 days of DCRs at this location.</p>
+        </header>
+        <div id="tech-issues-list" class="tech-list"></div>
+        <p id="tech-issues-empty" class="tech-empty" hidden>
+          No issues reported in the last 30 days. 🎉
+        </p>
+      </section>
+
+      <!-- ===== Recent positive feedback ===== -->
+      <section class="card tech-section">
+        <header class="tech-section-head">
+          <h2 class="tech-section-title">Recent Positive Feedback</h2>
+          <p class="tech-section-sub">Compliments and thank-yous from this customer.</p>
+        </header>
+        <div id="tech-feedback-list" class="tech-list"></div>
+        <p id="tech-feedback-empty" class="tech-empty" hidden>
+          No recent customer feedback yet.
+        </p>
+      </section>
+
+      <!-- ===== Recent wins / recognition ===== -->
+      <section class="card tech-section tech-wins-card">
+        <header class="tech-section-head">
+          <h2 class="tech-section-title">Wins &amp; Recognition</h2>
+          <p class="tech-section-sub">Small things worth noticing.</p>
+        </header>
+        <div class="tech-wins-body" id="tech-wins-body">
+          <p class="tech-empty">More recognition features coming soon 👊</p>
+        </div>
+      </section>
+
+      <!-- ===== Ask for update (placeholder) ===== -->
+      <section class="card tech-ask-card">
+        <h2 class="tech-section-title">Need a status update on a request?</h2>
+        <p class="tech-section-sub">
+          Tap the button and we'll route your ask to the office. This is a
+          placeholder for v1 — the full request flow ships next.
+        </p>
+        <button type="button" class="tech-ask-btn" id="tech-ask-btn">
+          Ask for Supply Update
+        </button>
+      </section>
+
+    </div><!-- /#tech-content -->
+
+    </div><!-- /#staff-auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Customer Info Hub v1</p>
+    </footer>
+  </main>
+
+  <!-- Toast container — reused style from admin.css won't be loaded here,
+       so tech.css ships its own tiny variant. -->
+  <div id="tech-toast" class="tech-toast" aria-live="polite" hidden></div>
+
+  <!-- ===== Suggest Update modal =====
+       Tech-facing form that writes one doc to /customer_note_suggestions.
+       Two modes — set via data-mode on open:
+         "new"  — propose a brand-new note for this customer.
+         "edit" — propose changes against an existing note (existing_note_id
+                  + read-only context of the original note shown above).
+       Rules deny status changes from techs — server-side `status: "pending"`
+       is required by firestore.rules on create. -->
+  <div id="tech-suggest-modal" class="tech-suggest-modal" hidden aria-hidden="true">
+    <div class="tech-suggest-backdrop" data-modal-close></div>
+    <div class="tech-suggest-dialog" role="dialog" aria-modal="true" aria-labelledby="tech-suggest-title">
+      <header class="tech-suggest-head">
+        <h2 id="tech-suggest-title">Suggest a note update</h2>
+        <button class="tech-suggest-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="tech-suggest-body">
+        <p class="tech-suggest-context" id="tech-suggest-context">
+          Your suggestion will be sent to the office for review. It won't change the note until they approve it.
+        </p>
+
+        <!-- Context line shown when editing an existing note. -->
+        <div class="tech-suggest-existing" id="tech-suggest-existing" hidden>
+          <div class="tech-suggest-existing-label">Editing note:</div>
+          <div class="tech-suggest-existing-title" id="tech-suggest-existing-title"></div>
+          <div class="tech-suggest-existing-body" id="tech-suggest-existing-body"></div>
+        </div>
+
+        <label class="tech-suggest-field">
+          <span class="tech-suggest-field-label">Your suggestion <span class="req">*</span></span>
+          <textarea id="tech-suggest-text" rows="5" maxlength="2000"
+                    placeholder="What should the note say? Include any details the office needs to know."
+                    required></textarea>
+          <span class="tech-suggest-field-hint">Plain text. Max 2,000 characters.</span>
+        </label>
+
+        <div class="tech-suggest-err" id="tech-suggest-err" hidden></div>
+      </div>
+      <footer class="tech-suggest-footer">
+        <button type="button" class="tech-suggest-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="tech-suggest-save" id="tech-suggest-save">Send suggestion</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Security Info modal (tech-approved).
+       Populated and shown by tech.js renderSecurityInfo() when the
+       tech taps the launcher button above. Same close conventions as
+       tech-suggest-modal: [data-modal-close] elements, Escape key,
+       backdrop tap. Body scroll is locked while open. -->
+  <div id="tech-security-modal" class="tech-security-modal" hidden aria-hidden="true">
+    <div class="tech-security-backdrop" data-modal-close></div>
+    <div class="tech-security-dialog" role="dialog" aria-modal="true" aria-labelledby="tech-security-title">
+      <header class="tech-security-head">
+        <div class="tech-security-head-text">
+          <h2 id="tech-security-title">🔐 Security Info</h2>
+          <p class="tech-security-customer" id="tech-security-customer">—</p>
+        </div>
+        <button class="tech-security-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="tech-security-body" id="tech-security-body">
+        <!-- Populated by tech.js: blocks for Alarm / Door / Gate / Key &
+             Fob / Security Instructions. -->
+      </div>
+      <footer class="tech-security-foot">
+        <button type="button" class="tech-security-done" data-modal-close>Done</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Firebase Web SDK — app + auth + firestore. auth-compat drives the
+       staff sign-in gate; firestore-compat is needed for the customer
+       dropdown after sign-in. The protected tech-hub data view comes
+       through the techHubViewV1 function with the user's ID token. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="mandatory-modal.js"></script>
+  <script src="info-tip.js"></script>
+  <script src="walkthrough.js"></script>
+  <script src="customer-sop.js"></script>
+  <script src="tech.js"></script>
+</body>
+</html>

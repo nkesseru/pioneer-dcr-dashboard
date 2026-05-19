@@ -1,0 +1,572 @@
+rules_version = '2';
+
+// Writes happen ONLY through the `submitDcrV1` Cloud Function (Admin SDK
+// bypasses these rules) and through the future admin write functions
+// (createCustomerV1, archiveCustomerV1, createTechV1, archiveTechV1).
+//
+// Reads on the three admin-visible collections are intentionally open so the
+// static admin page at /admin.html can fetch them directly via the Firebase
+// Web SDK without an auth round-trip. Everything else is default-deny.
+//
+// ⚠ BEFORE PRODUCTION / PUBLIC ROLLOUT
+// ===================================
+// Replace `allow read: if true;` with a Firebase Auth + custom-claims gate,
+// e.g. `allow read: if request.auth.token.admin == true;` and wire the admin
+// page to a sign-in flow. Until then, treat the /admin.html URL as
+// "obscure-but-not-secret" and only share it internally.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allowlist-gated admin check used by /supply_requests. Mirrors the
+    // ALLOWED_ADMIN_EMAILS array in public/admin.js — keep them in sync. If
+    // you add/remove an admin, edit BOTH this list and admin.js, then deploy
+    // hosting + firestore:rules together.
+    // Why this is the simpler form (and why the previous version blocked
+    // legitimate admin writes):
+    //   • `request.auth.token != null` is redundant — when request.auth is
+    //     truthy, the token map is always present. The old check was noise.
+    //   • `request.auth.token.email_verified == true` is the silent-deny
+    //     trap: when the `email_verified` claim is missing from the ID
+    //     token for any reason, the comparison evaluates false and denies
+    //     the whole write. Google sign-in already requires a verified
+    //     email at the IdP layer, so this check was paranoid. Dropping it.
+    //   • `... .email is string` is a safe type test that returns false
+    //     (not throws) for missing or non-string fields — defends against
+    //     a degenerate token without the email_verified pitfall.
+    //
+    // The email allowlist below is the actual security boundary. It MUST
+    // stay in sync with ALLOWED_ADMIN_EMAILS in public/admin.js — Google
+    // returns normalized lowercase emails, and `.lower()` mirrors what
+    // admin.js does client-side.
+    // Admin gate. Two-tier model so admins can be added at runtime
+    // (via the Admins tab in /admin) without editing source:
+    //   1. Hardcoded "root" allowlist — survives Firestore outages,
+    //      always works, used to bootstrap.
+    //   2. Firestore-backed `admins/{email}` doc with active != false
+    //      — lets root admins invite operational admins without a
+    //      code deploy. The doc ID is the lowercased email.
+    //
+    // Adding an admin: write /admins/{email}. Removing: set active:
+    // false on the doc (or delete it). Keep this list in sync with
+    // ALLOWED_ADMIN_EMAILS in public/admin.js + functions/index.js.
+    function isPioneerAdmin() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && (
+          request.auth.token.email.lower() in [
+            "nick@pioneercomclean.com",
+            "april@pioneercomclean.com",
+            "kirby@pioneercomclean.com",
+            "mgies@pioneercomclean.com"
+          ]
+          || (
+            exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+            && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.active != false
+          )
+        );
+    }
+
+    // Customers + cleaning techs are read-open (public form dropdowns query them
+    // anonymously). Writes are gated to the admin allowlist via isPioneerAdmin()
+    // so the new edit/archive controls in /admin work, but no anonymous client
+    // can mutate. Deletes are denied outright — archive (active=false) is the
+    // only way to remove a record from circulation.
+    // customers + cleaning_techs are read by the DCR form's dropdowns AND
+    // by the tech hub. Both pages now require staff sign-in before they
+    // render, so we can tighten read access from "anyone" to "any
+    // authenticated Firebase user". Non-staff signed-in users can still
+    // technically query these collections via raw SDK calls, but the
+    // page-level gate + function-level token verification stop them from
+    // doing anything useful with the data.
+    match /customers/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // customer_secure — admin-only mirror collection that holds the
+    // SENSITIVE half of a customer's SOP: alarm codes, door / gate
+    // codes, emergency contacts, raw Deputy notes, and any free-form
+    // "secure instructions" the parser couldn't classify safely.
+    //
+    // Doc id mirrors the parent customer slug (customer_secure/{slug}
+    // pairs 1:1 with customers/{slug}). The public customer doc
+    // carries `hasSecureSop` so other surfaces can show a "secure
+    // info exists" affordance without reading this collection.
+    //
+    // Cleaning techs MUST NOT be able to read this collection.
+    // Tech-facing pages (tech.js, today-work.js) never read it
+    // and the techHubView server function never returns it.
+    //
+    // Writes happen via scripts/seedCustomerSopsFromDeputy.js (Admin
+    // SDK, bypasses rules) and from admin client edits (Phase 2).
+    match /customer_secure/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+    match /cleaning_techs/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    // DCR submissions contain PII (cleaner names, customer emails, photo +
+    // signature URLs, free-text notes about specific premises). Reads are now
+    // gated to the admin allowlist — public anonymous reads removed.
+    //
+    // submitDcrV1 (the only writer) uses the Admin SDK and bypasses these
+    // rules, so the public form continues to submit without auth. Direct
+    // client-SDK writes stay denied across the board; archive isn't relevant
+    // here (submissions are append-only operational records).
+    match /dcr_submissions/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Supply requests are an operational workflow — admins read AND edit
+    // them from /admin.html. Auto-creation is also done by submitDcrV1 via
+    // the Admin SDK, which bypasses these rules. Deletes are denied
+    // outright — workflow is "close it", not "delete it".
+    match /supply_requests/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // DCR-derived issues — auto-created by submitDcrV1 (Admin SDK) when
+    // a submission contains checklist items in `issue` state or a
+    // problem-section report. Backlog for office triage with status
+    // workflow new → reviewed → customer_contacted → resolved /
+    // closed_no_action. Admins read + update workflow fields. Public
+    // form and Tech Hub get ZERO access — admin_notes and triage history
+    // would leak sensitive context otherwise. Client-SDK creates are
+    // denied; only the submitDcrV1 server path materialises docs.
+    match /dcr_issues/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Supply-order notifications — created by the admin client when a
+    // supply request hits the "PCC will order" status, so an external
+    // system (Zapier, etc.) can text/Slack the supply ops contact and
+    // drive 48-hour follow-up reminders. ALSO created server-side by
+    // submitSupplyStationOrderV1 (Admin SDK bypasses rules) when a
+    // staff member submits a supply-station order. Contains contact
+    // phone — must stay admin-only, never readable by tech-facing pages
+    // or the public DCR form. Admins create + update (notification_status,
+    // reminder counters, resolved_at); reads are admin-only so the
+    // Zapier service account or an admin Custom Token can poll. Deletes
+    // denied — closed notifications stay for audit (resolved_at set).
+    match /supply_notifications/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Supply Station orders — tech-submitted requests for restocking the
+    // central supply station. Writes go through submitSupplyStationOrderV1
+    // (Admin SDK), so client-SDK creates/updates are denied here. Reads
+    // are admin-only (tech-facing pages only need the write path; they
+    // don't read other techs' orders). Deletes denied — workflow is
+    // "close it", not "delete it".
+    match /supply_station_orders/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Announcements — admin-authored messages broadcast to all signed-in
+    // staff. Surfaces on Pioneer Team Hub as cards, plus a small unread
+    // badge on the Team Hub nav pill across every staff page. Mandatory
+    // announcements pop a blocking modal that requires "Mark as read".
+    //
+    // Read access is intentionally broad (any signed-in user) — the
+    // content is meant to be seen by every active staff member. Admins
+    // own create/update; deletes are denied because the workflow is
+    // "archive" (set archived_at + active=false) rather than "delete".
+    match /announcements/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Announcement reads — one doc per (announcement, user) pair so we
+    // can compute "unread for this user" without leaking other users'
+    // read state. Doc ID convention is `{announcement_id}_{uid}` which
+    // both makes upserts idempotent AND lets the rules confirm the doc
+    // ID matches the requesting user's uid.
+    //
+    // - Read: admins can read all (for future analytics);
+    //         each staff user can read their own docs only.
+    // - Create / Update: staff can write their OWN doc only (uid in
+    //   payload must match request.auth.uid AND doc id must follow the
+    //   `{announcement_id}_{uid}` convention). Update is allowed so a
+    //   client-side `set()` call (which Firestore's Web SDK uses for
+    //   "create or overwrite") doesn't error if the doc already exists
+    //   — re-reads are idempotent.
+    // - Delete: denied. Read state is append-once.
+    match /announcement_reads/{readId} {
+      allow read: if isPioneerAdmin() ||
+                     (request.auth != null && resource.data.uid == request.auth.uid);
+      allow create, update:
+                  if request.auth != null
+                  && request.resource.data.uid == request.auth.uid
+                  && readId == request.resource.data.announcement_id + "_" + request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Admin allowlist (Firestore-backed). One doc per admin, doc ID is
+    // the lowercased email. Admin client (admin.js) reads this to
+    // decide whether the signed-in user can access /admin; rules use
+    // it via isPioneerAdmin() above for write gates on every admin-
+    // managed collection.
+    //
+    // Reads: any signed-in user can read their OWN admin doc (so the
+    // admin client can verify the active flag); admins can read all
+    // (for the Admins tab listing). Writes: admin-only — including
+    // self, so an admin can reactivate themselves but not create
+    // others without going through createAdminLoginV1 (which uses
+    // the Admin SDK, bypassing rules).
+    match /admins/{email} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && request.auth.token.email is string
+                      && request.auth.token.email.lower() == email);
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Inspections — quality-audit records. ADMIN-ONLY for create/read/
+    // update. The previous create rule was permissive (any signed-in
+    // staff with own uid) on the assumption an explicit "inspector"
+    // role would land soon and on the UI being the gate. Production
+    // audit flagged this as a soft-gate — Web SDK callers could bypass
+    // the inspections.js admin check — so we tightened create to
+    // isPioneerAdmin() to match the UI. When the inspector role lands,
+    // relax the create rule via an OR clause; do NOT remove the
+    // identity guards below.
+    //
+    // Field validation on create:
+    //   • inspector_uid must equal request.auth.uid (no impersonation)
+    //   • customer_slug must be a non-empty kebab-ish string
+    //   • status fields are admin-only — clients only write the
+    //     initial submission shape.
+    //   • Deletes denied entirely. Inspections are immutable history;
+    //     admin can soft-archive via active=false in a future build.
+    match /inspections/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin()
+                    && request.auth.token.email is string
+                    && request.resource.data.inspector_uid == request.auth.uid
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.customer_slug.size() < 80;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Quality Wins — durable record of 5-star inspections that the
+    // company is celebrating. Auto-created by inspections.js when an
+    // admin submits an inspection with overall_score >= 4.8. Stays
+    // intentionally morale-positive: read access is open to any active
+    // staff member (it's a "company brag wall"), but writes are
+    // admin-only and we don't allow deletes — once celebrated, the
+    // record stays for the audit trail. Soft-archive via active=false
+    // if a win ever needs to be retracted.
+    match /quality_wins/{id} {
+      allow read: if request.auth != null;
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.inspection_id is string
+                    && request.resource.data.inspection_id.size() > 0
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.overall_score is number
+                    && request.resource.data.overall_score >= 4.8;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Service Recoveries — coaching + follow-up tasks tied to a
+    // customer (and optionally an inspection). Intentionally NOT
+    // "customer issues" or "tickets" — the operational concept here
+    // is service recovery: how the office makes a situation right.
+    //
+    // Rules:
+    //   read   — admins all; assigned tech sees only their own
+    //            (matched on assigned_to_email, lowercased).
+    //   create — admin only. Field validation:
+    //              • status must start as "open"
+    //              • customer_slug is a non-empty string AND the
+    //                matching /customers/{slug} doc exists.
+    //   update — admin only. Used for status flips, assignment
+    //            changes, resolution notes.
+    //   delete — denied. Recovery records are part of the coaching
+    //            audit trail.
+    match /service_recoveries/{id} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && request.auth.token.email is string
+                      && resource.data.assigned_to_email is string
+                      && request.auth.token.email.lower() == resource.data.assigned_to_email);
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.status == "open"
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && exists(/databases/$(database)/documents/customers/$(request.resource.data.customer_slug));
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Customer cleaning notes — tribal operational knowledge for a
+    // specific customer/location (security/access/cleaning preferences/
+    // sensitive areas/etc.). Read access for techs goes through
+    // techHubViewV1 (server-gated by the tech's assigned_customer_slugs)
+    // so we deliberately keep direct client reads admin-only — preserves
+    // the existing "tech can only see their assigned customers" gate
+    // without having to denormalize authorized_emails onto every note.
+    //
+    // Writes are admin-only. Soft-delete via active=false; hard delete
+    // denied so the audit trail of historic notes stays intact.
+    match /customer_notes/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Customer note SUGGESTIONS — read-and-forget queue items techs
+    // submit when they spot a missing or stale note. Admins review +
+    // either apply changes to /customer_notes or reject.
+    //
+    // Rules:
+    //   read   — admins all; tech sees only their own submissions
+    //            (matched by suggested_by_uid == request.auth.uid).
+    //   create — any signed-in user. Validates:
+    //              • status starts as "pending"
+    //              • suggested_by_uid matches the auth uid (techs can't
+    //                impersonate someone else)
+    //              • suggested_by email matches the lowercased token email
+    //              • customer_slug is a non-empty string AND the matching
+    //                /customers/{customer_slug} doc actually exists
+    //                (cross-check via exists()).
+    //              • suggested_change is a non-empty string
+    //   update — admin only (for status/reviewed_by/reviewed_at).
+    //   delete — denied. Suggestions are append-only.
+    match /customer_note_suggestions/{id} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && resource.data.suggested_by_uid == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.auth.token.email is string
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.suggested_by_uid == request.auth.uid
+                    && request.resource.data.suggested_by == request.auth.token.email.lower()
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.customer_slug.size() < 80
+                    && request.resource.data.suggested_change is string
+                    && request.resource.data.suggested_change.size() > 0
+                    && request.resource.data.suggested_change.size() < 4000
+                    && exists(/databases/$(database)/documents/customers/$(request.resource.data.customer_slug));
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Deputy shift cache — written by syncDeputyShiftsV1 / refreshDeputyShiftsV1
+    // via the Admin SDK (bypasses these rules). Read access is split:
+    //   • admins see the full set (for "Today's shifts" admin view)
+    //   • each tech sees only their own shifts, matched on the doc's
+    //     employee_email field vs request.auth.token.email
+    // No client-side writes — Deputy is the source of truth.
+    match /deputy_shift_cache/{id} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && request.auth.token.email is string
+                      && request.auth.token.email.lower() == resource.data.employee_email);
+      allow create, update, delete: if false;
+    }
+
+    // Operational feed — structured, action-linked communication
+    // stream that replaces ad-hoc Slack threads for the supply /
+    // shift / inspection / safety / recognition / scheduler /
+    // hiring / training / policy categories.
+    //
+    // Phase 1 access model:
+    //   • Admins (isPioneerAdmin) — full read / create / update.
+    //   • Other signed-in users — read if their uid is in
+    //     `audience_user_ids`. The `audience_roles` field is data-only
+    //     for Phase 1 (no role tables exist yet beyond admin + tech);
+    //     future phases will fan out audience_user_ids server-side
+    //     based on role tables.
+    //   • Non-admin update — only the ack + status pair, gated to the
+    //     limited set of fields below. Title / body / audience /
+    //     severity remain admin-only.
+    //   • Delete — denied. Use status: "archived" instead.
+    match /operational_feed/{id} {
+      allow read: if isPioneerAdmin() ||
+                     (request.auth != null &&
+                      resource.data.audience_user_ids is list &&
+                      request.auth.uid in resource.data.audience_user_ids);
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin() ||
+                       (request.auth != null &&
+                        resource.data.audience_user_ids is list &&
+                        request.auth.uid in resource.data.audience_user_ids &&
+                        request.resource.data.diff(resource.data)
+                          .affectedKeys()
+                          .hasOnly(["acknowledged_by", "status", "updated_at"]));
+      allow delete: if false;
+    }
+
+    // Supply notices — admin-only awareness layer for the supply
+    // request work queue. One doc is written by submitDcrV1 +
+    // submitSupplyStationOrderV1 (Admin SDK, bypasses rules) for
+    // every new supply request. The admin Supply panel reads this
+    // collection to render a "Recent supply notices" disclosure.
+    //
+    // Techs and customers never read or write this — it's a private
+    // operational signal carrying Kirby's assignment and the source
+    // supply request id.
+    match /supply_notices/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;   // server-side only
+      allow update: if isPioneerAdmin();   // admin can ack / archive
+      allow delete: if false;
+    }
+
+    // Customer aliases — Pioneer-curated lookup table that maps a
+    // free-form alias (Pioneer abbreviation, Deputy bracket code, OU
+    // name fragment, etc.) to a Pioneer customer slug. One row per
+    // alias; the Deputy sync reads this collection to populate the
+    // suggested_customer_* fields on shift cache docs. Admin-only.
+    //
+    // Doc shape:
+    //   alias              — display string (e.g. "NOTL", "Note and Kidd")
+    //   normalized_alias   — lowercased / non-alnum stripped (also the doc id)
+    //   customer_slug
+    //   customer_name
+    //   active             — boolean; admin can soft-disable without deleting
+    //   source             — "manual_seed" | "admin_created" | "learned"
+    //   confidence         — "high" (only level currently used)
+    //   created_at, updated_at
+    match /customer_aliases/{alias} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.alias is string
+                    && request.resource.data.alias.size() > 0
+                    && exists(/databases/$(database)/documents/customers/$(request.resource.data.customer_slug));
+      allow update: if isPioneerAdmin()
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && exists(/databases/$(database)/documents/customers/$(request.resource.data.customer_slug));
+      allow delete: if isPioneerAdmin();
+    }
+
+    // Pioneer work sessions — the operational workflow layer on top of
+    // Deputy. One doc per Deputy shift the tech actually starts. Doc
+    // ID == deputy_shift_id (1:1 with the cache doc, deterministic so
+    // re-renders don't race).
+    //
+    // Status workflow: not_started → working → needs_finish → finished
+    //   • Client writes "working" (start work) + "finished" (finish work).
+    //   • submitDcrV1 (Admin SDK) writes "needs_finish" + dcr_submission_id
+    //     after a DCR is saved for the linked deputy_shift_id.
+    //
+    // PeakOps NOTE: this lives entirely inside the pioneer-dcr-hub project
+    // and has no PeakOps coupling.
+    //
+    // Rules:
+    //   read   — admins see all; tech sees their own (matched by tech_email).
+    //   create — tech is the SAME user whose email is on the new doc AND
+    //            the linked deputy_shift_cache doc also belongs to them.
+    //            Cross-check via get() on /deputy_shift_cache/{shiftId}
+    //            so a tech can't create sessions for someone else's shift.
+    //   update — tech can update their own session; tech_email and
+    //            deputy_shift_id are immutable (the user can't rebind a
+    //            session to a different shift / employee). Admins can
+    //            update everything for ops triage.
+    //   delete — denied. Sessions are append-only audit trail.
+    match /pioneer_work_sessions/{shiftId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && request.auth.token.email is string
+                      && request.auth.token.email.lower() == resource.data.tech_email);
+      allow create: if request.auth != null
+                    && request.auth.token.email is string
+                    && request.auth.token.email.lower() == request.resource.data.tech_email
+                    && request.resource.data.deputy_shift_id == shiftId
+                    && exists(/databases/$(database)/documents/deputy_shift_cache/$(shiftId))
+                    && get(/databases/$(database)/documents/deputy_shift_cache/$(shiftId)).data.employee_email == request.auth.token.email.lower();
+      allow update: if isPioneerAdmin()
+                    || (request.auth != null
+                        && request.auth.token.email is string
+                        && request.auth.token.email.lower() == resource.data.tech_email
+                        && request.resource.data.tech_email == resource.data.tech_email
+                        && request.resource.data.deputy_shift_id == resource.data.deputy_shift_id);
+      allow delete: if false;
+    }
+
+    // Deputy OAuth state — holds access/refresh tokens and the brief
+    // pending-state doc used for CSRF protection during the
+    // authorize→callback round trip. Server-only via Admin SDK; clients
+    // get zero access. (The default-deny rule at the bottom already
+    // covers this collection, but we declare the rule explicitly so
+    // future readers don't wonder.)
+    match /deputy_oauth_state/{id} {
+      allow read, write: if false;
+    }
+
+    // Safety Training — per-user progress records.
+    //
+    // Storage layout: users/{uid}/training_progress/{lessonId}
+    //   • lessonId, status: "in_progress"|"completed", score: 0..100|null,
+    //     acknowledgmentSignedAt, acknowledgmentText, userAgent,
+    //     completedAt, updatedAt, signedName, uid, email, displayName.
+    //
+    // Read:   the owning user, or any Pioneer admin (for reports).
+    // Write:  the owning user only (no admin impersonation).
+    // Delete: denied — training records are append-only audit history.
+    //
+    // The parent users/{uid} doc itself is not used by the app yet, so
+    // we don't grant read/write on it — only the subcollection rule
+    // below applies. Lesson metadata is a static JSON file in
+    // public/data/training-lessons.json served via Firebase Hosting;
+    // no Firestore rule is needed for catalog reads.
+    match /users/{uid}/training_progress/{lessonId} {
+      allow read:   if request.auth != null
+                      && (request.auth.uid == uid || isPioneerAdmin());
+      allow create: if request.auth != null
+                      && request.auth.uid == uid
+                      && request.resource.data.lessonId == lessonId;
+      allow update: if request.auth != null
+                      && request.auth.uid == uid
+                      && request.resource.data.lessonId == lessonId;
+      allow delete: if false;
+    }
+    // Admin training reports use a collectionGroup("training_progress")
+    // read so a single query returns every user's progress in one go.
+    // CollectionGroup queries match by the trailing path segment
+    // pattern below. Restricted to admins; default-deny otherwise.
+    match /{path=**}/training_progress/{lessonId} {
+      allow read: if isPioneerAdmin();
+    }
+
+    // Default-deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

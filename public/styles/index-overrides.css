@@ -1,0 +1,102 @@
+/* ====================================================================
+ * index-overrides.css — Phase 2 polish for /index.html ONLY.
+ *
+ * Layered on top of styles.css. SCOPE IS DELIBERATELY TINY because:
+ *
+ *   • /index.html is the public-anonymous DCR form. Its visual
+ *     identity (Pioneer green theme `#0b3d2e`, the meta theme-color,
+ *     the form's hand-tuned spacing, the four-layer success-card
+ *     glow ring, the Lottie fist-bump celebration) is deliberately
+ *     distinct from the staff-side platform. Normalizing the form
+ *     itself would erase brand intent.
+ *
+ *   • The only honest normalization target is the post-submit
+ *     SUCCESS CARD — and even there, the celebration markup
+ *     (confetti + Lottie + Pioneer logo + glow rings) is brand UX.
+ *
+ * Two narrow jobs:
+ *   1. Promote `.success-zapier` (the delivery-status pill that
+ *      surfaces "Sent to Zapier" / "Zapier delivery pending") to
+ *      the foundation `.status-chip` visual language. Same chip
+ *      vocabulary as every other status pill on the platform.
+ *   2. Token-align typography on `.success-lede`, `.success-sub`,
+ *      `.submission-id-label`, and the `<code>` chip — so the
+ *      success card's copy reads in the platform's text scale.
+ *
+ * NOTHING here touches the form, the four-layer ring, the confetti,
+ * the Lottie, the Pioneer logo, or the celebration animation.
+ * ================================================================== */
+
+/* ---------- Zapier delivery status pill → foundation .status-chip ----
+   Legacy emits `<div class="success-zapier is-sent|is-failed">`. We
+   reshape it into the foundation chip while preserving the existing
+   class names so app.js doesn't need to change. */
+.success-card .success-zapier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  border: 1px solid transparent;
+}
+.success-card .success-zapier::before {
+  /* The legacy emitter already inserted a static dot via ::before;
+     this rule keeps that visual hook + tokenizes the dot color and
+     size to match every other foundation chip. */
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.success-card .success-zapier.is-sent {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+.success-card .success-zapier.is-failed {
+  background: var(--status-attention-soft);
+  color:      var(--status-attention-ink);
+}
+
+/* ---------- Success copy typography token-align ----------
+   The h2 ("DCR submitted") stays at its current branded size —
+   it's the centerpiece. The lede + sub lines token-align so
+   they read at the same scale as platform body copy elsewhere. */
+.success-card .success-lede {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: var(--tracking-tight);
+}
+.success-card .success-sub {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+/* ---------- Submission ID chip ----------
+   Legacy `.submission-id-row` already centers + spaces nicely.
+   Tokenize the inner code chip + label only. */
+.success-card .submission-id-row { gap: var(--space-2); }
+.success-card .submission-id-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.success-card .submission-id-row code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--surface-card-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  color: var(--text-strong);
+}

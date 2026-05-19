@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1015" />
+  <title>Inspections · Pioneer</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="inspections.css" />
+  <link rel="stylesheet" href="styles/inspections-overrides.css" />
+</head>
+<body class="insp-body">
+
+  <header class="brand-header insp-brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Inspections</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <nav class="role-nav" id="role-nav" data-current-page="inspections" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main class="insp-main">
+
+    <!-- Auth screens — same shape as the other staff pages. -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Welcome to PioneerOps. Sign in to start an inspection.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Inspector Access Required</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Inspections are currently admin-only. Ask the office to grant access if you should be inspecting.
+      </p>
+      <p class="staff-auth-help staff-auth-temp-hint">
+        Having trouble? Email
+        <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content ============ -->
+    <div id="staff-auth-content" class="insp-content" hidden>
+
+      <!-- =============================================
+           HUB VIEW — default landing.
+             • Pioneer Quality Score (giant card)
+             • + New Inspection CTA
+             • Recent Inspections (last 5)
+             • Inspection Archive (collapsed, searchable)
+           Switched to the Intake view via the New Inspection
+           button or ?mode=new in the URL.
+           ============================================= -->
+      <div id="insp-hub-view" class="insp-hub-view">
+
+        <header class="insp-hub-head">
+          <div class="insp-hub-head-text">
+            <span class="insp-hero-eyebrow">Pioneer Quality</span>
+            <h1 class="insp-hub-title">Inspection Hub</h1>
+          </div>
+          <button type="button" class="insp-primary-cta" id="insp-new-btn"
+                  title="Open the inspection intake form">
+            + New Inspection
+          </button>
+        </header>
+
+        <!-- Pioneer Quality Score — giant. Score, label, trend
+             placeholder. Values painted by inspections.js. -->
+        <section class="insp-quality-card" id="insp-quality-card" data-tone="tone-3">
+          <div class="insp-quality-glow" aria-hidden="true"></div>
+          <div class="insp-quality-body">
+            <span class="insp-quality-eyebrow">Pioneer Quality Score
+              <button type="button" class="info-tip" aria-label="About Pioneer Quality Score"
+                      data-info-tip="Pioneer Quality is the rolling 30-day average of inspection overall scores across every customer. The 🔥 streak counts consecutive newest inspections at 4.5 or above. It's an internal operations signal — low scores are used for coaching and admin follow-up, never for public shaming."
+              >ⓘ</button>
+            </span>
+            <div class="insp-quality-row">
+              <span class="insp-quality-value" id="insp-quality-value">—</span>
+              <div class="insp-quality-meta">
+                <span class="insp-quality-label" id="insp-quality-label">Awaiting inspections</span>
+                <span class="insp-quality-trend" id="insp-quality-trend">
+                  <span class="insp-quality-trend-icon" aria-hidden="true">→</span>
+                  <span id="insp-quality-trend-text">Trend coming soon</span>
+                </span>
+                <span class="insp-quality-streak" id="insp-quality-streak" hidden></span>
+              </div>
+            </div>
+            <p class="insp-quality-sub" id="insp-quality-sub">
+              Rolling 30-day average across all customers.
+            </p>
+          </div>
+        </section>
+
+        <!-- ============ Inspections snapshot strip (Phase 2 polish) ============
+             Four normalized KPI tiles. All counts are derived from the
+             same `hubInspections` array that paints the quality card —
+             no extra Firestore reads. Tones flip via inspections.js
+             paintInspSnapshot() based on the period totals. -->
+        <div class="kpi-grid insp-snapshot-strip" id="insp-snapshot-strip" data-cols="4">
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Inspections · Last 7d</span>
+            <span class="kpi-value" id="insp-snap-week">—</span>
+            <span class="kpi-meta"  id="insp-snap-week-meta">Recent activity</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Inspections · Last 30d</span>
+            <span class="kpi-value" id="insp-snap-month">—</span>
+            <span class="kpi-meta"  id="insp-snap-month-meta">Rolling window</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">5-star Wins · 30d</span>
+            <span class="kpi-value" id="insp-snap-fivestar">—</span>
+            <span class="kpi-meta"  id="insp-snap-fivestar-meta">Score ≥ 4.8</span>
+          </article>
+          <article class="kpi-card" data-tone="neutral">
+            <span class="kpi-label">Below 3.0 · 30d</span>
+            <span class="kpi-value" id="insp-snap-low">—</span>
+            <span class="kpi-meta"  id="insp-snap-low-meta">Coaching follow-up</span>
+          </article>
+        </div>
+
+        <!-- Recent inspections — last 5. Each card expands to a
+             detail modal. Score < 3 shows the "Areas needing
+             attention" broad-category callout (no per-task blame). -->
+        <section class="insp-card insp-recent-card">
+          <header class="insp-step-head">
+            <span class="insp-step-num">★</span>
+            <div>
+              <h2 class="insp-step-title">Recent inspections</h2>
+              <p class="insp-step-sub">Last 5 — tap a card for details.</p>
+            </div>
+          </header>
+          <div class="insp-recent-status" id="insp-recent-loading">Loading…</div>
+          <div class="insp-recent-status insp-recent-error" id="insp-recent-error" hidden></div>
+          <div class="insp-recent-status insp-recent-empty" id="insp-recent-empty" hidden>
+            No inspections yet. Tap <strong>+ New Inspection</strong> to start the first one.
+          </div>
+          <div class="insp-recent-list" id="insp-recent-list" role="list"></div>
+        </section>
+
+        <!-- Inspection Archive — collapsed by default. Searchable
+             over the loaded set; client-side filtering keeps the
+             UX snappy without composite indexes. -->
+        <section class="insp-card insp-archive-card">
+          <button type="button" class="insp-archive-toggle"
+                  id="insp-archive-toggle"
+                  aria-expanded="false"
+                  aria-controls="insp-archive-body">
+            <span>📚 Inspection archive</span>
+            <span class="insp-archive-chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="insp-archive-body" id="insp-archive-body" hidden>
+            <div class="insp-archive-filters">
+              <input type="search" class="insp-control" id="insp-archive-search"
+                     placeholder="Search customer, inspector, notes…" />
+              <select class="insp-control" id="insp-archive-score">
+                <option value="all">All scores</option>
+                <option value="5">★★★★★ 4.8+</option>
+                <option value="4">4–4.7</option>
+                <option value="3">3–3.9</option>
+                <option value="2">2–2.9</option>
+                <option value="1">Below 2</option>
+              </select>
+            </div>
+            <p class="insp-recent-status" id="insp-archive-status">Searching the loaded inspections…</p>
+            <div class="insp-recent-list" id="insp-archive-list" role="list"></div>
+          </div>
+        </section>
+
+      </div><!-- /#insp-hub-view -->
+
+      <!-- =============================================
+           INTAKE VIEW — the existing inspection form.
+           Hidden by default; shown when the user clicks
+           + New Inspection or arrives with ?mode=new.
+           ============================================= -->
+      <div id="insp-intake-view" class="insp-intake-view" hidden>
+
+        <header class="insp-intake-head">
+          <button type="button" class="insp-back-btn" id="insp-back-to-hub">
+            ← Back to hub
+          </button>
+        </header>
+
+      <!-- Hero / intro — sets the calm-dark Pioneer tone -->
+      <section class="insp-hero">
+        <span class="insp-hero-eyebrow">Pioneer Quality</span>
+        <h1 class="insp-hero-title">New inspection</h1>
+        <p class="insp-hero-sub" id="insp-hero-sub">Pick a customer, score each area, submit.</p>
+      </section>
+
+      <!-- ========== STEP 1 — context ========== -->
+      <section class="insp-card insp-step" id="insp-step-context">
+        <header class="insp-step-head">
+          <span class="insp-step-num">1</span>
+          <div>
+            <h2 class="insp-step-title">Setup</h2>
+            <p class="insp-step-sub">Tell us what you're walking into.</p>
+          </div>
+        </header>
+
+        <div class="insp-field">
+          <label class="insp-field-label" for="insp-customer">Customer <span class="insp-req">*</span></label>
+          <select class="insp-control" id="insp-customer" required>
+            <option value="" disabled selected>Loading customers…</option>
+          </select>
+        </div>
+
+        <div class="insp-field-row">
+          <div class="insp-field">
+            <label class="insp-field-label" for="insp-date">Inspection date</label>
+            <input type="date" id="insp-date" class="insp-control" />
+          </div>
+          <div class="insp-field">
+            <label class="insp-field-label">Inspector</label>
+            <div class="insp-readonly" id="insp-inspector-name">—</div>
+          </div>
+        </div>
+
+        <!-- Optional attribution: which cleaning tech is being
+             evaluated by this inspection. Stamped on the doc as
+             credited_cleaning_tech_slug / _name so future tech-
+             quality math + the existing Quality Wins flow have
+             a stable hook. NEVER used to publicly rank a tech. -->
+        <div class="insp-field">
+          <label class="insp-field-label" for="insp-credit-tech">
+            Credit cleaning tech (optional)
+            <button type="button" class="info-tip" aria-label="About tech credit"
+                    data-info-tip="Optional: link this inspection to the cleaning tech who did the work. We use this for private coaching and to power the future Cleaning Tech Quality score — never for public rankings."
+            >ⓘ</button>
+          </label>
+          <select id="insp-credit-tech" class="insp-control">
+            <option value="">— No credit yet —</option>
+          </select>
+        </div>
+
+        <!-- Building activity -->
+        <div class="insp-segmented" data-question="building_activity_level"
+             role="radiogroup" aria-label="Building activity after cleaning">
+          <span class="insp-segmented-label">Building activity after cleaning</span>
+          <div class="insp-pills">
+            <button class="insp-pill" type="button" data-value="No activity">No activity</button>
+            <button class="insp-pill" type="button" data-value="Light activity">Light</button>
+            <button class="insp-pill" type="button" data-value="Moderate activity">Moderate</button>
+            <button class="insp-pill" type="button" data-value="Heavy activity">Heavy</button>
+          </div>
+        </div>
+
+        <!-- Tech present -->
+        <div class="insp-segmented" data-question="cleaning_tech_present"
+             role="radiogroup" aria-label="Cleaning tech present">
+          <span class="insp-segmented-label">Was a cleaning tech present?</span>
+          <div class="insp-pills">
+            <button class="insp-pill" type="button" data-value="yes">Yes</button>
+            <button class="insp-pill" type="button" data-value="no">No</button>
+          </div>
+        </div>
+
+        <!-- Time since clean -->
+        <div class="insp-segmented" data-question="approximate_time_since_clean"
+             role="radiogroup" aria-label="Time since cleaning">
+          <span class="insp-segmented-label">Approximate time since cleaning</span>
+          <div class="insp-pills">
+            <button class="insp-pill" type="button" data-value="< 1 hour">&lt; 1 hr</button>
+            <button class="insp-pill" type="button" data-value="1–3 hours">1–3 hrs</button>
+            <button class="insp-pill" type="button" data-value="3–6 hours">3–6 hrs</button>
+            <button class="insp-pill" type="button" data-value="6+ hours">6+ hrs</button>
+            <button class="insp-pill" type="button" data-value="Unknown">Unknown</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== STEP 2 — areas ========== -->
+      <section class="insp-card insp-step" id="insp-step-areas">
+        <header class="insp-step-head">
+          <span class="insp-step-num">2</span>
+          <div>
+            <h2 class="insp-step-title">Score each area</h2>
+            <p class="insp-step-sub">Swipe or tap. Default is 3 (Acceptable). Notes optional.</p>
+          </div>
+        </header>
+
+        <!-- Areas list — populated by inspections.js so the slugs +
+             labels stay in one source of truth. -->
+        <div class="insp-areas" id="insp-areas"></div>
+      </section>
+
+      <!-- ========== STEP 3 — wrap-up ========== -->
+      <section class="insp-card insp-step" id="insp-step-wrap">
+        <header class="insp-step-head">
+          <span class="insp-step-num">3</span>
+          <div>
+            <h2 class="insp-step-title">Overall</h2>
+            <p class="insp-step-sub">Anything else to flag?</p>
+          </div>
+        </header>
+
+        <div class="insp-field">
+          <label class="insp-field-label" for="insp-overall-notes">Inspection notes (optional)</label>
+          <textarea id="insp-overall-notes" class="insp-control insp-textarea"
+                    rows="4" maxlength="4000"
+                    placeholder="Anything the cleaning team should know, anything the office should follow up on."></textarea>
+        </div>
+
+        <!-- Overall score readout — auto-calculated. Big and satisfying. -->
+        <div class="insp-overall" id="insp-overall">
+          <div class="insp-overall-meta">
+            <span class="insp-overall-eyebrow">Overall score</span>
+            <span class="insp-overall-sub" id="insp-overall-sub">Average across all areas</span>
+          </div>
+          <div class="insp-overall-value-wrap">
+            <span class="insp-overall-value" id="insp-overall-value">3.0</span>
+            <span class="insp-overall-emoji" id="insp-overall-emoji" aria-hidden="true">😐</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Submit + error/success states -->
+      <div class="insp-actions">
+        <div class="insp-submit-err" id="insp-submit-err" hidden role="alert"></div>
+        <button type="button" class="insp-submit-btn" id="insp-submit-btn">
+          Submit inspection
+        </button>
+      </div>
+
+      <!-- Success state — replaces the form once submission lands. -->
+      <section class="insp-card insp-success" id="insp-success" hidden>
+        <div class="insp-success-icon" aria-hidden="true">✅</div>
+        <h2 class="insp-success-title">Inspection saved.</h2>
+        <p class="insp-success-sub" id="insp-success-sub">Saved to Pioneer records.</p>
+
+        <!-- Celebration callout — only renders when overall_score >= 4.8.
+             Toggled by inspections.js after a successful submit. -->
+        <div class="insp-celebrate" id="insp-celebrate" hidden>
+          <span class="insp-celebrate-emoji" aria-hidden="true">🌟</span>
+          <strong class="insp-celebrate-title">5-Star Inspection!</strong>
+          <p class="insp-celebrate-sub">This one's getting shared on Team Hub.</p>
+        </div>
+
+        <div class="insp-success-actions">
+          <a class="insp-secondary-btn" href="#" id="insp-success-history">
+            View customer quality history
+          </a>
+          <button type="button" class="insp-secondary-btn" id="insp-success-back-to-hub">
+            Back to hub
+          </button>
+          <button type="button" class="insp-primary-btn" id="insp-success-new">
+            Start another inspection
+          </button>
+        </div>
+      </section>
+
+      </div><!-- /#insp-intake-view -->
+
+    </div><!-- /#staff-auth-content -->
+
+    <!-- =============================================
+         Inspection detail modal — opened by clicking
+         a recent / archive card. Renders full area
+         scores, context, notes, and the
+         "Create Service Recovery" entry point.
+         ============================================= -->
+    <div id="insp-detail-modal" class="insp-modal" hidden aria-hidden="true">
+      <div class="insp-modal-backdrop" data-modal-close></div>
+      <div class="insp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="insp-detail-title">
+        <header class="insp-modal-head">
+          <h2 id="insp-detail-title">Inspection</h2>
+          <button class="insp-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+        </header>
+        <div class="insp-modal-body" id="insp-detail-body"></div>
+        <footer class="insp-modal-foot">
+          <button type="button" class="insp-secondary-btn" data-modal-close>Close</button>
+          <button type="button" class="insp-primary-btn" id="insp-detail-create-sr">
+            Create Service Recovery
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- =============================================
+         Service Recovery intake modal.
+         Writes one doc to /service_recoveries when
+         submitted. Admin-only (rules deny tech writes).
+         ============================================= -->
+    <div id="sr-modal" class="insp-modal" hidden aria-hidden="true">
+      <div class="insp-modal-backdrop" data-modal-close></div>
+      <div class="insp-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sr-modal-title">
+        <header class="insp-modal-head">
+          <h2 id="sr-modal-title">Create Service Recovery</h2>
+          <button class="insp-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+        </header>
+        <div class="insp-modal-body">
+          <p class="insp-step-sub" id="sr-modal-context">Capture a follow-up so the team can make this right.</p>
+
+          <input type="hidden" id="sr-customer-slug" />
+          <input type="hidden" id="sr-inspection-id" />
+
+          <div class="insp-field">
+            <label class="insp-field-label" for="sr-area">Area</label>
+            <select class="insp-control" id="sr-area">
+              <option value="">— Pick area —</option>
+              <option value="offices">Offices</option>
+              <option value="bathrooms">Bathrooms</option>
+              <option value="entry_foyer">Entry / Foyer</option>
+              <option value="lunchroom">Lunchroom</option>
+              <option value="common_areas">Common Areas</option>
+              <option value="trash">Trash</option>
+              <option value="floors">Floors</option>
+              <option value="dusting">Dusting</option>
+              <option value="glass">Glass</option>
+              <option value="touchpoints">Touchpoints</option>
+              <option value="supplies">Supplies</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="insp-field">
+            <label class="insp-field-label">Severity</label>
+            <div class="insp-pills" data-sr-severity>
+              <button class="insp-pill" type="button" data-value="low">Low</button>
+              <button class="insp-pill" type="button" data-value="medium">Medium</button>
+              <button class="insp-pill" type="button" data-value="high">High</button>
+              <button class="insp-pill" type="button" data-value="urgent">Urgent</button>
+            </div>
+          </div>
+
+          <div class="insp-field">
+            <label class="insp-field-label" for="sr-description">Description</label>
+            <textarea class="insp-control insp-textarea" id="sr-description" rows="3" maxlength="2000"
+                      placeholder="What needs to happen, in plain language."></textarea>
+          </div>
+
+          <div class="insp-field-row">
+            <div class="insp-field">
+              <label class="insp-field-label" for="sr-assigned">Assign to tech (optional)</label>
+              <select class="insp-control" id="sr-assigned">
+                <option value="">— Unassigned —</option>
+              </select>
+            </div>
+            <div class="insp-field">
+              <label class="insp-field-label" for="sr-due">Due date (optional)</label>
+              <input type="date" class="insp-control" id="sr-due" />
+            </div>
+          </div>
+
+          <p class="insp-field-label" style="margin-top:6px;">Photos (coming soon)</p>
+          <button type="button" class="insp-area-photo" disabled>📷 Add photo (coming soon)</button>
+
+          <div class="insp-submit-err" id="sr-err" hidden role="alert"></div>
+        </div>
+        <footer class="insp-modal-foot">
+          <button type="button" class="insp-secondary-btn" data-modal-close>Cancel</button>
+          <button type="button" class="insp-primary-btn" id="sr-submit">
+            Create Service Recovery
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <footer class="app-footer insp-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Inspections v1</p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="info-tip.js"></script>
+  <script src="inspections.js"></script>
+</body>
+</html>

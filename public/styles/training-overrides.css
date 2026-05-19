@@ -1,0 +1,154 @@
+/* ====================================================================
+ * training-overrides.css — Phase 2 polish for /training.html + /lesson.html
+ *
+ * Layered on top of training.css. Scope is intentionally narrow:
+ * the training pages were built last and already follow the
+ * foundation design language closely (audit ranked them ★★★★★).
+ * This file finishes the parity pass:
+ *
+ *   1. Promote `.lib-card-status` (is-new / is-mid / is-done) to the
+ *      foundation `.status-chip` visual — rounded pill + leading dot
+ *      + Title Case + token palette.
+ *   2. Promote the "no lessons yet" + "lesson not found" empty
+ *      paragraphs to the foundation `.empty-state` shape.
+ *   3. Token-align `.training-lib-head` + `.lesson-head` typography
+ *      so section heads match the rest of the platform.
+ *   4. Token-align `.lesson-already-done` and `.lesson-ack-done`
+ *      success tiles to the foundation positive-empty token palette.
+ *
+ * No markup rewrites. training.js still emits `.lib-card-status is-*`
+ * unchanged; the bridge below upgrades the visual without touching
+ * the emitter.
+ *
+ * Nothing here changes selectors used outside the two training pages.
+ * ================================================================== */
+
+/* ---------- Lesson card status badge → foundation chip ---------- */
+.lib-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  border: 1px solid transparent;
+}
+.lib-card-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.lib-card-status.is-new {
+  background: var(--status-neutral-soft);
+  color:      var(--status-neutral-ink);
+}
+.lib-card-status.is-mid {
+  background: var(--status-progress-soft);
+  color:      var(--status-progress-ink);
+}
+.lib-card-status.is-done {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+
+/* ---------- Library section head rhythm ---------- */
+.training-lib-head { margin-bottom: var(--space-3); }
+.training-lib-title {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.training-lib-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+/* ---------- Lesson head rhythm ---------- */
+.lesson-head { margin-bottom: var(--space-3); }
+.lesson-eyebrow {
+  letter-spacing: var(--tracking-eyebrow);
+}
+.lesson-title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-strong);
+}
+.lesson-mins {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ---------- Empty state bridges ----------
+   training.html: #training-lib-empty (no lessons published yet)
+   lesson.html:   #lesson-not-found    (lessonId doesn't resolve)
+
+   Both are currently styled as calm dashed paragraphs by training.css;
+   promote them to the foundation .empty-state shape (flex column,
+   leader emoji, tokenized padding). Loading + error states keep
+   their current treatment — they are transient, not empties. */
+#training-lib-empty,
+#lesson-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card-soft);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+#training-lib-empty::before { content: "📚"; font-size: 24px; line-height: 1; display: block; margin-bottom: 2px; }
+#lesson-not-found::before   { content: "🔭"; font-size: 24px; line-height: 1; display: block; margin-bottom: 2px; }
+
+/* Defensive [hidden] honor — same fix as ui-empty-states.css.
+   training.js doesn't toggle these via the hidden attribute today,
+   but training.html ships them with hidden=true and reveals via the
+   author flex rule, so we keep the cascade tight. */
+#training-lib-empty[hidden],
+#lesson-not-found[hidden] { display: none; }
+
+/* The accent inside #lesson-not-found ("Back to lesson library") link
+   inherits its color from training.css; nothing to do here. */
+
+/* ---------- "Already completed" + "Finished" success tiles ----------
+   Both are calm green tiles. Token-align background + ink to the
+   foundation positive-tone palette so they read identical to
+   .empty-state[data-tone="positive"] on /supply-station. */
+.lesson-already-done,
+.lesson-ack-done {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+}
+.lesson-already-done-mark,
+.lesson-ack-done-mark { color: var(--status-success); }
+.lesson-already-done strong,
+.lesson-ack-done strong { color: var(--status-success-ink); }
+.lesson-already-done p,
+.lesson-ack-done-sub  { color: var(--status-success-ink); }
+.lesson-ack-done a { color: var(--accent); font-weight: 700; }
+
+/* ---------- Quiz feedback inline labels ---------- */
+.lesson-quiz-feedback.is-correct   { color: var(--status-success); }
+.lesson-quiz-feedback.is-incorrect { color: var(--status-critical); }
+
+/* ---------- Mobile safety ---------- */
+@media (max-width: 600px) {
+  .training-lib-title { font-size: var(--text-lg); }
+  .lesson-title       { font-size: var(--text-xl); }
+}

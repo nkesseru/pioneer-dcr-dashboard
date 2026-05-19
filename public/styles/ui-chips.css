@@ -1,0 +1,157 @@
+/* ====================================================================
+ * ui-chips.css — normalized status chips for every PioneerOps page.
+ *
+ * Every state used across the app — completed, in-progress, attention,
+ * not-started, warning, healthy, critical, info — uses the SAME pill
+ * shape, the SAME dot anchor, the SAME spacing, the SAME capitalization.
+ *
+ * Pages currently use a mix of `.badge`, `.sop-chip`, `.tech-status-*`,
+ * `.tab-badge`, etc. Those rules are not touched here — pages migrate
+ * to `.status-chip` during normalization (Phase 2+). This file is the
+ * destination, not a replacement.
+ *
+ * Markup contract:
+ *   <span class="status-chip" data-state="completed">Completed</span>
+ *   <span class="status-chip" data-state="in-progress">In progress</span>
+ *   <span class="status-chip" data-state="attention">Needs attention</span>
+ *
+ * The CSS uses the dot pseudo-element so callers don't have to add
+ * extra DOM. Capitalization is enforced via text-transform.
+ *
+ * Sizes:
+ *   default — fits inside body text rhythm
+ *   .is-sm  — smaller, for dense lists
+ *   .is-lg  — larger, for hero cards / headers
+ * ================================================================== */
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  /* Operational software reads at fast-scan distance. Keep
+     chip text plain English — not ALL CAPS shouting. */
+  text-transform: none;
+  white-space: nowrap;
+  vertical-align: middle;
+
+  /* Default = neutral; data-state overrides below. */
+  background: var(--status-neutral-soft);
+  color: var(--status-neutral-ink);
+  border: 1px solid transparent;
+}
+.status-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  /* slight opacity drop so the dot doesn't overshout the text */
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.status-chip.is-sm {
+  font-size: 10.5px;
+  padding: 2px 8px 2px 6px;
+  gap: 5px;
+}
+.status-chip.is-sm::before { width: 5px; height: 5px; }
+.status-chip.is-lg {
+  font-size: var(--text-sm);
+  padding: 4px 12px 4px 10px;
+  gap: 7px;
+}
+.status-chip.is-lg::before { width: 7px; height: 7px; }
+
+/* ---------- States ---------- */
+/* Healthy / completed / success share the same green family. */
+.status-chip[data-state="completed"],
+.status-chip[data-state="healthy"],
+.status-chip[data-state="success"],
+.status-chip[data-state="active"] {
+  background: var(--status-success-soft);
+  color:      var(--status-success-ink);
+}
+
+/* In progress reads as amber, distinct from "attention" (warmer amber). */
+.status-chip[data-state="in-progress"],
+.status-chip[data-state="in_progress"],
+.status-chip[data-state="pending"] {
+  background: var(--status-progress-soft);
+  color:      var(--status-progress-ink);
+}
+
+/* Attention / warning — warm amber. */
+.status-chip[data-state="attention"],
+.status-chip[data-state="warning"],
+.status-chip[data-state="overdue"] {
+  background: var(--status-attention-soft);
+  color:      var(--status-attention-ink);
+}
+
+/* Critical / blocked / failed — measured red. */
+.status-chip[data-state="critical"],
+.status-chip[data-state="blocked"],
+.status-chip[data-state="failed"],
+.status-chip[data-state="error"] {
+  background: var(--status-critical-soft);
+  color:      var(--status-critical-ink);
+}
+
+/* Info / neutral / draft — quiet, neutral. */
+.status-chip[data-state="info"] {
+  background: var(--status-info-soft);
+  color:      var(--status-info-ink);
+}
+.status-chip[data-state="not-started"],
+.status-chip[data-state="not_started"],
+.status-chip[data-state="draft"],
+.status-chip[data-state="archived"],
+.status-chip[data-state="neutral"] {
+  background: var(--status-neutral-soft);
+  color:      var(--status-neutral-ink);
+}
+
+/* Inactive / muted — even quieter, no dot. */
+.status-chip[data-state="inactive"],
+.status-chip[data-state="off"] {
+  background: var(--surface-card-soft);
+  color: var(--text-subtle);
+  border-color: var(--border-soft);
+}
+.status-chip[data-state="inactive"]::before,
+.status-chip[data-state="off"]::before {
+  opacity: 0.35;
+}
+
+/* Outlined variant — same colors, transparent fill. For use on
+   dark backgrounds (health-card foot, dark dialogs). */
+.status-chip.is-outline {
+  background: transparent;
+  border-color: currentColor;
+}
+.status-chip.is-outline::before { opacity: 1; }
+
+/* ---------- Optional count badge stacked on the chip ----------
+   Useful for KPI cards or admin tabs: "In progress 3". */
+.status-chip-count {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 18px;
+}
