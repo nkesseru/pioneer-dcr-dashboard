@@ -978,9 +978,26 @@
    on the launcher card itself — they only render inside the modal
    once the tech taps the button. */
 
+/* Security launcher.
+ *
+ * V6 hierarchy update — this card now sits at the TOP of the customer
+ * detail (right under the picker), so it carries more visual weight
+ * than before. Mission-critical feel without being alarming:
+ *   • 4px teal left stripe — the "operationally important" signal that
+ *     matches the trust-receipt language elsewhere in PioneerOps.
+ *   • Slightly more saturated teal/amber gradient (bumped from 10%/8%
+ *     to 16%/12%) so the card reads as distinct from the calmer SOP
+ *     and notes cards below.
+ *   • Subtle elevated shadow so it feels like the first thing to look
+ *     at without crowding the page.
+ *
+ * Hover/active states bump proportionally. The amber stays small —
+ * this is access info, not an alert. */
 .tech-security-launcher {
   padding: 0;                       /* the button is the whole card */
   overflow: hidden;
+  border-left: 4px solid #0d9488;   /* teal stripe */
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.08), 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 .tech-security-btn {
   appearance: none;
@@ -992,8 +1009,8 @@
   border: none;
   background:
     linear-gradient(135deg,
-      rgba(13, 148, 136, 0.10) 0%,
-      rgba(245, 158, 11, 0.08) 100%);
+      rgba(13, 148, 136, 0.16) 0%,
+      rgba(245, 158, 11, 0.12) 100%);
   cursor: pointer;
   text-align: left;
   color: var(--pc-text, #0f172a);
@@ -1002,8 +1019,8 @@
 .tech-security-btn:hover {
   background:
     linear-gradient(135deg,
-      rgba(13, 148, 136, 0.15) 0%,
-      rgba(245, 158, 11, 0.12) 100%);
+      rgba(13, 148, 136, 0.22) 0%,
+      rgba(245, 158, 11, 0.16) 100%);
 }
 .tech-security-btn:active { transform: scale(0.997); }
 .tech-security-btn:focus-visible {
@@ -1206,4 +1223,27 @@
   .tech-security-btn-title { font-size: 16px; }
   .tech-security-btn-sub   { font-size: 12px; }
   .tech-security-code      { font-size: 18px; }
+}
+
+/* "Ask Kirby for update" nudge button on supply request rows. Small,
+ * outlined, calm — doesn't compete with the status pill on the right. */
+.tech-supply-nudge {
+  margin-top: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: #FFFFFF;
+  color: #0d9488;
+  border: 1px solid #0d9488;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.tech-supply-nudge:hover:not(:disabled) {
+  background: #0d9488;
+  color: #FFFFFF;
+}
+.tech-supply-nudge:disabled {
+  opacity: 0.7;
+  cursor: default;
 }

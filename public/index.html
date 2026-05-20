@@ -190,20 +190,59 @@
     <!-- ============ Authorized content wrapper ============ -->
     <div id="staff-auth-content" hidden>
 
-    <!-- Draft-restored toast slot -->
+    <!-- Draft-restored toast slot — calmer Phase 3 copy. -->
     <div id="draft-toast" class="draft-toast" hidden>
-      <span id="draft-toast-text">Draft restored.</span>
+      <span class="draft-toast-icon" aria-hidden="true">💾</span>
+      <span id="draft-toast-text">Welcome back — your draft is here.</span>
       <button type="button" id="draft-toast-clear" class="draft-toast-clear">Clear draft</button>
+    </div>
+
+    <!-- ============ Sticky visit context bar (Phase 3) ============
+         Appears once customer + tech + clean_date are all filled.
+         Stays glued to the top of the viewport so the tech always
+         knows who/what/when the open DCR is for as they scroll
+         through long checklists. Includes a slim completion-progress
+         bar driven by app.js refreshDcrCompletion(). Hidden when the
+         page is on the success card. -->
+    <div id="dcr-sticky-context" class="dcr-sticky-context" hidden role="region" aria-label="DCR context">
+      <div class="dcr-sticky-context-row">
+        <div class="dcr-sticky-context-text">
+          <span class="dcr-sticky-context-eyebrow">Open DCR</span>
+          <span class="dcr-sticky-context-customer" id="dcr-sticky-customer">—</span>
+          <span class="dcr-sticky-context-meta">
+            <span id="dcr-sticky-tech">—</span><span class="dcr-sticky-context-sep" aria-hidden="true"> · </span><span id="dcr-sticky-date">—</span>
+          </span>
+        </div>
+        <div class="dcr-sticky-context-progress" aria-label="Form completion">
+          <span class="dcr-sticky-context-progress-pct" id="dcr-sticky-progress-pct">0%</span>
+          <div class="dcr-sticky-context-progress-bar" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               id="dcr-sticky-progress-bar">
+            <div class="dcr-sticky-context-progress-fill" id="dcr-sticky-progress-fill"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <form id="dcr-form" class="dcr-form" novalidate>
 
-      <!-- Validation summary — shown after a failed submit attempt. Lists
-           exactly what still needs attention so the cleaner doesn't have to
-           hunt for the missing piece. Hidden again once submit succeeds. -->
+      <!-- Validation guidance — shown after a failed submit attempt.
+           Phase 4 refactor: single-focus operational guidance instead
+           of a bullet-wall. We surface the NEXT highest-priority
+           missing item with a clear CTA that scrolls to the target,
+           expands the section if it's collapsed, and briefly glows
+           the destination so the tech sees where they landed. The
+           submit gate logic itself is unchanged — this is purely a
+           UX layer over collectValidationErrors(). -->
       <div id="validation-summary" class="validation-summary" role="status" aria-live="polite" hidden>
-        <div class="validation-head" id="validation-head">Almost there — please finish these:</div>
-        <ul id="validation-list" class="validation-list"></ul>
+        <div class="validation-icon" aria-hidden="true">→</div>
+        <div class="validation-body">
+          <span class="validation-eyebrow" id="validation-head">Almost there</span>
+          <p class="validation-message" id="validation-message">—</p>
+        </div>
+        <button type="button" class="validation-cta" id="validation-cta">
+          Take me there <span aria-hidden="true">↓</span>
+        </button>
       </div>
 
       <!-- Deputy-shift banner — visible only when the page was opened
@@ -326,6 +365,13 @@
         <h2 class="card-title">Photos</h2>
         <p class="card-sub">Up to <span id="max-photos-label">12</span> photos.</p>
 
+        <!-- V6 pilot — the <input type="file"> used to live INSIDE the
+             <label>, which on some mobile browsers fires a duplicate
+             click event that can bubble out of the photos card. Moved
+             OUT to be a sibling so the label only forwards via its
+             `for` attribute (no nested-event-fire path). The defensive
+             click `stopPropagation` in app.js is the belt to this
+             suspenders. -->
         <label class="file-drop" for="photos">
           <svg class="file-drop-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 7l3 -3h12l3 3v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-12z" />
@@ -333,8 +379,9 @@
           </svg>
           <span class="file-drop-cta">Add photos</span>
           <span class="file-drop-sub">JPG, PNG, HEIC, WebP &middot; up to 10&nbsp;MB each</span>
-          <input type="file" id="photos" accept="image/*" multiple hidden />
         </label>
+        <input type="file" id="photos" accept="image/*" multiple hidden />
+
         <div id="photo-preview" class="photo-grid" aria-live="polite"></div>
         <div class="photo-counter"><span id="photo-counter-text">0 of 12</span></div>
 
@@ -370,8 +417,28 @@
         </div>
 
         <div class="conditional" data-show-when="on_time_budget=no">
+          <!-- V6 pilot — supportive framing. Going over budget is data,
+               not a strike. The note here is operational so the office
+               can react to scope creep / heavier cleans / staffing
+               pressure before techs burn out. -->
+          <p class="hint" style="margin-top: 12px; line-height: 1.5;">
+            Going over budget happens. This helps us spot scope creep,
+            heavier-than-normal cleans, or anything that may need
+            office support.
+          </p>
           <p class="hint" style="margin-top: 14px;">What threw the timing off? (Tap all that apply.)</p>
           <div id="time-budget-reasons"></div>
+
+          <!-- Optional "Other — leave a note" textarea. Hidden until
+               the "other" reason is checked; populated by app.js. The
+               note is optional — submission is not gated on it. -->
+          <div id="over-budget-other-wrap" class="field" hidden style="margin-top: 12px;">
+            <label for="over-budget-other-note" class="hint" style="display:block;margin-bottom:6px;font-weight:700;color:var(--pc-text);">
+              Tell us what happened.
+            </label>
+            <textarea id="over-budget-other-note" rows="3"
+              placeholder="Example: I was moving slower today, extra trash, more people in the building, heavier restroom use, customer had an event, etc."></textarea>
+          </div>
         </div>
       </section>
 
@@ -427,8 +494,18 @@
         </div>
       </div>
 
-      <!-- Submit bar (sticky on mobile, inline on desktop) -->
+      <!-- Submit bar (sticky on mobile, inline on desktop).
+           Phase 3 polish: completion-count chip surfaces alongside
+           the button so the tech can see "5 of 9 sections" without
+           scrolling back to the top. Driven by app.js
+           refreshDcrCompletion(). -->
       <div class="submit-bar">
+        <div class="submit-bar-left">
+          <span class="submit-bar-progress" id="submit-bar-progress" aria-live="polite">
+            <span class="submit-bar-progress-dot" aria-hidden="true"></span>
+            <span class="submit-bar-progress-text" id="submit-bar-progress-text">0 of 0 sections complete</span>
+          </span>
+        </div>
         <button type="submit" class="submit-btn" id="submit-btn">Submit DCR</button>
         <div id="status" role="status" aria-live="polite"></div>
       </div>

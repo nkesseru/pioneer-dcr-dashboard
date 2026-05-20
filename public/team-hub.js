@@ -393,17 +393,35 @@
     return ids;
   }
 
-  async function markAnnouncementRead(announcementId, uid, email) {
+  async function markAnnouncementRead(announcementId, uid, email, version) {
     const db    = firebase.firestore();
     const docId = announcementId + "_" + uid;
     const ref   = db.collection("announcement_reads").doc(docId);
+    const v     = Number(version) || 1;
+    // V6 — also mirror to localStorage so a Firestore write failure
+    // (rules glitch, offline) doesn't cause the announcement to
+    // re-display on the next page load. Mirrors the cache mandatory-modal.js
+    // writes; both use the key `pioneer.annRead.<uid>` JSON map.
+    try {
+      const key = "pioneer.annRead." + uid;
+      const raw = localStorage.getItem(key);
+      const map = raw ? (JSON.parse(raw) || {}) : {};
+      map[announcementId] = { v: v, t: new Date().toISOString() };
+      localStorage.setItem(key, JSON.stringify(map));
+    } catch (_e) { /* private mode / quota — soft-fail */ }
     await ref.set({
       announcement_id: announcementId,
       uid:             uid,
       email:           email || "",
+      version:         v,
       read_at:         firebase.firestore.FieldValue.serverTimestamp()
     });
     readIds.add(announcementId);
+    try {
+      console.info("[PioneerOps Announcement] team-hub markRead ok", {
+        announcementId: announcementId, version: v, uid: uid
+      });
+    } catch (_e) {}
   }
 
   // Cap on the read-but-active "past" section so the collapsed list

@@ -149,7 +149,12 @@
       { id: "event-cleanup",  label: "After-event cleanup" },
       { id: "supplies-issue", label: "Supplies / equipment issue" },
       { id: "access-delay",   label: "Access / lockout delay" },
-      { id: "training",       label: "Training another tech" }
+      { id: "training",       label: "Training another tech" },
+      // V6 pilot — supportive freeform option. Picking "other" reveals
+      // an optional note field on the form. The note is OPTIONAL — we
+      // don't gate submission on it. Goal is to surface scope creep
+      // early without making the tech feel interrogated.
+      { id: "other",          label: "Other — leave a note" }
     ],
     under_budget_due_to: [
       { id: "light-occupancy", label: "Light occupancy" },

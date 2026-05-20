@@ -30,6 +30,19 @@
   const DRAFT_KEY    = "pioneer.dcr.draft.v1";
   const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+  // ----- Optional DCR submit-success delight: tiny flush sound effect -----
+  // Decorative only. Plays at low volume after a confirmed submit. Never
+  // fires on validation errors, never fires on draft restore, never plays
+  // twice for the same submission, and silently no-ops when the browser
+  // blocks autoplay or the audio file is missing. Set to `false` to kill
+  // the feature entirely without removing the wiring.
+  const ENABLE_DCR_SUCCESS_SOUND   = true;
+  const DCR_SUCCESS_SOUND_SRC      = "/assets/sounds/dcr-complete-flush.mp3";
+  const DCR_SUCCESS_SOUND_VOLUME   = 0.25;
+  // Tracks the most-recent submissionId we played the sound for. Same
+  // id arriving twice (e.g. success-card rerender) → no replay.
+  let _dcrSuccessSoundLastPlayedId = null;
+
   // Inline content for each checklist pill — done/issue are icon-only SVGs
   // (currentColor picks up the active state's color), N/A is short text.
   // `M10 16v.01` + `stroke-linecap="round"` renders as a single dot for the
@@ -57,6 +70,12 @@
   let checklistNotes     = {};     // { [section_id]: { [item_id]: "free-text note for an issue" } }
   let sectionCollapsed   = {};     // { [section_id]: true when section is collapsed }
   let timeBudgetReasons  = new Set();
+  // V6 pilot — freeform note that pairs with the "other" reason on the
+  // time-budget section. Optional; survives draft save/restore; flows
+  // into the submitted DCR as both snake_case (form_data.time_budget_other_note)
+  // and camelCase (overBudgetNote, overBudgetReason) mirrors so any
+  // downstream reader picks it up.
+  let overBudgetOtherNote = "";
   let signaturePad       = null;
   let firebaseCtx        = null;
   let isSubmitting       = false;
@@ -679,9 +698,42 @@
         });
         issueDetail.appendChild(note);
 
+        // Phase 3: replace the passive "tip — add a photo above" line
+        // with an active affordance: a small button that scrolls to the
+        // Photos card and opens the file picker so techs don't have to
+        // hunt for it while marking issues.
+        const photoCta = document.createElement("button");
+        photoCta.type = "button";
+        photoCta.className = "issue-photo-cta";
+        photoCta.innerHTML =
+          '<span class="issue-photo-cta-icon" aria-hidden="true">📷</span>' +
+          '<span class="issue-photo-cta-text">Add a photo for this issue</span>';
+        photoCta.addEventListener("click", function (ev) {
+          // V6 — open the file picker SYNCHRONOUSLY inside the user
+          // click handler. The earlier `setTimeout(..., 240)` wrapper
+          // broke iOS Safari's user-activation requirement, so the
+          // file picker silently refused to open on iPhone. We also
+          // stop propagation so this click can't bubble to any
+          // ancestor that might react to it.
+          ev.stopPropagation();
+          const photosLabel = document.querySelector('label.file-drop[for="photos"]');
+          const photosInput = document.getElementById("photos");
+          if (photosInput && typeof photosInput.click === "function") {
+            photosInput.click();
+          }
+          if (photosLabel) {
+            photosLabel.scrollIntoView({ behavior: "smooth", block: "center" });
+            photosLabel.classList.add("is-flashing");
+            setTimeout(function () { photosLabel.classList.remove("is-flashing"); }, 1200);
+          }
+        });
+        issueDetail.appendChild(photoCta);
+
+        // Subtle secondary hint so the user knows the photo is optional
+        // and lives in the shared Photos block above.
         const hint = document.createElement("p");
         hint.className = "issue-hint";
-        hint.textContent = "Tip: add a photo above to document this issue.";
+        hint.textContent = "Optional. Photos help the office triage this issue faster.";
         issueDetail.appendChild(hint);
 
         // Confirmation line — hidden by CSS until the row is `.issue-resolved`,
@@ -745,6 +797,7 @@
 
     updateSectionProgress(sectionId);
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3: instant sticky context + submit-bar update
     // Auto-collapse if all items are now answered AND the user didn't just
     // pick "issue" (in which case they probably want to type a note).
     maybeAutoCollapse(sectionId, state);
@@ -911,6 +964,7 @@
       b.classList.toggle("is-active", b.dataset.value === value);
     });
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3 instant update
   }
 
   /* ---------- render: time budget reason groups ---------- */
@@ -947,6 +1001,11 @@
         cb.addEventListener("change", function () {
           if (cb.checked) timeBudgetReasons.add(reason.id);
           else            timeBudgetReasons.delete(reason.id);
+          // V6 pilot — when the "other" reason toggles, show/hide
+          // the optional note textarea right below the reason list.
+          // Reveal on check; collapse on uncheck (clearing the
+          // textarea so a stale note doesn't sneak into the payload).
+          if (reason.id === "other") toggleOverBudgetOtherNoteVisibility(cb.checked);
           scheduleSaveDraft();
         });
 
@@ -960,6 +1019,22 @@
 
       root.appendChild(block);
     });
+  }
+
+  // V6 pilot — toggle visibility of #over-budget-other-wrap. Clearing
+  // the note on hide keeps the persisted payload tight; a re-checked
+  // "other" starts blank again rather than silently re-attaching a
+  // stale note.
+  function toggleOverBudgetOtherNoteVisibility(visible) {
+    const wrap = $("over-budget-other-wrap");
+    const ta   = $("over-budget-other-note");
+    if (!wrap || !ta) return;
+    wrap.hidden = !visible;
+    if (!visible) {
+      ta.value = "";
+      overBudgetOtherNote = "";
+      scheduleSaveDraft();
+    }
   }
 
   /* ---------- yes/no segmented control ---------- */
@@ -980,6 +1055,7 @@
     });
     updateConditionals();
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3 instant update
   }
 
   function updateConditionals() {
@@ -1308,7 +1384,30 @@
       anyone_in_building:   anyoneIn,
       occupancy_level:      occupancyLevel,
       on_time_budget:       onTimeBudget,
-      time_budget_reasons:  onTimeBudget ? [] : Array.from(timeBudgetReasons)
+      time_budget_reasons:  onTimeBudget ? [] : Array.from(timeBudgetReasons),
+      // V6 pilot — freeform "other" note for the over-budget reason.
+      // Persisted under multiple field names so any downstream reader
+      // (admin UI, DCR email render, future operational dashboards)
+      // can pick it up without schema-migration churn:
+      //   - snake_case (matches the rest of form_data shape)
+      //   - camelCase mirrors per the V6 spec (overBudgetReason
+      //     "other", overBudgetNote = freeform text)
+      //   - timeBudget structured object for compose/render layers
+      //     that prefer the nested shape
+      // Only populated when over-budget AND "other" is selected;
+      // empty otherwise so the doc doesn't carry stale notes.
+      time_budget_other_note: (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? overBudgetOtherNote : "",
+      overBudgetReason:       (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? "other" : null,
+      overBudgetNote:         (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? overBudgetOtherNote : "",
+      timeBudget: {
+        withinBudget:  !!onTimeBudget,
+        reasons:       onTimeBudget ? [] : Array.from(timeBudgetReasons),
+        reasonsOther:  (!onTimeBudget && timeBudgetReasons.has("other"))
+          ? overBudgetOtherNote : ""
+      }
     };
   }
 
@@ -1334,6 +1433,7 @@
         checklistNotes:     checklistNotes,
         sectionCollapsed:   sectionCollapsed,
         timeBudgetReasons:  Array.from(timeBudgetReasons),
+        overBudgetOtherNote: overBudgetOtherNote,
         supplyRequestText:  els.supplyRequestText.value,
         problemCategory:    els.problemCategory.value,
         problemSummary:     els.problemSummary.value,
@@ -1346,6 +1446,134 @@
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (e) { /* quota / privacy mode — silently skip */ }
+    // Phase 3 polish: refresh the sticky context bar + submit-bar count
+    // on every draft save. saveDraft is debounced to ~500ms after input,
+    // so this won't run on every keystroke. Discrete state-change
+    // handlers (onSeg, onRating, onChecklistPill) call refreshDcrCompletion
+    // directly for instant feedback.
+    refreshDcrCompletion();
+  }
+
+  /* ---------- Phase 3: sticky visit context + completion progress ----------
+     Two consumers:
+       1. #dcr-sticky-context — sticky bar at top showing customer · tech
+          · date once all three are filled, with a slim progress bar.
+       2. .submit-bar-progress — the "N of M sections complete" chip
+          next to the Submit button. Sticky on mobile via existing CSS.
+     Counts ONLY operational sections (customer/tech/date, the N
+     checklist sections, supplies, rating, problems, occupancy, time,
+     sign+signature). Photos + Notes are optional so they don't show
+     up in the denominator. */
+  function computeDcrCompletion() {
+    const gates = [];
+    gates.push({ id: "visit",      done: !!(els.customer && els.customer.value &&
+                                            els.tech && els.tech.value &&
+                                            els.cleanDate && els.cleanDate.value) });
+    gates.push({ id: "supplies",   done: !!segState.needs_supplies });
+    gates.push({ id: "rating",     done: !!ratingState });
+    gates.push({ id: "problems",   done: !!segState.has_problem });
+    gates.push({ id: "occupancy",  done: !!segState.anyone_in_building });
+    gates.push({ id: "time",       done: !!segState.on_time_budget });
+    gates.push({ id: "submit",     done: !!(els.affirm && els.affirm.checked &&
+                                            signaturePad && signaturePad.hasInk()) });
+
+    const sections = (window.DCR_FORM_CONFIG &&
+                      Array.isArray(window.DCR_FORM_CONFIG.checklist_sections))
+                       ? window.DCR_FORM_CONFIG.checklist_sections : [];
+    sections.forEach(function (section) {
+      const items = section.items || [];
+      let allDone = items.length > 0;
+      for (let i = 0; i < items.length; i++) {
+        const itemId = items[i].id;
+        const st = checklistState[section.id] && checklistState[section.id][itemId];
+        if (!st) { allDone = false; break; }
+        if (st === "issue") {
+          // Issue rows need a non-empty note to be considered complete —
+          // matches the form-level submit validation in onSubmit.
+          const note = (checklistNotes[section.id] && checklistNotes[section.id][itemId]) || "";
+          if (!String(note).trim()) { allDone = false; break; }
+        }
+      }
+      gates.push({ id: "section:" + section.id, done: allDone });
+    });
+
+    const total = gates.length;
+    const done  = gates.filter(function (g) { return g.done; }).length;
+    return { total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
+
+  function refreshDcrCompletion() {
+    // Only paint when the form is on screen (success card hides it).
+    const successCard = document.getElementById("success-card");
+    if (successCard && successCard.hidden === false) {
+      const sticky = document.getElementById("dcr-sticky-context");
+      if (sticky) sticky.hidden = true;
+      return;
+    }
+
+    const stickyEl = document.getElementById("dcr-sticky-context");
+    if (stickyEl) {
+      const hasCtx = !!(els.customer && els.customer.value &&
+                        els.tech && els.tech.value &&
+                        els.cleanDate && els.cleanDate.value);
+      if (!hasCtx) {
+        stickyEl.hidden = true;
+      } else {
+        // Pull display names from the SELECTED option's textContent so
+        // the bar shows "Lydig Construction" not "lydig-construction".
+        const custName = (els.customer.selectedOptions && els.customer.selectedOptions[0])
+                           ? els.customer.selectedOptions[0].textContent.trim()
+                           : els.customer.value;
+        const techName = (els.tech.selectedOptions && els.tech.selectedOptions[0])
+                           ? els.tech.selectedOptions[0].textContent.trim()
+                           : els.tech.value;
+        let dateLabel = els.cleanDate.value;
+        try {
+          const d = new Date(els.cleanDate.value + "T12:00:00");
+          if (!isNaN(d.getTime())) {
+            dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          }
+        } catch (_e) { /* fall through to raw value */ }
+
+        const setEl = function (id, text) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = text;
+        };
+        setEl("dcr-sticky-customer", custName);
+        setEl("dcr-sticky-tech",     techName);
+        setEl("dcr-sticky-date",     dateLabel);
+        stickyEl.hidden = false;
+      }
+    }
+
+    const comp = computeDcrCompletion();
+
+    // Sticky bar progress.
+    const pctEl  = document.getElementById("dcr-sticky-progress-pct");
+    const fillEl = document.getElementById("dcr-sticky-progress-fill");
+    const barEl  = document.getElementById("dcr-sticky-progress-bar");
+    if (pctEl)  pctEl.textContent = comp.pct + "%";
+    if (fillEl) fillEl.style.width = comp.pct + "%";
+    if (barEl) {
+      barEl.setAttribute("aria-valuenow", String(comp.pct));
+      barEl.setAttribute("data-state",
+        comp.pct === 100 ? "complete" :
+        comp.pct >= 60   ? "moving"   :
+        comp.pct >  0    ? "started"  : "idle");
+    }
+
+    // Submit-bar progress chip.
+    const sbTextEl = document.getElementById("submit-bar-progress-text");
+    const sbWrapEl = document.getElementById("submit-bar-progress");
+    if (sbTextEl) {
+      sbTextEl.textContent = comp.done + " of " + comp.total + " sections complete";
+    }
+    if (sbWrapEl) {
+      sbWrapEl.setAttribute("data-state",
+        comp.pct === 100 ? "complete" :
+        comp.pct >= 60   ? "moving"   :
+        comp.pct >  0    ? "started"  : "idle");
+    }
   }
 
   function clearDraft() {
@@ -1431,9 +1659,23 @@
         if (cb) cb.checked = true;
       });
 
+      // V6 pilot — restore the optional "other" note + reveal the
+      // textarea when the prior draft had "other" selected. The note
+      // only renders when both conditions hold so a stale note from
+      // a prior draft can't accidentally re-attach.
+      overBudgetOtherNote = String(draft.overBudgetOtherNote || "").trim();
+      const overOtherEl = $("over-budget-other-note");
+      if (timeBudgetReasons.has("other") && overOtherEl) {
+        overOtherEl.value = overBudgetOtherNote;
+        toggleOverBudgetOtherNoteVisibility(true);
+      }
+
       return true;
     } finally {
       isRestoringDraft = false;
+      // Phase 3: once the draft is hydrated, refresh the sticky bar +
+      // submit count so the tech sees their resume state right away.
+      refreshDcrCompletion();
     }
   }
 
@@ -1560,38 +1802,146 @@
     return errors;
   }
 
+  // Map a terse internal validation message to a calm, guided string
+  // for the single-focus validation card. Returns the existing msg if
+  // there's no specific mapping, so future errors don't crash.
+  function guidedValidationCopy(err) {
+    const m = (err && err.msg) || "";
+    // Exact-match table for the canned strings collectValidationErrors
+    // emits today. Order doesn't matter; this is a lookup.
+    const MAP = {
+      "Select a customer":                  "Pick a customer to start",
+      "Select a cleaning tech":             "Pick the tech who cleaned",
+      "Pick a clean date":                  "Set the clean date",
+      "Answer: do you need supplies?":      "Tell us about supplies",
+      "List the supplies you need":         "List the supplies you need",
+      "Rate how the clean went":            "Rate how the clean went",
+      "Answer: was there a problem?":       "Tell us if anything went wrong",
+      "Choose a problem category":          "Pick the problem category",
+      "Add a short problem summary or details": "Describe the problem briefly",
+      "Add at least one photo":             "One more step — add a photo",
+      "Answer: was anyone in the building?": "Tell us about occupancy",
+      "Choose how busy the building was":   "Pick how busy it was",
+      "Answer: did you stick to your time budget?": "Tell us about your time budget",
+      "Pick a reason for being off budget": "Pick what threw the timing off",
+      "Check the affirmation box":          "Check the affirmation to sign off",
+      "Add your handwritten signature":     "Add your signature to finish"
+    };
+    if (MAP[m]) return MAP[m];
+
+    // Checklist-section "N items still need a status" → "<Section> still needs attention"
+    const sectionMatch = m.match(/^(.+?):\s+\d+\s+items?\s+still\s+needs?\s+a\s+status$/i);
+    if (sectionMatch) return sectionMatch[1] + " still needs attention";
+
+    // Per-item issue note: "Add a quick note for the issue at \"<item>\""
+    const issueMatch = m.match(/^Add a quick note for the issue at\s+"(.+)"$/);
+    if (issueMatch) return "Add a note to the issue on " + issueMatch[1];
+
+    // Fall back to the original copy if a new error type lands without
+    // a mapping — caller still gets readable text, just less polished.
+    return m;
+  }
+
+  // Pick a supportive eyebrow based on how many items remain. The
+  // wording shifts as the tech gets closer to done so the card feels
+  // like it's cheering them on, not nagging.
+  function validationEyebrowFor(count) {
+    if (count <= 1) return "One last thing";
+    if (count <= 2) return "Almost there";
+    if (count <= 4) return "Just a few more steps";
+    return "A few things to wrap up";
+  }
+
+  // Phase 4 refactor: single-focus operational guidance instead of a
+  // bullet wall. Surfaces ONLY the next highest-priority missing item
+  // with a tap-anywhere CTA that scrolls, expands, and glows. The
+  // submit gate (collectValidationErrors) is unchanged.
   function showValidationErrors(errors) {
     const summary = $("validation-summary");
-    const list    = $("validation-list");
     const head    = $("validation-head");
-    if (!summary || !list) return;
-
-    if (head) {
-      head.textContent = errors.length === 1
-        ? "Almost there — one more thing:"
-        : `Almost there — ${errors.length} items left to finish:`;
+    const msgEl   = $("validation-message");
+    const ctaEl   = $("validation-cta");
+    if (!summary) return;
+    if (!errors || errors.length === 0) {
+      summary.hidden = true;
+      return;
     }
 
-    list.innerHTML = "";
-    errors.forEach(function (e) {
-      const li = document.createElement("li");
-      li.textContent = e.msg;
-      list.appendChild(li);
-    });
+    const first      = errors[0];
+    const guidedText = guidedValidationCopy(first);
+    if (msgEl) msgEl.textContent = guidedText;
+    if (head)  head.textContent  = validationEyebrowFor(errors.length);
+
+    // Stash the target selector on the wrapper + CTA so the click
+    // handler (wired once in wireValidationCta) can navigate to it.
+    summary.dataset.scrollTo = first.scrollTo || "";
+    if (ctaEl) ctaEl.dataset.scrollTo = first.scrollTo || "";
+
     summary.hidden = false;
 
-    // Scroll to the first incomplete field's card. `scroll-margin-top` on
-    // .card (see styles.css) keeps the card title clear of the sticky header.
-    const first = errors[0];
-    if (first && first.scrollTo) {
-      const target = document.querySelector(first.scrollTo);
-      if (target) {
-        const card = target.closest(".card") || target;
-        setTimeout(function () {
-          card.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 80);
+    // Auto-scroll to the target on first paint so the tech sees both
+    // the guidance card AND the destination together. The handler
+    // below covers re-taps after the initial scroll.
+    scrollToValidationTarget(first.scrollTo);
+  }
+
+  // Bring a missing-field target into view, expand the section if
+  // it's collapsed, and pulse a brief glow. Used both on initial
+  // showValidationErrors paint and on every CTA click.
+  function scrollToValidationTarget(selector) {
+    if (!selector) return;
+    const target = document.querySelector(selector);
+    if (!target) return;
+
+    // Identify the wrapping card so we can expand + glow it as a unit.
+    const card = target.closest(".checklist-card, .card") || target;
+
+    // Expand a collapsed checklist section so its items become
+    // visible after the scroll lands. toggleSectionCollapse handles
+    // the actual aria-expanded + is-collapsed flip + persistence.
+    if (card.classList && card.classList.contains("checklist-card") &&
+        card.classList.contains("is-collapsed")) {
+      const sectionId = card.dataset.sectionId;
+      if (sectionId && typeof toggleSectionCollapse === "function") {
+        toggleSectionCollapse(sectionId);
       }
     }
+
+    // Smooth scroll + temporary glow. The glow class is removed on
+    // animationend OR after a defensive 1.6s timeout in case the
+    // browser drops the event.
+    setTimeout(function () {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+      card.classList.add("is-validation-glow");
+      const cleanup = function () { card.classList.remove("is-validation-glow"); };
+      card.addEventListener("animationend", cleanup, { once: true });
+      setTimeout(cleanup, 1600);
+    }, 60);
+  }
+
+  // Wire the CTA + card-as-button once on boot so the click handler
+  // survives every showValidationErrors() / hideValidationSummary()
+  // toggle cycle.
+  let _validationCtaWired = false;
+  function wireValidationCta() {
+    if (_validationCtaWired) return;
+    const summary = $("validation-summary");
+    const ctaEl   = $("validation-cta");
+    if (!summary) return;
+    function go(ev) {
+      ev && ev.preventDefault && ev.preventDefault();
+      const target = (ctaEl && ctaEl.dataset.scrollTo) ||
+                     summary.dataset.scrollTo || "";
+      scrollToValidationTarget(target);
+    }
+    if (ctaEl)  ctaEl.addEventListener("click", go);
+    // The whole card is also a soft tap target — wide thumbs win.
+    summary.addEventListener("click", function (ev) {
+      // Don't double-fire when the inner button was the actual click.
+      if (ev.target && ev.target.closest("#validation-cta")) return;
+      go(ev);
+    });
+    _validationCtaWired = true;
   }
 
   function hideValidationSummary() {
@@ -1643,6 +1993,14 @@
   async function onSubmit(ev) {
     ev.preventDefault();
     if (isSubmitting) return;
+
+    // Prime the success-sound element INSIDE the user-gesture chain.
+    // The fully-async submit path (Storage upload → Function call) can
+    // outlive Safari's "play allowed after gesture" window, so creating
+    // + load()ing the Audio object here, while the click is still fresh,
+    // lets the eventual onSuccess() call .play() on an already-primed
+    // element. Silent no-op if the feature flag is off.
+    primeDcrSuccessSound();
 
     // Roster gate — block submit if the live customer/tech list hasn't
     // loaded. Skipping this would let the form submit with empty slugs
@@ -1845,6 +2203,102 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
     triggerCelebration();
     playSuccessLottie();
+    playDcrSuccessSound(submissionId);
+    // Phase 3: hide the sticky context bar — the DCR is in the post-
+    // submit celebration moment, not "open".
+    const sticky = document.getElementById("dcr-sticky-context");
+    if (sticky) sticky.hidden = true;
+  }
+
+  // Tiny optional delight: a soft flush sound effect after a confirmed
+  // DCR submission. Strictly cosmetic.
+  //
+  // Contract:
+  //   • Only fires from onSuccess (post-submit). Never on validation
+  //     errors, never on draft restore, never on form reset.
+  //   • Dedup-by-submissionId so a success-card rerender can't replay.
+  //   • Silent on:
+  //       - feature flag off
+  //       - missing audio file (server 404 → play() rejects)
+  //       - browser autoplay restrictions (play() rejects)
+  //       - older browsers without the Audio constructor
+  //   • No screen-reader announcement — decorative audio only, no DOM.
+  //   • Volume capped at 0.25 so it never startles in a quiet office.
+  //
+  // Autoplay survival strategy:
+  //   The submit path is fully-async (Storage upload → Function call →
+  //   onSuccess). On Safari especially, the "user gesture" window can
+  //   expire before onSuccess fires, even though the original click is
+  //   the cause. primeDcrSuccessSound() runs inside the gesture chain
+  //   at the top of onSubmit() to pre-create + .load() the Audio
+  //   element while the click is still fresh, so the eventual .play()
+  //   has the best chance of being honored.
+  let _dcrSuccessAudio = null;
+
+  function primeDcrSuccessSound() {
+    if (!ENABLE_DCR_SUCCESS_SOUND) return;
+    if (typeof Audio === "undefined") return;
+    if (_dcrSuccessAudio) return;   // already primed for this page session
+    try {
+      _dcrSuccessAudio = new Audio(DCR_SUCCESS_SOUND_SRC);
+      _dcrSuccessAudio.volume  = DCR_SUCCESS_SOUND_VOLUME;
+      _dcrSuccessAudio.preload = "auto";
+      // load() forces the browser to begin fetching the file so the
+      // network round-trip doesn't add to submit latency.
+      if (typeof _dcrSuccessAudio.load === "function") _dcrSuccessAudio.load();
+      // Log file-fetch problems so a missing MP3 surfaces in DevTools
+      // without breaking the submit flow.
+      _dcrSuccessAudio.addEventListener("error", function () {
+        console.warn("[dcr-success-sound] file unreachable at " + DCR_SUCCESS_SOUND_SRC +
+                     " — check that the MP3 is deployed.");
+      }, { once: true });
+    } catch (_e) {
+      // Audio constructor missing — drop silently.
+    }
+  }
+
+  function playDcrSuccessSound(submissionId) {
+    if (!ENABLE_DCR_SUCCESS_SOUND) return;
+    if (typeof Audio === "undefined") return;
+    const id = submissionId == null ? "" : String(submissionId);
+    if (id && id === _dcrSuccessSoundLastPlayedId) return;
+    _dcrSuccessSoundLastPlayedId = id || _dcrSuccessSoundLastPlayedId;
+
+    // Use the primed element when available — keeps the play() inside
+    // the user-gesture lineage. Fall back to a fresh Audio if no prime
+    // happened (e.g. submit handler reached onSuccess via a non-click
+    // code path — not currently possible, but defensive).
+    let audio = _dcrSuccessAudio;
+    if (!audio) {
+      try {
+        audio = new Audio(DCR_SUCCESS_SOUND_SRC);
+        audio.volume = DCR_SUCCESS_SOUND_VOLUME;
+      } catch (_e) {
+        return;
+      }
+    }
+    // Reset to start so a primed (possibly already-played) element
+    // replays from the beginning. Some browsers reject currentTime
+    // before the element has metadata; safe to swallow.
+    try { audio.currentTime = 0; } catch (_e) { /* not always settable */ }
+
+    const p = audio.play();
+    if (p && typeof p.then === "function") {
+      p.then(function () {
+        // Quiet success log so we can confirm in DevTools that the
+        // sound actually played. Not announced to screen readers.
+        try { console.info("[dcr-success-sound] played ok"); } catch (_e) {}
+      }).catch(function (err) {
+        // Most common failures:
+        //   • NotAllowedError — browser blocked autoplay
+        //   • NotSupportedError — file missing or wrong MIME
+        // The catch keeps the success flow uninterrupted either way.
+        try {
+          console.warn("[dcr-success-sound] play() rejected:",
+                       (err && (err.name + ": " + err.message)) || err);
+        } catch (_e) {}
+      });
+    }
   }
 
   // Trigger the Pioneer fist-bump animation. Deferred ~280 ms so the success
@@ -1885,13 +2339,19 @@
   }
 
   function onNewDcr() {
-    pendingFiles      = [];
-    segState          = {};
-    ratingState       = "";
-    checklistState    = {};
-    checklistNotes    = {};
-    sectionCollapsed  = {};
-    timeBudgetReasons = new Set();
+    pendingFiles        = [];
+    segState            = {};
+    ratingState         = "";
+    checklistState      = {};
+    checklistNotes      = {};
+    sectionCollapsed    = {};
+    timeBudgetReasons   = new Set();
+    overBudgetOtherNote = "";
+    // Also collapse the "other" note textarea + clear its value so a
+    // fresh DCR doesn't start with the previous run's freeform text.
+    const overOtherTa = $("over-budget-other-note");
+    if (overOtherTa) overOtherTa.value = "";
+    toggleOverBudgetOtherNoteVisibility(false);
 
     // Re-seed per-section sub-maps so the next pill click lands somewhere
     // valid. Without this, the handlers throw on first interaction with the
@@ -1956,6 +2416,9 @@
     $("success-card").hidden = true;
     els.form.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
+    // Phase 3: reset the sticky context bar to its idle state for the
+    // fresh DCR (everything zeroed, bar hidden until customer/tech/date land).
+    refreshDcrCompletion();
   }
 
   /* ---------- input wiring for draft autosave ---------- */
@@ -1971,6 +2434,21 @@
       el.addEventListener("input",  scheduleSaveDraft);
       el.addEventListener("change", scheduleSaveDraft);
     });
+    // Phase 3: hook customer/tech/date directly so the sticky context
+    // bar reveals INSTANTLY when all three land — without waiting for
+    // saveDraft's 500ms debounce.
+    [els.customer, els.tech, els.cleanDate, els.affirm].forEach(function (el) {
+      if (!el) return;
+      el.addEventListener("change", refreshDcrCompletion);
+    });
+    // Signature drawing — listen on the canvas for pointer events so
+    // the "submit" gate flips once any ink lands.
+    const sigCanvas = document.getElementById("signature-canvas");
+    if (sigCanvas) {
+      ["mouseup", "touchend", "touchcancel"].forEach(function (evt) {
+        sigCanvas.addEventListener(evt, refreshDcrCompletion);
+      });
+    }
   }
 
   /* ---------- boot ---------- */
@@ -2329,6 +2807,44 @@
       els.photos.addEventListener("change", onFileInputChange);
       els.form.addEventListener("submit",  onSubmit);
 
+      // V6 pilot — bind the "Other / leave a note" textarea so its
+      // value flows into module state + the draft. Input event keeps
+      // the live state in sync; blur ensures a final save on exit.
+      const overOtherEl = $("over-budget-other-note");
+      if (overOtherEl) {
+        overOtherEl.addEventListener("input", function () {
+          overBudgetOtherNote = String(overOtherEl.value || "").trim();
+          scheduleSaveDraft();
+        });
+      }
+
+      // V6 pilot regression guard — clicking "Add photos" must NEVER
+      // navigate the user away from the DCR form. Symptoms in the
+      // wild (Android Chrome, iOS Safari) included the page jumping
+      // to /tech.html ("Customer Info Hub") after a label tap —
+      // suspected cause was a click event bubbling out of the nested
+      // <input> + parent label combo to an ancestor handler. We
+      // moved the input OUT of the label (see index.html), and we
+      // also stop click propagation on BOTH the file-drop label and
+      // the hidden input so no parent listener ever sees the event.
+      // We do NOT preventDefault — the browser still needs to open
+      // the native file picker.
+      //
+      // Regression check: tap "Add photos" on the DCR form (mobile +
+      // desktop) → file picker opens → URL stays at "/" → after
+      // selecting a file, the page does NOT navigate. If this
+      // breaks, look for new ancestor click handlers and re-tighten
+      // the stopPropagation here.
+      const photosLabelEl = document.querySelector('label.file-drop[for="photos"]');
+      if (photosLabelEl) {
+        photosLabelEl.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+        });
+      }
+      els.photos.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+      });
+
       // Keep the signature-attribution line in sync as the tech dropdown
       // changes; that name becomes affirmation.signature_name on submit.
       els.tech.addEventListener("change", updateSignatureAttribution);
@@ -2366,6 +2882,7 @@
       updateSignatureAttribution();
 
       wireDraftInputs();
+      wireValidationCta();
 
       // Kick off the live customer + tech load. Runs in the background
       // (boot continues without awaiting) so the rest of the form is

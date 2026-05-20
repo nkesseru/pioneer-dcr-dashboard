@@ -21,6 +21,12 @@ const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
 
+// Native DCR email pipeline (Phase 1 — replaces the Zapier-based DCR
+// email path). All helpers + handler logic live in ./dcrEmail; this file
+// only declares the secrets + wraps it in an onRequest endpoint at the
+// bottom of the file (search "generateAndSendDcrEmailV1").
+const dcrEmail = require("./dcrEmail");
+
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -952,27 +958,102 @@ exports.sendPasswordResetV1 = onRequest({ cors: false, timeoutSeconds: 20 }, asy
     return;
   }
 
-  // Confirm an Auth user exists for the email. If not, we still return
-  // 200 ok so the admin can't enumerate which emails have accounts via
-  // this endpoint — but we log the no-op so the admin can check logs
-  // if the resend didn't appear in the inbox.
+  // Look up the Firebase Auth user. If none exists, auto-create one
+  // (V6 — pilot-readiness). The previous "no_auth_user → noop" branch
+  // forced admins to manually provision Auth users via a separate
+  // flow before they could send an invite. That added friction with
+  // no security gain (this endpoint is already admin-gated), and it
+  // failed the Send invite button for every tech whose
+  // cleaning_techs/{slug} doc was seeded without a corresponding
+  // Auth user — which was the case for Jared and every cleaning
+  // tech the office added through the roster pre-normalization.
+  //
+  // Auto-create rules:
+  //   • emailVerified: false (the recipient verifies via the reset
+  //     link they're about to receive)
+  //   • disabled: false
+  //   • displayName: pulled from the cleaning_techs doc if we can
+  //     find one matching this email; otherwise omitted
+  // If createUser fails with auth/email-already-exists (rare race
+  // condition), we re-fetch via getUserByEmail and proceed.
   let authUser = null;
+  let createdNewAuthUser = false;
   try {
     authUser = await admin.auth().getUserByEmail(email);
   } catch (err) {
     const code = (err && err.code) || (err && err.errorInfo && err.errorInfo.code) || "";
-    if (code === "auth/user-not-found") {
-      logger.info("sendPasswordResetV1: no Auth user for email (no-op)", {
-        by: staff.email, email_prefix: email.slice(0, 3)
+    if (code !== "auth/user-not-found") {
+      logger.error("sendPasswordResetV1: getUserByEmail failed", {
+        email_prefix: email.slice(0, 3), code: code
       });
-      res.status(200).json({ ok: true, sent: false, reason: "no_auth_user" });
+      res.status(500).json({ ok: false, error: "Lookup failed (" + (code || "unknown") + ")." });
       return;
     }
-    logger.error("sendPasswordResetV1: getUserByEmail failed", {
-      email_prefix: email.slice(0, 3), code: code
-    });
-    res.status(500).json({ ok: false, error: "Lookup failed (" + (code || "unknown") + ")." });
-    return;
+    // Auto-create branch. Try to find a displayName from the
+    // matching cleaning_techs doc so the new Auth user's profile is
+    // populated. Missing display_name is non-blocking.
+    let displayName = "";
+    try {
+      const techQuery = await db.collection(TECHS_COLLECTION)
+        .where("email", "==", email).limit(1).get();
+      if (!techQuery.empty) {
+        const td = techQuery.docs[0].data() || {};
+        displayName = String(td.display_name || td.full_name || "").trim();
+      }
+    } catch (_e) { /* tolerated — fall back to anonymous create */ }
+
+    try {
+      authUser = await admin.auth().createUser({
+        email:          email,
+        emailVerified:  false,
+        disabled:       false,
+        displayName:    displayName || undefined
+      });
+      createdNewAuthUser = true;
+      logger.info("sendPasswordResetV1: created new Auth user for invite", {
+        by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid,
+        display_name_used: !!displayName
+      });
+    } catch (createErr) {
+      const cCode = (createErr && createErr.code) ||
+                    (createErr && createErr.errorInfo && createErr.errorInfo.code) || "";
+      // Race condition: an Auth user appeared between the lookup and
+      // the create. Re-fetch and continue.
+      if (cCode === "auth/email-already-exists") {
+        try {
+          authUser = await admin.auth().getUserByEmail(email);
+          logger.info("sendPasswordResetV1: createUser raced — re-fetched existing user", {
+            email_prefix: email.slice(0, 3), uid: authUser.uid
+          });
+        } catch (refetchErr) {
+          logger.error("sendPasswordResetV1: createUser race + refetch failed", {
+            email_prefix: email.slice(0, 3),
+            create_code: cCode,
+            refetch_code: refetchErr && refetchErr.code
+          });
+          await stampTechInviteError(db, email, "create_then_refetch_failed: " + cCode);
+          res.status(500).json({
+            ok: false, code: "create_user_failed",
+            error: "Couldn't create or re-fetch the Auth user (" + cCode + ")."
+          });
+          return;
+        }
+      } else {
+        logger.error("sendPasswordResetV1: createUser failed", {
+          email_prefix: email.slice(0, 3),
+          code: cCode,
+          message: createErr && createErr.message
+        });
+        await stampTechInviteError(db, email,
+          "create_auth_user_failed: " + (cCode || (createErr && createErr.message) || "unknown"));
+        res.status(500).json({
+          ok:    false,
+          code:  "create_user_failed",
+          error: "Couldn't create Firebase Auth user (" + (cCode || "unknown") + ")."
+        });
+        return;
+      }
+    }
   }
 
   // Generate a reset link.
@@ -1011,27 +1092,78 @@ exports.sendPasswordResetV1 = onRequest({ cors: false, timeoutSeconds: 20 }, asy
       .limit(1)
       .get();
     if (!techSnap.empty) {
+      // V6 pilot — write both legacy snake_case AND new camelCase
+      // fields so existing code paths keep working AND the new admin
+      // UI can drive the "Send invite" vs "Reinvite" button label
+      // off `inviteSentAt`. `inviteStatus` is set to "sent" here;
+      // future flows can flip it to "accepted" when the recipient
+      // signs in for the first time.
       await techSnap.docs[0].ref.update({
         last_invite_sent_at: sts,
         updated_at:          sts,
-        updated_by:          staff.email
+        updated_by:          staff.email,
+        // ---- V6 invite fields ----
+        inviteSentAt:        sts,
+        inviteSentBy:        staff.email,
+        inviteEmail:         email,
+        inviteStatus:        "sent",
+        inviteLastError:     null,
+        // V6 — Firebase Auth uid, both shapes so any reader keeps
+        // working. Set whether the auth user was created just now or
+        // already existed.
+        firebaseUid:         authUser.uid,
+        firebase_auth_uid:   authUser.uid
+      });
+      logger.info("sendPasswordResetV1: tech invite stamped", {
+        tech_slug: techSnap.docs[0].id,
+        email_prefix: email.slice(0, 3),
+        by: staff.email
       });
     }
   } catch (err) {
     logger.warn("sendPasswordResetV1: tech doc stamp failed", { error: err && err.message });
+    // Best-effort error stamp so the admin UI can surface "last invite
+    // attempt failed" for triage. Soft-fail if even this fails.
+    try {
+      const techSnap = await db.collection(TECHS_COLLECTION)
+        .where("email", "==", email).limit(1).get();
+      if (!techSnap.empty) {
+        await techSnap.docs[0].ref.update({
+          inviteLastError: String(err && err.message || "unknown error"),
+          inviteStatus:    "error"
+        });
+      }
+    } catch (_innerErr) { /* swallow */ }
   }
 
   logger.info("sendPasswordResetV1 ok", {
-    by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid
+    by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid,
+    created_auth_user: createdNewAuthUser
   });
 
   res.status(200).json({
-    ok:         true,
-    sent:       true,
-    uid:        authUser.uid,
-    reset_link: resetLink   // backup link if email delivery hiccups
+    ok:                 true,
+    sent:               true,
+    uid:                authUser.uid,
+    created_auth_user:  createdNewAuthUser,
+    reset_link:         resetLink   // backup link if email delivery hiccups
   });
 });
+
+// V6 helper — stamp inviteStatus:"error" + inviteLastError onto the
+// matching cleaning_techs doc when an invite attempt fails before we
+// reach the success-path tech-doc update. Soft-fails its own write.
+async function stampTechInviteError(db, email, reason) {
+  try {
+    const tq = await db.collection(TECHS_COLLECTION)
+      .where("email", "==", email).limit(1).get();
+    if (tq.empty) return;
+    await tq.docs[0].ref.update({
+      inviteStatus:    "error",
+      inviteLastError: String(reason || "unknown")
+    });
+  } catch (_e) { /* swallow */ }
+}
 
 /* ----------------------------- deleteCleaningTechV1 -----------------------------
    Admin-only HARD DELETE for a cleaning_tech doc.
@@ -1447,6 +1579,11 @@ exports.submitSupplyStationOrderV1 = onRequest({ cors: false, timeoutSeconds: 20
   const priority       = String(body.priority || "normal").trim().toLowerCase();
   const note           = String(body.note || "").trim();
   const customerSlug   = String(body.customer_slug || "").trim().toLowerCase();
+  // V6 pilot — accept customer_name + location_name so the saved
+  // supply_requests doc carries human-readable strings the admin UI
+  // can render without re-resolving the slug. Trimmed + capped.
+  const customerName   = String(body.customer_name || "").trim().slice(0, 200);
+  const locationName   = String(body.location_name || "").trim().slice(0, 200);
   let   categoriesRaw  = Array.isArray(body.categories) ? body.categories : [];
   categoriesRaw = categoriesRaw
     .map(function (c) { return String(c || "").trim(); })
@@ -1507,9 +1644,12 @@ exports.submitSupplyStationOrderV1 = onRequest({ cors: false, timeoutSeconds: 20
     note:               note,
     // Customer-shape fields kept empty for unified queries; admin UI
     // hides blanks for supply_station rows.
+    // V6 pilot — customer_name + location_name now flow through from
+    // the picker on supply-station.html. Empty strings remain valid
+    // for "no specific customer" (office-wide restock).
     customer_slug:      customerSlug,
-    customer_name:      "",
-    location_name:      "",
+    customer_name:      customerName,
+    location_name:      locationName,
     clean_date:         "",
     // Shared fields:
     requested_items:    requestedItems,
@@ -4972,3 +5112,204 @@ exports.deputyApiDiagnosticV1 = onRequest({
     raw:             capped
   });
 });
+
+/* ===========================================================================
+   generateAndSendDcrEmailV1 — PioneerOps native DCR customer email
+   ===========================================================================
+   First-goal scope: one working DCR email for one test DCR. Replaces the
+   Zapier path for the customer-facing report; Zapier is NOT touched here.
+
+   Endpoint:
+     POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/generateAndSendDcrEmailV1
+     Body: { "dcrId": "<dcr_submissions doc id>",
+             "customerId": "<customers doc id, usually the slug>" }
+     Header: Authorization: Bearer <signed-in admin user's ID token>
+
+   Auth:
+     Admin only. Reuses verifyStaffOrReject() + staff.isAdmin.
+
+   Required secrets (set BEFORE deploy):
+     OPENAI_API_KEY             — OpenAI API key (gpt-4o-mini)
+     GMAIL_SENDER_EMAIL         — Pioneer Workspace sender, e.g.
+                                   info@pioneercomclean.com
+     GMAIL_SERVICE_ACCOUNT_KEY  — JSON-encoded service-account key WITH
+                                   domain-wide delegation configured for
+                                   scope https://www.googleapis.com/auth/gmail.send
+                                   in Workspace Admin → Security → API Controls.
+
+   All business logic lives in functions/dcrEmail.js. This block just
+   declares the secrets + binds them to the onRequest endpoint. =============== */
+const OPENAI_API_KEY             = defineSecret("OPENAI_API_KEY");
+const GMAIL_SENDER_EMAIL         = defineSecret("GMAIL_SENDER_EMAIL");
+const GMAIL_SERVICE_ACCOUNT_KEY  = defineSecret("GMAIL_SERVICE_ACCOUNT_KEY");
+// V6 — these were originally declared further down (for submitFeedbackV1).
+// Moved up so generateAndSendDcrEmailV1 can also bind them; the
+// duplicate `defineSecret` calls below are removed to avoid the
+// "secret already declared" deploy-time error.
+const KIRBY_ALERT_EMAIL          = defineSecret("KIRBY_ALERT_EMAIL");
+const APRIL_ALERT_EMAIL          = defineSecret("APRIL_ALERT_EMAIL");
+
+exports.generateAndSendDcrEmailV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 60,
+    secrets: [OPENAI_API_KEY, GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY, KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL]
+  },
+  dcrEmail.buildHttpHandler({
+    admin:                     admin,
+    db:                        db,
+    logger:                    logger,
+    OPENAI_API_KEY:            OPENAI_API_KEY,
+    GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+    GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+    KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+    APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL,
+    verifyStaffOrReject:       verifyStaffOrReject
+  })
+);
+
+/* =================================================================
+   getDcrEmailReadinessV1 — admin pre-send readiness check.
+
+   POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/getDcrEmailReadinessV1
+     Header: Authorization: Bearer <admin Firebase ID token>
+     Body:   { dcrId, mode?: "send" | "resend" }
+
+   Returns the same structured shape as dcrEmail.getDcrEmailReadiness:
+     { ready, blockers, warnings, resolved }
+
+   The admin UI calls this BEFORE rendering the Send button. The
+   send endpoint itself re-runs the same check (defense in depth) so
+   even an admin can't bypass it from a hand-crafted curl.
+   ================================================================= */
+exports.getDcrEmailReadinessV1 = onRequest(
+  { cors: false, timeoutSeconds: 30 },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Access-Control-Max-Age",       "3600");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "POST only" }); return;
+    }
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (!staff.isAdmin) {
+      res.status(403).json({ ok: false, error: "Admin only" }); return;
+    }
+    const dcrId = String((req.body && req.body.dcrId) || "").trim();
+    const mode  = String((req.body && req.body.mode)  || "send").trim();
+    if (!dcrId) {
+      res.status(400).json({ ok: false, error: "dcrId is required" }); return;
+    }
+    try {
+      const readiness = await dcrEmail.getDcrEmailReadiness({
+        db: db, logger: logger, dcrId: dcrId, mode: mode
+      });
+      res.json(Object.assign({ ok: true }, readiness));
+    } catch (err) {
+      const msg = String(err && err.message || err);
+      logger.error("[dcr-email-readiness] handler error", { dcrId, error: msg });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  }
+);
+
+/* =================================================================
+   submitFeedbackV1 — PUBLIC customer feedback intake
+
+   POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/submitFeedbackV1
+     Body (compliment): {
+       type: "compliment",
+       dcrId, customerId, techId,
+       rating, complimentText, customerName, shareConsent
+     }
+     Body (complaint): {
+       type: "complaint",
+       dcrId, customerId, techId,
+       category, details, urgency,
+       contactName, contactEmail, contactPhone,
+       photos: [{ name, contentType, base64 }]    // optional, max 3
+     }
+     No Authorization header — public endpoint linked from customer emails.
+
+   Auth model:
+     PUBLIC. Customers click links from the DCR email and submit
+     anonymously. Defenses: strict body validation, length caps,
+     enum whitelists, honeypot field. Rate-limiting is a TODO once
+     real traffic shows up — the abuse surface today is tiny.
+
+   Required secrets (set BEFORE deploy):
+     GMAIL_SENDER_EMAIL         — reused from generateAndSendDcrEmailV1.
+     GMAIL_SERVICE_ACCOUNT_KEY  — reused (Workspace domain-wide delegation).
+     KIRBY_ALERT_EMAIL          — office manager destination address.
+     APRIL_ALERT_EMAIL          — manager destination address.
+   ================================================================= */
+const feedback = require("./feedback");
+// KIRBY_ALERT_EMAIL + APRIL_ALERT_EMAIL are declared at the top of the
+// DCR-email block (see ~line 5012) so generateAndSendDcrEmailV1 can
+// reach them. defineSecret() can only be called once per name — the
+// shared bindings flow into both endpoints from there.
+
+exports.submitFeedbackV1 = onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 60,
+    // Bumped to accommodate up to 3 × ~2MB base64-encoded photos.
+    memory: "512MiB",
+    secrets: [
+      GMAIL_SENDER_EMAIL,
+      GMAIL_SERVICE_ACCOUNT_KEY,
+      KIRBY_ALERT_EMAIL,
+      APRIL_ALERT_EMAIL
+    ]
+  },
+  feedback.buildHttpHandler({
+    admin:                     admin,
+    db:                        db,
+    logger:                    logger,
+    GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+    GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+    KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+    APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+  })
+);
+
+/* =================================================================
+   uploadTechMediaV1 — admin photo / signature manager
+
+   POST .../uploadTechMediaV1
+     Header: Authorization: Bearer <admin Firebase ID token>
+     Body (upload):   { techId, kind: "photo"|"signature",
+                        filename, contentType, base64 }
+     Body (clear):    { techId, kind: "photo"|"signature", clear: true }
+     Body (active):   { techId, action: "setActive", active: <bool> }
+
+   Auth:
+     Admin only (verifyStaffOrReject + staff.isAdmin).
+
+   Storage paths:
+     tech-photos/{techId}/{timestamp}-{filename}
+     tech-signatures/{techId}/{timestamp}-{filename}
+
+   No new secrets.
+   ================================================================= */
+const techMediaUpload = require("./techMediaUpload");
+
+exports.uploadTechMediaV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 60,
+    // 256MiB is fine for a 5MB photo round-trip; bumped over the
+    // default 256 default because base64-decoding stays in memory.
+    memory: "512MiB"
+  },
+  techMediaUpload.buildHttpHandler({
+    admin:                admin,
+    db:                   db,
+    logger:               logger,
+    verifyStaffOrReject:  verifyStaffOrReject
+  })
+);

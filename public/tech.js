@@ -291,11 +291,26 @@
       if (r.created_at)   meta.push('<span>Created <strong>' + escapeHtml(formatShortDate(r.created_at)) + '</strong></span>');
       if (r.vendor)       meta.push('<span>Vendor <strong>' + escapeHtml(r.vendor) + '</strong></span>');
       if (r.order_number) meta.push('<span>Order # <strong>' + escapeHtml(r.order_number) + '</strong></span>');
+      // V6 pilot — "Ask Kirby for update" nudge. Per-row button so a
+      // tech can ping the office about a specific supply request
+      // without firing a generic catch-all message. Hidden after the
+      // click; the toast confirms what landed in Firestore.
+      const supplyId = String(r.id || r.supply_request_id || "");
+      const nudgeBtn = supplyId
+        ? '<button type="button" class="tech-supply-nudge" ' +
+            'data-action="ask-kirby-update" ' +
+            'data-supply-id="' + escapeHtml(supplyId) + '" ' +
+            'data-customer-id="' + escapeHtml(r.customer_slug || r.customer_id || "") + '" ' +
+            'title="Send Kirby a notification asking for a status update on this request">' +
+            'Ask Kirby for update' +
+          '</button>'
+        : '';
       return (
-        '<div class="tech-supply-row">' +
+        '<div class="tech-supply-row" data-supply-id="' + escapeHtml(supplyId) + '">' +
           '<div>' +
             '<div class="row-items">' + escapeHtml(r.requested_items || "(no items listed)") + '</div>' +
             (meta.length ? '<div class="row-meta">' + meta.join("") + '</div>' : '') +
+            nudgeBtn +
           '</div>' +
           '<span class="row-status">' +
             '<span class="tech-status status-' + status + '">' + escapeHtml(statusLabel) + '</span>' +
@@ -305,6 +320,96 @@
     }).join("");
 
     root.innerHTML = html;
+  }
+
+  // V6 pilot — handler for the "Ask Kirby for update" button.
+  // Creates ONE doc in `notifications/{autoId}` with the spec field
+  // shape PLUS the standard notification fields so the office triage
+  // view picks it up alongside other priority items. Idempotent
+  // per-button (we disable the button on success so the same request
+  // can't double-fire); rate-limited by the natural UI flow.
+  async function askKirbyForUpdate(opts) {
+    const supplyId   = String(opts.supplyId || "").trim();
+    const customerId = String(opts.customerId || "").trim();
+    const btn        = opts.btn;
+    if (!supplyId) {
+      showToast("Couldn't find the supply request id. Refresh and try again.");
+      return;
+    }
+    const staff = window.STAFF_AUTH && window.STAFF_AUTH.getCurrentStaff && window.STAFF_AUTH.getCurrentStaff();
+    if (!staff || !staff.email) {
+      showToast("You appear to be signed out. Refresh and sign in again.");
+      return;
+    }
+    const techSlug = (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "";
+    const techDisplayName = (staff.tech && staff.tech.display_name) || "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+    }
+    try {
+      const db = firebase.firestore();
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("notifications").add({
+        // V6 spec fields (camelCase per the user-supplied shape) ----
+        type:               "supply_update_request",
+        supplyRequestId:    supplyId,
+        customerId:         customerId || null,
+        techId:             techSlug || null,
+        requestedBy:        String(staff.email || "").toLowerCase().trim(),
+        requestedAt:        sts,
+        status:             "update_requested",
+        // ---- Standard notification fields ----
+        // Mirrors the existing customer-complaint/quality_win shape so
+        // the office Today's Operations + notifications inbox picks
+        // this up alongside other items.
+        priority:           "medium",
+        audience:           ["office_manager"],
+        assignedRoles:      ["office_manager"],
+        assignedUsers:      ["kirby"],
+        title:              "Supply request update asked for",
+        message:            (techDisplayName || "A tech") + " is asking Kirby for an update on supply request " + supplyId,
+        requiresAction:     true,
+        celebration:        false,
+        read:               false,
+        linkedCollection:   "supply_requests",
+        linkedDocId:        supplyId,
+        techDisplayName:    techDisplayName || null,
+        createdAt:          sts
+      });
+      showToast("Update requested — Kirby will see this.");
+      if (btn) btn.textContent = "Requested ✓";
+    } catch (err) {
+      console.error("[tech-supply] Ask-Kirby write failed", err && err.code, err && err.message);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Ask Kirby for update";
+      }
+      showToast(err && err.code === "permission-denied"
+        ? "Permission denied. Make sure you're signed in."
+        : "Couldn't send. Check your connection and try again.");
+    }
+  }
+
+  // Single delegated click listener — wired ONCE on boot per the
+  // pattern used by tech-notes-list. Subsequent renderSupplyList
+  // calls just replace the row HTML; the listener attached to the
+  // list root keeps working.
+  let _supplyListWired = false;
+  function wireSupplyListNudge() {
+    if (_supplyListWired) return;
+    const list = $("tech-supply-list");
+    if (!list) return;
+    list.addEventListener("click", function (ev) {
+      const btn = ev.target.closest('[data-action="ask-kirby-update"]');
+      if (!btn) return;
+      askKirbyForUpdate({
+        supplyId:   btn.dataset.supplyId,
+        customerId: btn.dataset.customerId,
+        btn:        btn
+      });
+    });
+    _supplyListWired = true;
   }
 
   /* ---------- 5. Render recent issues ---------- */
@@ -341,18 +446,27 @@
     root.innerHTML = html;
   }
 
-  /* ---------- 6. Render feedback (placeholder for v1) ---------- */
+  /* ---------- 6. Render feedback ----------
+   * V6 pilot: the whole `Recent Positive Feedback` section is hidden
+   * by default in tech.html. Unhide ONLY when we have real items to
+   * show — an empty state on a tech page reads as noise. If a future
+   * build wants to show "we know it's a slow week" empty-state copy,
+   * flip the conditional below. */
   function renderFeedbackList(list) {
-    const root  = $("tech-feedback-list");
-    const empty = $("tech-feedback-empty");
+    const root    = $("tech-feedback-list");
+    const empty   = $("tech-feedback-empty");
+    const section = $("tech-feedback-section");
     if (!root) return;
     root.innerHTML = "";
 
     if (!list || list.length === 0) {
-      if (empty) empty.hidden = false;
+      // Keep the section hidden during pilot.
+      if (section) section.hidden = true;
+      if (empty)   empty.hidden = true;
       return;
     }
-    if (empty) empty.hidden = true;
+    if (section) section.hidden = false;
+    if (empty)   empty.hidden = true;
 
     const html = list.map(function (f) {
       return (
@@ -1190,6 +1304,7 @@
     wireRefreshBtn();
     wireSuggestModal();
     wireSecurityModal();
+    wireSupplyListNudge();
     loadCustomers(staff);
   }
 

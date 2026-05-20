@@ -3287,3 +3287,649 @@
   font-size: 13px;
   color: var(--pc-text-muted, #6b7280);
 }
+
+/* =============================================================================
+ * Tech Photo / Signature manager (tech-media-modal)
+ *
+ * Layout: two-column upload zones (photo | signature) on wide screens,
+ * stacked on narrow screens. Below them: an active toggle and a live
+ * customer-facing preview that mirrors the DCR-email tech identity row.
+ *
+ * Calls uploadTechMediaV1 with a Firebase admin ID token.
+ * ============================================================================= */
+
+/* Wider variant of the standard modal dialog — the two-column upload
+ * grid + preview card needs room. Falls back to the responsive rule
+ * at the ≤720px breakpoint (full-screen on phones). */
+.admin-modal-dialog.admin-modal-dialog-wide {
+  width: min(780px, calc(100% - 32px));
+}
+
+.tech-media-warnings {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  background: #fff7e6;
+  border: 1px solid #fde3a8;
+  border-left: 3px solid #f5b942;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #7a4a05;
+  line-height: 1.5;
+}
+.tech-media-warnings strong { font-weight: 800; }
+
+.tech-media-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 4px 0 18px;
+}
+@media (max-width: 640px) {
+  .tech-media-grid { grid-template-columns: 1fr; }
+}
+
+.tech-media-zone {
+  background: var(--pc-surface, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tech-media-zone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tech-media-zone-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--pc-text, #0f172a);
+}
+.tech-media-zone-meta {
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+  text-align: right;
+}
+
+.tech-media-preview {
+  background: #ffffff;
+  border: 1px dashed var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.tech-media-preview-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 220px;
+}
+.tech-media-preview-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-media-preview-signature {
+  width: 100%;
+  height: 110px;
+}
+.tech-media-preview-signature img { max-width: 90%; max-height: 90%; display: block; }
+
+.tech-media-initial-bubble {
+  width: 86px; height: 86px;
+  border-radius: 50%;
+  background: #71E1D1;
+  color: #1F1F24;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 86px;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px var(--pc-border, #e6e9ee);
+}
+
+.tech-media-empty-hint {
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+.tech-media-rule {
+  margin: 4px 0 10px;
+  font-size: 11.5px;
+  color: var(--pc-text-muted, #6b7280);
+  line-height: 1.45;
+}
+
+.tech-media-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tech-media-upload-trigger {
+  display: inline-block;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--pc-text, #0f172a);
+  color: #ffffff;
+  border-radius: 999px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.tech-media-upload-trigger:hover { opacity: 0.9; }
+
+.tech-media-clear-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #ffffff;
+  color: #8a2a2a;
+  border: 1px solid #f5c3c3;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tech-media-clear-btn:hover { background: #fff3f3; }
+
+.tech-media-zone-err {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff1f1;
+  border: 1px solid #f5c3c3;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #8a2a2a;
+}
+.tech-media-zone-progress {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* ===== Customer-facing preview card (mirrors DCR email tech row) ===== */
+.tech-media-cust-card {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border, #e6e9ee);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+@media (max-width: 560px) {
+  .tech-media-cust-card { grid-template-columns: 56px 1fr; }
+  .tech-media-cust-sig  { grid-column: 1 / -1; text-align: left !important; padding-top: 6px; }
+}
+
+.tech-media-cust-photo {
+  width: 56px; height: 56px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #71E1D1;
+}
+.tech-media-cust-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-media-initial-cust {
+  width: 56px; height: 56px;
+  font-size: 22px;
+  line-height: 56px;
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px var(--pc-border, #e6e9ee);
+}
+
+.tech-media-cust-eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--pc-text-muted, #6b7280);
+}
+.tech-media-cust-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-text, #0f172a);
+  line-height: 1.25;
+}
+.tech-media-cust-sub {
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  margin-top: 1px;
+}
+
+.tech-media-cust-sig { text-align: right; }
+.tech-media-cust-sig-cap {
+  font-size: 9.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--pc-text-muted, #6b7280);
+  margin-bottom: 4px;
+}
+.tech-media-cust-sig-frame {
+  display: inline-block;
+  background: #f5f7fa;
+  border: 1px solid var(--pc-border, #e6e9ee);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-width: 80px;
+  text-align: center;
+}
+.tech-media-cust-sig-frame img { max-height: 30px; max-width: 130px; display: block; }
+.tech-media-cust-sig-empty {
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* ===== Tiny thumbnail / missing-asset chip in the techs list rows ===== */
+.tech-row-thumb {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #71E1D1;
+  color: #1F1F24;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 32px;
+  text-align: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--pc-border, #e6e9ee);
+}
+.tech-row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-row-thumb.is-missing { background: #fff3f3; color: #8a2a2a; }
+
+.tech-row-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #fff7e6;
+  color: #7a4a05;
+  border: 1px solid #fde3a8;
+}
+.tech-row-asset-chip-bad {
+  background: #fff3f3;
+  color: #8a2a2a;
+  border-color: #f5c3c3;
+}
+
+/* =============================================================================
+ * DCR email Review & Send modal (V6)
+ *
+ * Renders the readiness-check result inside the admin modal. Layout:
+ *   .dcr-review-body
+ *     ↳ .dcr-review-checklist  (one row per resolved signal)
+ *     ↳ .dcr-review-issues-block (blockers — red)
+ *     ↳ .dcr-review-issues-warn  (warnings — amber)
+ *     ↳ .dcr-review-already-sent (previously-sent banner, when applicable)
+ *     ↳ .dcr-review-success      (post-send confirmation)
+ * ============================================================================= */
+
+.dcr-review-body { font-size: 14px; }
+.dcr-review-loading {
+  margin: 8px 0;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+.dcr-review-checklist {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--pc-surface, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+}
+.dcr-review-checklist li {
+  display: grid;
+  grid-template-columns: 18px 160px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  align-items: baseline;
+  font-size: 13.5px;
+}
+.dcr-review-check-icon {
+  font-weight: 800;
+  text-align: center;
+}
+.dcr-review-check-ok    .dcr-review-check-icon { color: #1B5E20; }
+.dcr-review-check-pending .dcr-review-check-icon { color: #8A2A2A; opacity: 0.8; }
+.dcr-review-check-label  { color: var(--pc-text, #0f172a); font-weight: 600; }
+.dcr-review-check-detail { color: var(--pc-text-muted, #6b7280); font-size: 12.5px; }
+
+.dcr-review-issues {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+.dcr-review-issues-title {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.dcr-review-issues-block {
+  background: #fff3f3;
+  border: 1px solid #f5c3c3;
+  color: #8A2A2A;
+}
+.dcr-review-issues-block .dcr-review-issues-title { color: #8A2A2A; }
+.dcr-review-issues-warn {
+  background: #fff7e6;
+  border: 1px solid #fde3a8;
+  color: #7a4a05;
+}
+.dcr-review-issues-warn .dcr-review-issues-title { color: #7a4a05; }
+.dcr-review-issues ul { margin: 0; padding-left: 18px; line-height: 1.55; }
+.dcr-review-issues li { margin-bottom: 4px; }
+
+.dcr-review-already-sent {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #1e3a8a;
+}
+.dcr-review-already-sent .dcr-review-issues-title { color: #1e3a8a; }
+
+.dcr-review-success {
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: #E8F7EB;
+  border: 1px solid #BFEACB;
+  border-radius: 10px;
+  color: #1B5E20;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.dcr-review-success-title {
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.dcr-review-success code {
+  background: #FFFFFF;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #BFEACB;
+}
+
+/* =============================================================================
+ * Today's Operations — V6 headline stats
+ *
+ * Three big-number tiles that sit between the eyebrow/title and the
+ * checklist bullets in `.admin-day-health`. The failures tile is hidden
+ * by default and only unhides when there's at least one failure in the
+ * last 24h.
+ *
+ * Tones:
+ *   data-tone="positive"  — green (most stats default here when 0)
+ *   data-tone="neutral"   — calm gray
+ *   data-tone="attention" — amber/red, used for the failures tile
+ * ============================================================================= */
+
+.admin-day-health-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+@media (max-width: 560px) {
+  .admin-day-health-stats { grid-template-columns: 1fr 1fr; }
+  .admin-day-health-stat-bad { grid-column: 1 / -1; }
+}
+
+.admin-day-health-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.admin-day-health-stat[data-tone="positive"] {
+  background: rgba(52, 199, 89, 0.10);
+  border-color: rgba(52, 199, 89, 0.30);
+}
+.admin-day-health-stat[data-tone="attention"] {
+  background: rgba(227, 109, 109, 0.16);
+  border-color: rgba(227, 109, 109, 0.45);
+}
+.admin-day-health-stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  color: #FFFFFF;
+}
+.admin-day-health-stat-label {
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.admin-day-health-stat[data-tone="attention"] .admin-day-health-stat-value {
+  color: #FFE3E3;
+}
+
+/* =============================================================================
+ * Pilot cleanup pass — header + KPI compaction
+ *
+ * Goal: save vertical scroll space on the admin landing without
+ * touching the IA. Same nav, same widgets, smaller chrome.
+ *   • Hero header → smaller h1, tighter padding
+ *   • Control-center intro → tighter padding, smaller sub-copy
+ *   • KPI strip → smaller cards, less padding, tighter grid gap
+ *   • Today's Operations stat row → smaller value font
+ *
+ * Mobile keeps the existing breakpoints intact — these rules only
+ * trim widths/font/padding, they don't change layout direction.
+ * ============================================================================= */
+.hero-admin {
+  padding: 12px 14px 4px;
+}
+.hero-admin h1 {
+  font-size: 22px;
+  margin: 0 0 2px;
+}
+.hero-admin .subtitle {
+  font-size: 13px;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .hero-admin h1 { font-size: 19px; }
+}
+
+.admin-control-intro {
+  padding: 10px 14px;
+  margin: 6px 0 10px;
+}
+.admin-control-eyebrow { font-size: 10.5px; }
+.admin-control-sub     { font-size: 12.5px; margin: 4px 0 0; }
+
+/* KPI strip — tighter cards. Same data, smaller footprint. */
+.kpi-grid.admin-kpi-strip { gap: 8px; }
+.admin-kpi-strip .kpi-card {
+  padding: 10px 12px;
+  min-height: 0;
+}
+.admin-kpi-strip .kpi-label { font-size: 10.5px; letter-spacing: 0.4px; }
+.admin-kpi-strip .kpi-value { font-size: 22px; line-height: 1.1; }
+.admin-kpi-strip .kpi-meta  { font-size: 11px;  margin-top: 1px; }
+
+/* Today's Operations — slightly smaller stat tiles + tighter card. */
+.admin-day-health { padding: 14px 16px; }
+.admin-day-health .health-eyebrow { font-size: 11px; }
+.admin-day-health .health-title   { font-size: 16px; margin: 4px 0 8px; line-height: 1.35; }
+.admin-day-health-stats { gap: 8px; margin: 4px 0 10px; }
+.admin-day-health-stat  { padding: 10px 12px; }
+.admin-day-health-stat-value { font-size: 24px; }
+.admin-day-health-stat-label { font-size: 10.5px; }
+.admin-day-health .health-checklist li { padding: 3px 0; font-size: 12.5px; }
+
+/* =============================================================================
+ * Admin Control Center — one compact menu card
+ *
+ * Sits directly under Today's Operations + the KPI strip. ONE white
+ * card containing:
+ *   • a thin header row (eyebrow + "Admin Control Center")
+ *   • three labeled tab rows (Core Ops / Quality / System)
+ *
+ * Each tab is a clear button (not floating text). Active tab is the
+ * dark ink fill. Badges retain their per-tab counts on the right.
+ *
+ * The earlier `.admin-tabs-grouped` design (nested cards with accent
+ * strips) is fully overridden here so the whole nav reads as one menu,
+ * not three stacked cards.
+ *
+ * Mobile (≤640px): each group's label stacks above its tab row.
+ * ============================================================================= */
+.admin-tabs-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  margin: 0 0 16px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(13, 18, 24, 0.04);
+}
+
+.admin-tabs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  margin-bottom: 4px;
+}
+.admin-tabs-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+
+/* Each group: inline row → [label] [tab pills]. No nested card chrome. */
+.admin-tabs-grouped .admin-tabs-group {
+  position: static;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 4px 0;
+  margin: 0;
+  background: transparent !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 32px;
+}
+.admin-tabs-grouped .admin-tabs-group::before { content: none; }
+.admin-tabs-grouped .admin-tabs-group[data-group] { background: transparent !important; }
+
+/* Group label — small inline eyebrow with a colored icon dot. */
+.admin-tabs-grouped .admin-tabs-group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  padding: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.admin-tabs-grouped .admin-tabs-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  border-radius: 6px;
+  border: 1px solid;
+  box-shadow: none;
+}
+.admin-tabs-grouped .admin-tabs-group[data-group="core"]    .admin-tabs-group-icon { background: #eff6ff; border-color: #bfdbfe; }
+.admin-tabs-grouped .admin-tabs-group[data-group="quality"] .admin-tabs-group-icon { background: #ecfeff; border-color: #99f6e4; }
+.admin-tabs-grouped .admin-tabs-group[data-group="system"]  .admin-tabs-group-icon { background: #f8fafc; border-color: #e2e8f0; }
+
+/* Tab row — flows next to the group label. */
+.admin-tabs-grouped .admin-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+/* Tab pill — clearly a clickable button. Light card background,
+   border, hover lift; active tab is the dark ink fill. */
+.admin-tabs-grouped .admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: none;
+  color: var(--pc-text);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast, 140ms) var(--ease-out, ease-out),
+    border-color var(--motion-fast, 140ms) var(--ease-out, ease-out),
+    color var(--motion-fast, 140ms) var(--ease-out, ease-out);
+}
+.admin-tabs-grouped .admin-tab:hover:not(.is-active) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: var(--pc-text);
+  transform: none;
+}
+.admin-tabs-grouped .admin-tab:focus-visible:not(.is-active) {
+  outline: 2px solid var(--pc-teal);
+  outline-offset: 2px;
+}
+
+/* Active tab — keeps the ink-gradient + teal underline from the
+   premium design but now reads against the white card behind it. */
+.admin-tabs-grouped .admin-tab.is-active {
+  background: linear-gradient(180deg, #1f2937 0%, #0f172a 100%);
+  border-color: #0f172a;
+  color: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 18px -10px rgba(15, 23, 42, 0.55);
+}
+
+@media (max-width: 720px) {
+  .admin-tabs-grouped { padding: 10px 12px 12px; }
+  .admin-tabs-grouped .admin-tabs-group { gap: 6px; }
+  .admin-tabs-grouped .admin-tabs-group-label { min-width: 0; width: 100%; }
+  .admin-tabs-grouped .admin-tabs-row { width: 100%; }
+  .admin-tabs-grouped .admin-tab { padding: 7px 11px; font-size: 12.5px; }
+}

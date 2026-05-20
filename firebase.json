@@ -22,6 +22,16 @@
             "value": "no-cache"
           }
         ]
+      },
+      {
+        "// pilot fix": "cleanUrls strips .html, so /admin /tech /work /supply-station /team-hub /inspections /training were inheriting the CDN default (max-age=3600) instead of the no-cache rule above. This second block matches the clean-URL paths explicitly so HTML changes ship without a 1-hour cache lag.",
+        "source": "/+(admin|tech|work|supply-station|team-hub|inspections|training|feedback-compliment|feedback-issue)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ]
   },

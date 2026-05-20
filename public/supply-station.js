@@ -300,6 +300,56 @@
     resetForm();
   }
 
+  // V6 pilot — load active customers into the supply-station picker.
+  // For cleaning techs we scope to their assigned_customer_slugs (so a
+  // tech doesn't see Pioneer's full client list). Admins get the full
+  // active list. Caching the customer list in memory keeps subsequent
+  // resets fast; the Submit-another-order button calls form.reset()
+  // which the <select> handles natively (returns to placeholder).
+  let _ssCustomersLoaded = false;
+  async function loadCustomerPicker(staff) {
+    const sel = $("ss-customer");
+    if (!sel || _ssCustomersLoaded) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    const db = firebase.firestore();
+    const snap = await db.collection("customers").get();
+    let docs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+
+    // Keep only active customers (default true when field missing).
+    docs = docs.filter(function (c) { return c.active !== false; });
+
+    // Cleaning techs: narrow to assigned customers (matches the DCR
+    // form's customer dropdown gating). Admins see everything.
+    if (staff && staff.role === "cleaning_tech") {
+      const assigned = (staff.tech && Array.isArray(staff.tech.assigned_customer_slugs))
+        ? new Set(staff.tech.assigned_customer_slugs)
+        : new Set();
+      docs = docs.filter(function (c) {
+        const slug = c.customer_slug || c.slug || c.id;
+        return assigned.has(slug);
+      });
+    }
+
+    docs.sort(function (a, b) {
+      const an = (a.customer_name || a.name || a.id).toLowerCase();
+      const bn = (b.customer_name || b.name || b.id).toLowerCase();
+      return an.localeCompare(bn);
+    });
+
+    docs.forEach(function (c) {
+      const slug = c.customer_slug || c.slug || c.id;
+      const name = c.customer_name || c.name || slug;
+      const loc  = c.locationDisplayName || c.location_name || "";
+      const opt  = document.createElement("option");
+      opt.value = slug;
+      opt.textContent = loc ? (name + " · " + loc) : name;
+      opt.dataset.name = name;
+      opt.dataset.location = loc;
+      sel.appendChild(opt);
+    });
+    _ssCustomersLoaded = true;
+  }
+
   function wireForm() {
     const form     = $("supply-station-form");
     const submit   = $("ss-submit");
@@ -323,6 +373,17 @@
         const categories = Array.from(
           document.querySelectorAll('input[name="category"]:checked')
         ).map(function (cb) { return cb.value; });
+
+        // V6 pilot — attach the selected customer (when any) so the
+        // saved supply_requests doc carries customer_slug / name /
+        // location for office routing. Empty string fallback when the
+        // operator chose the "no specific customer" placeholder.
+        const custSel  = $("ss-customer");
+        const custOpt  = custSel && custSel.selectedIndex >= 0
+          ? custSel.options[custSel.selectedIndex] : null;
+        const custSlug = (custSel && custSel.value) || "";
+        const custName = (custOpt && custOpt.dataset && custOpt.dataset.name) || "";
+        const custLoc  = (custOpt && custOpt.dataset && custOpt.dataset.location) || "";
 
         const url = (window.SUPPLY_STATION_ORDER_URL || "").trim();
         if (!url || /REPLACE_WITH/.test(url)) {
@@ -357,7 +418,10 @@
               requested_items: requestedItems,
               priority:        priority,
               note:            note,
-              categories:      categories
+              categories:      categories,
+              customer_slug:   custSlug,
+              customer_name:   custName,
+              location_name:   custLoc
             })
           });
           const body = await res.json().catch(function () { return {}; });
@@ -410,6 +474,14 @@
             });
           }
           showForm();
+          // V6 pilot — load the customer picker so the submit attaches
+          // the order to a specific site. Soft-fails on any read
+          // error (network, rules) — the form still submits with an
+          // empty customer if the picker doesn't populate.
+          loadCustomerPicker(staff).catch(function (err) {
+            console.warn("supply-station: customer picker load failed (non-fatal)",
+              err && err.code, err && err.message);
+          });
         }
       });
     } catch (err) {

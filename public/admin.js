@@ -578,14 +578,34 @@
     );
   }
 
+  // V6 pilot fix — "No customers in Firestore yet" was sometimes
+  // showing alongside populated customer cards because renderCustomers
+  // can fire from the search filter BEFORE loadCustomers resolves
+  // (race when the user types in the search box during load). The
+  // empty-state should ONLY appear after the load completes AND the
+  // resulting list is truly empty. customersLoaded becomes true on
+  // the first successful loadCustomers run; until then, the empty
+  // state stays suppressed.
+  let customersLoaded = false;
+
   function renderCustomers(list) {
     const root = $("customer-list");
     const cnt  = $("customer-count");
     if (!root) return;
     if (cnt)  cnt.textContent = list.length + ' customer' + (list.length === 1 ? '' : 's');
     root.innerHTML = list.map(customerCard).join("");
-    if (list.length === 0 && customers.length === 0) setStatus("customer", "empty");
-    else hideAllStatuses("customer");
+    // Show "No customers in Firestore yet" ONLY when:
+    //   • load has finished (customersLoaded === true),
+    //   • the cache is genuinely empty (customers.length === 0),
+    //   • and the current view list is empty.
+    // A search-filter that returns zero is NOT empty — the cache has
+    // customers; the user just filtered them out. That case lands
+    // in `hideAllStatuses` below.
+    if (list.length === 0 && customersLoaded && customers.length === 0) {
+      setStatus("customer", "empty");
+    } else {
+      hideAllStatuses("customer");
+    }
   }
 
   async function loadCustomers() {
@@ -600,6 +620,7 @@
       customers.sort(function (a, b) {
         return getCustomerName(a).localeCompare(getCustomerName(b));
       });
+      customersLoaded = true;
       renderCustomers(customers);
       refreshAttentionStrip();
     } catch (err) {
@@ -612,6 +633,24 @@
   }
 
   /* ---------- cleaning techs ---------- */
+
+  // Small avatar-strip thumbnail for the techs admin list. Mirrors the
+  // customer-facing DCR-email identity bubble so admins notice at a
+  // glance which techs still need a real photo. The .is-missing class
+  // turns the chip red+warning so the eye catches it without having to
+  // open the row.
+  function techThumb(t) {
+    const photo = (t.photoUrl || t.profilePhotoUrl || "").trim();
+    if (photo) {
+      return '<span class="tech-row-thumb" aria-hidden="true">' +
+               '<img src="' + escapeHtml(photo) + '" alt="" loading="lazy" />' +
+             '</span>';
+    }
+    const initial = (getTechName(t) || "P").charAt(0).toUpperCase();
+    return '<span class="tech-row-thumb is-missing" aria-hidden="true">' +
+             escapeHtml(initial) +
+           '</span>';
+  }
 
   function techCard(t) {
     const name    = getTechName(t) || "(unnamed tech)";
@@ -634,7 +673,30 @@
     const budgetBadgeHtml = budgetRowBadge(budgetStats);
     const budgetTooltip   = budgetTooltipText(budgetStats);
 
+    // Photo/signature asset chips — surface missing media for active
+    // techs (and only active techs; archived rows shouldn't shout).
+    // The customer-facing DCR trust promise treats the photo as
+    // required and the signature as strongly preferred.
+    const hasPhoto = !!(t.photoUrl || t.profilePhotoUrl);
+    const hasSig   = !!t.signatureUrl;
+    let assetChips = "";
+    if (active && !hasPhoto) {
+      assetChips +=
+        '<span class="tech-row-asset-chip tech-row-asset-chip-bad"' +
+              ' title="Customer-facing DCR emails show initials instead of a real photo. Required for the trust promise.">' +
+          'No photo' +
+        '</span>';
+    }
+    if (active && !hasSig) {
+      assetChips +=
+        '<span class="tech-row-asset-chip"' +
+              ' title="Tech signature missing — signed receipt area in the DCR email collapses.">' +
+          'No signature' +
+        '</span>';
+    }
+
     const badges =
+      assetChips +
       activeBadge(active) +
       dcrEnabledBadge(enabled) +
       (needsAssign ? badge("is-warn", "Needs assignments") : "") +
@@ -646,13 +708,21 @@
     const archiveLabel = active ? "Archive" : "Reactivate";
 
     // Account-status hint: when the last invite/reset was sent. Shows
-    // "—" when never invited. Reinvite button appears only on active
-    // techs with an email (no point resending to archived accounts or
-    // rows missing the email field).
+    // "—" when never invited. The button label flips between
+    // "Send invite" (no prior invite) and "Reinvite" (at least one
+    // prior invite landed) based on the V6 inviteSentAt field, with
+    // back-compat fallbacks to the legacy snake_case fields.
     const email     = (t.email || "").toLowerCase().trim();
-    const lastSent  = t.last_invite_sent_at || t.last_reset_sent_at;
+    const lastSent  = t.inviteSentAt || t.last_invite_sent_at || t.last_reset_sent_at;
     const lastSentTxt = lastSent ? formatTimestamp(lastSent) : "—";
     const canResend = active && !!email;
+    const hasBeenInvited = !!lastSent;
+    const inviteBtnLabel = hasBeenInvited ? "Reinvite" : "Send invite";
+    const inviteBtnTitle = hasBeenInvited
+      ? "Send a fresh password-reset email to this tech (re-uses the existing Firebase Auth user)"
+      : "Send the first invite to this tech (password-reset link the recipient can use to set up access)";
+    const inviteStatus = String(t.inviteStatus || "").toLowerCase();
+    const inviteLastError = String(t.inviteLastError || "").trim();
 
     // "Promote to Admin" — only visible for active techs with a real
     // email who DON'T already have admin access. We check both the
@@ -669,9 +739,12 @@
 
     return (
       '<div class="admin-row" role="listitem" data-id="' + escapeHtml(t.id) + '">' +
-        '<div class="row-primary">' +
-          '<span class="row-name">' + escapeHtml(name) + '</span>' +
-          '<span class="row-sub">'  + escapeHtml(slug || "—") + '</span>' +
+        '<div class="row-primary" style="display:flex;align-items:center;gap:10px;">' +
+          techThumb(t) +
+          '<div>' +
+            '<span class="row-name">' + escapeHtml(name) + '</span>' +
+            '<span class="row-sub">'  + escapeHtml(slug || "—") + '</span>' +
+          '</div>' +
         '</div>' +
         '<div class="row-cell">' +
           '<span class="cell-label">Experience</span>' + escapeHtml(t.experience_level || "—") +
@@ -686,10 +759,24 @@
           '<div class="pill-badges">' + badges + '</div>' +
           // Primary action.
           '<button class="row-btn" type="button" data-action="edit">Edit</button>' +
+          // Photo + signature manager.
+          '<button class="row-btn row-btn-secondary" type="button" data-action="media"' +
+            ' title="Upload or change this tech\'s profile photo and signature">Media</button>' +
           // Secondary action — only when actually possible.
           (canResend
             ? '<button class="row-btn row-btn-secondary" type="button" data-action="resend"' +
-                ' title="Send a fresh password-reset email to this tech">Reinvite</button>'
+                ' title="' + escapeHtml(inviteBtnTitle) + '">' +
+                escapeHtml(inviteBtnLabel) +
+              '</button>'
+            : "") +
+          // Surface a visible "Invite errored" chip when the last
+          // attempt failed. The chip is non-interactive — admin
+          // clicks the Reinvite button next to it to retry.
+          (canResend && inviteStatus === "error"
+            ? '<span class="tech-row-asset-chip tech-row-asset-chip-bad"' +
+                ' title="' + escapeHtml(inviteLastError || "Last invite attempt failed") + '">' +
+                'Invite errored' +
+              '</span>'
             : "") +
           // Overflow menu — contains Promote / Archive(/Reactivate) / Delete.
           // The trigger button is .row-btn-more; the popover is a sibling
@@ -787,7 +874,7 @@
     const photoBadge = badge("is-photos", photoCount + ' photo' + (photoCount === 1 ? '' : 's'));
 
     return (
-      '<div class="admin-row" role="listitem">' +
+      '<div class="admin-row" role="listitem" data-id="' + escapeHtml(id) + '">' +
         '<div class="row-primary">' +
           '<span class="row-name">' + escapeHtml(customer) + '</span>' +
           '<span class="row-sub">'  + escapeHtml(cleanDate) + ' · ' + escapeHtml(tech) + '</span>' +
@@ -804,6 +891,14 @@
           '<div class="pill-badges">' +
             photoBadge + problemBadge + zapBadge +
           '</div>' +
+          // V6 — Review & Send opens the readiness modal for this DCR.
+          // The modal calls getDcrEmailReadinessV1, renders blockers/
+          // warnings, and only enables the actual Send button when
+          // the DCR is ready (or the operator confirms a resend).
+          '<button class="row-btn" type="button" data-action="review-send"' +
+            ' title="Run the DCR email readiness check and send to the customer">' +
+            'Review & Send' +
+          '</button>' +
         '</div>' +
       '</div>'
     );
@@ -2009,25 +2104,92 @@
   /* =====================================================================
      Admin Ops Overview — top-of-page command center
      =====================================================================
-     Phase 2 normalization: paints into the shared .kpi-card + .health-card
-     foundation. Same set of in-memory caches as before — no new data
-     loads on the critical path. The Zapier-failures signal moved out of
-     the visible strip and into the Day Health checklist so the six KPI
-     tiles match the normalized spec.
+     V6 native PioneerOps rewrite. "Today's Operations" now reads from
+     the native DCR pipeline (dcr_email_payloads + customer_feedback +
+     customer_complaints) instead of the dead Zapier delivery layer.
 
-     Inspections-this-week is filled by loadInspectionsThisWeekCount()
-     asynchronously after the page is interactive; until it lands, the
-     tile shows "—" with the meta line "Last 7 days". */
+     Counts on the bottom KPI strip still come from the existing
+     in-memory caches (customers, techs, dcrs, supplyRequests,
+     dcrIssues) — no critical-path query change. The Today's Operations
+     card adds two lightweight 24h-window queries, soft-failed.
+
+     ────────────────────────────────────────────────────────────────────
+     TODO — future signal sources for this card:
+       • Email opens          tracking pixel on dcr_email_payloads → bump
+                              a `openCount` field on the doc; render as
+                              "Opens · 24h" + open-rate %.
+       • Feedback CTA clicks  log a click event when feedback-compliment
+                              / feedback-issue pages load with a dcrId.
+                              Surface as "Feedback CTA clicks · 24h".
+       • Portal link clicks   when the customer-facing portal lands,
+                              count "View full report →" clicks
+                              from the email footer.
+     Until those land, the card intentionally OMITS open-rate so we
+     don't display a misleading "0% open rate" when we're just not
+     tracking opens. Per the spec: "If we do not currently track opens,
+     do NOT fake it." */
   let inspectionsThisWeekCount = null;  // null = not yet loaded, number = resolved
+
+  // V6 — 24h-window metrics for the Today's Operations card. Both
+  // queries cap their reads at 200 docs (twice today's expected
+  // volume on a worst-case office). The numbers are cached for the
+  // page lifetime; refreshDayHealthMetrics24h() can be called to
+  // refetch (e.g. after an admin manually sends a DCR email).
+  let dayHealth24h = {
+    loaded:           false,
+    emailsSent:       0,   // dcr_email_payloads with sentAt >= 24h ago
+    emailsFailed:     0,   // payloads with createdAt >= 24h ago AND no sentAt
+    feedbackReceived: 0,   // customer_feedback with createdAt >= 24h ago
+    queryError:       null
+  };
+
+  async function refreshDayHealthMetrics24h() {
+    try {
+      const db   = firebase.firestore();
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const cutoffTs = firebase.firestore.Timestamp.fromDate(cutoff);
+
+      // We query payloads by createdAt (always stamped) rather than
+      // sentAt (only set on success), then bucket client-side. This
+      // catches BOTH delivered and failed sends in one query.
+      const [payloadsSnap, feedbackSnap] = await Promise.all([
+        db.collection("dcr_email_payloads")
+          .where("createdAt", ">=", cutoffTs)
+          .limit(200).get(),
+        db.collection("customer_feedback")
+          .where("createdAt", ">=", cutoffTs)
+          .limit(200).get()
+      ]);
+
+      let sent = 0;
+      let failed = 0;
+      payloadsSnap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.sentAt) sent += 1;
+        else             failed += 1;
+      });
+      dayHealth24h = {
+        loaded:           true,
+        emailsSent:       sent,
+        emailsFailed:     failed,
+        feedbackReceived: feedbackSnap.size,
+        queryError:       null
+      };
+    } catch (err) {
+      console.warn("refreshDayHealthMetrics24h failed (soft)", err && err.message);
+      dayHealth24h = Object.assign({}, dayHealth24h, {
+        loaded:     true,                   // we tried
+        queryError: String(err && err.message || err)
+      });
+    }
+    refreshAttentionStrip();
+  }
 
   function refreshAttentionStrip() {
     function paintCount(id, n, tone) {
       const el = $(id);
       if (!el) return;
       el.textContent = String(n);
-      // Apply tone to the surrounding .kpi-card so the left rail
-      // reflects severity. The card uses data-tone, set on the
-      // closest .kpi-card ancestor.
       const card = el.closest(".kpi-card");
       if (card) card.setAttribute("data-tone", tone);
     }
@@ -2039,9 +2201,6 @@
     const openSupply = supplyRequests.filter(function (r) {
       return (r.status || "new") !== "closed";
     }).length;
-    const zFailed = dcrs.filter(function (d) {
-      return d && d.zapier && d.zapier.status === "failed";
-    }).length;
     const emailOff = customers.filter(function (c) {
       return getActive(c) && getDcrEmailEnabled(c) === false;
     }).length;
@@ -2050,7 +2209,23 @@
       return getActive(t) && assigned.length === 0;
     }).length;
 
-    // -- Paint the 4 cache-driven KPIs --
+    // "Customer links active" = active customers with DCR email
+    // enabled AND at least one recipient configured. This is the
+    // count of customers we're actually able to deliver to. Failing
+    // either gate (opt-out OR no recipient) drops them from the
+    // active count.
+    const linksActive = customers.filter(function (c) {
+      if (!getActive(c))                  return false;
+      if (getDcrEmailEnabled(c) === false) return false;
+      const recipients = Array.isArray(c.dcrEmailRecipients)
+        ? c.dcrEmailRecipients
+        : (Array.isArray(c.dcr_email_recipients) ? c.dcr_email_recipients : []);
+      if (recipients.some(function (e) { return typeof e === "string" && e.trim(); })) return true;
+      const single = c.customer_email || c.primaryEmail || c.primary_email || c.email || "";
+      return !!String(single || "").trim();
+    }).length;
+
+    // -- Paint the 4 cache-driven KPIs (lower strip, unchanged) --
     paintCount("attn-new-issues",   newIssues,   newIssues   > 0 ? "attention" : "positive");
     paintCount("attn-open-supply",  openSupply,  openSupply  > 0 ? "attention" : "positive");
     paintCount("attn-email-off",    emailOff,    emailOff    > 0 ? "attention" : "positive");
@@ -2071,79 +2246,110 @@
       }
     }
 
-    // -- Day Health card --
+    // -- Today's Operations card --
     refreshAdminDayHealth({
-      newIssues:   newIssues,
-      openSupply:  openSupply,
-      zFailed:     zFailed,
-      emailOff:    emailOff,
-      needsAssign: needsAssign
+      newIssues:        newIssues,
+      openSupply:       openSupply,
+      emailOff:         emailOff,
+      needsAssign:      needsAssign,
+      linksActive:      linksActive,
+      emailsSent24h:    dayHealth24h.emailsSent,
+      emailsFailed24h:  dayHealth24h.emailsFailed,
+      feedback24h:      dayHealth24h.feedbackReceived,
+      metricsLoaded:    dayHealth24h.loaded,
+      metricsError:     dayHealth24h.queryError
     });
   }
 
-  /* ---------- Day Health (admin) ----------
-     Tone:
-       healthy   — every operational signal is zero
-       attention — any of newIssues / needsAssign / zFailed > 0
-       healthy   — soft signals only (emailOff / openSupply > 0)
-                   because those are routine ops, not red flags. */
+  /* ---------- Today's Operations card ----------
+     V6 — native PioneerOps DCR pipeline metrics, no Zapier. Headline
+     stat row + four operational bullets. Card tone:
+       healthy   — emails sent today, no failures, no new issues
+       attention — any DCR email failure in the last 24h OR new issues
+       neutral   — first paint before the 24h metrics finish loading. */
   function refreshAdminDayHealth(c) {
     const card    = $("admin-day-health");
     const titleEl = $("admin-day-health-title");
-    const sumEl   = $("admin-day-health-summary");
-    if (!card || !titleEl || !sumEl) return;
+    if (!card || !titleEl) return;
 
-    const totalSignals = c.newIssues + c.openSupply + c.zFailed + c.emailOff + c.needsAssign;
+    // ---- Card tone + headline ----
     let status, title;
-    if (totalSignals === 0) {
-      status = "healthy";
-      title  = "Everything looks stable today.";
-    } else if (c.zFailed > 0 || c.newIssues > 0 || c.needsAssign > 0) {
+    if (!c.metricsLoaded) {
+      status = "neutral";
+      title  = "Loading today's DCR pipeline metrics…";
+    } else if (c.emailsFailed24h > 0) {
+      status = "attention";
+      title  = c.emailsFailed24h + " DCR email " +
+               (c.emailsFailed24h === 1 ? "failure" : "failures") +
+               " in the last 24h — review the Recent DCRs tab.";
+    } else if (c.newIssues > 0 || c.needsAssign > 0) {
       status = "attention";
       const bits = [];
-      if (c.newIssues   > 0) bits.push(c.newIssues   + " new issue"     + (c.newIssues   === 1 ? "" : "s"));
-      if (c.zFailed     > 0) bits.push(c.zFailed     + " Zapier failure" + (c.zFailed    === 1 ? "" : "s"));
-      if (c.needsAssign > 0) bits.push(c.needsAssign + " tech"           + (c.needsAssign === 1 ? "" : "s") + " unassigned");
-      title = bits.slice(0, 2).join(" · ") + ((bits.length > 2) ? " · …" : ".");
+      if (c.newIssues   > 0) bits.push(c.newIssues + " new issue"   + (c.newIssues   === 1 ? "" : "s"));
+      if (c.needsAssign > 0) bits.push(c.needsAssign + " tech"      + (c.needsAssign === 1 ? "" : "s") + " unassigned");
+      title = bits.join(" · ");
+    } else if (c.emailsSent24h > 0) {
+      status = "healthy";
+      title  = "DCR pipeline healthy — " + c.emailsSent24h + " " +
+               (c.emailsSent24h === 1 ? "email" : "emails") +
+               " delivered in the last 24h.";
     } else {
       status = "healthy";
-      title  = "Day is on track — a few routine signals to review.";
+      title  = "DCR pipeline standing by — no sends in the last 24h.";
     }
     card.setAttribute("data-status", status);
     titleEl.textContent = title;
 
-    // Operational summary line — counts the user can confirm visually
-    // against the KPI strip below.
-    const sumBits = [];
-    sumBits.push(customers.length + " customers");
-    sumBits.push(techs.length + " techs");
-    sumBits.push(dcrs.length + " DCRs in window");
-    if (totalSignals === 0) sumBits.push("0 open signals");
-    else                    sumBits.push(totalSignals + " open signals");
-    sumEl.textContent = sumBits.join(" · ");
+    // ---- Headline stat row ----
+    setText("admin-day-health-stat-new-issues",  c.newIssues);
+    setText("admin-day-health-stat-emails-sent", c.metricsLoaded ? c.emailsSent24h : "—");
+    // Failures tile: only unhide when we have a non-zero count. The
+    // empty state of this card should read calm.
+    const failWrap  = $("admin-day-health-stat-failures-wrap");
+    const failValEl = $("admin-day-health-stat-failures");
+    if (failWrap && failValEl) {
+      if (c.metricsLoaded && c.emailsFailed24h > 0) {
+        failValEl.textContent = String(c.emailsFailed24h);
+        failWrap.hidden = false;
+      } else {
+        failWrap.hidden = true;
+      }
+    }
 
-    // Checklist states.
-    const liAssign = $("admin-day-health-li-assigned");
-    const liDcr    = $("admin-day-health-li-dcr");
-    const liIssues = $("admin-day-health-li-issues");
-    if (liAssign) {
-      liAssign.setAttribute("data-state", c.needsAssign === 0 ? "ok" : "watch");
-      liAssign.textContent = c.needsAssign === 0
-        ? "All active techs assigned"
-        : (c.needsAssign + " active tech" + (c.needsAssign === 1 ? "" : "s") + " unassigned");
+    // ---- Dashboard bullets ----
+    const liLinks     = $("admin-day-health-li-links");
+    const liDelivered = $("admin-day-health-li-delivered");
+    const liFailures  = $("admin-day-health-li-failures");
+    const liFeedback  = $("admin-day-health-li-feedback");
+
+    if (liLinks) {
+      liLinks.setAttribute("data-state", c.linksActive > 0 ? "ok" : "watch");
+      liLinks.textContent = c.linksActive + " customer link" +
+        (c.linksActive === 1 ? "" : "s") + " active";
     }
-    if (liDcr) {
-      liDcr.setAttribute("data-state", c.zFailed === 0 ? "ok" : "block");
-      liDcr.textContent = c.zFailed === 0
-        ? "DCR delivery healthy"
-        : (c.zFailed + " Zapier delivery failure" + (c.zFailed === 1 ? "" : "s"));
+    if (liDelivered) {
+      liDelivered.setAttribute("data-state",
+        c.metricsLoaded ? (c.emailsSent24h > 0 ? "ok" : "neutral") : "neutral");
+      liDelivered.textContent = (c.metricsLoaded ? c.emailsSent24h : "—") +
+        " DCR email" + (c.emailsSent24h === 1 ? "" : "s") + " delivered · 24h";
     }
-    if (liIssues) {
-      liIssues.setAttribute("data-state", c.newIssues === 0 ? "ok" : "watch");
-      liIssues.textContent = c.newIssues === 0
-        ? "No new operational issues"
-        : (c.newIssues + " new operational issue" + (c.newIssues === 1 ? "" : "s") + " open");
+    if (liFailures) {
+      liFailures.setAttribute("data-state",
+        c.metricsLoaded ? (c.emailsFailed24h === 0 ? "ok" : "block") : "neutral");
+      liFailures.textContent = (c.metricsLoaded ? c.emailsFailed24h : "—") +
+        " DCR email failure" + (c.emailsFailed24h === 1 ? "" : "s") + " · 24h";
     }
+    if (liFeedback) {
+      liFeedback.setAttribute("data-state",
+        c.metricsLoaded ? "ok" : "neutral");
+      liFeedback.textContent = (c.metricsLoaded ? c.feedback24h : "—") +
+        " customer feedback message" + (c.feedback24h === 1 ? "" : "s") + " · 24h";
+    }
+  }
+
+  function setText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = String(value);
   }
 
   /* ---------- Inspections this week (lightweight async load) ----------
@@ -2207,81 +2413,6 @@
     });
   }
 
-  /* =====================================================================
-     Global search — proxies the active tab's per-tab .admin-search input
-     =====================================================================
-     Each major panel already owns a search input (#customer-search,
-     #tech-search, #dcr-search, #issues-search, #supply-search,
-     #recoveries-search, #notes-search, #announcements-search,
-     #admins-search). The global input dispatches keystrokes onto
-     whichever one matches the active tab — so every keystroke runs the
-     same filter logic the per-tab box does, with no new code path.
-
-     Tabs without a per-tab search (#suggestions / #feed / #training /
-     #deputy) get a friendly hint and the input is disabled. */
-  const GLOBAL_SEARCH_TARGETS = {
-    customers:     { id: "customer-search",      label: "Customers" },
-    techs:         { id: "tech-search",          label: "Cleaning Techs" },
-    dcrs:          { id: "dcr-search",           label: "Recent DCRs" },
-    issues:        { id: "issues-search",        label: "Issues" },
-    supply:        { id: "supply-search",        label: "Supply Requests" },
-    recoveries:    { id: "recoveries-search",    label: "Service Recoveries" },
-    notes:         { id: "notes-search",         label: "Customer Notes" },
-    announcements: { id: "announcements-search", label: "Announcements" },
-    admins:        { id: "admins-search",        label: "Admins" }
-  };
-
-  function getActiveTabKey() {
-    const t = document.querySelector(".admin-tab.is-active[data-tab]");
-    return t ? t.dataset.tab : "customers";
-  }
-
-  function updateGlobalSearchHint() {
-    const hintEl  = $("admin-global-search-hint");
-    const inputEl = $("admin-global-search-input");
-    if (!hintEl || !inputEl) return;
-    const targetMeta = GLOBAL_SEARCH_TARGETS[getActiveTabKey()];
-    if (targetMeta) {
-      hintEl.textContent = "Filtering: " + targetMeta.label;
-      inputEl.disabled = false;
-      inputEl.placeholder = "Search " + targetMeta.label.toLowerCase() + "…";
-    } else {
-      hintEl.textContent = "No search on this tab";
-      inputEl.disabled = true;
-      inputEl.placeholder = "Search customers, techs, DCRs…";
-    }
-  }
-
-  function wireGlobalSearch() {
-    const inputEl = $("admin-global-search-input");
-    if (!inputEl) return;
-    inputEl.addEventListener("input", function () {
-      const targetMeta = GLOBAL_SEARCH_TARGETS[getActiveTabKey()];
-      if (!targetMeta) return;
-      const target = $(targetMeta.id);
-      if (!target) return;
-      target.value = inputEl.value;
-      // Dispatch a synthetic input event so the existing per-tab
-      // listener (wireSearch / wireSupplyControls / etc.) runs.
-      try { target.dispatchEvent(new Event("input", { bubbles: true })); }
-      catch (_e) { /* old browsers fall back silently */ }
-    });
-    // Initial hint paint.
-    updateGlobalSearchHint();
-    // Update the hint whenever the user activates a different tab. We
-    // hook into the existing tab click bar rather than introduce a new
-    // observer — activateTab() already mutates the .is-active class on
-    // the matching button.
-    const tabsBar = document.querySelector(".admin-tabs-grouped");
-    if (tabsBar) {
-      tabsBar.addEventListener("click", function (ev) {
-        if (!ev.target.closest(".admin-tab[data-tab]")) return;
-        // tab classes flip synchronously; defer one tick to read post-flip.
-        setTimeout(updateGlobalSearchHint, 0);
-      });
-    }
-  }
-
   // Helper for programmatic tab activation. Mirrors the click handler
   // already wired by wireTabs() — toggles is-active + the panel hidden
   // attribute. Defensive null-checks so a missing tab is a no-op.
@@ -2302,9 +2433,6 @@
     // Training reports are lazy-loaded on first tab open and refreshed
     // on the Refresh button. Idempotent.
     if (tabKey === "training") loadTrainingReport();
-    // Keep the ops-overview global search hint synced with the
-    // newly-active tab. No-op if wireGlobalSearch hasn't fired yet.
-    if (typeof updateGlobalSearchHint === "function") updateGlobalSearchHint();
   }
 
   // Idempotent mount: subsequent clicks on the Feed tab do nothing.
@@ -2628,6 +2756,11 @@
       // Phase 2 ops overview — single async count for the
       // "Inspections This Week" KPI. Soft-fails; doesn't block.
       loadInspectionsThisWeekCount();
+      // V6 — Today's Operations card. Two parallel queries against
+      // dcr_email_payloads + customer_feedback for the 24h window.
+      // Soft-fails; the card stays in its "loading" / "—" state if
+      // the query is rejected.
+      refreshDayHealthMetrics24h();
       const staffShape = { uid: user.uid, email: user.email };
       paintTeamHubUnreadBadge(staffShape);
       // Mandatory-announcement gate — admins get the same blocking
@@ -3831,17 +3964,17 @@
         return { ok: false, code: body && body.code, status: res.status };
       }
 
-      // Server returned ok:true but sent:false means it didn't find a
-      // Firebase Auth user for this email. That's a real failure in
-      // the admin context — surface it actionably.
+      // V6 — the server now AUTO-CREATES the Auth user when missing,
+      // so the `sent: false, reason: "no_auth_user"` branch is no
+      // longer expected on the happy path. Kept as a safety net so a
+      // future server change that returns it still surfaces cleanly.
       if (body.sent === false) {
         const reason = body.reason || "unknown";
-        const msg = "No Firebase Auth user exists for " + emailLower +
+        const msg = "Invite skipped for " + emailLower +
           " (reason: " + reason + "). " +
-          "Open the tech / admin row and use 'Add tech / Login setup' (or 'Add admin') " +
-          "to provision a Firebase Auth user first.";
+          "If this keeps happening, the server-side createUser path may have changed — check Cloud Functions logs.";
         console.warn("sendPasswordResetV1 returned ok but sent:false", body);
-        showToast("err", "Resend skipped — no Firebase Auth user for " + emailLower + ".");
+        showToast("err", "Invite skipped — see admin row error chip.");
         setFeedback(msg);
         return { ok: false, code: "no_auth_user", status: 200 };
       }
@@ -3869,7 +4002,14 @@
     }
 
     if (clientEmailOk) {
-      const msg = "Reset email sent to " + emailLower +
+      // V6 — different wording for first-time invite vs reinvite.
+      // body.created_auth_user is true when the server just provisioned
+      // a new Firebase Auth user for this email; otherwise the user
+      // already existed and we just nudged a fresh reset link.
+      const verb = (body && body.created_auth_user)
+        ? "Invite created — reset email sent to "
+        : "Reset email sent to ";
+      const msg = verb + emailLower +
         ". Tell them to check inbox + spam. Last-invite timestamp updated.";
       showToast("ok", msg);
       setFeedback(msg);
@@ -4792,6 +4932,686 @@
     } catch (e) {
       console.warn("clipboard write failed", e);
       input.focus(); input.select();
+    }
+  }
+
+  /* ---------- DCR email Review & Send (dcr-email-review-modal) ----------
+   *
+   * V6 pilot. Calls getDcrEmailReadinessV1 with an admin ID token,
+   * renders blockers/warnings + a readiness checklist, and enables
+   * the Send button only when the DCR is ready (or the operator
+   * clicks Resend on an already-sent DCR).
+   *
+   * Send button hits the same generateAndSendDcrEmailV1 endpoint the
+   * old token-based test loop used; that endpoint now ALSO runs the
+   * readiness check server-side, so even a stale UI can't push a
+   * not-ready DCR through.
+   */
+  let _dcrReviewCurrentDcrId = null;
+  let _dcrReviewLastReadiness = null;
+
+  async function openDcrReviewModal(dcr) {
+    if (!dcr) return;
+    const dcrId = dcr.submission_id || dcr.id;
+    _dcrReviewCurrentDcrId  = dcrId;
+    _dcrReviewLastReadiness = null;
+
+    // Reset the modal to a loading state every time it opens. Avoids
+    // showing stale data from the previous DCR while the new readiness
+    // check is in flight.
+    const titleEl   = $("dcr-review-title");
+    const subTextEl = $("dcr-review-subtitle");
+    if (titleEl)   titleEl.textContent   = "Review DCR email";
+    if (subTextEl) subTextEl.textContent = (dcr.customer_name || "—") + " · " +
+                                           (dcr.tech_display_name || "—") + " · " +
+                                           (dcr.clean_date || "");
+    setDcrReviewBody('<p class="dcr-review-loading">Running readiness check…</p>');
+    setDcrReviewError("");
+    setDcrReviewSendButton({ disabled: true, label: "Send Customer DCR Email", visible: true });
+    setDcrReviewResendButton({ disabled: true, visible: false });
+    openModal("dcr-email-review-modal");
+
+    await refreshDcrReviewReadiness("send");
+  }
+
+  async function refreshDcrReviewReadiness(mode) {
+    const dcrId = _dcrReviewCurrentDcrId;
+    if (!dcrId) return;
+    const url = (window.GET_DCR_EMAIL_READINESS_URL || "").trim();
+    if (!url) {
+      setDcrReviewError("GET_DCR_EMAIL_READINESS_URL not configured in firebase-config.js.");
+      return;
+    }
+    let idToken;
+    try {
+      const u = firebase.auth().currentUser;
+      if (u) idToken = await u.getIdToken();
+    } catch (_e) {}
+    if (!idToken) {
+      setDcrReviewError("You appear to be signed out. Refresh and sign in again.");
+      return;
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body:   JSON.stringify({ dcrId: dcrId, mode: mode || "send" })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        setDcrReviewError((data && data.error) || ("HTTP " + res.status));
+        return;
+      }
+      _dcrReviewLastReadiness = data;
+      renderDcrReviewReadiness(data);
+    } catch (e) {
+      setDcrReviewError(String(e && e.message || e));
+    }
+  }
+
+  function renderDcrReviewReadiness(r) {
+    // The readiness JSON has the shape:
+    //   { ready, blockers[], warnings[], resolved }
+    // We turn it into a labeled checklist + blocker/warning lists +
+    // a "what the customer will see" summary block. The Send button
+    // is only enabled when ready === true. When the only blocker is
+    // already_sent, the Resend button replaces Send.
+    const resolved = r.resolved || {};
+    const blockers = Array.isArray(r.blockers) ? r.blockers : [];
+    const warnings = Array.isArray(r.warnings) ? r.warnings : [];
+    const ready    = !!r.ready;
+
+    const checkItem = function (ok, label, detail) {
+      const icon = ok ? '✓' : '○';
+      const cls  = ok ? 'dcr-review-check-ok' : 'dcr-review-check-pending';
+      return (
+        '<li class="' + cls + '">' +
+          '<span class="dcr-review-check-icon">' + icon + '</span>' +
+          '<span class="dcr-review-check-label">' + escapeHtml(label) + '</span>' +
+          (detail ? ('<span class="dcr-review-check-detail">' + escapeHtml(detail) + '</span>') : '') +
+        '</li>'
+      );
+    };
+
+    const recipients = Array.isArray(resolved.emailRecipients) ? resolved.emailRecipients : [];
+    const recipientsLine = recipients.length
+      ? recipients.join(", ")
+      : "(none on file)";
+
+    const checklistHtml =
+      '<ul class="dcr-review-checklist" role="list">' +
+        checkItem(!!resolved.customerId,          "Customer resolved",        resolved.customerName || "") +
+        checkItem(recipients.length > 0,          "Email recipient(s)",        recipientsLine) +
+        checkItem(!!resolved.techId,              "Tech resolved",             resolved.techName || "") +
+        checkItem(!!resolved.hasTechPhoto,        "Tech profile photo",        resolved.hasTechPhoto ? "on file" : "missing — initials fallback") +
+        checkItem(!!resolved.hasSignature,        "Off-site signature",        resolved.hasSignature ? "captured" : "missing") +
+        checkItem(resolved.photoCount > 0,        "After photos",              (resolved.photoCount || 0) + " on file") +
+        checkItem(true,                            "Issue tier",                String(resolved.issueTier || "green").toUpperCase()) +
+      '</ul>';
+
+    let blockersHtml = "";
+    if (blockers.length) {
+      blockersHtml =
+        '<div class="dcr-review-issues dcr-review-issues-block">' +
+          '<div class="dcr-review-issues-title">Blockers — must resolve before send</div>' +
+          '<ul>' +
+            blockers.map(function (b) {
+              return '<li><strong>' + escapeHtml(b.code) + '</strong>: ' + escapeHtml(b.message) + '</li>';
+            }).join("") +
+          '</ul>' +
+        '</div>';
+    }
+    let warningsHtml = "";
+    if (warnings.length) {
+      warningsHtml =
+        '<div class="dcr-review-issues dcr-review-issues-warn">' +
+          '<div class="dcr-review-issues-title">Warnings — send anyway is OK</div>' +
+          '<ul>' +
+            warnings.map(function (w) {
+              return '<li><strong>' + escapeHtml(w.code) + '</strong>: ' + escapeHtml(w.message) + '</li>';
+            }).join("") +
+          '</ul>' +
+        '</div>';
+    }
+
+    let alreadySentHtml = "";
+    if (resolved.emailStatus === "sent") {
+      alreadySentHtml =
+        '<div class="dcr-review-already-sent">' +
+          '<div class="dcr-review-issues-title">Previously sent</div>' +
+          '<div>' + escapeHtml(resolved.lastSentAt || "") + '</div>' +
+          (resolved.lastSentTo ? ('<div style="margin-top:4px;color:var(--pc-text-muted);">To: ' + escapeHtml(resolved.lastSentTo) + '</div>') : '') +
+        '</div>';
+    }
+
+    setDcrReviewBody(checklistHtml + blockersHtml + warningsHtml + alreadySentHtml);
+
+    // Send/Resend button state. Three cases:
+    //   1. ready          → Send enabled, Resend hidden
+    //   2. only blocker is already_sent → Send hidden, Resend enabled
+    //   3. other blockers → Send disabled, Resend hidden
+    const onlyAlreadySentBlocker = blockers.length === 1 && blockers[0].code === "already_sent";
+    if (ready) {
+      setDcrReviewSendButton({ disabled: false, label: "Send Customer DCR Email", visible: true });
+      setDcrReviewResendButton({ disabled: true, visible: false });
+    } else if (onlyAlreadySentBlocker) {
+      setDcrReviewSendButton({ disabled: true, label: "Send Customer DCR Email", visible: false });
+      setDcrReviewResendButton({ disabled: false, visible: true });
+    } else {
+      setDcrReviewSendButton({ disabled: true, label: "Send Customer DCR Email", visible: true });
+      setDcrReviewResendButton({ disabled: true, visible: false });
+    }
+  }
+
+  function setDcrReviewBody(html) {
+    const el = $("dcr-review-body");
+    if (el) el.innerHTML = html;
+  }
+  function setDcrReviewError(msg) {
+    const el = $("dcr-review-err");
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.hidden = false; }
+    else     { el.textContent = ""; el.hidden = true; }
+  }
+  function setDcrReviewSendButton(opts) {
+    const el = $("dcr-review-send");
+    if (!el) return;
+    el.disabled = !!opts.disabled;
+    el.hidden   = !opts.visible;
+    if (opts.label) el.textContent = opts.label;
+  }
+  function setDcrReviewResendButton(opts) {
+    const el = $("dcr-review-resend");
+    if (!el) return;
+    el.disabled = !!opts.disabled;
+    el.hidden   = !opts.visible;
+  }
+
+  async function performDcrSend(confirmResend) {
+    const dcrId = _dcrReviewCurrentDcrId;
+    if (!dcrId) return;
+    const url = (window.GENERATE_AND_SEND_DCR_EMAIL_URL || "").trim();
+    if (!url) {
+      setDcrReviewError("GENERATE_AND_SEND_DCR_EMAIL_URL not configured in firebase-config.js.");
+      return;
+    }
+    let idToken;
+    try {
+      const u = firebase.auth().currentUser;
+      if (u) idToken = await u.getIdToken();
+    } catch (_e) {}
+    if (!idToken) {
+      setDcrReviewError("You appear to be signed out. Refresh and sign in again.");
+      return;
+    }
+
+    setDcrReviewError("");
+    setDcrReviewSendButton({ disabled: true, label: "Sending…", visible: true });
+    setDcrReviewResendButton({ disabled: true, visible: !!confirmResend });
+
+    // Re-derive customerId from the readiness response. The handler
+    // wants both dcrId and customerId; the readiness response is the
+    // most reliable source for the customer slug.
+    const customerId = (_dcrReviewLastReadiness && _dcrReviewLastReadiness.resolved &&
+                        _dcrReviewLastReadiness.resolved.customerId) || "";
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body:   JSON.stringify({ dcrId: dcrId, customerId: customerId, confirmResend: !!confirmResend })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        setDcrReviewSendButton({ disabled: false, label: confirmResend ? "Send Customer DCR Email" : "Send Customer DCR Email", visible: !confirmResend });
+        setDcrReviewResendButton({ disabled: false, visible: !!confirmResend });
+        const err = (data && (data.error || (data.blockers && data.blockers.map(function (b) { return b.code; }).join(", ")))) || ("HTTP " + res.status);
+        setDcrReviewError(err);
+        return;
+      }
+      // Success — replace the body with a confirmation block.
+      setDcrReviewBody(
+        '<div class="dcr-review-success">' +
+          '<div class="dcr-review-success-title">' +
+            (data.status === "skipped" ? "Skipped — customer email disabled" : "Email sent ✓") +
+          '</div>' +
+          '<div><strong>To:</strong> ' + escapeHtml(data.to || "") + '</div>' +
+          '<div><strong>Subject:</strong> ' + escapeHtml(data.subject || "") + '</div>' +
+          (data.messageId
+            ? ('<div><strong>Gmail message ID:</strong> <code>' + escapeHtml(data.messageId) + '</code></div>')
+            : '') +
+          (data.promptVersion ? ('<div style="color:var(--pc-text-muted);margin-top:6px;">promptVersion: ' + escapeHtml(data.promptVersion) + '</div>') : '') +
+          (data.emailTemplate ? ('<div style="color:var(--pc-text-muted);">emailTemplate: ' + escapeHtml(data.emailTemplate) + '</div>') : '') +
+        '</div>'
+      );
+      setDcrReviewSendButton({ disabled: true, label: "Sent", visible: !confirmResend });
+      setDcrReviewResendButton({ disabled: true, visible: !!confirmResend });
+      // Refresh the DCRs list so the row reflects the new status.
+      loadDcrs().catch(function () { /* non-fatal */ });
+    } catch (e) {
+      setDcrReviewSendButton({ disabled: false, label: "Send Customer DCR Email", visible: !confirmResend });
+      setDcrReviewResendButton({ disabled: false, visible: !!confirmResend });
+      setDcrReviewError(String(e && e.message || e));
+    }
+  }
+
+  /* ---------- Tech photo / signature manager (tech-media-modal) ----------
+   *
+   * Calls uploadTechMediaV1 with a Firebase admin ID token. The modal
+   * is wired once on first open; subsequent opens just repopulate
+   * state from the latest `techs` cache entry.
+   *
+   * Per the spec:
+   *   - Real photo is required for the customer-facing DCR trust
+   *     promise; the initials bubble is an emergency fallback only.
+   *   - Missing photo / signature is flagged in the modal and on the
+   *     tech row chip.
+   *
+   * On every successful upload/clear/active flip, we patch the local
+   * `techs` cache so the row, attention strip, and preview update
+   * without a full Firestore re-read.
+   */
+  let _techMediaWired = false;
+  let _techMediaCurrentId = null;
+
+  function openTechMediaModal(t) {
+    if (!t || !t.id) return;
+    _techMediaCurrentId = t.id;
+    const idInput = $("tech-media-id");
+    if (idInput) idInput.value = t.id;
+
+    wireTechMediaModalOnce();
+    paintTechMediaModal(t);
+    openModal("tech-media-modal");
+  }
+
+  // Repaint EVERY surface in the modal from a fresh tech doc. Called
+  // after every successful upload/clear so the previews + chips match
+  // what's actually on the cleaning_techs doc.
+  function paintTechMediaModal(t) {
+    const photoUrl = (t.photoUrl || t.profilePhotoUrl || "").trim();
+    const sigUrl   = (t.signatureUrl || "").trim();
+    const name     = getTechName(t) || "Your Pioneer tech";
+    const initial  = (name || "P").charAt(0).toUpperCase();
+
+    // ---- Photo zone ----
+    const photoImg     = $("tech-media-photo-img");
+    const photoInitial = $("tech-media-photo-initial");
+    const photoMeta    = $("tech-media-photo-meta");
+    const photoClear   = $("tech-media-photo-clear");
+    if (photoImg && photoInitial) {
+      if (photoUrl) {
+        photoImg.src    = photoUrl;
+        photoImg.hidden = false;
+        photoInitial.hidden = true;
+      } else {
+        photoImg.removeAttribute("src");
+        photoImg.hidden = true;
+        photoInitial.textContent = initial;
+        photoInitial.hidden = false;
+      }
+    }
+    if (photoMeta) {
+      photoMeta.textContent = photoUrl
+        ? ("On file" + (t.photoSizeBytes ? (" · " + Math.round(t.photoSizeBytes / 1024) + " KB") : ""))
+        : "No photo on file";
+    }
+    if (photoClear) photoClear.hidden = !photoUrl;
+
+    // ---- Signature zone ----
+    const sigImg   = $("tech-media-sig-img");
+    const sigEmpty = $("tech-media-sig-empty");
+    const sigMeta  = $("tech-media-sig-meta");
+    const sigClear = $("tech-media-sig-clear");
+    if (sigImg && sigEmpty) {
+      if (sigUrl) {
+        sigImg.src    = sigUrl;
+        sigImg.hidden = false;
+        sigEmpty.hidden = true;
+      } else {
+        sigImg.removeAttribute("src");
+        sigImg.hidden = true;
+        sigEmpty.hidden = false;
+      }
+    }
+    if (sigMeta) {
+      sigMeta.textContent = sigUrl
+        ? ("On file" + (t.signatureSizeBytes ? (" · " + Math.round(t.signatureSizeBytes / 1024) + " KB") : ""))
+        : "No signature on file";
+    }
+    if (sigClear) sigClear.hidden = !sigUrl;
+
+    // ---- Active checkbox ----
+    const activeEl = $("tech-media-active");
+    if (activeEl) activeEl.checked = getActive(t);
+
+    // ---- Warning strip ----
+    const warnEl = $("tech-media-warnings");
+    if (warnEl) {
+      const missing = [];
+      if (!photoUrl) missing.push("photo");
+      if (!sigUrl)   missing.push("signature");
+      if (missing.length === 0) {
+        warnEl.hidden = true;
+        warnEl.innerHTML = "";
+      } else {
+        warnEl.hidden = false;
+        warnEl.innerHTML =
+          '<strong>Heads up:</strong> this tech is missing a ' +
+          missing.join(" and a ") +
+          '. The DCR email will fall back to ' +
+          (missing.indexOf("photo")     >= 0 ? 'an initials bubble' : '') +
+          (missing.length === 2         ?     ' and ' : '') +
+          (missing.indexOf("signature") >= 0 ? 'no signed-receipt area' : '') +
+          '.';
+      }
+    }
+
+    // ---- Customer-facing preview card ----
+    const cName = $("tech-media-cust-name");
+    if (cName) cName.textContent = name;
+    const cSub  = $("tech-media-cust-sub");
+    if (cSub) cSub.textContent = getActive(t)
+      ? "regular Pioneer tech"
+      : "tech is currently archived";
+
+    const cPhotoImg     = $("tech-media-cust-photo-img");
+    const cPhotoInitial = $("tech-media-cust-photo-initial");
+    if (cPhotoImg && cPhotoInitial) {
+      if (photoUrl) {
+        cPhotoImg.src = photoUrl;
+        cPhotoImg.hidden = false;
+        cPhotoInitial.hidden = true;
+      } else {
+        cPhotoImg.removeAttribute("src");
+        cPhotoImg.hidden = true;
+        cPhotoInitial.textContent = initial;
+        cPhotoInitial.hidden = false;
+      }
+    }
+    const cSigImg   = $("tech-media-cust-sig-img");
+    const cSigEmpty = $("tech-media-cust-sig-empty");
+    if (cSigImg && cSigEmpty) {
+      if (sigUrl) {
+        cSigImg.src = sigUrl;
+        cSigImg.hidden = false;
+        cSigEmpty.hidden = true;
+      } else {
+        cSigImg.removeAttribute("src");
+        cSigImg.hidden = true;
+        cSigEmpty.hidden = false;
+      }
+    }
+  }
+
+  function wireTechMediaModalOnce() {
+    if (_techMediaWired) return;
+    _techMediaWired = true;
+
+    // File inputs: read as base64, post to uploadTechMediaV1.
+    const photoFile = $("tech-media-photo-file");
+    if (photoFile) {
+      photoFile.addEventListener("change", function () {
+        const file = photoFile.files && photoFile.files[0];
+        photoFile.value = "";                              // allow re-picking same file
+        if (file) handleTechMediaUpload("photo", file);
+      });
+    }
+    const sigFile = $("tech-media-sig-file");
+    if (sigFile) {
+      sigFile.addEventListener("change", function () {
+        const file = sigFile.files && sigFile.files[0];
+        sigFile.value = "";
+        if (file) handleTechMediaUpload("signature", file);
+      });
+    }
+
+    // Clear buttons.
+    const photoClear = $("tech-media-photo-clear");
+    if (photoClear) photoClear.addEventListener("click", function () {
+      handleTechMediaClear("photo");
+    });
+    const sigClear = $("tech-media-sig-clear");
+    if (sigClear) sigClear.addEventListener("click", function () {
+      handleTechMediaClear("signature");
+    });
+
+    // Active toggle.
+    const activeEl = $("tech-media-active");
+    if (activeEl) activeEl.addEventListener("change", function () {
+      handleTechMediaActiveFlip(activeEl.checked);
+    });
+  }
+
+  // ---- Helpers shared by all media operations ----
+
+  async function getAdminIdToken() {
+    try {
+      const u = firebase.auth().currentUser;
+      if (u) return await u.getIdToken();
+    } catch (_e) { /* swallow */ }
+    return null;
+  }
+
+  function setTechMediaZoneError(kind, msg) {
+    const errEl = $(kind === "photo" ? "tech-media-photo-error" : "tech-media-sig-error");
+    if (!errEl) return;
+    if (msg) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    } else {
+      errEl.textContent = "";
+      errEl.hidden = true;
+    }
+  }
+  function setTechMediaZoneProgress(kind, on) {
+    const el = $(kind === "photo" ? "tech-media-photo-progress" : "tech-media-sig-progress");
+    if (el) el.hidden = !on;
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      const fr = new FileReader();
+      fr.onload = function () {
+        const dataUrl = String(fr.result || "");
+        const idx     = dataUrl.indexOf(",");
+        resolve({
+          base64:      idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
+          contentType: file.type || "image/jpeg",
+          filename:    file.name || "upload"
+        });
+      };
+      fr.onerror = function () { reject(fr.error || new Error("read failed")); };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // After every successful op, patch the local techs cache + repaint
+  // the modal + the techs list row (so the thumbnail and chips refresh
+  // without a full Firestore re-read).
+  function patchTechCacheAndRepaint(techId, patch) {
+    const idx = techs.findIndex(function (t) { return t.id === techId; });
+    if (idx < 0) return null;
+    techs[idx] = Object.assign({}, techs[idx], patch);
+    // Repaint just this row in place to avoid losing other admin state.
+    const row = document.querySelector('#tech-list [data-id="' + cssEsc(techId) + '"]');
+    if (row && row.parentElement) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = techCard(techs[idx]).trim();
+      const next = wrapper.firstElementChild;
+      if (next) row.parentElement.replaceChild(next, row);
+    }
+    paintTechMediaModal(techs[idx]);
+    if (typeof refreshAttentionStrip === "function") refreshAttentionStrip();
+    return techs[idx];
+  }
+  function cssEsc(s) {
+    return String(s == null ? "" : s).replace(/(["\\])/g, "\\$1");
+  }
+
+  async function handleTechMediaUpload(kind, file) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    setTechMediaZoneError(kind, "");
+
+    if (!/^image\//i.test(file.type)) {
+      setTechMediaZoneError(kind, "Please pick an image file.");
+      return;
+    }
+    const maxBytes = kind === "photo" ? 5 * 1024 * 1024 : 1 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setTechMediaZoneError(kind, file.name + " is over " +
+        Math.round(maxBytes / 1024 / 1024) + "MB.");
+      return;
+    }
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    if (!url) {
+      setTechMediaZoneError(kind, "UPLOAD_TECH_MEDIA_URL not configured.");
+      return;
+    }
+    const idToken = await getAdminIdToken();
+    if (!idToken) {
+      setTechMediaZoneError(kind, "You appear to be signed out. Refresh and sign in again.");
+      return;
+    }
+
+    setTechMediaZoneProgress(kind, true);
+
+    let payload;
+    try {
+      payload = await readFileAsBase64(file);
+    } catch (e) {
+      setTechMediaZoneProgress(kind, false);
+      setTechMediaZoneError(kind, "Could not read the file.");
+      return;
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({
+          techId:      techId,
+          kind:        kind,
+          filename:    payload.filename,
+          contentType: payload.contentType,
+          base64:      payload.base64
+        })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        const err = (data && data.error) || ("HTTP " + res.status);
+        setTechMediaZoneError(kind, err);
+        return;
+      }
+      const patch = kind === "photo"
+        ? {
+            photoUrl:         data.url,
+            profilePhotoUrl:  data.url,
+            photoStoragePath: data.storagePath,
+            photoSizeBytes:   data.size
+          }
+        : {
+            signatureUrl:         data.url,
+            signatureStoragePath: data.storagePath,
+            signatureSizeBytes:   data.size
+          };
+      patchTechCacheAndRepaint(techId, patch);
+    } catch (e) {
+      setTechMediaZoneError(kind, String(e && e.message || e));
+    } finally {
+      setTechMediaZoneProgress(kind, false);
+    }
+  }
+
+  async function handleTechMediaClear(kind) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    setTechMediaZoneError(kind, "");
+
+    const label = kind === "photo" ? "profile photo" : "signature";
+    if (!window.confirm(
+      "Remove this tech's " + label + "?\n\n" +
+      (kind === "photo"
+        ? "The DCR email will fall back to an initials bubble until a new photo is uploaded."
+        : "The DCR email signed-receipt area will collapse until a new signature is uploaded.")
+    )) return;
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    if (!url) return setTechMediaZoneError(kind, "UPLOAD_TECH_MEDIA_URL not configured.");
+    const idToken = await getAdminIdToken();
+    if (!idToken) return setTechMediaZoneError(kind, "Signed out — refresh and sign in again.");
+
+    setTechMediaZoneProgress(kind, true);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ techId: techId, kind: kind, clear: true })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        setTechMediaZoneError(kind, (data && data.error) || ("HTTP " + res.status));
+        return;
+      }
+      const patch = kind === "photo"
+        ? { photoUrl: null, profilePhotoUrl: null, photoStoragePath: null, photoSizeBytes: null }
+        : { signatureUrl: null, signatureStoragePath: null, signatureSizeBytes: null };
+      patchTechCacheAndRepaint(techId, patch);
+    } catch (e) {
+      setTechMediaZoneError(kind, String(e && e.message || e));
+    } finally {
+      setTechMediaZoneProgress(kind, false);
+    }
+  }
+
+  async function handleTechMediaActiveFlip(nextActive) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    const progressEl = $("tech-media-active-progress");
+    if (progressEl) progressEl.hidden = false;
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    const idToken = await getAdminIdToken();
+    if (!url || !idToken) {
+      if (progressEl) progressEl.hidden = true;
+      return;
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ techId: techId, action: "setActive", active: !!nextActive })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (res.ok && data.ok) {
+        patchTechCacheAndRepaint(techId, { active: !!nextActive });
+      } else {
+        // Revert the checkbox visually so it reflects reality.
+        const activeEl = $("tech-media-active");
+        if (activeEl) activeEl.checked = !nextActive;
+        const errEl = $("tech-media-err");
+        if (errEl) {
+          errEl.textContent = (data && data.error) || ("HTTP " + res.status);
+          errEl.hidden = false;
+        }
+      }
+    } catch (e) {
+      const activeEl = $("tech-media-active");
+      if (activeEl) activeEl.checked = !nextActive;
+      const errEl = $("tech-media-err");
+      if (errEl) { errEl.textContent = String(e && e.message || e); errEl.hidden = false; }
+    } finally {
+      if (progressEl) progressEl.hidden = true;
     }
   }
 
@@ -7737,6 +8557,7 @@
         closeAllRowOverflowMenus();
 
         if (action === "edit")    openTechEditModal(t);
+        if (action === "media")   openTechMediaModal(t);
         if (action === "archive") onTechArchive(t);
         if (action === "delete")  onTechDelete(t);
         if (action === "resend") {
@@ -7746,6 +8567,34 @@
         if (action === "promote") promoteTechToAdmin(t);
       });
     }
+
+    // DCR list — V6 review/send dispatcher. Each DCR row has a
+    // [data-action="review-send"] button; clicking opens the readiness
+    // modal pre-loaded against that DCR. No other actions today.
+    const dcrRoot = $("dcr-list");
+    if (dcrRoot) {
+      dcrRoot.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-action]");
+        if (!btn) return;
+        const row = btn.closest("[data-id]");
+        if (!row) return;
+        const d = dcrs.find(function (x) {
+          return (x.submission_id || x.id) === row.dataset.id;
+        });
+        if (!d) return;
+        if (btn.dataset.action === "review-send") openDcrReviewModal(d);
+      });
+    }
+
+    // DCR review modal — Send + Resend buttons.
+    const dcrSendBtn = $("dcr-review-send");
+    if (dcrSendBtn) dcrSendBtn.addEventListener("click", function () { performDcrSend(false); });
+    const dcrResendBtn = $("dcr-review-resend");
+    if (dcrResendBtn) dcrResendBtn.addEventListener("click", function () {
+      if (window.confirm("Resend the DCR email to the customer? They'll get a second copy.")) {
+        performDcrSend(true);
+      }
+    });
 
     // Modal Save buttons.
     //
@@ -7949,7 +8798,6 @@
   document.addEventListener("DOMContentLoaded", function () {
     wireTabs();
     wireSearch();
-    wireGlobalSearch();
     wireRefresh();
     wireSupplyControls();
     wireIssuesControls();

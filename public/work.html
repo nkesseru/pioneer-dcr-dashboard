@@ -223,6 +223,14 @@
           <button type="button" class="work-filter-btn is-active" data-filter="all" role="tab" aria-selected="true">All
             <span class="work-filter-count" id="work-filter-count-all">0</span>
           </button>
+          <!-- V6 — "My shifts" only visible to admins (today-work.js
+               unhides this when staff.role === "admin"). Filters to
+               shifts where employee_email matches the admin's auth
+               email — covers Nick's case where he wants to see his
+               own (0) shifts vs the whole roster. -->
+          <button type="button" class="work-filter-btn" data-filter="mine" role="tab" aria-selected="false" hidden>My Shifts
+            <span class="work-filter-count" id="work-filter-count-mine">0</span>
+          </button>
           <button type="button" class="work-filter-btn" data-filter="not_started" role="tab" aria-selected="false">Not Started
             <span class="work-filter-count" id="work-filter-count-not_started">0</span>
           </button>
@@ -248,6 +256,22 @@
           <div class="empty-state-icon" aria-hidden="true">🧘</div>
           <h3 class="empty-state-title">No work scheduled today</h3>
           <p class="empty-state-body">Once Deputy posts shifts for today, they'll appear here.</p>
+
+          <!-- V6 pilot — admin/debug-only diagnostic strip. Populated by
+               today-work.js when the query returns 0 shifts. Shows the
+               signals the office needs to triage the regression:
+                 • email queried + sync_date used (timezone confirmation)
+                 • whether the tech doc was resolved
+                 • whether a rules error was caught
+                 • likely next step
+               Hidden for non-admin techs unless the URL carries
+               ?debug_work=1, so the calm empty-state still reads
+               cleanly during a real slow day. -->
+          <div id="team-hub-assignments-empty-diag"
+               class="team-hub-empty-diag"
+               role="status"
+               aria-live="polite"
+               hidden></div>
         </div>
 
         <!-- Filtered-to-zero empty state (there ARE shifts today, but

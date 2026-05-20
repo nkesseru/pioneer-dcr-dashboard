@@ -71,14 +71,6 @@
       <p class="subtitle">Customers, techs, and recent submissions.</p>
     </section>
 
-    <!-- Phase-1 access warning. Now backed by an auth gate (Google sign-in
-         + email allowlist); kept visible as a reminder that this page is
-         internal-only. -->
-    <div class="admin-warning" role="status">
-      <strong>Internal use only.</strong>
-      Sign in with your Pioneer Google account. Don't share this URL externally.
-    </div>
-
     <!-- ================== Auth views (mutually exclusive) ================== -->
 
     <!-- 1. Initial check — shown while Firebase Auth resolves the current user. -->
@@ -138,46 +130,67 @@
          user's email matches the allowlist. -->
     <div id="auth-content" hidden>
 
-    <!-- ============ Admin ops overview (Phase 2 normalization) ============
-         Top-of-page command-center summary. Three modules in one block:
-           1. .health-card  — dark "Today's Operations" headline + checklist
-           2. global search — proxies the active tab's per-tab search input
-           3. .kpi-grid     — six normalized KPI cards
-         All counts come from the existing in-memory caches (customers,
-         techs, dcrs, supplyRequests, dcrIssues) plus a single lightweight
-         inspections-this-week query. The Zapier-failures signal moved into
-         the Day Health checklist so the KPI strip stays focused on the six
-         tiles the spec calls for. -->
+    <!-- ============ Admin ops overview ============
+         Top-of-page command-center summary. Two modules in one block:
+           1. .health-card  — dark "Today's Operations" headline + native
+                              PioneerOps DCR-pipeline metrics
+           2. .kpi-grid     — compact attention KPIs (per-tab search lives
+                              INSIDE each tab panel; there is no global
+                              search bar here on purpose)
+         All counts come from in-memory caches (customers, techs, dcrs,
+         supplyRequests, dcrIssues) plus two lightweight 24h-window
+         queries on dcr_email_payloads + customer_feedback (admin-only
+         per firestore.rules). See refreshDayHealthMetrics24h. -->
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
+      <!-- "Today's Operations" — native PioneerOps DCR pipeline health.
+           Layout:
+             1. Eyebrow + dynamic title
+             2. Headline stat row: New issues today / DCR emails sent · 24h /
+                Failed DCR emails · 24h (failures tile is hidden when count is 0)
+             3. Dashboard bullets: Customer links active / Delivered · 24h /
+                Failures · 24h / Feedback · 24h
+             4. Footer line — operational summary + (optional) Review link
+           Open tracking is intentionally NOT shown — we don't track opens
+           today, so a fake "—" or zero would mislead. See the TODO block
+           in admin.js for the future tracking-pixel / click-event plan. -->
       <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
         <header class="health-head">
           <span class="health-eyebrow">Today's Operations</span>
-          <h2 class="health-title" id="admin-day-health-title">Everything looks stable today.</h2>
+          <h2 class="health-title" id="admin-day-health-title">Loading native DCR pipeline metrics…</h2>
         </header>
-        <p class="health-summary" id="admin-day-health-summary">Loading the day's operational signals…</p>
+
+        <!-- Headline stats. Each tile renders a single big number with
+             a tight label. The failures tile (admin-day-health-stat-failures-wrap)
+             stays hidden when there have been zero failures in the
+             last 24h so the card reads as calm. -->
+        <div class="admin-day-health-stats" id="admin-day-health-stats">
+          <div class="admin-day-health-stat" data-tone="neutral">
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-new-issues">—</span>
+            <span class="admin-day-health-stat-label">New issues today</span>
+          </div>
+          <div class="admin-day-health-stat" data-tone="positive">
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-emails-sent">—</span>
+            <span class="admin-day-health-stat-label">DCR emails sent · 24h</span>
+          </div>
+          <div class="admin-day-health-stat admin-day-health-stat-bad"
+               id="admin-day-health-stat-failures-wrap" data-tone="attention" hidden>
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-failures">—</span>
+            <span class="admin-day-health-stat-label">Failed DCR emails · 24h</span>
+          </div>
+        </div>
+
         <ul class="health-checklist" id="admin-day-health-checklist">
-          <li data-state="ok"    id="admin-day-health-li-assigned">All active techs assigned</li>
-          <li data-state="ok"    id="admin-day-health-li-dcr">DCR delivery healthy</li>
-          <li data-state="ok"    id="admin-day-health-li-issues">No new operational issues</li>
+          <li data-state="ok" id="admin-day-health-li-links">— customer links active</li>
+          <li data-state="ok" id="admin-day-health-li-delivered">— DCR emails delivered · 24h</li>
+          <li data-state="ok" id="admin-day-health-li-failures">0 DCR email failures · 24h</li>
+          <li data-state="ok" id="admin-day-health-li-feedback">— customer feedback received · 24h</li>
         </ul>
         <footer class="health-foot">
-          <span id="admin-day-health-foot-left">Live summary from open caches</span>
+          <span id="admin-day-health-foot-left">Native PioneerOps metrics · refreshed on tab load</span>
           <a href="#admin-ops-overview" id="admin-day-health-foot-right" hidden>Review</a>
         </footer>
       </section>
-
-      <div class="admin-global-search" role="search">
-        <span class="admin-global-search-icon" aria-hidden="true">🔎</span>
-        <input type="search" id="admin-global-search-input"
-               class="admin-global-search-input"
-               placeholder="Search customers, techs, DCRs…"
-               autocomplete="off"
-               aria-label="Search across the active admin tab" />
-        <span class="admin-global-search-hint" id="admin-global-search-hint" aria-live="polite">
-          Filtering: Customers
-        </span>
-      </div>
 
       <!-- The strip keeps id="attention-strip" so the existing
            wireAttentionStrip() click delegator and every
@@ -219,25 +232,23 @@
           <span class="kpi-value" id="attn-inspections-week">—</span>
           <span class="kpi-meta"  id="attn-inspections-week-meta">Last 7 days</span>
         </a>
-        <article class="kpi-card" data-tone="neutral"
-                 title="Month-to-date budget integration is not yet wired">
-          <span class="kpi-label">MTD Budget Health</span>
-          <span class="kpi-value" id="attn-mtd-budget">—</span>
-          <span class="kpi-meta">Not connected yet</span>
-        </article>
       </div>
     </section>
 
-    <!-- Control-center microcopy — calmer feel than landing on a wall
-         of tabs. The grouped nav below partitions tabs into three
-         operational buckets so the page reads as a tool, not a
-         spreadsheet. -->
-    <div class="admin-control-intro">
-      <span class="admin-control-eyebrow">Pioneer Control Center</span>
-      <p class="admin-control-sub">Operational tabs grouped by intent. Counts on the right are calm signals — they grow as work piles up, not alarms.</p>
-    </div>
+    <!-- ============ Admin Control Center ============
+         Compact navigation card. Sits directly under Today's Operations
+         + the KPI strip and directly above the active tab panel so the
+         user can scan: signals → menu → content with no empty space.
 
+         All search lives INSIDE each tab panel (#customer-search,
+         #tech-search, …) — there is no global search bar here. Group
+         labels are inline eyebrow tags so the card reads as ONE menu,
+         not three nested cards. -->
     <nav class="admin-tabs admin-tabs-grouped" role="tablist" aria-label="Admin sections">
+      <header class="admin-tabs-header">
+        <span class="admin-tabs-title">Admin Control Center</span>
+      </header>
+
       <!-- ---- Core Ops ---- -->
       <div class="admin-tabs-group" data-group="core">
         <span class="admin-tabs-group-label">
@@ -1179,6 +1190,166 @@
         <div class="admin-modal-err" id="tech-edit-err" hidden></div>
         <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
         <button type="button" class="modal-btn-save"   id="tech-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== DCR email Review & Send modal ==================
+       V6 pilot. Opened from a per-DCR "Review & Send" button on the
+       Recent DCRs tab. Calls getDcrEmailReadinessV1 → renders
+       blockers/warnings/readiness checklist → enables Send only when
+       the DCR is ready (or a Resend is confirmed). Send hits the
+       existing generateAndSendDcrEmailV1 endpoint. -->
+  <div id="dcr-email-review-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog admin-modal-dialog-wide"
+         role="dialog" aria-modal="true" aria-labelledby="dcr-review-title">
+      <header class="admin-modal-header">
+        <div>
+          <h2 id="dcr-review-title">Review DCR email</h2>
+          <p class="panel-sub" id="dcr-review-subtitle">—</p>
+        </div>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="dcr-review-body" class="dcr-review-body">
+          <p class="dcr-review-loading">Running readiness check…</p>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="dcr-review-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+        <button type="button" class="modal-btn-save"   id="dcr-review-send"   hidden>Send Customer DCR Email</button>
+        <button type="button" class="modal-btn-save"   id="dcr-review-resend" hidden>Resend</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Tech Photo / Signature manager modal ==================
+       Admin-only photo + signature manager. Calls uploadTechMediaV1 with
+       a Firebase admin ID token. Reads the live cleaning_techs doc on
+       open so the preview matches what the customer sees in DCR emails.
+
+       Wired in admin.js → openTechMediaModal(techId). Closes via the
+       shared modal-close pattern (data-modal-close). -->
+  <div id="tech-media-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog admin-modal-dialog-wide"
+         role="dialog" aria-modal="true" aria-labelledby="tech-media-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="tech-media-modal-title">Tech identity manager</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="tech-media-id" />
+
+        <p class="field-group-sub" id="tech-media-context">
+          A real tech photo is required for the customer-facing DCR trust
+          promise. The initials bubble is an emergency fallback only.
+        </p>
+
+        <!-- Missing-asset warnings — shown only when applicable. -->
+        <div id="tech-media-warnings" class="tech-media-warnings" hidden></div>
+
+        <div class="tech-media-grid">
+          <!-- ===== Photo column ===== -->
+          <div class="tech-media-zone" data-kind="photo">
+            <div class="tech-media-zone-head">
+              <span class="tech-media-zone-title">Profile photo</span>
+              <span class="tech-media-zone-meta" id="tech-media-photo-meta">No photo on file</span>
+            </div>
+
+            <div class="tech-media-preview tech-media-preview-photo">
+              <img id="tech-media-photo-img" alt="Tech photo preview" hidden />
+              <div id="tech-media-photo-initial" class="tech-media-initial-bubble" hidden></div>
+            </div>
+
+            <p class="tech-media-rule">JPEG / PNG / WebP / HEIC · up to 5 MB · square portraits work best.</p>
+
+            <div class="tech-media-actions">
+              <label class="tech-media-upload-trigger" for="tech-media-photo-file">
+                <span data-photo-action="upload-label">Upload new photo</span>
+                <input id="tech-media-photo-file" type="file" accept="image/*" hidden />
+              </label>
+              <button id="tech-media-photo-clear" class="tech-media-clear-btn" type="button"
+                      title="Remove the current photo (initials fallback will show)" hidden>
+                Remove
+              </button>
+            </div>
+
+            <div id="tech-media-photo-error" class="tech-media-zone-err" hidden></div>
+            <div id="tech-media-photo-progress" class="tech-media-zone-progress" hidden>Uploading…</div>
+          </div>
+
+          <!-- ===== Signature column ===== -->
+          <div class="tech-media-zone" data-kind="signature">
+            <div class="tech-media-zone-head">
+              <span class="tech-media-zone-title">Signature image</span>
+              <span class="tech-media-zone-meta" id="tech-media-sig-meta">No signature on file</span>
+            </div>
+
+            <div class="tech-media-preview tech-media-preview-signature">
+              <img id="tech-media-sig-img" alt="Signature preview" hidden />
+              <div id="tech-media-sig-empty" class="tech-media-empty-hint">No signature on file</div>
+            </div>
+
+            <p class="tech-media-rule">PNG / JPEG · up to 1 MB · transparent background recommended.</p>
+
+            <div class="tech-media-actions">
+              <label class="tech-media-upload-trigger" for="tech-media-sig-file">
+                <span data-sig-action="upload-label">Upload new signature</span>
+                <input id="tech-media-sig-file" type="file" accept="image/*" hidden />
+              </label>
+              <button id="tech-media-sig-clear" class="tech-media-clear-btn" type="button"
+                      title="Remove the current signature" hidden>
+                Remove
+              </button>
+            </div>
+
+            <div id="tech-media-sig-error" class="tech-media-zone-err" hidden></div>
+            <div id="tech-media-sig-progress" class="tech-media-zone-progress" hidden>Uploading…</div>
+          </div>
+        </div>
+
+        <!-- ===== Active toggle ===== -->
+        <div class="field-group">
+          <div class="field-group-title">Visibility</div>
+          <label class="check-field"><input type="checkbox" id="tech-media-active" />
+            <span><strong>Active</strong> &mdash; uncheck to archive (tech vanishes from DCR form + Tech Hub)</span></label>
+          <div id="tech-media-active-progress" class="tech-media-zone-progress" hidden>Saving…</div>
+        </div>
+
+        <!-- ===== Customer-facing preview ===== -->
+        <div class="field-group">
+          <div class="field-group-title">Customer-facing preview</div>
+          <p class="field-group-sub">
+            This is what shows up in the DCR email tech identity row — the
+            photo replaces the initials bubble, the signature renders on
+            the right with a "Signed after visit" caption.
+          </p>
+          <div class="tech-media-cust-card">
+            <div class="tech-media-cust-photo">
+              <img id="tech-media-cust-photo-img" alt="" hidden />
+              <div id="tech-media-cust-photo-initial" class="tech-media-initial-bubble tech-media-initial-cust" hidden></div>
+            </div>
+            <div class="tech-media-cust-id">
+              <div class="tech-media-cust-eyebrow">CLEANED BY</div>
+              <div class="tech-media-cust-name" id="tech-media-cust-name">—</div>
+              <div class="tech-media-cust-sub" id="tech-media-cust-sub">regular Pioneer tech</div>
+            </div>
+            <div class="tech-media-cust-sig">
+              <div class="tech-media-cust-sig-cap">Signed after visit</div>
+              <div class="tech-media-cust-sig-frame">
+                <img id="tech-media-cust-sig-img" alt="" hidden />
+                <span id="tech-media-cust-sig-empty" class="tech-media-cust-sig-empty">no signature</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="tech-media-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
       </footer>
     </div>
   </div>

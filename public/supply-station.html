@@ -141,6 +141,21 @@
 
       <section class="card supply-station-card">
         <form id="supply-station-form" novalidate>
+          <!-- V6 pilot fix — the supply request now attaches to a
+               specific customer/location so the office can route the
+               order back to the right site. Optional first option
+               keeps the original "no specific customer" behavior for
+               office-wide restock (e.g. Pioneer HQ general supplies). -->
+          <div class="field-row">
+            <label for="ss-customer">Customer / location</label>
+            <select id="ss-customer" name="customer">
+              <option value="">— No specific customer (general / office restock) —</option>
+            </select>
+            <p class="field-hint" style="margin: 6px 0 0; font-size: 12px; color: var(--pc-text-muted);">
+              Tagging the right customer lets Kirby triage and route the order back to that site.
+            </p>
+          </div>
+
           <div class="field-row">
             <label for="ss-requested-items">Requested items <span class="req" style="color:#b91c1c;font-weight:700;">*</span></label>
             <textarea id="ss-requested-items" name="requested_items" rows="4"

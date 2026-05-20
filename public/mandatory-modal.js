@@ -45,6 +45,64 @@
   const TITLE_TEXT  = "Required Announcement";
   const BUTTON_TEXT = "Mark as read and continue";
 
+  // V6 pilot — localStorage belt to the Firestore suspenders.
+  // If a per-tech `announcement_reads/{annId_uid}` write fails (rules
+  // glitch, offline, transient 500), the next page load shouldn't
+  // loop the same modal at the same tech forever. We mirror every
+  // successful Firestore mark-as-read to localStorage AND treat the
+  // local cache as authoritative for "already seen, don't reshow"
+  // even when the Firestore read returns stale.
+  //
+  // Storage shape:
+  //   key:   pioneer.annRead.<uid>
+  //   value: JSON map { <annId>: { v: <version|1>, t: <ISO ts> } }
+  //
+  // Version awareness: announcement docs MAY carry a `version` (or
+  // `revision`) number. When it bumps, the local cache + Firestore
+  // read shows the prior read as stale and the modal re-appears.
+  // Announcements without a version field are treated as v1.
+  const LOCAL_CACHE_PREFIX = "pioneer.annRead.";
+
+  function log(msg, meta) {
+    try { console.info("[PioneerOps Announcement] " + msg, meta || ""); }
+    catch (_e) { /* console suppressed */ }
+  }
+  function warn(msg, meta) {
+    try { console.warn("[PioneerOps Announcement] " + msg, meta || ""); }
+    catch (_e) { /* console suppressed */ }
+  }
+
+  function announcementVersion(a) {
+    if (!a) return 1;
+    const v = (a.version != null ? a.version : a.revision);
+    const n = Number(v);
+    return (Number.isFinite(n) && n > 0) ? n : 1;
+  }
+
+  function loadLocalReads(uid) {
+    if (!uid) return {};
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + uid);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch (_e) { return {}; }
+  }
+  function saveLocalRead(uid, announcementId, version) {
+    if (!uid || !announcementId) return;
+    try {
+      const map = loadLocalReads(uid);
+      map[announcementId] = { v: Number(version) || 1, t: new Date().toISOString() };
+      localStorage.setItem(LOCAL_CACHE_PREFIX + uid, JSON.stringify(map));
+    } catch (_e) { /* private mode, quota — soft-fail */ }
+  }
+  function localHasReadAtVersion(uid, announcementId, version) {
+    const map = loadLocalReads(uid);
+    const entry = map[announcementId];
+    if (!entry) return false;
+    return Number(entry.v) >= Number(version);
+  }
+
   let injected      = false;
   let modalEl       = null;
   let titleEl       = null;
@@ -205,14 +263,33 @@
     return true;
   }
 
-  async function markRead(db, announcementId, staff) {
+  async function markRead(db, announcementId, version, staff) {
     const docId = announcementId + "_" + staff.uid;
-    await db.collection("announcement_reads").doc(docId).set({
+    const payload = {
       announcement_id: announcementId,
       uid:             staff.uid,
       email:           staff.email || "",
+      version:         Number(version) || 1,
       read_at:         firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
+    // Always update the local cache FIRST. Even if the Firestore
+    // write below fails (rules glitch, offline, transient 500), the
+    // user's session won't loop the same modal on every page load.
+    // The local cache is per-uid and per-version, so a republished
+    // announcement (version bump) still re-shows correctly.
+    saveLocalRead(staff.uid, announcementId, payload.version);
+    try {
+      await db.collection("announcement_reads").doc(docId).set(payload);
+      log("markRead ok", { announcementId: announcementId, version: payload.version, uid: staff.uid });
+    } catch (err) {
+      // Don't swallow — let the caller surface the error in the modal
+      // UI. But the local cache is already updated, so the next page
+      // load won't re-display this announcement at this tech.
+      warn("markRead Firestore write failed (local cache still updated)", {
+        announcementId: announcementId, code: err && err.code, message: err && err.message
+      });
+      throw err;
+    }
   }
 
   // Process the queue sequentially. Each entry shows the modal and
@@ -228,18 +305,23 @@
           return;
         }
         const entry = queue[i];
+        const version = announcementVersion(entry);
         showModalForEntry(entry, i, queue.length, async function onClick() {
           if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
           setButtonSaving(true);
           try {
-            await markRead(db, entry.id, staff);
+            await markRead(db, entry.id, version, staff);
             setButtonSaving(false);
             i += 1;
             next();
           } catch (err) {
-            console.error("[mandatory-modal] mark-as-read failed", err && err.code, err && err.message);
+            // Even if the Firestore write failed, the local cache
+            // was updated by markRead before the throw — so the
+            // user won't see this announcement again on next page
+            // load. We still surface the error so they can retry.
+            warn("mark-as-read Firestore write failed", { code: err && err.code, message: err && err.message });
             setButtonSaving(false);
-            showError("Couldn't save. Check your connection and try again.");
+            showError("Couldn't save to Firestore. We've recorded it locally so you won't see this again — but please retry to sync.");
             // Stay on this entry. User can retry by clicking the button.
           }
         });
@@ -249,9 +331,14 @@
   }
 
   async function check(staff) {
-    if (!staff || !staff.uid) return;
+    // Safe fallback if user/tech identity missing — silently skip the
+    // check rather than block the page. Per the V6 pilot spec.
+    if (!staff || !staff.uid) {
+      log("check skipped — missing staff.uid");
+      return;
+    }
     if (!window.firebase || typeof firebase.firestore !== "function") {
-      console.warn("[mandatory-modal] firestore SDK unavailable — skipping check");
+      warn("firestore SDK unavailable — skipping check");
       return;
     }
     try {
@@ -260,29 +347,59 @@
         db.collection("announcements").where("active", "==", true).get(),
         db.collection("announcement_reads").where("uid", "==", staff.uid).get()
       ]);
-      const readIds = new Set();
+      // Firestore-side read map: announcement_id → read version (or 1
+      // for legacy reads written before V6 added the version field).
+      const firestoreReadVersions = Object.create(null);
       readsSnap.docs.forEach(function (d) {
         const data = d.data() || {};
-        if (data.announcement_id) readIds.add(data.announcement_id);
+        if (!data.announcement_id) return;
+        firestoreReadVersions[data.announcement_id] = Number(data.version) || 1;
       });
-      const queue = annsSnap.docs
+      const allActive = annsSnap.docs
         .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
         .filter(isActiveNow)
-        .filter(function (a) { return a.mandatory && !readIds.has(a.id); })
-        .sort(function (a, b) {
-          // Urgent first, then created_at desc.
-          const pa = a.priority === "urgent" ? 0 : 1;
-          const pb = b.priority === "urgent" ? 0 : 1;
-          if (pa !== pb) return pa - pb;
-          const at = annTsToMs(a.created_at) || 0;
-          const bt = annTsToMs(b.created_at) || 0;
-          return bt - at;
-        });
+        .filter(function (a) { return !!a.mandatory; });
+
+      // Bucket each mandatory announcement. An item is queued ONLY if
+      // NEITHER Firestore NOR localStorage shows the user has read it
+      // at the current version. Firestore is authoritative on first
+      // run; localStorage is the belt that prevents a Firestore-write
+      // hiccup from looping the modal forever.
+      const queue = [];
+      const skipped = [];
+      allActive.forEach(function (a) {
+        const v = announcementVersion(a);
+        const fsRead = (firestoreReadVersions[a.id] || 0) >= v;
+        const localRead = localHasReadAtVersion(staff.uid, a.id, v);
+        if (fsRead || localRead) {
+          skipped.push({ id: a.id, v: v, fsRead: fsRead, localRead: localRead });
+          return;
+        }
+        queue.push(a);
+      });
+      queue.sort(function (a, b) {
+        // Urgent first, then created_at desc.
+        const pa = a.priority === "urgent" ? 0 : 1;
+        const pb = b.priority === "urgent" ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const at = annTsToMs(a.created_at) || 0;
+        const bt = annTsToMs(b.created_at) || 0;
+        return bt - at;
+      });
+
+      log("check completed", {
+        uid:               staff.uid,
+        active_mandatory:  allActive.length,
+        skipped_already_read: skipped.length,
+        queue_count:       queue.length,
+        queue_ids:         queue.map(function (a) { return a.id; })
+      });
+
       if (queue.length === 0) return;
       await processQueue(db, queue, staff);
     } catch (err) {
       // Network / permissions / SDK error — don't block the page.
-      console.warn("[mandatory-modal] check failed; not blocking page", err && err.code);
+      warn("check failed; not blocking page", { code: err && err.code, message: err && err.message });
     }
   }
 

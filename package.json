@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "test:dcr-email":      "node scripts/test-dcr-email-local.js",
+    "seed:rich-dcr-test":  "node scripts/seed-rich-dcr-email-test.js",
+    "test:dcr-email:rich": "DCR_ID=test-rich-dcr-nick CUSTOMER_ID=pioneer-commercial-cleaning-test TEST_RECIPIENT=nick@pioneercomclean.com node scripts/test-dcr-email-local.js"
+  },
   "dependencies": {
     "firebase": "^12.13.0",
     "firebase-admin": "^13.9.0"

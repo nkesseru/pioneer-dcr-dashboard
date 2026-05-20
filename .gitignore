@@ -40,3 +40,10 @@ keys/
 *.keyo
 
 serviceAccountKey.json
+
+# Local-only secrets used by scripts/test-dcr-email-local.js. Holds
+# OPENAI_API_KEY / GMAIL_SENDER_EMAIL / GMAIL_SERVICE_ACCOUNT_KEY when
+# the developer prefers not to hit `firebase functions:secrets:access`
+# on every run (offline path). Never commit.
+.secrets.local.json
+.secrets.local.*.json

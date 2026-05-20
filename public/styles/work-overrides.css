@@ -66,6 +66,20 @@
 }
 .work-filter-btn.is-active:hover { background: var(--text-strong); }
 
+/* Phase 3 polish: subtle "this bucket has items" hint for the two
+   attention-worthy filters (Not Started, Unassigned). Lower priority
+   than `.is-active` so a selected pill still wins visually. The hint
+   is a soft amber tint on the unselected pill — calm, not alarming. */
+.work-filter-btn.has-items:not(.is-active) {
+  background: var(--status-attention-soft);
+  border-color: transparent;
+  color: var(--status-attention-ink);
+}
+.work-filter-btn.has-items:not(.is-active) .work-filter-count {
+  background: rgba(180, 83, 9, 0.14);
+  color: var(--status-attention-ink);
+}
+
 .work-filter-count {
   display: inline-block;
   min-width: 18px;

@@ -286,15 +286,83 @@ service cloud.firestore {
     // if a win ever needs to be retracted.
     match /quality_wins/{id} {
       allow read: if request.auth != null;
+      // Two creation paths now:
+      //   • Inspection-derived wins (the original) — require
+      //     inspection_id + customer_slug + overall_score >= 4.8.
+      //   • Customer-compliment wins (written server-side by
+      //     submitFeedbackV1 with source == "customer_compliment").
+      //     Admin SDK bypasses these rules at write time, so this
+      //     branch only exists to document the contract — the test
+      //     here also allows admin-tagged compliment shapes to pass
+      //     if anyone ever calls the SDK from a client.
       allow create: if isPioneerAdmin()
-                    && request.resource.data.inspection_id is string
-                    && request.resource.data.inspection_id.size() > 0
-                    && request.resource.data.customer_slug is string
-                    && request.resource.data.customer_slug.size() > 0
-                    && request.resource.data.overall_score is number
-                    && request.resource.data.overall_score >= 4.8;
+                    && (
+                      (
+                        request.resource.data.inspection_id is string
+                        && request.resource.data.inspection_id.size() > 0
+                        && request.resource.data.customer_slug is string
+                        && request.resource.data.customer_slug.size() > 0
+                        && request.resource.data.overall_score is number
+                        && request.resource.data.overall_score >= 4.8
+                      ) || (
+                        request.resource.data.source == "customer_compliment"
+                        && request.resource.data.customer_slug is string
+                        && request.resource.data.overall_score is number
+                        && request.resource.data.overall_score >= 4
+                      )
+                    );
       allow update: if isPioneerAdmin();
       allow delete: if false;
+    }
+
+    // DCR email payloads. Written by generateAndSendDcrEmailV1 (Admin
+    // SDK, bypasses rules). Admin-read enables the Today's Operations
+    // dashboard to query sent/failed counts in the last 24h without
+    // an extra Cloud Function round-trip. Doc ID is the DCR id; one
+    // payload per DCR. Client writes/deletes denied — only the send
+    // function should mutate these.
+    match /dcr_email_payloads/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Customer feedback (universal record — both compliments and
+    // complaints). Written ONLY by submitFeedbackV1 via the Admin SDK,
+    // which bypasses these rules. Client-side reads gated to admins so
+    // the admin dashboard can render the feedback inbox. No client
+    // writes, no client deletes.
+    match /customer_feedback/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Customer complaints — operational follow-up records. Same write
+    // model as customer_feedback (Admin SDK only). Admin reads allowed
+    // for the office triage view. Updates are intentionally denied so
+    // status flips have to go through a dedicated admin function once
+    // it's built — keeps the audit trail clean.
+    match /customer_complaints/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // In-system notifications. Most writes happen via Admin SDK
+    // (submitFeedbackV1, sendDcrEmailCore) which bypasses these
+    // rules. V6 pilot adds one narrowly-gated CLIENT write path:
+    // techs can create `type: "supply_update_request"` notifications
+    // ("Ask Kirby for update") under strict shape validation so the
+    // surface can't be abused for arbitrary office-inbox spam.
+    match /notifications/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.auth != null
+                    && request.auth.token.email is string
+                    && request.resource.data.type == "supply_update_request"
+                    && request.resource.data.requestedBy == request.auth.token.email.lower()
+                    && request.resource.data.status == "update_requested"
+                    && request.resource.data.supplyRequestId is string
+                    && request.resource.data.supplyRequestId.size() > 0
+                    && request.resource.data.supplyRequestId.size() < 200;
+      allow update, delete: if false;
     }
 
     // Service Recoveries — coaching + follow-up tasks tied to a
@@ -390,10 +458,32 @@ service cloud.firestore {
     //     employee_email field vs request.auth.token.email
     // No client-side writes — Deputy is the source of truth.
     match /deputy_shift_cache/{id} {
+      // V6 pilot — three read arms (any one is sufficient):
+      //   1. admin override (isPioneerAdmin)
+      //   2. direct email match: shift's employee_email == auth.email
+      //   3. tech-slug fallback: shift's employee_slug links to a
+      //      cleaning_techs doc whose email matches the auth user.
+      //      Covers the regression where the Deputy sync wrote
+      //      employee_email="" because the matched tech's cleaning_techs
+      //      doc had no email field. Once the office adds the email,
+      //      the tech can read their shifts without waiting for a
+      //      full Deputy resync.
+      function shiftTechSlugLinksToAuth() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.employee_slug is string
+          && resource.data.employee_slug.size() > 0
+          && exists(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug))
+          && get(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug)).data.email is string
+          && get(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug)).data.email.lower() == request.auth.token.email.lower();
+      }
       allow read: if isPioneerAdmin()
                   || (request.auth != null
                       && request.auth.token.email is string
-                      && request.auth.token.email.lower() == resource.data.employee_email);
+                      && resource.data.employee_email is string
+                      && resource.data.employee_email.size() > 0
+                      && request.auth.token.email.lower() == resource.data.employee_email)
+                  || shiftTechSlugLinksToAuth();
       allow create, update, delete: if false;
     }
 

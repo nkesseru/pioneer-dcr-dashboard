@@ -50,6 +50,19 @@
     if (!DEBUG_WORK) return;
     try { console.info.apply(console, arguments); } catch (e) {}
   }
+  // V6 pilot — ALWAYS-ON triage log under a single grep-friendly
+  // prefix. The verbose object dumps (logDebug above) stay gated by
+  // ?debug_work=1, but the structured "shifts query → result" trace
+  // ships in every page load so the office can diagnose live without
+  // asking the tech to add a URL flag first.
+  function logTodayWork(msg, meta) {
+    try { console.info("[PioneerOps TodayWork] " + msg, meta || ""); }
+    catch (_e) {}
+  }
+  function warnTodayWork(msg, meta) {
+    try { console.warn("[PioneerOps TodayWork] " + msg, meta || ""); }
+    catch (_e) {}
+  }
 
   const DEPUTY_TIMEZONE = "America/Los_Angeles";
 
@@ -450,6 +463,19 @@
   let workShiftsByShiftId  = {};
   let workSessionByShiftId = {};
   let workCurrentStaff     = null;
+  // V6 — Today's Work runs in one of two role modes:
+  //   "tech"  — current user is a cleaning tech. Personal view; query
+  //              gated by employee_email == auth email.
+  //   "admin" — current user is admin / manager / office-manager. Sees
+  //              every shift for the day company-wide. Their OWN shifts
+  //              (if any) are still actionable via Start/End. Other
+  //              techs' shifts are read-only — rules also enforce this
+  //              server-side via the pioneer_work_sessions tech_email
+  //              check.
+  // `workIsAdmin` is true ONLY when staff.role === "admin" (the server
+  // returns "admin" for every admin/manager flavour). Cleaning techs
+  // keep the existing narrow path so they never see anyone else's data.
+  let workIsAdmin          = false;
   let workIsAdminPreview   = false;
   // Active Pioneer customers — loaded once on tab activation. Used to
   // power the inline customer picker that appears on UNKNOWN cards so
@@ -500,6 +526,17 @@
 
   function shiftMatchesFilter(shift, session, filter) {
     if (filter === "all") return true;
+    // V6 — "mine" matches shifts where employee_email equals the
+    // current admin user's email. Cleaning techs never trigger this
+    // filter (it's hidden in their UI), but the comparison is safe
+    // either way: a tech's full shift set is already their own.
+    if (filter === "mine") {
+      const myEmail = String(
+        (workCurrentStaff && workCurrentStaff.email) || ""
+      ).toLowerCase().trim();
+      if (!myEmail) return false;
+      return String(shift.employee_email || "").toLowerCase().trim() === myEmail;
+    }
     return classifyShiftForFilter(shift, session) === filter;
   }
 
@@ -580,9 +617,21 @@
       return;
     }
     setText("work-kpi-shifts",       String(snap.total));
-    setText("work-kpi-shifts-meta",  snap.total === 1 ? "Scheduled" : "Scheduled");
+    // Real meta now (was a noop ternary): pluralizes the noun + reflects
+    // the running state so techs reading the strip get a sense of where
+    // the day is.
+    setText("work-kpi-shifts-meta",
+            snap.completed === snap.total
+              ? (snap.total === 1 ? "Scheduled · wrapped" : "All wrapped")
+              : (snap.notStarted === snap.total ? "Scheduled · awaiting"
+                                                : "Scheduled · in motion"));
     setText("work-kpi-hours",        formatHours(snap.hours));
     setText("work-kpi-techs",        String(snap.techsOn || 0));
+    // Tech mode always shows techsOn=1 (just the signed-in user). Tweak
+    // the meta line so it doesn't look like a stat — admin-preview keeps
+    // the plural "Distinct employees" label.
+    setText("work-kpi-techs-meta",
+            (snap.techsOn || 0) === 1 ? "On the schedule" : "Distinct employees");
     setText("work-kpi-not-started",  String(snap.notStarted));
     setText("work-kpi-progress-done",
             String(snap.inProgress) + " / " + String(snap.completed));
@@ -665,6 +714,70 @@
     setText("work-filter-count-in_progress", String(snap.inProgress));
     setText("work-filter-count-completed",   String(snap.completed));
     setText("work-filter-count-unassigned",  String(snap.unassigned));
+    // V6 — "mine" count + visibility. Pill is HTML-hidden by default;
+    // unhide for admins. Count is the number of shifts where the
+    // admin's own email matches employee_email. Always painted so
+    // the count stays current as Start/End sessions mutate state.
+    const mineEl  = document.getElementById("work-filter-count-mine");
+    const mineBtn = document.querySelector('#work-filter .work-filter-btn[data-filter="mine"]');
+    if (mineBtn) mineBtn.hidden = !workIsAdmin;
+    if (mineEl) {
+      const myEmail = String(
+        (workCurrentStaff && workCurrentStaff.email) || ""
+      ).toLowerCase().trim();
+      let mine = 0;
+      Object.keys(workShiftsByShiftId).forEach(function (k) {
+        const s = workShiftsByShiftId[k];
+        if (String(s.employee_email || "").toLowerCase().trim() === myEmail) mine += 1;
+      });
+      mineEl.textContent = String(mine);
+    }
+
+    // Phase 3 polish: surface a subtle "has-items" hint on the two
+    // attention-worthy filter pills (Not Started, Unassigned). It's
+    // not the same as "is-active" (selection) — it's a quiet visual
+    // signal that those buckets are non-empty so the tech notices
+    // without having to scan the count numbers.
+    function setHasItems(filter, has) {
+      const btn = document.querySelector(
+        '#work-filter .work-filter-btn[data-filter="' + filter + '"]'
+      );
+      if (!btn) return;
+      btn.classList.toggle("has-items", has);
+    }
+    setHasItems("not_started", snap.notStarted > 0);
+    setHasItems("unassigned",  snap.unassigned  > 0);
+  }
+
+  // Phase 3 polish: filter-aware copy for the "filtered to zero" tile.
+  // Each filter has its own tone — Completed/finished feels good,
+  // Unassigned feels calmer, etc. Keeps the page from reading as
+  // "broken" when the user just picked a filter with no matches.
+  function filterEmptyCopyFor(filter) {
+    if (filter === "mine") return {
+      title: "No shifts assigned to you today",
+      body:  "Other shifts on the roster are still visible — tap All to switch back to the company view."
+    };
+    if (filter === "not_started") return {
+      title: "Nothing waiting to start",
+      body:  "Every shift is either in progress or wrapped. Nice rhythm."
+    };
+    if (filter === "in_progress") return {
+      title: "No shifts in progress right now",
+      body:  "Either you haven't started yet, or everything's already wrapped."
+    };
+    if (filter === "completed") return {
+      title: "No shifts wrapped yet",
+      body:  "Once you Finish Work on a card, it'll move into this filter."
+    };
+    if (filter === "unassigned") return {
+      title: "Every shift has a customer 🎉",
+      body:  "No unmatched shifts today — DCRs will land on the right customer."
+    };
+    return {
+      title: "No shifts match that filter",
+      body:  "Try a different filter, or tap All to see every shift."
+    };
   }
 
   function paintFilterActive() {
@@ -706,6 +819,73 @@
     if (state === "error" && errEl && msg) errEl.textContent = msg;
   }
 
+  // V6 pilot — populate the empty-state diagnostic block. Visible to:
+  //   • admins (always — they need to triage regardless of URL flags)
+  //   • techs when ?debug_work=1 is on the URL
+  // Renders a compact dl of the signals the office needs to debug
+  // "shifts not showing": email queried, sync_date, tech mapping,
+  // rules error (when set). Calm tone — this is information, not
+  // an error banner.
+  function populateEmptyDiag(ctx) {
+    const el = $("team-hub-assignments-empty-diag");
+    if (!el) return;
+    const isAdmin = ctx.staff && ctx.staff.role === "admin";
+    if (!isAdmin && !DEBUG_WORK) {
+      // Tech on a real slow day — keep the empty state calm.
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+
+    function safe(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    const techMappingMissing = !ctx.techSlug && !ctx.techDisplayName;
+    const rows = [];
+    rows.push(["Queried email",     safe(ctx.email || "(missing)")]);
+    rows.push(["sync_date",         safe(ctx.queryDate) + " <em>(Pacific TZ; matches server)</em>"]);
+    rows.push(["Tech slug",         safe(ctx.techSlug || "(not resolved)")]);
+    rows.push(["Tech display name", safe(ctx.techDisplayName || "(blank)")]);
+    rows.push(["Mode",              ctx.isAdminAllView ? "admin overview (no email filter)" : "tech email match"]);
+    rows.push(["Date override",     ctx.dateOverride ? "yes (?work_date=…)" : "no"]);
+    rows.push(["Raw docs returned", String(ctx.rawShiftsCount || 0)]);
+    if (ctx.cancelledCount > 0) {
+      rows.push(["Cancelled (filtered)", String(ctx.cancelledCount)]);
+    }
+    if (ctx.rulesError) {
+      rows.push(["Rules / read error",  safe(ctx.rulesError)]);
+    }
+
+    const hints = [];
+    if (ctx.rulesError) {
+      hints.push("Read was blocked by Firestore rules — the auth email above didn't match any shift's <code>employee_email</code>.");
+    } else if (techMappingMissing && !ctx.isAdminAllView) {
+      hints.push("This Pioneer user doesn't have a <code>cleaning_techs/{slug}</code> link. Wire <code>deputy_employee_id</code> or <code>deputy_employee_email</code> in the admin Cleaning Techs tab so the next Deputy sync writes <code>employee_email</code> to match this user's Auth email.");
+    } else if (ctx.rawShiftsCount === 0 && ctx.isAdminAllView) {
+      hints.push("Admin overview returned zero docs — the <code>deputy_shift_cache</code> collection is truly empty for <code>" + safe(ctx.queryDate) + "</code>. Likely the daily Deputy sync hasn't run; try the admin <code>refreshDeputyShiftsV1</code> Cloud Function and re-load.");
+    } else if (ctx.rawShiftsCount === 0) {
+      hints.push("Cache is empty for <code>" + safe(ctx.queryDate) + "</code>. Either there really are no Deputy shifts today, OR the daily sync hasn't run / didn't match this tech. Try the admin <code>refreshDeputyShiftsV1</code> Cloud Function and re-load.");
+    } else {
+      hints.push("All shifts returned were cancelled. The day's roster cleared out — confirm in Deputy.");
+    }
+    hints.push("Add <code>?debug_work=1</code> for verbose console output prefixed with <code>[today's-work]</code>.");
+
+    const isBad = !!(ctx.rulesError || techMappingMissing);
+    el.classList.toggle("team-hub-empty-diag-bad", isBad);
+    el.innerHTML =
+      '<div class="team-hub-empty-diag-title">' +
+        (isBad ? "Triage signals" : "Diagnostic signals") +
+      '</div>' +
+      '<dl>' +
+        rows.map(function (r) {
+          return '<dt>' + safe(r[0]) + '</dt><dd>' + r[1] + '</dd>';
+        }).join("") +
+      '</dl>' +
+      '<p class="team-hub-empty-diag-hint">' + hints.join(" ") + '</p>';
+    el.hidden = false;
+  }
+
   function renderWorkCards() {
     const listEl = $("team-hub-assignments-list");
     if (!listEl) return;
@@ -731,31 +911,67 @@
       .map(function (id) { return workShiftsByShiftId[id]; })
       .sort(shiftSortFn);
     if (visible.length === 0) {
+      // V6 — swap the empty-state copy for admin overview vs tech view.
+      // Admin sees "No Deputy shifts company-wide" only when the day
+      // genuinely has zero shifts (the query is unfiltered). Tech
+      // sees the original "No work scheduled today" — that's about
+      // THEM specifically.
+      const emptyTitleEl = document.querySelector('#team-hub-assignments-empty .empty-state-title');
+      const emptyBodyEl  = document.querySelector('#team-hub-assignments-empty .empty-state-body');
+      if (emptyTitleEl && emptyBodyEl) {
+        if (workIsAdmin) {
+          emptyTitleEl.textContent = "No Deputy shifts on the roster today";
+          emptyBodyEl.textContent  = "Nothing has been posted in Deputy for today across any tech. Once shifts land they'll appear here.";
+        } else {
+          emptyTitleEl.textContent = "No shifts scheduled for you today";
+          emptyBodyEl.textContent  = "Once Deputy posts shifts assigned to you, they'll appear here.";
+        }
+      }
       setAssignmentsState("empty");
       listEl.innerHTML = "";
       return;
     }
 
     // Apply the filter — full set first, then trimmed.
-    const opts = { readOnly: workIsAdminPreview };
     const displayed = visible.filter(function (shift) {
       const sess = workSessionByShiftId[String(shift.shift_id || shift.id)] || null;
       return shiftMatchesFilter(shift, sess, workCurrentFilter);
     });
+    // V6 — per-card readOnly. A shift is actionable only when it
+    // belongs to the current user. Cleaning techs always pass this
+    // check (the query already gated them to their own shifts).
+    // Admins viewing OTHER techs' shifts get a read-only card —
+    // Start/Finish buttons suppressed. (The server rule on
+    // pioneer_work_sessions also rejects cross-tech writes, so this
+    // is defense in depth, not the only gate.)
+    const myEmailForCard = String(
+      (workCurrentStaff && workCurrentStaff.email) || ""
+    ).toLowerCase().trim();
 
     const filterEmptyEl = document.getElementById("team-hub-assignments-filter-empty");
     if (displayed.length === 0 && visible.length > 0) {
       // Filtered to zero — show the calm filter-specific empty state
       // and keep the underlying section in "list" state so the KPI
-      // strip + filter row stay visible.
+      // strip + filter row stay visible. Copy is filter-aware so the
+      // tech reads it as "the day is in a good place" not "broken".
       listEl.innerHTML = "";
-      if (filterEmptyEl) filterEmptyEl.hidden = false;
+      if (filterEmptyEl) {
+        const titleEl = document.getElementById("team-hub-assignments-filter-empty-title");
+        const bodyEl  = filterEmptyEl.querySelector(".empty-state-body");
+        const copy = filterEmptyCopyFor(workCurrentFilter);
+        if (titleEl) titleEl.textContent = copy.title;
+        if (bodyEl)  bodyEl.textContent  = copy.body;
+        filterEmptyEl.hidden = false;
+      }
       setAssignmentsState("list");
       return;
     }
     if (filterEmptyEl) filterEmptyEl.hidden = true;
 
     listEl.innerHTML = displayed.map(function (shift) {
+      const shiftEmail = String(shift.employee_email || "").toLowerCase().trim();
+      const isOwnShift = !workIsAdmin || (myEmailForCard && shiftEmail === myEmailForCard);
+      const opts = { readOnly: !isOwnShift };
       return workCard(shift, workSessionByShiftId[String(shift.shift_id || shift.id)] || null, opts);
     }).join("");
     setAssignmentsState("list");
@@ -880,8 +1096,15 @@
     opts = opts || {};
     const staff = workCurrentStaff;
     if (!staff) return;
-    if (workIsAdminPreview) {
-      console.warn("[today's-work] startWork ignored in admin-preview mode");
+    // V6 — guard: admins viewing other techs' shifts can't Start.
+    // The per-card readOnly suppresses the UI, but if a stale event
+    // ever lands here, refuse early. Rules also reject the write.
+    const myEmailNow = String(staff.email || "").toLowerCase().trim();
+    const shiftEmail = String(shift.employee_email || "").toLowerCase().trim();
+    if (workIsAdmin && shiftEmail && shiftEmail !== myEmailNow) {
+      warnTodayWork("startWork refused — shift belongs to another tech", {
+        shift_id: shift.shift_id || shift.id, shift_email: shiftEmail, viewer: myEmailNow
+      });
       return;
     }
     const db = firebase.firestore();
@@ -936,7 +1159,15 @@
   }
 
   async function stampDcrOpenedAt(shift) {
-    if (workIsAdminPreview) return;
+    // V6 — admins can OPEN a DCR for any shift (review path); only
+    // stamp `pioneer_dcr_opened_at` for the shift's own tech to keep
+    // the per-tech session log clean. Cross-tech stamps are gated by
+    // the pioneer_work_sessions rule anyway.
+    const staff = workCurrentStaff;
+    if (!staff) return;
+    const myEmailNow = String(staff.email || "").toLowerCase().trim();
+    const shiftEmail = String(shift.employee_email || "").toLowerCase().trim();
+    if (workIsAdmin && shiftEmail && shiftEmail !== myEmailNow) return;
     try {
       const db = firebase.firestore();
       const shiftId = String(shift.shift_id || shift.id);
@@ -953,8 +1184,14 @@
   async function finishWork(shift) {
     const staff = workCurrentStaff;
     if (!staff) return;
-    if (workIsAdminPreview) {
-      console.warn("[today's-work] finishWork ignored in admin-preview mode");
+    // V6 — guard: admins can't finish another tech's shift. Per-card
+    // readOnly already hides the button; this is defense-in-depth.
+    const myEmailNow = String(staff.email || "").toLowerCase().trim();
+    const shiftEmail = String(shift.employee_email || "").toLowerCase().trim();
+    if (workIsAdmin && shiftEmail && shiftEmail !== myEmailNow) {
+      warnTodayWork("finishWork refused — shift belongs to another tech", {
+        shift_id: shift.shift_id || shift.id, shift_email: shiftEmail, viewer: myEmailNow
+      });
       return;
     }
     const db = firebase.firestore();
@@ -1066,13 +1303,35 @@
     const queryDate = dateRes.date;
     const email    = String(staff.email || "").toLowerCase().trim();
 
-    // Admin preview: admin + ?work_date override → unscoped read.
-    workIsAdminPreview = (staff.role === "admin") && dateRes.isOverride;
+    // V6 role mode. Admin / manager / office-manager (the server
+    // returns role: "admin" for any of them) sees ALL shifts for the
+    // day by default — no email filter on the query. Cleaning techs
+    // stay on the narrow per-email path.
+    workIsAdmin        = (staff.role === "admin");
+    workIsAdminPreview = workIsAdmin && dateRes.isOverride;   // kept for date-override copy
 
+    // V6 pilot — unconditional triage log under [PioneerOps TodayWork].
+    // The verbose object-dump version (logDebug) stays gated by
+    // ?debug_work=1; this concise line ships in every load so the
+    // office can diagnose "shifts not showing" without asking the
+    // tech to add a URL flag first.
+    const techSlugResolved = (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "";
+    const techDisplayResolved = (staff.tech && staff.tech.display_name) || "";
+    logTodayWork("booting", {
+      email:             email,
+      tech_slug:         techSlugResolved || "(none)",
+      tech_display_name: techDisplayResolved || "(none)",
+      role:              staff.role,
+      query_sync_date:   queryDate,
+      today_pacific:     deputyTodayPT(),
+      timezone:          DEPUTY_TIMEZONE,
+      admin_preview:     workIsAdminPreview,
+      override:          dateRes.isOverride
+    });
     logDebug("[today's-work] booting:", {
       email:                email,
-      tech_slug:            (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "(none)",
-      tech_display_name:    (staff.tech && staff.tech.display_name) || "(none)",
+      tech_slug:            techSlugResolved || "(none)",
+      tech_display_name:    techDisplayResolved || "(none)",
       role:                 staff.role,
       query_sync_date:      queryDate,
       override:             dateRes.isOverride,
@@ -1080,23 +1339,34 @@
       today_pacific:        deputyTodayPT()
     });
 
+    let rulesError = null;     // set in the catch below if the snap fails
     try {
       const db = firebase.firestore();
 
-      // Build query — same collection in both modes; admin-preview just
-      // drops the email filter so the rule's `isPioneerAdmin()` arm
-      // returns every shift for that date.
+      // Build query. Two modes:
+      //   • admin / manager / office-manager → no email filter; rule's
+      //     `isPioneerAdmin()` arm returns every shift for that date.
+      //   • cleaning tech → narrow to their own employee_email; rule
+      //     gates per-doc. The slug + display-name fallbacks below
+      //     stay armed for the case where the cache doc was written
+      //     with empty employee_email.
       let query = db.collection("deputy_shift_cache")
         .where("sync_date", "==", queryDate);
-      if (!workIsAdminPreview) {
+      if (!workIsAdmin) {
         query = query.where("employee_email", "==", email);
       }
       const snap = await query.get();
 
       let shifts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
 
+      logTodayWork("query result", {
+        collection:           "deputy_shift_cache",
+        where_sync_date_eq:   queryDate,
+        where_employee_email_eq: workIsAdmin ? "(admin overview — no email filter)" : email,
+        docs_returned:        shifts.length
+      });
       logDebug("[today's-work] fetched shifts:", {
-        mode:                 workIsAdminPreview ? "admin_preview" : "tech_email_match",
+        mode:                 workIsAdmin ? "admin_all_shifts" : "tech_email_match",
         total:                shifts.length,
         ids:                  shifts.map(function (s) { return String(s.shift_id || s.id); }),
         statuses:             shifts.map(function (s) { return s.status || "(none)"; }),
@@ -1106,36 +1376,93 @@
         first_doc_keys:       shifts[0] ? Object.keys(shifts[0]) : []
       });
 
-      // Fallback for non-admin techs whose Auth email didn't match a
-      // cache row directly: try display_name match. Rule still requires
-      // employee_email==auth.email, so the fallback can ONLY find rows
-      // where the email IS the tech's auth email but happened to be
-      // mixed-case in the cache. (Server lowercases on write, so this
-      // is rare — but harmless to attempt.) For mapping data fixes,
-      // the office should align cleaning_techs.email with Deputy.
-      if (!workIsAdminPreview && shifts.length === 0 && staff.tech && staff.tech.display_name) {
+      // V6 pilot — tech-slug fallback. Only fires for cleaning techs,
+      // not admins (admins already see everything via the unfiltered
+      // query above). When the email-match query returns 0, retry by
+      // employee_slug; the Firestore rule's `shiftTechSlugLinksToAuth()`
+      // arm covers that read by dereferencing
+      // `cleaning_techs/{employee_slug}.email` and requiring it to
+      // equal the auth user's email. Covers the case where a cache
+      // doc was written before the office set the tech's email.
+      const techSlugForFallback = (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "";
+      if (!workIsAdmin && shifts.length === 0 && techSlugForFallback) {
+        try {
+          const altSnap = await db.collection("deputy_shift_cache")
+            .where("sync_date", "==", queryDate)
+            .where("employee_slug", "==", techSlugForFallback)
+            .get();
+          const fallbackShifts = altSnap.docs.map(function (d) {
+            return Object.assign({ id: d.id }, d.data());
+          });
+          if (fallbackShifts.length > 0) {
+            logTodayWork("slug fallback matched", {
+              tech_slug:        techSlugForFallback,
+              docs_returned:    fallbackShifts.length
+            });
+            shifts = fallbackShifts;
+          } else {
+            logTodayWork("slug fallback also returned 0", {
+              tech_slug: techSlugForFallback
+            });
+          }
+        } catch (err) {
+          warnTodayWork("slug fallback query failed", {
+            code: err && err.code, message: err && err.message
+          });
+        }
+      }
+
+      // Display-name fallback — third-line defense for very old data
+      // where neither email nor slug match resolves. Only for techs
+      // (admins already see everything). The rule's tech-slug arm
+      // still applies to each returned doc, so this is safe even if
+      // the cache carries unmapped rows from third-party imports.
+      if (!workIsAdmin && shifts.length === 0 && staff.tech && staff.tech.display_name) {
         try {
           const altSnap = await db.collection("deputy_shift_cache")
             .where("sync_date", "==", queryDate)
             .where("employee_display_name", "==", staff.tech.display_name)
             .get();
           const fallbackShifts = altSnap.docs
-            .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-            // Rules will still strip docs where employee_email doesn't
-            // match auth email; the snapshot only contains permitted
-            // rows, so a non-empty result is safe.
-            .filter(function (s) { return s.employee_email === email; });
+            .map(function (d) { return Object.assign({ id: d.id }, d.data()); });
           if (fallbackShifts.length > 0) {
-            logDebug("[today's-work] display_name fallback matched:", fallbackShifts.length);
+            logTodayWork("display_name fallback matched", { count: fallbackShifts.length });
             shifts = fallbackShifts;
           }
         } catch (err) {
-          console.warn("[today's-work] display_name fallback failed", err && err.code);
+          warnTodayWork("display_name fallback query failed", { code: err && err.code });
         }
       }
 
       const visible = shifts
         .filter(function (s) { return String(s.status || "").toLowerCase() !== "cancelled"; });
+
+      // V6 pilot — populate the empty-state diagnostic block when we
+      // have zero shifts to render. Shows the office WHY nothing
+      // came back: email queried, sync_date used, tech mapping
+      // present?, etc. Visible to admins always; visible to techs
+      // only with ?debug_work=1. Calm wording — this surfaces
+      // signals, doesn't shout an error.
+      const cancelledCount = shifts.length - visible.length;
+      logTodayWork("filter result", {
+        raw_shifts:        shifts.length,
+        cancelled_filtered: cancelledCount,
+        visible:           visible.length
+      });
+      if (visible.length === 0) {
+        populateEmptyDiag({
+          staff:             staff,
+          email:             email,
+          queryDate:         queryDate,
+          techSlug:          techSlugResolved,
+          techDisplayName:   techDisplayResolved,
+          isAdminAllView:    workIsAdmin,
+          dateOverride:      dateRes.isOverride,
+          rawShiftsCount:    shifts.length,
+          cancelledCount:    cancelledCount,
+          rulesError:        null
+        });
+      }
 
       workShiftsByShiftId = {};
       visible.forEach(function (s) {
@@ -1156,27 +1483,34 @@
         statuses:      Object.keys(sessionsById).map(function (k) { return sessionsById[k].status || "(none)"; })
       });
 
+      // Subtitle text under the section header — picks the right
+      // operational framing for the role + date mode combo.
       const subEl = $("team-hub-assignments-sub");
       if (subEl) {
-        if (workIsAdminPreview) {
-          subEl.textContent = "Read-only preview. Techs only see their assigned shifts.";
+        if (workIsAdmin && dateRes.isOverride) {
+          subEl.textContent = "Admin overview · showing work for " + queryDate +
+            ". Remove ?work_date=… from the URL to return to today.";
+        } else if (workIsAdmin) {
+          subEl.textContent = "Admin overview — every Pioneer shift for today. " +
+            "Tap My Shifts to focus on your own.";
         } else if (dateRes.isOverride) {
-          subEl.textContent = "Admin preview · showing work for " + queryDate + ". Remove ?work_date=… from the URL to return to today.";
+          subEl.textContent = "Viewing work for " + queryDate +
+            ". Remove ?work_date=… to return to today.";
         } else {
           subEl.textContent = "Start work, finish the DCR, and clock out — one step at a time.";
         }
       }
 
-      // Admin-preview callout — a visible banner just under the section
-      // header so the operator never confuses preview with a real tech
-      // view. Tech-side renders nothing here.
+      // Admin callout — a soft visible banner under the header so the
+      // operator never confuses "I'm seeing all shifts company-wide"
+      // with "no shifts assigned to me". Tech-side renders nothing.
       const calloutEl = $("team-hub-assignments-callout");
       if (calloutEl) {
-        if (workIsAdminPreview) {
+        if (workIsAdmin) {
           calloutEl.textContent =
-            "👁 Admin preview for " + queryDate + ". " +
-            "You're seeing every Deputy shift for that day; techs only see their own shifts and can use Start / Complete DCR / Finish Work. " +
-            "Buttons are intentionally suppressed here so admins don't accidentally start a shift on a tech's behalf.";
+            "👁 Admin overview · seeing every Deputy shift for " + queryDate + ". " +
+            "Start / Finish Work + Complete DCR are enabled only on YOUR own shifts (the rule rejects cross-tech writes). " +
+            "Use the My Shifts filter to focus on yours.";
           calloutEl.hidden = false;
         } else {
           calloutEl.hidden = true;
@@ -1186,11 +1520,34 @@
 
       renderWorkCards();
     } catch (err) {
+      warnTodayWork("query failed", {
+        code:    err && err.code,
+        message: err && err.message,
+        email:   email,
+        sync_date: queryDate
+      });
       console.warn("[today's-work] load failed", err && err.code, err && err.message, err);
-      const friendly = (err && err.code === "permission-denied")
+      const isRules = err && (err.code === "permission-denied" || err.code === "permission_denied");
+      const friendly = isRules
         ? "Couldn't load shifts. Email mismatch with Deputy — ask the office to align."
         : "Couldn't load shifts. Check your connection and reload.";
       setAssignmentsState("error", friendly);
+      // V6 pilot — also stamp the empty-state diagnostic so admins
+      // can see WHY the query failed (mode + email + sync_date +
+      // error code). The error banner above stays visible; the diag
+      // block is admin/debug-only, so it doesn't crowd the tech view.
+      populateEmptyDiag({
+        staff:           staff,
+        email:           email,
+        queryDate:       queryDate,
+        techSlug:        techSlugResolved,
+        techDisplayName: techDisplayResolved,
+        isAdminAllView:  workIsAdmin,
+        dateOverride:    dateRes.isOverride,
+        rawShiftsCount:  0,
+        cancelledCount:  0,
+        rulesError:      (err && (err.code || err.message)) || "unknown"
+      });
     }
   }
 
