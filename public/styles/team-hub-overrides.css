@@ -193,9 +193,773 @@
   width: 5px; height: 5px;
 }
 
+/* ---------- Upcoming Team Schedule (Deputy snapshot) ----------
+   Mobile-first day → row layout. Each day is a slim header followed
+   by a tight list of "Tech · Customer · Time" rows. Designed to be
+   readable on a phone without horizontal scroll. */
+.team-hub-published-schedule .th-published-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  margin: -4px 0 10px;
+  font-size: 12.5px;
+  color: var(--ink-muted, #6b7280);
+}
+.th-published-range {
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+.th-published-dot { color: var(--ink-muted, #94a3b8); }
+.th-published-notes {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #0f172a);
+  background: #f8fafc;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 10px;
+  white-space: pre-wrap;
+}
+.th-published-days {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.th-published-day {
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+}
+.th-published-day-head {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--ink, #0f172a);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  padding-bottom: 4px;
+}
+.th-published-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.th-published-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 6px 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink, #0f172a);
+  border-bottom: 1px dashed rgba(15, 23, 42, 0.05);
+}
+.th-published-row:last-child { border-bottom: none; }
+.th-published-tech     { font-weight: 700; }
+.th-published-customer { color: var(--ink-muted, #475569); flex: 1 1 auto; min-width: 0; }
+.th-published-time     { font-variant-numeric: tabular-nums; font-weight: 600; }
+.th-published-sep      { color: var(--ink-muted, #94a3b8); }
+.th-published-empty {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ink-muted, #6b7280);
+  background: #f8fafc;
+  border: 1px dashed var(--border-soft, #cbd5e1);
+  border-radius: 10px;
+}
+.th-published-overflow {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted, #6b7280);
+  text-align: right;
+}
+.th-published-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.th-published-actions .th-schedule-btn:not(.is-primary) {
+  /* Secondary PDF buttons read smaller next to the primary CTA. */
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
+@media (max-width: 600px) {
+  .th-published-row { padding: 7px 0; font-size: 14px; }
+  .th-published-customer { width: 100%; flex-basis: 100%; }
+}
+
+/* ---------- Team Schedule ----------
+   Compact published-schedule card with two action buttons. Mirrors
+   the .th-quality-card visual weight so the Team Hub reads as a
+   consistent stack of informational cards. */
+.th-schedule-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4, 14px);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4, 14px) var(--space-5, 18px);
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+}
+.th-schedule-meta { min-width: 0; flex: 1 1 240px; }
+.th-schedule-filename {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  word-break: break-word;
+}
+.th-schedule-uploaded {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--ink-muted, #6b7280);
+}
+.th-schedule-notes {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #0f172a);
+  white-space: pre-wrap;
+}
+.th-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.th-schedule-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #0f172a);
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 8px;
+  text-decoration: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6),
+              0 1px 2px rgba(13, 18, 24, 0.04);
+  transition: background 140ms ease, border-color 140ms ease, transform 100ms ease;
+}
+.th-schedule-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.th-schedule-btn.is-primary {
+  color: #ffffff;
+  background: linear-gradient(180deg, #1f2937 0%, #0f172a 100%);
+  border-color: #0f172a;
+}
+.th-schedule-btn.is-primary:hover {
+  background: linear-gradient(180deg, #111827 0%, #020617 100%);
+  border-color: #020617;
+}
+.th-schedule-empty {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--ink-muted, #6b7280);
+  background: #f8fafc;
+  border: 1px dashed var(--border-soft, #cbd5e1);
+  border-radius: 10px;
+}
+
+/* ---------- Urgent form card variant (Call Out) ----------
+   The call-out card reads urgent so techs don't confuse it with the
+   adjacent Time-Off request. Coral eyebrow + left stripe; the rest
+   of the card chrome stays identical to other team-hub cards. */
+.team-hub-card--urgent {
+  border-left: 3px solid #ef4444;
+}
+.team-hub-card--urgent .team-hub-card-eyebrow {
+  color: #b91c1c;
+  background: #fff1f2;
+}
+
+/* Rockstar / Pick Up Open Shift card — teal accent so it reads as
+   opportunity, not urgency. Badge in the corner shows the live
+   count of unclaimed open shifts (hidden when zero). */
+.team-hub-card--rockstar {
+  border-left: 3px solid #14b8a6;
+  position: relative;
+}
+.team-hub-card-eyebrow--rockstar {
+  color: #0e7490;
+  background: #ecfeff;
+}
+.team-hub-card-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: linear-gradient(180deg, #14b8a6 0%, #0d9488 100%);
+  border: 1px solid #0d9488;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Rockstar Team Players section — simple ranked list. */
+.team-hub-rockstar-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.team-hub-rockstar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 10px;
+}
+.team-hub-rockstar-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+.team-hub-rockstar-count {
+  font-size: 12.5px;
+  color: #0f766e;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ---------- Mobile safety ---------- */
 @media (max-width: 600px) {
   .th-quality-card { padding: var(--space-4) var(--space-5) var(--space-3); }
   .team-hub-empty,
   .th-wins-empty { padding: var(--space-5) var(--space-4); }
+  .th-schedule-actions { width: 100%; }
+  .th-schedule-actions .th-schedule-btn { flex: 1 1 0; }
 }
+
+/* ===== Need Help Now? — urgent escalation card =====
+   Distinct from --urgent (Call Out). This is the brightest, most
+   immediate signal in Team Requests & Support: a real button (not a
+   link), bold left stripe, slightly warmer background so it's
+   distinguishable from the routine Call Out card directly below it. */
+.team-hub-card--needhelp {
+  position: relative;
+  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 100%);
+  border-left: 4px solid #dc2626;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.team-hub-card--needhelp .team-hub-card-eyebrow {
+  background: #dc2626;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+}
+.team-hub-card--needhelp .team-hub-card-title {
+  color: #7f1d1d;
+}
+.team-hub-card--needhelp:hover {
+  filter: brightness(0.99);
+}
+.team-hub-card--needhelp:active {
+  transform: translateY(1px);
+}
+
+/* Help Improve Pioneer — soft teal accent to read as "non-urgent /
+   constructive" right next to the red urgent card. */
+.team-hub-card--improve {
+  border-left: 3px solid #0d9488;
+}
+.team-hub-card--improve .team-hub-card-eyebrow {
+  background: #ccfbf1;
+  color: #134e4a;
+}
+
+/* ===== Need Help Now action sheet =====
+   Bottom-anchored on mobile (with a vertical-center fallback on
+   desktop), real backdrop, dismissable via Cancel / Escape / backdrop
+   tap. No body scroll lock — the buttons inside are real <a> tags so
+   the OS routes natively and there's no JS-driven popup risk. */
+.need-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+.need-help-overlay[hidden] { display: none; }
+.need-help-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+}
+.need-help-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  padding: 22px 20px 28px;
+  box-shadow: 0 -20px 60px rgba(15, 23, 42, 0.30);
+  animation: needHelpSlideUp 240ms ease-out;
+}
+.need-help-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.need-help-eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #b91c1c;
+}
+.need-help-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: #0f172a;
+}
+.need-help-body {
+  margin: 0 0 10px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #334155;
+}
+.need-help-911 {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 13.5px;
+}
+.need-help-911 strong { font-weight: 800; }
+
+.need-help-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.need-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  min-height: 48px;
+}
+.need-help-btn-call {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.30);
+}
+.need-help-btn-call:active { background: #b91c1c; }
+.need-help-btn-text {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+}
+.need-help-btn-text:active { background: #1f2937; }
+.need-help-btn-cancel {
+  grid-column: 1 / -1;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.need-help-btn-cancel:active { background: #e2e8f0; }
+
+.need-help-footnote {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@keyframes needHelpSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@media (min-width: 600px) {
+  .need-help-overlay { align-items: center; }
+  .need-help-sheet {
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+  }
+}
+
+/* ===== Install PioneerOps card (Team Hub) =====
+   Teal-accent card placed at the top of Team Hub when the app is
+   installable and not yet installed. Auto-hides in standalone mode and
+   after a 30-day "Maybe Later" tap. */
+.install-card {
+  background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
+  border-left: 4px solid #14b8a6;
+}
+.install-card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.install-card-icon {
+  flex: 0 0 auto;
+  font-size: 32px;
+  line-height: 1;
+}
+.install-card-body { flex: 1 1 auto; min-width: 0; }
+.install-card-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #0f172a;
+}
+.install-card-desc {
+  margin: 0;
+  font-size: 14.5px;
+  color: #334155;
+  line-height: 1.55;
+}
+.install-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.install-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  min-height: 42px;
+  text-decoration: none;
+}
+.install-card-btn-primary {
+  background: #14b8a6;
+  color: #052e2b;
+  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.30);
+}
+.install-card-btn-primary:hover  { background: #0d9488; }
+.install-card-btn-primary:active { background: #0b7e74; }
+.install-card-btn-secondary {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+.install-card-btn-secondary:hover  { background: #f8fafc; }
+.install-card-btn-secondary:active { background: #e2e8f0; }
+
+/* ===== iOS "Add to Home Screen" modal ===== */
+.install-ios-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.install-ios-overlay[hidden] { display: none; }
+.install-ios-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+}
+.install-ios-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  padding: 22px 22px 24px;
+  box-shadow: 0 -20px 60px rgba(15, 23, 42, 0.30);
+  animation: installIosSlideUp 240ms ease-out;
+}
+.install-ios-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.install-ios-title {
+  margin: 0 0 6px;
+  font-size: 19px;
+  color: #0f172a;
+}
+.install-ios-lede {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.5;
+}
+.install-ios-steps {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.install-ios-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+.install-ios-step-num {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #14b8a6;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.install-ios-step-text {
+  flex: 1 1 auto;
+  font-size: 14px;
+  color: #0f172a;
+  line-height: 1.5;
+}
+.install-ios-share-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 2px;
+  vertical-align: -6px;
+  color: #2563eb;
+}
+.install-ios-footnote {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #475569;
+  text-align: center;
+  font-style: italic;
+}
+.install-ios-done {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #ffffff;
+  border: 0;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 46px;
+}
+.install-ios-done:active { background: #1f2937; }
+
+@keyframes installIosSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@media (min-width: 600px) {
+  .install-ios-overlay { align-items: center; }
+  .install-ios-sheet {
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+  }
+}
+
+/* Targeted announcements — Team Hub */
+
+.ann-pill.is-ackneeded   { background: #fef3c7; color: #78350f; }
+.ann-pill.is-replyneeded { background: #dbeafe; color: #1e40af; }
+
+.ann-card.ann-replyrequired {
+  border-left: 3px solid #2563eb;
+}
+
+.ann-card-state-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ann-ack-btn {
+  background: #14b8a6;
+  color: #052e2b;
+  border: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ann-ack-btn:active { background: #0d9488; }
+.ann-reply-btn {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ann-reply-btn:active { background: #e2e8f0; }
+
+/* Team Hub thread */
+.ann-thread {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.ann-thread-comments { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ann-thread-comment {
+  background: #ffffff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+.ann-thread-comment.is-admin {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+}
+.ann-thread-comment-head {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  margin-bottom: 3px;
+}
+.ann-thread-role {
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: #0d9488;
+  color: #ffffff;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.ann-thread-comment-when { font-size: 11px; color: #64748b; margin-left: auto; }
+.ann-thread-comment-body {
+  margin: 0;
+  font-size: 13.5px;
+  color: #0f172a;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.ann-thread-empty,
+.ann-thread-error {
+  font-size: 12.5px;
+  color: #64748b;
+  font-style: italic;
+}
+.ann-thread-error { color: #991b1b; }
+.ann-thread-replyform { display: flex; flex-direction: column; gap: 6px; }
+.ann-thread-replybox {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+}
+.ann-thread-replybtn {
+  align-self: flex-end;
+  background: #2563eb;
+  color: #ffffff;
+  border: 0;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ann-thread-replybtn:active { background: #1e40af; }
+
+/* Targeted-announcement comment avatars — Team Hub */
+
+.ann-thread-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 12px;
+  flex: 0 0 28px;
+  overflow: hidden;
+}
+.ann-thread-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ann-thread-comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ann-thread-comment-text { flex: 1 1 auto; min-width: 0; }

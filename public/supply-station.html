@@ -13,6 +13,14 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/supply-station.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
 </head>
 <body>
 
@@ -139,6 +147,78 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" hidden>
 
+      <!-- ===== Supply Station Access (internal-only) =====
+           Sits above the order form so techs can pull up the gate +
+           lock codes the moment they arrive at the storage unit.
+           Sign-in is the gate (staff-auth.js); this card never renders
+           pre-auth. Tap-to-copy on the code pills + address. -->
+      <section class="card ss-access-card">
+        <header class="ss-access-head">
+          <h2 class="ss-access-title">🔐 Supply Station Access</h2>
+          <p class="ss-access-sub">Internal use only. Lock the unit before leaving.</p>
+        </header>
+
+        <div class="ss-access-grid">
+          <div class="ss-access-row ss-access-row--address">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Max Storage</span>
+              <button type="button"
+                      class="ss-copy-target ss-access-address"
+                      data-copy="214 S Eastern Rd, Spokane Valley, WA 99212"
+                      data-copy-label="Address"
+                      title="Tap to copy address">
+                214 S Eastern Rd, Spokane Valley, WA 99212
+              </button>
+            </div>
+            <a class="ss-access-maps-btn"
+               href="https://maps.apple.com/?q=214+S+Eastern+Rd,+Spokane+Valley,+WA+99212"
+               target="_blank" rel="noopener noreferrer"
+               title="Open in Maps">Open in Maps ↗</a>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Gate Code</span>
+              <button type="button"
+                      class="ss-copy-target ss-code-pill ss-code-pill--gate"
+                      data-copy="32151959"
+                      data-copy-label="Gate code"
+                      title="Tap to copy gate code">
+                32151959
+              </button>
+            </div>
+            <p class="ss-access-row-help">Enter your code number, then press <strong>*</strong></p>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Storage Unit</span>
+              <span class="ss-access-unit">3215</span>
+            </div>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Storage Lock Code</span>
+              <button type="button"
+                      class="ss-copy-target ss-code-pill ss-code-pill--lock"
+                      data-copy="5823"
+                      data-copy-label="Lock code"
+                      title="Tap to copy lock code">
+                5823
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p class="ss-access-warning" role="note">
+          <span class="ss-access-warning-icon" aria-hidden="true">⚠️</span>
+          <span>Lock before leaving — alarm may trigger if the unit is not fully closed.</span>
+        </p>
+
+        <div class="ss-access-toast" id="ss-access-toast" hidden aria-live="polite"></div>
+      </section>
+
       <section class="card supply-station-card">
         <form id="supply-station-form" novalidate>
           <!-- V6 pilot fix — the supply request now attaches to a
@@ -247,5 +327,6 @@
   <script src="mandatory-modal.js"></script>
   <script src="walkthrough.js"></script>
   <script src="supply-station.js"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

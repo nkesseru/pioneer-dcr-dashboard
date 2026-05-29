@@ -82,7 +82,12 @@
   function getCustomerDcrEnabled(c) { return c.dcr_enabled !== false; }
 
   function customerDisplayLabel(c) {
-    return getCustomerLocation(c) || getCustomerName(c) || getCustomerSlug(c) || "(unnamed)";
+    // Canonical helper — applies displayNameMode + customDisplayName.
+    if (window.PioneerCustomerDisplay) {
+      const label = window.PioneerCustomerDisplay.getCustomerDisplayName(c);
+      if (label) return label;
+    }
+    return getCustomerName(c) || getCustomerLocation(c) || getCustomerSlug(c) || "(unnamed)";
   }
 
   /* ---------- Firebase init (firestore only — auth not needed in v1) ---------- */
@@ -186,7 +191,8 @@
     const customer = data.customer || {};
     const stats    = data.stats    || {};
 
-    const name     = customer.customer_name || customer.name || "(no customer)";
+    const name     = (window.PioneerCustomerDisplay && window.PioneerCustomerDisplay.getCustomerDisplayName(customer))
+                       || customer.customer_name || customer.name || "(no customer)";
     const location = customer.location_name || name;
     $("tech-customer-name").textContent     = name;
     $("tech-customer-location").textContent = (location !== name) ? location : "";
@@ -1022,7 +1028,9 @@
     if (!modal || !body || !_securityInfoPending) return;
     const c    = _securityInfoPending;
     const info = c.securityInfo || {};
-    customer.textContent = c.customer_name || c.location_name || c.slug || "";
+    customer.textContent =
+      (window.PioneerCustomerDisplay && window.PioneerCustomerDisplay.getCustomerDisplayName(c)) ||
+      c.customer_name || c.location_name || c.slug || "";
     body.innerHTML = buildSecurityModalBody(info) ||
       '<p class="tech-security-empty">No security info on file for this customer.</p>';
     _securityLastFocusEl = document.activeElement;

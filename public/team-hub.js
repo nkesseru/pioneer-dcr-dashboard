@@ -320,16 +320,41 @@
     const prLabel  = PRIORITY_LABELS[priority] || priority;
     const pills    = [];
     pills.push('<span class="ann-pill ' + prCls + '">' + escapeHtml(prLabel) + '</span>');
-    if (a.mandatory) pills.push('<span class="ann-pill is-mandatory">Mandatory</span>');
-    if (!isRead)     pills.push('<span class="ann-pill is-unread">Unread</span>');
+    if (a.mandatory)              pills.push('<span class="ann-pill is-mandatory">Mandatory</span>');
+    if (a.requireAcknowledgement) pills.push('<span class="ann-pill is-ackneeded">Acknowledge</span>');
+    if (a.requireReply)           pills.push('<span class="ann-pill is-replyneeded">Reply required</span>');
+    if (!isRead)                  pills.push('<span class="ann-pill is-unread">Unread</span>');
 
     // Compact (past) cards never render the big image preview — keeps
     // the collapsed section short even on image-heavy histories.
     const previewHtml    = compact ? "" : attachmentPreviewHtml(a);
     const attachmentHtml = attachmentLinkHtml(a);
 
+    // V2 — acknowledge + reply controls. Hidden on compact (read) view.
+    const stateBtns = compact ? "" : (
+      '<div class="ann-card-state-btns">' +
+        (a.requireAcknowledgement
+          ? '<button class="ann-ack-btn" type="button" data-action="ack">Acknowledge</button>'
+          : '') +
+        '<button class="ann-reply-btn" type="button" data-action="toggle-reply">Reply</button>' +
+      '</div>'
+    );
+    // Comments thread + reply textarea. Hidden by default; the toggle
+    // button opens it. For requireReply we'd ideally auto-open, but
+    // even then we want the user-initiated action to enter the textarea.
+    const threadHtml = compact ? "" : (
+      '<div class="ann-thread" data-thread-for="' + escapeHtml(a.id) + '" hidden>' +
+        '<div class="ann-thread-comments" data-comments-for="' + escapeHtml(a.id) + '">Loading…</div>' +
+        '<div class="ann-thread-replyform">' +
+          '<textarea class="ann-thread-replybox" rows="2" maxlength="800" placeholder="Type your reply…"></textarea>' +
+          '<button type="button" class="ann-thread-replybtn" data-action="submit-reply">Send reply</button>' +
+        '</div>' +
+      '</div>'
+    );
+
     return (
       '<article class="ann-card' + (compact ? ' is-compact' : '') +
+            (a.requireReply ? ' ann-replyrequired' : '') +
             '" data-id="' + escapeHtml(a.id) + '">' +
         '<div class="ann-card-head">' +
           '<span class="ann-card-title">' + escapeHtml(a.title || "(untitled)") + '</span>' +
@@ -345,6 +370,8 @@
                 : '') +
             '</div>'
           : '') +
+        stateBtns +
+        threadHtml +
       '</article>'
     );
   }
@@ -355,17 +382,87 @@
   let mandatoryQueue      = [];           // unread mandatory announcements yet to acknowledge
   let mandatoryCurrent    = null;         // the one currently displayed in the modal
 
+  // ---- Tech directory + avatar helpers --------------------------------
+  // Lazily-loaded /cleaning_techs cache used to put a face on announcement
+  // comments. Loaded once after auth; refreshed on demand. Pure read.
+  let thTechDirByEmail = new Map();
+  let thTechDirBySlug  = new Map();
+  async function thLoadTechDir() {
+    if (thTechDirByEmail.size > 0) return;
+    try {
+      const snap = await firebase.firestore().collection("cleaning_techs").get();
+      snap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        const slug = data.tech_slug || d.id;
+        const email = String(data.email || "").toLowerCase().trim();
+        thTechDirByEmail.set(email, Object.assign({ id: d.id, slug: slug }, data));
+        thTechDirBySlug.set(slug, Object.assign({ id: d.id, slug: slug }, data));
+      });
+    } catch (err) {
+      console.warn("[team-hub] tech-dir read failed", err);
+    }
+  }
+  function thGetAvatarUrl(t) {
+    if (!t) return "";
+    return String(t.photoUrl || t.photo_url || t.avatarUrl || t.avatar_url || t.profilePhotoUrl || "").trim();
+  }
+  function thSlugToTitle(slug) {
+    if (!slug) return "";
+    return String(slug).split("-").map(function (p) {
+      return p ? p.charAt(0).toUpperCase() + p.slice(1) : p;
+    }).join(" ");
+  }
+  function thResolveCommenter(c) {
+    const email = String((c.createdByEmail || "")).toLowerCase().trim();
+    const isAdminish = ["admin", "manager", "office_manager"].indexOf(String(c.createdByRole || "")) >= 0;
+    let t = null;
+    if (email && thTechDirByEmail.has(email)) t = thTechDirByEmail.get(email);
+    const fallbackName = c.createdByName || c.createdByEmail || (isAdminish ? "Admin" : "(team)");
+    const name = (t && (t.display_name || t.name)) || fallbackName;
+    const avatarUrl = thGetAvatarUrl(t);
+    const initial = (name.charAt(0) || "P").toUpperCase();
+    return { name: name, avatarUrl: avatarUrl, initial: initial, role: c.createdByRole || "", isAdmin: isAdminish };
+  }
+  function thRenderAvatar(resolved) {
+    if (resolved.avatarUrl) {
+      return '<span class="ann-thread-avatar"><img src="' + escapeHtml(resolved.avatarUrl) +
+             '" alt="" loading="lazy" /></span>';
+    }
+    return '<span class="ann-thread-avatar ann-thread-avatar-fallback">' + escapeHtml(resolved.initial) + '</span>';
+  }
+
+  // V2 audience-match check. Defaults to "all" for pre-V2 docs so legacy
+  // all-team announcements stay visible to every signed-in user.
+  function announcementTargetsMe(a, staff) {
+    if (!a) return false;
+    const type = String(a.audienceType || "all");
+    if (type === "all") return true;
+    if (type !== "selected") return true; // unknown type — fail open
+    const myUid   = staff && staff.uid;
+    const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+    const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+    if (Array.isArray(a.recipientUids) && myUid && a.recipientUids.indexOf(myUid) >= 0) return true;
+    if (Array.isArray(a.recipientEmails) && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+    if (Array.isArray(a.recipientTechSlugs) && mySlug && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+    return false;
+  }
+
   async function fetchActiveAnnouncements() {
     const db = firebase.firestore();
-    // Pull active=true server-side; further filter (starts_at, expires_at,
-    // archived_at) in memory. Keeps the index requirement to a single
-    // field — no composite index needed.
+    // The Firestore rule rejects a tech reading announcements that don't
+    // target them, so the `where("active","==",true)` query returns only
+    // docs we're entitled to. We re-apply audience match locally because
+    // pre-V2 docs (no audienceType field) are treated as "all" by both
+    // the rule and this filter — keeps the semantics in sync.
+    const staff = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff)
+      ? window.STAFF_AUTH.getCachedStaff() : null;
     const snap = await db.collection("announcements")
       .where("active", "==", true)
       .get();
     return snap.docs
       .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
       .filter(isAnnouncementActiveNow)
+      .filter(function (a) { return announcementTargetsMe(a, staff); })
       .sort(function (a, b) {
         // Mandatory urgent first, then by created_at desc.
         const am = a.mandatory ? 0 : 1;
@@ -544,20 +641,149 @@
     const list = $("team-hub-announcement-list");
     if (!list) return;
     list.addEventListener("click", async function (ev) {
-      const btn = ev.target.closest('[data-action="mark-read"]');
-      if (!btn) return;
-      const card = btn.closest(".ann-card");
+      const actionEl = ev.target.closest("[data-action]");
+      if (!actionEl) return;
+      const card = actionEl.closest(".ann-card");
       if (!card) return;
       const annId = card.dataset.id;
-      btn.disabled = true;
-      try {
-        await markAnnouncementRead(annId, staff.uid, staff.email);
-        renderAnnouncements();
-      } catch (err) {
-        console.error("inline mark-as-read failed", err);
-        btn.disabled = false;
+      const action = actionEl.getAttribute("data-action");
+      if (action === "mark-read") {
+        actionEl.disabled = true;
+        try {
+          await markAnnouncementRead(annId, staff.uid, staff.email);
+          renderAnnouncements();
+        } catch (err) {
+          console.error("inline mark-as-read failed", err);
+          actionEl.disabled = false;
+        }
+        return;
+      }
+      if (action === "ack") {
+        actionEl.disabled = true;
+        actionEl.textContent = "Saving…";
+        try {
+          await writeRecipientStatus(annId, staff, "acknowledged");
+          actionEl.textContent = "Acknowledged ✓";
+        } catch (err) {
+          console.error("acknowledge failed", err);
+          actionEl.disabled = false;
+          actionEl.textContent = "Acknowledge";
+        }
+        return;
+      }
+      if (action === "toggle-reply") {
+        const thread = card.querySelector(".ann-thread");
+        if (!thread) return;
+        if (thread.hidden) {
+          thread.hidden = false;
+          // Lazy-load comments + write a "viewed" status the first time.
+          // Also warm the tech directory so avatars resolve.
+          thLoadTechDir();
+          mountAnnouncementComments(annId, card, staff);
+          writeRecipientStatus(annId, staff, "viewed").catch(function () {});
+        } else {
+          thread.hidden = true;
+        }
+        return;
+      }
+      if (action === "submit-reply") {
+        const thread = card.querySelector(".ann-thread");
+        const ta  = thread && thread.querySelector(".ann-thread-replybox");
+        const body = String((ta && ta.value) || "").trim();
+        if (!body) { if (ta) ta.focus(); return; }
+        actionEl.disabled = true;
+        actionEl.textContent = "Sending…";
+        try {
+          await firebase.firestore().collection("announcements").doc(annId)
+            .collection("comments").add({
+              body:           body,
+              createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
+              createdByUid:   staff.uid,
+              createdByEmail: String(staff.email || "").toLowerCase(),
+              createdByName:  staff.display_name || (staff.tech && staff.tech.display_name) || staff.email || "(tech)",
+              createdByRole:  staff.role || "cleaning_tech",
+              visibility:     "announcement_recipients",
+              source:         "team_hub"
+            });
+          if (ta) ta.value = "";
+          await writeRecipientStatus(annId, staff, "replied");
+          // Re-render so the require-reply card sheds its "open" state.
+          renderAnnouncements();
+        } catch (err) {
+          console.error("submit reply failed", err);
+          alert("Couldn't send reply: " + (err && err.message));
+          actionEl.disabled = false;
+          actionEl.textContent = "Send reply";
+        }
       }
     });
+  }
+
+  async function writeRecipientStatus(annId, staff, newStatus) {
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const update = {
+      uid:         staff.uid,
+      techSlug:    String((staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || ""),
+      displayName: String((staff.display_name || (staff.tech && staff.tech.display_name) || staff.email) || ""),
+      status:      newStatus,
+      deliveredAt: sts
+    };
+    if (newStatus === "viewed")       update.viewedAt       = sts;
+    if (newStatus === "acknowledged") update.acknowledgedAt = sts;
+    if (newStatus === "replied")      update.repliedAt      = sts;
+    await firebase.firestore().collection("announcements").doc(annId)
+      .collection("recipient_status").doc(staff.uid)
+      .set(update, { merge: true });
+  }
+
+  // Subscribe a card's comments thread to live updates. Idempotent —
+  // a re-mount unsubs the prior listener for the same announcement.
+  const _annCommentUnsubs = Object.create(null);
+  function mountAnnouncementComments(annId, card, staff) {
+    if (_annCommentUnsubs[annId]) return;
+    const root = card.querySelector('.ann-thread-comments[data-comments-for="' + annId + '"]');
+    if (!root) return;
+    _annCommentUnsubs[annId] = firebase.firestore()
+      .collection("announcements").doc(annId)
+      .collection("comments")
+      .orderBy("createdAt", "asc")
+      .onSnapshot(function (snap) {
+        renderTeamHubAnnouncementComments(root, snap.docs.map(function (d) {
+          return Object.assign({ _id: d.id }, d.data());
+        }));
+      }, function (err) {
+        root.innerHTML = '<div class="ann-thread-error">Couldn\'t load replies: ' + escapeHtml(err.message || "") + '</div>';
+      });
+  }
+  function renderTeamHubAnnouncementComments(root, comments) {
+    if (comments.length === 0) {
+      root.innerHTML = '<div class="ann-thread-empty">No replies yet.</div>';
+      return;
+    }
+    root.innerHTML = comments.map(function (c) {
+      const resolved = thResolveCommenter(c);
+      const when = c.createdAt && c.createdAt.toDate
+        ? c.createdAt.toDate().toLocaleString("en-US", {
+            month: "short", day: "numeric",
+            hour: "numeric", minute: "2-digit", hour12: true
+          })
+        : "";
+      const roleChip = resolved.isAdmin
+        ? '<span class="ann-thread-role">' + escapeHtml(resolved.role || "admin") + '</span>'
+        : '';
+      const avatarHtml = thRenderAvatar(resolved);
+      return '<div class="ann-thread-comment ' + (resolved.isAdmin ? "is-admin" : "") + '">' +
+               avatarHtml +
+               '<div class="ann-thread-comment-text">' +
+                 '<div class="ann-thread-comment-head">' +
+                   '<strong>' + escapeHtml(resolved.name) + '</strong> ' +
+                   roleChip +
+                   '<span class="ann-thread-comment-when">' + escapeHtml(when) + '</span>' +
+                 '</div>' +
+                 '<p class="ann-thread-comment-body">' + escapeHtml(c.body || "").replace(/\n/g, "<br>") + '</p>' +
+               '</div>' +
+             '</div>';
+    }).join("");
   }
 
   // Past announcements toggle — flips the list visibility + the button
@@ -619,6 +845,252 @@
     try { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(iso)); }
     catch (e) { return ""; }
   }
+
+  /* ---------- Upcoming Team Schedule (Deputy-powered snapshot) ----------
+     Reads `published_team_schedule/current` AND `team_schedule/current`
+     (PDF backup, now folded into this same card). Renders a compact
+     teaser of the next few shifts grouped by day; the full filterable
+     view lives at /team-schedule.html (the "View Full Schedule" button
+     below opens it).
+
+     Deferred-publish model: this is NOT a live view of Deputy. Admins
+     publish via Admin → Schedule when ready.
+
+     Phase 2 TODO (mirror admin.js + firestore.rules):
+       • monthly calendar view + printable export
+       • personal "my schedule" filtering for cleaning techs
+       • shift swaps / PTO overlays / open-shift coverage
+       • live vs deferred publish modes (currently always deferred)
+       • "Open Deputy" deep-link per shift */
+  function thEscapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function thFormatDateLabel(yyyymmdd) {
+    if (!yyyymmdd) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "short", day: "numeric"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) {
+      return yyyymmdd;
+    }
+  }
+
+  function thFormatPublishedAt(ts) {
+    if (!ts) return "Unknown";
+    let ms = null;
+    if (typeof ts.toMillis === "function") ms = ts.toMillis();
+    else if (typeof ts.seconds === "number") ms = ts.seconds * 1000;
+    else if (typeof ts === "number") ms = ts;
+    else if (typeof ts === "string") { const t = Date.parse(ts); ms = isNaN(t) ? null : t; }
+    if (ms == null) return "Unknown";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "medium", timeStyle: "short"
+      }).format(new Date(ms));
+    } catch (_e) {
+      return new Date(ms).toLocaleString();
+    }
+  }
+
+  function renderPublishedSnapshotDays(shifts) {
+    const container = $("th-published-days");
+    if (!container) return;
+    if (!Array.isArray(shifts) || shifts.length === 0) {
+      container.innerHTML = "";
+      container.hidden = true;
+      return;
+    }
+    // Group by date in insertion order — admin.js already sorted by
+    // (date asc, startMs asc, techName asc).
+    const byDay = new Map();
+    shifts.forEach(function (s) {
+      const key = s.date || "";
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(s);
+    });
+    const blocks = [];
+    byDay.forEach(function (rows, date) {
+      const dayLabel = thFormatDateLabel(date);
+      const rowsHtml = rows.map(function (s) {
+        const techName    = thEscapeHtml(s.techName || "");
+        const customer    = thEscapeHtml(thResolveDisplayName(s) || "Unassigned");
+        const timeRange   = s.endTime
+          ? (thEscapeHtml(s.startTime) + "–" + thEscapeHtml(s.endTime))
+          :  thEscapeHtml(s.startTime);
+        return (
+          '<li class="th-published-row">' +
+            '<span class="th-published-tech">'     + techName  + '</span>' +
+            '<span class="th-published-sep" aria-hidden="true">·</span>' +
+            '<span class="th-published-customer">' + customer  + '</span>' +
+            '<span class="th-published-sep th-published-sep--time" aria-hidden="true">·</span>' +
+            '<span class="th-published-time">'     + timeRange + '</span>' +
+          '</li>'
+        );
+      }).join("");
+      blocks.push(
+        '<section class="th-published-day">' +
+          '<h3 class="th-published-day-head">' + thEscapeHtml(dayLabel) + '</h3>' +
+          '<ul class="th-published-rows">' + rowsHtml + '</ul>' +
+        '</section>'
+      );
+    });
+    container.innerHTML = blocks.join("");
+    container.hidden = false;
+  }
+
+  // Compact teaser — render at most N upcoming shifts so Team Hub
+  // stays scannable. The full schedule view (filters + week toggle)
+  // lives on /team-schedule.html.
+  const TEAM_HUB_TEASER_LIMIT = 5;
+
+  // Customer-by-slug directory, used as a render-time fallback when the
+  // snapshot was published before an admin edited /customers/{slug}.
+  // Lets the helper override the snapshot's stale customerName without
+  // requiring an admin to re-sync. Empty Map = pure snapshot rendering.
+  let thCustomerDirectory = new Map();
+  async function thLoadCustomerDirectory() {
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore().collection("customers").get();
+      thCustomerDirectory = new Map();
+      snap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.active === false) return;
+        const slug = data.customer_slug || d.id;
+        if (!slug) return;
+        thCustomerDirectory.set(String(slug).trim(), Object.assign({ id: d.id }, data));
+      });
+    } catch (err) {
+      console.warn("[team-hub] customer directory read failed", err);
+      thCustomerDirectory = new Map();
+    }
+  }
+  function thResolveDisplayName(s) {
+    if (!s) return "";
+    const slug = String(s.customerSlug || s.customer_slug || "").trim();
+    if (slug && thCustomerDirectory.has(slug) && window.PioneerCustomerDisplay) {
+      const helperName = window.PioneerCustomerDisplay.getCustomerDisplayName(thCustomerDirectory.get(slug));
+      if (helperName) return helperName;
+    }
+    return String(s.customerName || s.customer_name || "").trim();
+  }
+
+  async function bootPublishedScheduleForStaff(staff) {
+    const section = $("team-hub-published-schedule-section");
+    if (!section || !staff || !staff.uid) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    let pubSnap, pdfSnap;
+    try {
+      // Pull all three in parallel — pubSnap is the snapshot, pdfSnap is
+      // the legacy PDF backup, and the customer directory powers the
+      // render-time display-name fallback.
+      const results = await Promise.all([
+        firebase.firestore().collection("published_team_schedule").doc("current").get(),
+        firebase.firestore().collection("team_schedule").doc("current").get(),
+        thLoadCustomerDirectory()
+      ]);
+      pubSnap = results[0];
+      pdfSnap = results[1];
+    } catch (err) {
+      console.warn("[team-hub] schedule read failed", err);
+      return; // stay hidden — never show error on the morale surface
+    }
+
+    const data = (pubSnap && pubSnap.exists && pubSnap.data()) || null;
+    const pdf  = (pdfSnap && pdfSnap.exists && pdfSnap.data()) || null;
+    const hasPdf = !!(pdf && pdf.downloadUrl && pdf.active !== false);
+
+    const metaEl     = $("th-published-meta");
+    const rangeEl    = $("th-published-range");
+    const whenEl     = $("th-published-when");
+    const notesEl    = $("th-published-notes");
+    const daysEl     = $("th-published-days");
+    const emptyEl    = $("th-published-empty");
+    const adminEmpty = $("th-published-admin-empty");
+    const subEl      = $("th-published-sub");
+    const actionsEl  = $("th-published-actions");
+    const pdfViewEl  = $("th-published-pdf-link");
+    const pdfDlEl    = $("th-published-pdf-download");
+    const overflowEl = $("th-published-overflow");
+    const overflowN  = $("th-published-overflow-count");
+
+    // No snapshot AND no PDF — admins see a hint, techs see nothing.
+    if (!data || data.active === false || !Array.isArray(data.shifts)) {
+      if (staff.role === "admin" && adminEmpty) {
+        adminEmpty.hidden = false;
+        section.hidden    = false;
+      }
+      return;
+    }
+
+    if (rangeEl) {
+      rangeEl.textContent =
+        (data.startDate || "—") + " → " + (data.endDate || "—") +
+        (data.viewRangeDays ? "  (" + data.viewRangeDays + " days)" : "");
+    }
+    if (whenEl)  whenEl.textContent  = "Published " + thFormatPublishedAt(data.publishedAt);
+    if (metaEl)  metaEl.hidden = false;
+
+    if (notesEl) {
+      if (data.notes) { notesEl.textContent = data.notes; notesEl.hidden = false; }
+      else            { notesEl.hidden = true; notesEl.textContent = ""; }
+    }
+    if (subEl) {
+      subEl.textContent = data.shiftCount
+        ? "Next " + Math.min(data.shiftCount, TEAM_HUB_TEASER_LIMIT) +
+          " of " + data.shiftCount + " upcoming shifts. Open the full view below for filters."
+        : "The published team schedule. Updated by an admin when ready.";
+    }
+
+    const allShifts = data.shifts || [];
+    if (allShifts.length === 0) {
+      if (daysEl)  { daysEl.innerHTML = ""; daysEl.hidden = true; }
+      if (emptyEl) emptyEl.hidden = false;
+      if (overflowEl) overflowEl.hidden = true;
+    } else {
+      const teaser = allShifts.slice(0, TEAM_HUB_TEASER_LIMIT);
+      renderPublishedSnapshotDays(teaser);
+      if (emptyEl) emptyEl.hidden = true;
+      const overflow = allShifts.length - teaser.length;
+      if (overflowEl) {
+        if (overflow > 0) {
+          if (overflowN) overflowN.textContent = String(overflow);
+          overflowEl.hidden = false;
+        } else {
+          overflowEl.hidden = true;
+        }
+      }
+    }
+
+    // Actions row — "View Full Schedule" is always shown when a
+    // snapshot exists. PDF buttons appear only when a PDF backup is
+    // uploaded; this is how the separate Printable Schedule card got
+    // folded into this one.
+    if (pdfViewEl && pdfDlEl) {
+      if (hasPdf) {
+        pdfViewEl.href = pdf.downloadUrl;
+        pdfDlEl.href   = pdf.downloadUrl;
+        pdfDlEl.setAttribute("download", pdf.fileName || "team-schedule.pdf");
+        pdfViewEl.hidden = false;
+        pdfDlEl.hidden   = false;
+      } else {
+        pdfViewEl.hidden = true;
+        pdfDlEl.hidden   = true;
+      }
+    }
+    if (actionsEl) actionsEl.hidden = false;
+
+    if (adminEmpty) adminEmpty.hidden = true;
+    section.hidden = false;
+  }
+
   async function bootQualityForStaff(staff) {
     const section = $("team-hub-quality-section");
     if (!section || !staff || !staff.uid) return;
@@ -746,6 +1218,92 @@
     }
   }
 
+  /* ---------- Open Shifts badge ----------
+     Count open_shift_requests with status="open" and surface the
+     number on the Pick Up Open Shift card. Soft-fails silently;
+     the card itself still works as a static link. */
+  async function bootOpenShiftsBadge() {
+    const badge = $("th-open-shifts-badge");
+    if (!badge) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore()
+        .collection("open_shift_requests")
+        .where("status", "==", "open")
+        .limit(20).get();
+      const n = snap.size;
+      if (n > 0) {
+        badge.textContent = n + " open · pick one up";
+        badge.hidden = false;
+      } else {
+        badge.hidden = true;
+      }
+    } catch (err) {
+      console.warn("[team-hub] open shifts badge read failed", err);
+    }
+  }
+
+  /* ---------- Rockstar Team Players this month ----------
+     Reads rockstar_bonuses where monthKey = current Pacific YYYY-MM.
+     Groups by techId; renders names + counts only (no dollar amounts
+     in tech-facing view). Hidden when zero entries this month. */
+  async function bootRockstarRecognition() {
+    const section = $("team-hub-rockstar-section");
+    const listEl  = $("th-rockstar-list");
+    if (!section || !listEl) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const monthKey = (function () {
+      try {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit"
+        }).format(new Date());
+        return parts.slice(0, 7); // YYYY-MM
+      } catch (_e) {
+        return new Date().toISOString().slice(0, 7);
+      }
+    })();
+
+    try {
+      const snap = await firebase.firestore()
+        .collection("rockstar_bonuses")
+        .where("monthKey", "==", monthKey)
+        .limit(200).get();
+      if (snap.empty) { section.hidden = true; return; }
+
+      // Group by techId (fallback to techName when slug missing).
+      const byTech = new Map();
+      snap.docs.forEach(function (d) {
+        const x = d.data() || {};
+        const key  = x.techId || x.techName || "tech";
+        const name = x.techName || x.techId || "Tech";
+        if (!byTech.has(key)) byTech.set(key, { name: name, count: 0 });
+        byTech.get(key).count += 1;
+      });
+      const ranked = Array.from(byTech.values())
+        .sort(function (a, b) { return b.count - a.count; });
+
+      listEl.innerHTML = ranked.map(function (r) {
+        return (
+          '<li class="team-hub-rockstar-row">' +
+            '<span class="team-hub-rockstar-name">' +
+              String(r.name).replace(/[<>&]/g, function (c) {
+                return c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;";
+              }) +
+            '</span>' +
+            '<span class="team-hub-rockstar-count">' +
+              r.count + (r.count === 1 ? " covered shift" : " covered shifts") +
+            '</span>' +
+          '</li>'
+        );
+      }).join("");
+      section.hidden = false;
+    } catch (err) {
+      // Index error on first run is fine; the section just stays hidden.
+      console.warn("[team-hub] rockstar recognition read failed", err);
+    }
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -779,7 +1337,16 @@
           // Pioneer Quality (public-safe morale surface). Soft-fails;
           // doesn't block the rest of the page.
           bootQualityForStaff(staff);
-          // Today's Work now lives on /work.html — no longer mounted here.
+          // Upcoming Team Schedule — Deputy-powered snapshot + folded
+          // PDF backup links. Reads published_team_schedule/current
+          // AND team_schedule/current in parallel. Soft-fails;
+          // non-blocking.
+          bootPublishedScheduleForStaff(staff);
+          // Open-shifts badge on the Pick Up Open Shift card +
+          // Rockstar Team Players recognition. Both soft-fail
+          // independently. Today's Work lives on /work.html.
+          bootOpenShiftsBadge();
+          bootRockstarRecognition();
         }
       });
     } catch (err) {

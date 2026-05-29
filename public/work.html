@@ -14,8 +14,16 @@
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles/work-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
-<body>
+<body class="pioneer-work-page">
 
   <div class="login-bg" aria-hidden="true">
     <span class="login-streak login-streak-1"></span>
@@ -257,6 +265,14 @@
           <h3 class="empty-state-title">No work scheduled today</h3>
           <p class="empty-state-body">Once Deputy posts shifts for today, they'll appear here.</p>
 
+          <!-- Pilot v20260526-shiftrestore — always show the signed-in
+               email when the empty state renders, so a "no shifts" report
+               can be triaged without asking the tech to check their
+               account. today-work.js populates this on every render. -->
+          <p class="empty-state-current-login" id="team-hub-empty-current-login-line" hidden>
+            Current login: <code id="team-hub-empty-current-login">—</code>
+          </p>
+
           <!-- V6 pilot — admin/debug-only diagnostic strip. Populated by
                today-work.js when the query returns 0 shifts. Shows the
                signals the office needs to triage the regression:
@@ -323,10 +339,14 @@
 
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="mandatory-modal.js"></script>
-  <script src="walkthrough.js"></script>
+  <script src="mandatory-modal.js?v=20260528-celebrate"></script>
+  <script src="walkthrough.js?v=20260528-celebrate"></script>
   <script src="customer-sop.js"></script>
-  <script src="today-work.js"></script>
-  <script src="work.js"></script>
+  <script src="celebrate.js?v=20260528-celebrate"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <script src="today-work.js?v=20260528-displayname"></script>
+  <script src="work.js?v=20260528-displayname"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

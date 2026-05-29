@@ -119,9 +119,83 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // Pilot v20260526-mobileunlock — self-contained CSS so the modal
+  // renders as a fullscreen overlay on EVERY page, not just admin.css
+  // pages. Previously /work.html injected the modal HTML but had no
+  // .admin-modal styling, so the modal was an invisible inline block
+  // and the body's overflow:hidden lock stranded the tech with no way
+  // to dismiss → "iPhone can't scroll." This guarantees the modal is
+  // always visible and always dismissable.
+  function injectFallbackStyles() {
+    if (document.getElementById("mandatory-modal-fallback-styles")) return;
+    const style = document.createElement("style");
+    style.id = "mandatory-modal-fallback-styles";
+    style.textContent =
+      "#" + MODAL_ID + " {" +
+        "position: fixed;" +
+        "inset: 0;" +
+        "z-index: 10000;" +
+        "display: flex;" +
+        "align-items: center;" +
+        "justify-content: center;" +
+        "padding: 16px;" +
+      "}" +
+      "#" + MODAL_ID + "[hidden] { display: none !important; }" +
+      "#" + MODAL_ID + " .admin-modal-backdrop {" +
+        "position: absolute;" +
+        "inset: 0;" +
+        "background: rgba(13, 18, 24, 0.6);" +
+        "-webkit-backdrop-filter: blur(2px);" +
+        "backdrop-filter: blur(2px);" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-dialog {" +
+        "position: relative;" +
+        "width: min(560px, calc(100% - 0px));" +
+        "max-height: calc(100vh - 64px);" +
+        "background: #ffffff;" +
+        "border-radius: 14px;" +
+        "box-shadow: 0 20px 50px rgba(15,23,42,0.30);" +
+        "overflow: auto;" +
+        "-webkit-overflow-scrolling: touch;" +
+        "display: flex;" +
+        "flex-direction: column;" +
+        "padding: 20px;" +
+        "color: #0f172a;" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-header h2 {" +
+        "margin: 0 0 12px;" +
+        "font-size: 18px;" +
+        "font-weight: 800;" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-footer {" +
+        "margin-top: 16px;" +
+        "display: flex;" +
+        "justify-content: flex-end;" +
+        "gap: 8px;" +
+      "}" +
+      "#" + MODAL_ID + " .modal-btn-save {" +
+        "background: #14b8a6;" +
+        "color: #052e2b;" +
+        "border: 0;" +
+        "padding: 10px 16px;" +
+        "border-radius: 8px;" +
+        "font-weight: 700;" +
+        "font-size: 15px;" +
+        "cursor: pointer;" +
+      "}" +
+      "#" + MODAL_ID + " .modal-btn-save:disabled { opacity: 0.6; }" +
+      "#" + MODAL_ID + " .admin-modal-err {" +
+        "color: #b91c1c;" +
+        "font-size: 13px;" +
+        "margin-right: auto;" +
+      "}";
+    document.head.appendChild(style);
+  }
+
   function injectMarkup() {
     if (injected) return;
     injected = true;
+    injectFallbackStyles();
     if (document.getElementById(MODAL_ID)) {
       // A page (e.g. team-hub.html) might already have the modal
       // markup. Bind to it and skip injection.
@@ -218,15 +292,47 @@
     currentClick = onMarkRead;
     modalEl.hidden = false;
     modalEl.setAttribute("aria-hidden", "false");
+    // Pilot v20260526-mobileunlock — use a class + inline style. Class
+    // gives the CSS-side rule something to target; inline style is the
+    // belt that survives a missing stylesheet (mandatory modal renders
+    // on every page including pages that don't load styles.css).
+    document.body.classList.add("modal-scroll-locked");
     document.body.style.overflow = "hidden";
+    try {
+      console.info("[ScrollLock]", {
+        source:        "mandatory-modal:open",
+        body_overflow: document.body.style.overflow || "(empty)",
+        html_overflow: document.documentElement.style.overflow || "(empty)",
+        modal_state:   "visible"
+      });
+    } catch (_e) {}
   }
 
   function hideModal() {
     if (!modalEl) return;
-    modalEl.hidden = true;
-    modalEl.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
-    currentClick = null;
+    try {
+      modalEl.hidden = true;
+      modalEl.setAttribute("aria-hidden", "true");
+      currentClick = null;
+    } finally {
+      // Pilot v20260526-mobileunlock — body overflow MUST clear even if
+      // the lines above throw. iOS Safari was getting stuck with the
+      // scroll lock dangling after the announcement queue completed.
+      document.body.classList.remove("modal-scroll-locked");
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.height   = "";
+      document.documentElement.style.overflow = "";
+      document.documentElement.style.height   = "";
+      try {
+        console.info("[ScrollLock]", {
+          source:        "mandatory-modal:close",
+          body_overflow: document.body.style.overflow || "(empty)",
+          html_overflow: document.documentElement.style.overflow || "(empty)",
+          modal_state:   "hidden"
+        });
+      } catch (_e) {}
+    }
   }
 
   function showError(msg) {
@@ -355,10 +461,26 @@
         if (!data.announcement_id) return;
         firestoreReadVersions[data.announcement_id] = Number(data.version) || 1;
       });
+      // V2 audience filter — same logic as Team Hub. Pre-V2 docs (no
+      // audienceType field) are treated as "all" so legacy all-team
+      // mandatories still pop.
+      function targetsStaff(a) {
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;
+        const myUid   = staff && staff.uid;
+        const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+        const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+        if (Array.isArray(a.recipientUids) && myUid && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails) && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
       const allActive = annsSnap.docs
         .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
         .filter(isActiveNow)
-        .filter(function (a) { return !!a.mandatory; });
+        .filter(function (a) { return !!a.mandatory; })
+        .filter(targetsStaff);
 
       // Bucket each mandatory announcement. An item is queued ONLY if
       // NEITHER Firestore NOR localStorage shows the user has read it
@@ -400,6 +522,24 @@
     } catch (err) {
       // Network / permissions / SDK error — don't block the page.
       warn("check failed; not blocking page", { code: err && err.code, message: err && err.message });
+    } finally {
+      // Pilot v20260526-shiftrestore — defense in depth: after check
+      // completes (success, failure, or thrown), if no modal is visible,
+      // clear any lingering body overflow lock. Closes the iOS Safari
+      // hang where the announcement modal cleaned up but scroll stayed
+      // disabled.
+      if (!modalEl || modalEl.hidden) {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+        try {
+          console.info("[ScrollLock]", {
+            source:        "mandatory-modal:check-finally",
+            body_overflow: document.body.style.overflow || "(empty)",
+            html_overflow: document.documentElement.style.overflow || "(empty)",
+            modal_state:   modalEl ? (modalEl.hidden ? "hidden" : "visible") : "not-injected"
+          });
+        } catch (_e) {}
+      }
     }
   }
 

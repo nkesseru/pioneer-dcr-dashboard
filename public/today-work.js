@@ -63,8 +63,24 @@
     try { console.warn("[PioneerOps TodayWork] " + msg, meta || ""); }
     catch (_e) {}
   }
+  // Pilot v20260526-shiftrestore — explicit [todays-work] lines the
+  // office can pattern-match in any tech's console without touching a
+  // URL flag. Ships in every page load. Pairs with the diagnostic
+  // empty state below so a "no cards" report can be triaged remotely.
+  function logTW(msg, meta) {
+    try { console.info("[todays-work] " + msg, meta || ""); }
+    catch (_e) {}
+  }
 
   const DEPUTY_TIMEZONE = "America/Los_Angeles";
+
+  // Pilot v20260526-mobileunlock — once.deputy.com/my is Deputy's stable
+  // signed-in landing page (routes to the user's own roster regardless
+  // of org). Safer than deep-linking to a specific shift URL that may
+  // serve 404 on mobile, and safer than the org-install host which can
+  // change. Wrapped as a real <a href> on every work card so the tap
+  // is a native navigation, not a JS window.open after async work.
+  const DEPUTY_HOME_URL = "https://once.deputy.com/my";
 
   // Pacific-TZ YYYY-MM-DD — matches server-emitted sync_date.
   function deputyTodayPT() {
@@ -122,6 +138,139 @@
   const WORK_STATE_WORKING     = "working";
   const WORK_STATE_NEEDS_FIN   = "needs_finish";
   const WORK_STATE_FINISHED    = "finished";
+
+  /* --------------------------------------------------------------------
+   * isShiftOwnedByCurrentUser — single source of truth for "is THIS
+   * shift assigned to the signed-in user?"
+   *
+   * Used by every shift-action gate (Start Work, Finish Work, DCR
+   * open) so the same compare logic runs everywhere. Normalizes
+   * both sides (trim + lower) so a stray uppercase letter in either
+   * Deputy or Auth can't strand a tech.
+   *
+   * Ownership signals checked, in order:
+   *   1. employee_email   (Deputy-side email) === staff.email
+   *   2. employee_slug    === staff.tech.slug
+   *   3. (fallback) deputy_employee_id present on the tech doc
+   *
+   * Returns { allowed: boolean, reason: string } so the caller can
+   * log + surface a meaningful message instead of a generic deny.
+   * ------------------------------------------------------------------ */
+  function isShiftOwnedByCurrentUser(shift, staff) {
+    if (!shift || !staff) return { allowed: false, reason: "no shift or staff" };
+    const myEmail = String(staff.email || "").trim().toLowerCase();
+    const mySlug  = String((staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "").trim().toLowerCase();
+    const shiftEmail = String(shift.employee_email || "").trim().toLowerCase();
+    const shiftSlug  = String(shift.employee_slug  || "").trim().toLowerCase();
+    if (myEmail && shiftEmail && myEmail === shiftEmail) {
+      return { allowed: true, reason: "email match" };
+    }
+    if (mySlug && shiftSlug && mySlug === shiftSlug) {
+      return { allowed: true, reason: "slug match" };
+    }
+    return {
+      allowed: false,
+      reason:  "no email or slug match · my(" + myEmail + "/" + mySlug + ") shift(" + shiftEmail + "/" + shiftSlug + ")"
+    };
+  }
+  // Expose for cross-page use (e.g., DCR open guards on /work.html).
+  if (typeof window !== "undefined") {
+    window.PioneerShiftOwnership = { isShiftOwnedByCurrentUser: isShiftOwnedByCurrentUser };
+  }
+
+  /* --------------------------------------------------------------------
+   * Clock reminder — non-blocking bottom card surfaced after Start Work
+   * (clock-in reminder) or Finish Work (clock-out reminder).
+   *
+   * Deputy is the official timeclock; PioneerOps never clocks the tech
+   * in or out. The reminder is informational ONLY:
+   *
+   *   • Real <a href target="_blank"> so iPhone Safari can't block the
+   *     navigation as a popup, and so the OS routes to the Deputy app
+   *     via universal links when installed.
+   *   • Bottom-anchored card — no full-viewport overlay, no body scroll
+   *     lock, no focus trap. The page beneath stays interactive.
+   *   • Tech can dismiss with "I Already Clocked In" (start) or the ×.
+   *   • Auto-fades after 45s as a last-resort cleanup.
+   *
+   * Phase: "start" → two buttons (Open Deputy App / I Already Clocked In)
+   *        "finish" → single Open Deputy App + dismiss ×
+   *
+   * If anything in here throws, the underlying Start/Finish flow is
+   * already complete (PioneerOps work session is written); the reminder
+   * is layered on top, never on the critical path.
+   * ------------------------------------------------------------------ */
+  function showClockReminder(opts) {
+    opts = opts || {};
+    const phase = opts.phase === "finish" ? "finish" : "start";
+    try {
+      const existing = document.getElementById("pioneer-clock-reminder");
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+      const card = document.createElement("div");
+      card.id = "pioneer-clock-reminder";
+      card.className = "pioneer-clock-reminder pioneer-clock-reminder-" + phase;
+      card.setAttribute("role", "status");
+      card.setAttribute("aria-live", "polite");
+
+      const title = phase === "finish"
+        ? "Before you leave"
+        : "Clock In Reminder";
+      const body  = phase === "finish"
+        ? "Please clock out in the Deputy app. Deputy remains the official time clock."
+        : "Please open the Deputy app to clock in for your shift. Deputy remains the official time clock.";
+
+      const dismissButton = phase === "start"
+        ? '<button type="button" class="pioneer-clock-reminder-btn pioneer-clock-reminder-btn-secondary"' +
+          ' data-action="dismiss">I Already Clocked In</button>'
+        : '';
+
+      card.innerHTML =
+        '<div class="pioneer-clock-reminder-head">' +
+          '<strong class="pioneer-clock-reminder-title">' + title + '</strong>' +
+          '<button type="button" class="pioneer-clock-reminder-close"' +
+            ' data-action="dismiss" aria-label="Dismiss reminder">×</button>' +
+        '</div>' +
+        '<p class="pioneer-clock-reminder-body">' + body + '</p>' +
+        '<div class="pioneer-clock-reminder-actions">' +
+          '<a class="pioneer-clock-reminder-btn pioneer-clock-reminder-btn-primary"' +
+            ' href="' + DEPUTY_HOME_URL + '"' +
+            ' target="_blank" rel="noopener noreferrer"' +
+            ' data-action="open-deputy">Open Deputy App</a>' +
+          dismissButton +
+        '</div>';
+
+      function dismiss() {
+        if (!card.parentNode) return;
+        card.classList.add("is-leaving");
+        setTimeout(function () {
+          if (card.parentNode) card.parentNode.removeChild(card);
+        }, 240);
+      }
+
+      card.addEventListener("click", function (ev) {
+        const action = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-action");
+        // The Deputy anchor opens in a new tab; we ALSO dismiss the card
+        // a beat later so the user sees the tap registered.
+        if (action === "open-deputy") {
+          setTimeout(dismiss, 200);
+          return;
+        }
+        if (action === "dismiss") {
+          ev.preventDefault();
+          dismiss();
+        }
+      });
+
+      document.body.appendChild(card);
+      // Auto-dismiss long after the natural attention window. Last-resort
+      // cleanup so a card never lingers past the workflow.
+      setTimeout(dismiss, 45000);
+    } catch (e) {
+      // Reminder failure must NEVER block Start/Finish.
+      try { console.warn("[today's-work] clock reminder failed (non-fatal)", e); } catch (_e) {}
+    }
+  }
 
   function resolveWorkState(session) {
     if (!session) return WORK_STATE_NOT_STARTED;
@@ -265,16 +414,33 @@
     // as the customer label.
     const deputyCompanyName = String(shift.deputy_company_name || "").trim();
 
+    // Apply the canonical display helper when we know the customer's
+    // slug AND the matching /customers/{slug} doc is in our cache —
+    // that's where `displayNameMode + customDisplayName` live. When the
+    // doc isn't available, fall through to the sync-resolved cache
+    // string. This preserves the existing precedence while giving the
+    // admin the override path for resolved customers.
+    function resolveDisplayBySlug(slug) {
+      if (!slug || !window.PioneerCustomerDisplay) return "";
+      const c = findCustomerBySlug(slug);
+      if (!c) return "";
+      const label = window.PioneerCustomerDisplay.getCustomerDisplayName(c);
+      return label || "";
+    }
+
     let customer;
     let customerKind;   // "selected" | "resolved" | "suggested" | "unknown" | "placeholder"
     if (sessionCustomerName) {
-      customer = sessionCustomerName;
+      // Session has the tech-confirmed customer; if its slug is in cache,
+      // we can still upgrade to the helper-derived display string.
+      const sessionSlug = String((session && session.selected_customer_slug) || "");
+      customer = resolveDisplayBySlug(sessionSlug) || sessionCustomerName;
       customerKind = "selected";
     } else if (cacheCustomerName && !safeUnresolved) {
-      customer = cacheCustomerName;
+      customer = resolveDisplayBySlug(shift.customer_slug) || cacheCustomerName;
       customerKind = "resolved";
     } else if (suggestedCustomerName && !safeUnresolved) {
-      customer = suggestedCustomerName;
+      customer = resolveDisplayBySlug(shift.suggested_customer_slug) || suggestedCustomerName;
       customerKind = "suggested";
     } else if (deputyCompanyName) {
       // UNKNOWN state — Deputy sent a company name we can't map to a
@@ -377,7 +543,7 @@
                   ' data-action="start-work" data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '">' +
                   'Start Work' +
                 '</button>';
-      helperText = "Clock in/out stays in Deputy for payroll accuracy. We'll open it for you.";
+      helperText = "Deputy remains the official time clock. We'll show a reminder after you tap Start Work.";
     } else if (state === WORK_STATE_WORKING) {
       const dcrHref = buildOpenDcrHref(shift, { pioneer_session_id: sessionId });
       ctaHtml = '<a class="assign-card-btn is-primary"' +
@@ -386,13 +552,13 @@
                   ' href="' + escapeHtml(dcrHref) + '">' +
                   'Complete DCR' +
                 '</a>';
-      helperText = "Fill in your DCR for this shift. Deputy stays open in the other tab for clock-out.";
+      helperText = "Fill in your DCR for this shift. Clock out in Deputy when you leave.";
     } else if (state === WORK_STATE_NEEDS_FIN) {
       ctaHtml = '<button type="button" class="assign-card-btn is-primary"' +
                   ' data-action="finish-work" data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '">' +
                   'Finish Work' +
                 '</button>';
-      helperText = "Finish your payroll clock-out in Deputy. We'll open it for you.";
+      helperText = "Deputy remains the official time clock. We'll show a reminder after you tap Finish Work.";
     } else {
       ctaHtml = '<span class="assign-card-done"><span aria-hidden="true">✅</span> Work completed</span>';
       const dcrSubmissionId = session && session.dcr_submission_id;
@@ -452,6 +618,15 @@
         workStepper(state) +
         '<div class="assign-card-actions">' + ctaHtml + '</div>' +
         (helperText ? '<p class="assign-card-helper">' + escapeHtml(helperText) + '</p>' : '') +
+        // Persistent inline Deputy link as a backup affordance. Real
+        // anchor so iPhone Safari can't block it as a popup; the OS
+        // routes to the Deputy app via universal links when installed,
+        // else falls back to once.deputy.com/my. Deputy remains the
+        // official timeclock — PioneerOps never claims to clock the tech.
+        '<a class="assign-card-deputy-link" href="' + DEPUTY_HOME_URL + '"' +
+          ' target="_blank" rel="noopener noreferrer">' +
+          'Open Deputy App ↗' +
+        '</a>' +
         footerHtml +
         ownerLine +
       '</article>'
@@ -830,16 +1005,34 @@
     const el = $("team-hub-assignments-empty-diag");
     if (!el) return;
     const isAdmin = ctx.staff && ctx.staff.role === "admin";
-    if (!isAdmin && !DEBUG_WORK) {
-      // Tech on a real slow day — keep the empty state calm.
-      el.hidden = true;
-      el.innerHTML = "";
-      return;
-    }
 
     function safe(s) {
       return String(s == null ? "" : s)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Pilot v20260526-shiftrestore — techs ALSO get a minimal "current
+    // login + window queried" block by default, so a no-cards report
+    // can be triaged remotely without asking the tech to add ?debug_work=1.
+    // The fuller triage rows (rules error, tech mapping, etc.) stay
+    // admin/debug-only so a real slow day still reads calmly for the tech.
+    if (!isAdmin && !DEBUG_WORK) {
+      const techRows = [
+        ["Current login",    safe(ctx.email || "(none)")],
+        ["Looked up date",   safe(ctx.queryDate) + " <em>(Pacific TZ)</em>"],
+        ["Shifts in cache",  String(ctx.rawShiftsCount || 0)]
+      ];
+      el.classList.remove("team-hub-empty-diag-bad");
+      el.innerHTML =
+        '<div class="team-hub-empty-diag-title">What we checked</div>' +
+        '<dl>' +
+          techRows.map(function (r) {
+            return '<dt>' + safe(r[0]) + '</dt><dd>' + r[1] + '</dd>';
+          }).join("") +
+        '</dl>' +
+        '<p class="team-hub-empty-diag-hint">If you expected a shift, refresh in a minute, or text <strong>Kirby</strong> or <strong>Nick</strong> and share the email above.</p>';
+      el.hidden = false;
+      return;
     }
     const techMappingMissing = !ctx.techSlug && !ctx.techDisplayName;
     const rows = [];
@@ -923,10 +1116,24 @@
           emptyTitleEl.textContent = "No Deputy shifts on the roster today";
           emptyBodyEl.textContent  = "Nothing has been posted in Deputy for today across any tech. Once shifts land they'll appear here.";
         } else {
-          emptyTitleEl.textContent = "No shifts scheduled for you today";
-          emptyBodyEl.textContent  = "Once Deputy posts shifts assigned to you, they'll appear here.";
+          emptyTitleEl.textContent = "No shifts found for your account today";
+          emptyBodyEl.textContent  = "If you expected one, refresh in a minute. If it still doesn't show up, text Kirby or Nick.";
         }
       }
+      // Pilot v20260526-shiftrestore — always show the signed-in email
+      // under the empty state, so the office can confirm the tech is
+      // logged into the right account at a glance.
+      const loginLineEl = document.getElementById("team-hub-empty-current-login-line");
+      const loginEmailEl = document.getElementById("team-hub-empty-current-login");
+      if (loginLineEl && loginEmailEl) {
+        const emailNow = String((workCurrentStaff && workCurrentStaff.email) || "").trim();
+        loginEmailEl.textContent = emailNow || "(not signed in)";
+        loginLineEl.hidden = false;
+      }
+      logTW("render → empty state", {
+        current_user_email: (workCurrentStaff && workCurrentStaff.email) || "(none)",
+        admin_mode:         workIsAdmin
+      });
       setAssignmentsState("empty");
       listEl.innerHTML = "";
       return;
@@ -974,6 +1181,14 @@
       const opts = { readOnly: !isOwnShift };
       return workCard(shift, workSessionByShiftId[String(shift.shift_id || shift.id)] || null, opts);
     }).join("");
+    logTW("render → list state", {
+      current_user_email: myEmailForCard || "(none)",
+      visible_count:      visible.length,
+      displayed_count:    displayed.length,
+      active_filter:      workCurrentFilter,
+      visible_shift_ids:  visible.map(function (s) { return String(s.shift_id || s.id); }),
+      displayed_shift_ids: displayed.map(function (s) { return String(s.shift_id || s.id); })
+    });
     setAssignmentsState("list");
   }
 
@@ -1017,9 +1232,18 @@
       snap.docs.forEach(function (d) {
         const c = d.data() || {};
         if (c.active === false) return;
+        // Capture the display-mode fields too so we can run the helper at
+        // render time without re-fetching the doc.
+        const displayName = (window.PioneerCustomerDisplay
+          && window.PioneerCustomerDisplay.getCustomerDisplayName(Object.assign({ slug: d.id }, c)))
+          || c.customer_name || c.name || "";
         list.push({
-          slug:           c.customer_slug || d.id,
-          name:           c.customer_name || c.name || "",
+          slug:               c.customer_slug || d.id,
+          name:               displayName,
+          rawCustomerName:    c.customer_name || c.name || "",
+          locationName:       c.location_name || "",
+          displayNameMode:    c.displayNameMode || c.display_name_mode || "",
+          customDisplayName:  c.customDisplayName || c.custom_display_name || "",
           // Public SOP fields only — codes never touch this list.
           sopQuickGlance: Array.isArray(c.sopQuickGlance) ? c.sopQuickGlance : [],
           hasSecureSop:   c.hasSecureSop === true
@@ -1096,19 +1320,50 @@
     opts = opts || {};
     const staff = workCurrentStaff;
     if (!staff) return;
-    // V6 — guard: admins viewing other techs' shifts can't Start.
-    // The per-card readOnly suppresses the UI, but if a stale event
-    // ever lands here, refuse early. Rules also reject the write.
     const myEmailNow = String(staff.email || "").toLowerCase().trim();
-    const shiftEmail = String(shift.employee_email || "").toLowerCase().trim();
-    if (workIsAdmin && shiftEmail && shiftEmail !== myEmailNow) {
-      warnTodayWork("startWork refused — shift belongs to another tech", {
-        shift_id: shift.shift_id || shift.id, shift_email: shiftEmail, viewer: myEmailNow
+    const mySlugNow  = String((staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "").toLowerCase().trim();
+    const shiftId    = String(shift.shift_id || shift.id);
+
+    // V7 — normalized shift-ownership resolution. The deputy_shift_cache
+    // doc carries `employee_email` (matches Firebase Auth email) and
+    // `employee_slug` (matches cleaning_techs doc id). Either match is
+    // sufficient. Both are normalized (trim + lowercase) before compare
+    // so spurious case/whitespace mismatches can't strand a tech.
+    const ownership = isShiftOwnedByCurrentUser(shift, staff);
+    try {
+      console.info("[ShiftOwnership]", {
+        shiftId:           shiftId,
+        assignedEmail:     shift.employee_email || null,
+        assignedSlug:      shift.employee_slug  || null,
+        assignedTech:      shift.employee_display_name || null,
+        currentAuthEmail:  myEmailNow,
+        currentTechSlug:   mySlugNow,
+        allowed:           ownership.allowed,
+        reason:            ownership.reason,
+        isAdmin:           workIsAdmin
       });
+    } catch (_e) {}
+
+    // Admins viewing other techs' shifts must not Start (per-card
+    // readOnly already hides the button; this is defense-in-depth).
+    if (workIsAdmin && !ownership.allowed) {
+      warnTodayWork("startWork refused — admin starting another tech's shift", {
+        shift_id: shiftId, shift_email: shift.employee_email, viewer: myEmailNow
+      });
+      try { console.info("[StartWork]", { shiftId: shiftId, allowed: false, reason: "admin viewing another tech", source: "client" }); } catch (_e) {}
+      return;
+    }
+    if (!workIsAdmin && !ownership.allowed) {
+      try { console.warn("[StartWork]", { shiftId: shiftId, allowed: false, reason: ownership.reason, source: "client" }); } catch (_e) {}
+      window.alert(
+        "This shift isn't currently linked to your PioneerOps profile yet.\n\n" +
+        "Text Kirby or Nick so we can fix the assignment mapping. " +
+        "(Shift " + shiftId + " is assigned to " +
+        (shift.employee_display_name || shift.employee_email || "another tech") + ".)"
+      );
       return;
     }
     const db = firebase.firestore();
-    const shiftId = String(shift.shift_id || shift.id);
     const ref = db.collection("pioneer_work_sessions").doc(shiftId);
     const sts = firebase.firestore.FieldValue.serverTimestamp();
 
@@ -1141,21 +1396,27 @@
         tx.set(ref, payload, { merge: true });
       });
     } catch (err) {
-      console.error("[today's-work] startWork failed", err && err.code, err && err.message);
-      window.alert("Couldn't start work — check your connection and try again.\n\n" +
-                   (err && err.code || err && err.message || "unknown"));
+      const code = (err && err.code) || "unknown";
+      console.error("[StartWork] failed", { shiftId: shiftId, code: code, message: err && err.message, source: "firestore-write" });
+      const friendly = code === "permission-denied"
+        ? "This shift is not currently linked to your PioneerOps profile yet. " +
+          "Text Kirby or Nick so we can fix the assignment mapping.\n\n" +
+          "(Shift " + shiftId + " · code: " + code + ")"
+        : "Couldn't start work — check your connection and try again.\n\n" + code;
+      window.alert(friendly);
       return;
     }
+    try { console.info("[StartWork]", { shiftId: shiftId, allowed: true, reason: "session write succeeded", source: "firestore" }); } catch (_e) {}
 
     workSessionByShiftId[shiftId] = Object.assign(
       {}, workSessionByShiftId[shiftId] || {}, snapshot, { status: WORK_STATE_WORKING }
     );
     renderWorkCards();
 
-    if (shift.deputy_shift_url) {
-      try { window.open(shift.deputy_shift_url, "_blank", "noopener"); }
-      catch (e) { console.warn("[today's-work] window.open failed", e); }
-    }
+    // Surface the clock-in reminder card. Deputy remains the official
+    // timeclock; PioneerOps never clocks the tech in. The card is
+    // informational only and dismissable.
+    showClockReminder({ phase: "start" });
   }
 
   async function stampDcrOpenedAt(shift) {
@@ -1207,8 +1468,9 @@
         tech_email:           String(staff.email || "").toLowerCase().trim(),
         deputy_shift_id:      shiftId
       }, { merge: true });
+      try { console.info("[DCR] finish work complete", { shift_id: shiftId, tech_email: myEmailNow }); } catch (_e) {}
     } catch (err) {
-      console.error("[today's-work] finishWork failed", err && err.code, err && err.message);
+      console.error("[DCR] finish work failed", err && err.code, err && err.message);
       window.alert("Couldn't finish work — check your connection and try again.\n\n" +
                    (err && err.code || err && err.message || "unknown"));
       return;
@@ -1219,10 +1481,76 @@
       { status: WORK_STATE_FINISHED });
     renderWorkCards();
 
-    if (shift.deputy_shift_url) {
-      try { window.open(shift.deputy_shift_url, "_blank", "noopener"); }
-      catch (e) { console.warn("[today's-work] window.open failed", e); }
+    // Small celebration moment for the tech finishing their shift.
+    // Confetti + sound, both no-ops if blocked or reduced-motion.
+    try {
+      if (window.PioneerCelebrate) window.PioneerCelebrate.celebrate({ intensity: "medium" });
+    } catch (_e) {}
+    showShiftCompleteToast();
+
+    // Same reminder pattern as Start Work, with clock-out wording.
+    // Deputy is the official timeclock.
+    showClockReminder({ phase: "finish" });
+  }
+
+  // Called once after the shifts query lands. If the URL carried
+  // ?finishSession=<id> (from the DCR success card's "Finish Work in
+  // PioneerOps" button), close that session via the standard finishWork
+  // path and strip the param from the URL so a reload is a no-op.
+  function maybeAutoFinishFromUrl() {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      const sessionId = String(params.get("finishSession") || "").trim();
+      if (!sessionId) return;
+      // Strip param so reloads don't repeat the action and the URL
+      // history stays clean.
+      params.delete("finishSession");
+      const newQs = params.toString();
+      const newUrl = location.pathname + (newQs ? ("?" + newQs) : "") + location.hash;
+      try { history.replaceState(history.state, "", newUrl); } catch (_e) {}
+
+      const shift = workShiftsByShiftId[sessionId];
+      if (!shift) {
+        warnTodayWork("auto-finish: shift not found in current view", { sessionId: sessionId });
+        return;
+      }
+      const session = workSessionByShiftId[sessionId] || null;
+      const status = session ? String(session.status || "").toLowerCase() : "";
+      if (status === "finished") {
+        // Already closed — no-op, but still surface the Deputy reminder
+        // so the tech sees the clock-out cue (which is the whole point
+        // of routing through here).
+        logTodayWork("auto-finish: already finished, surfacing Deputy reminder", { sessionId: sessionId });
+        showClockReminder({ phase: "finish" });
+        return;
+      }
+      logTodayWork("auto-finish: running finishWork", { sessionId: sessionId, current_status: status || "(none)" });
+      finishWork(shift);
+    } catch (e) {
+      warnTodayWork("auto-finish failed (non-fatal)", { error: e && e.message });
     }
+  }
+
+  // Brief top-of-viewport confirmation toast for shift completion.
+  // Independent from the Deputy clock-out reminder so the tech sees both
+  // signals: a happy "you did it" beat AND the Deputy nudge below.
+  function showShiftCompleteToast() {
+    try {
+      const existing = document.getElementById("pioneer-shift-complete-toast");
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      const t = document.createElement("div");
+      t.id = "pioneer-shift-complete-toast";
+      t.className = "pioneer-shift-complete-toast";
+      t.setAttribute("role", "status");
+      t.setAttribute("aria-live", "polite");
+      t.innerHTML =
+        '<strong>Shift complete.</strong> Nice work tonight.';
+      document.body.appendChild(t);
+      setTimeout(function () {
+        if (t.parentNode) t.classList.add("is-leaving");
+        setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 360);
+      }, 4500);
+    } catch (_e) {}
   }
 
   /* ---------- click delegator ---------- */
@@ -1328,6 +1656,18 @@
       admin_preview:     workIsAdminPreview,
       override:          dateRes.isOverride
     });
+    // Pilot v20260526-shiftrestore — single-line summary the office
+    // can ask any tech to read aloud over the phone.
+    logTW("booting", {
+      current_user_email: email || "(none)",
+      current_tech_slug:  techSlugResolved || "(none)",
+      role:               staff.role || "(none)",
+      ops_window_date:    queryDate,
+      ops_window_today:   deputyTodayPT(),
+      ops_window_tz:      DEPUTY_TIMEZONE,
+      admin_mode:         workIsAdmin,
+      date_override:      dateRes.isOverride
+    });
     logDebug("[today's-work] booting:", {
       email:                email,
       tech_slug:            techSlugResolved || "(none)",
@@ -1364,6 +1704,14 @@
         where_sync_date_eq:   queryDate,
         where_employee_email_eq: workIsAdmin ? "(admin overview — no email filter)" : email,
         docs_returned:        shifts.length
+      });
+      logTW("primary query → deputy_shift_cache", {
+        raw_shifts_count:   shifts.length,
+        current_user_email: email,
+        ops_window_date:    queryDate,
+        shift_ids:          shifts.map(function (s) { return String(s.shift_id || s.id); }),
+        shift_emails:       shifts.map(function (s) { return s.employee_email || "(blank)"; }),
+        shift_statuses:     shifts.map(function (s) { return s.status || "(none)"; })
       });
       logDebug("[today's-work] fetched shifts:", {
         mode:                 workIsAdmin ? "admin_all_shifts" : "tech_email_match",
@@ -1434,20 +1782,37 @@
         }
       }
 
-      const visible = shifts
-        .filter(function (s) { return String(s.status || "").toLowerCase() !== "cancelled"; });
-
-      // V6 pilot — populate the empty-state diagnostic block when we
-      // have zero shifts to render. Shows the office WHY nothing
-      // came back: email queried, sync_date used, tech mapping
-      // present?, etc. Visible to admins always; visible to techs
-      // only with ?debug_work=1. Calm wording — this surfaces
-      // signals, doesn't shout an error.
+      // Walk every shift and record WHY it survived or got dropped.
+      // Pilot v20260526-shiftrestore — the user explicitly required
+      // that no shift be silently hidden. Each rejection carries a
+      // human-readable reason so the office can ask the tech for the
+      // exact line.
+      const rejected = [];
+      const visible = shifts.filter(function (s) {
+        const sId = String(s.shift_id || s.id);
+        const status = String(s.status || "").toLowerCase();
+        if (status === "cancelled") {
+          rejected.push({ shift_id: sId, reason: "status=cancelled" });
+          return false;
+        }
+        return true;
+      });
       const cancelledCount = shifts.length - visible.length;
+
       logTodayWork("filter result", {
         raw_shifts:        shifts.length,
         cancelled_filtered: cancelledCount,
         visible:           visible.length
+      });
+      logTW("filter result", {
+        raw_shifts_count:      shifts.length,
+        filtered_shifts_count: visible.length,
+        visible_shift_ids:     visible.map(function (s) { return String(s.shift_id || s.id); }),
+        rejected_shifts:       rejected,
+        cancelled_count:       cancelledCount,
+        current_user_email:    email,
+        current_tech_slug:     techSlugResolved || "(none)",
+        ops_window_date:       queryDate
       });
       if (visible.length === 0) {
         populateEmptyDiag({
@@ -1519,6 +1884,15 @@
       }
 
       renderWorkCards();
+
+      // Golden-path auto-finish handoff from the DCR success card.
+      //   /work.html?finishSession=<deputy_shift_id>
+      // The DCR success card sends the tech here with the just-submitted
+      // session id. We close it with the same finishWork code path that
+      // the in-card Finish Work button uses — same write, same Deputy
+      // reminder card, same audit trail. The URL param is cleared on the
+      // way in so a reload can't re-trigger.
+      maybeAutoFinishFromUrl();
     } catch (err) {
       warnTodayWork("query failed", {
         code:    err && err.code,
@@ -1549,6 +1923,126 @@
         rulesError:      (err && (err.code || err.message)) || "unknown"
       });
     }
+  }
+
+  /* --------------------------------------------------------------------
+   * Scroll-lock safety net — Pilot v20260526-mobileunlock.
+   *
+   * iOS Safari was STILL stranding /work.html in an unscrollable state
+   * even after the prior fix. Make it impossible by:
+   *   1. Running an aggressive unlock at every reasonable trigger
+   *      (DOM ready, after auth, after announcements, +500ms, +1500ms,
+   *      pageshow, touchstart on the page itself).
+   *   2. Each unlock wipes inline overflow/position/height on BOTH
+   *      body and html, AND removes the modal-scroll-locked class
+   *      unless a modal is genuinely visible right now.
+   *   3. Adding a `?debug_scroll=1` floating overlay that prints the
+   *      live overflow / modal / scrollY state so we can diagnose
+   *      remotely without a Safari devtools session.
+   * ------------------------------------------------------------------ */
+  function isAnyModalVisible() {
+    const candidates = document.querySelectorAll(
+      "#mandatory-modal, .mandatory-modal-root, #pioneer-walkthrough-root, [role='dialog'][aria-modal='true']"
+    );
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      if (el && !el.hidden && el.getAttribute("aria-hidden") !== "true") {
+        return { visible: true, id: el.id || el.className };
+      }
+    }
+    return { visible: false, id: null };
+  }
+
+  // Pilot v20260526-scrollrestore — clear inline scroll-related styles
+  // and the lock class, but ONLY when no modal is genuinely visible.
+  // We do NOT force overflow:auto or any other value — the browser
+  // default (visible) is what we want. Forcing a value here is what
+  // broke desktop scroll in the v20260526-mobileunlock release.
+  function unlockScroll(source) {
+    try {
+      const modal = isAnyModalVisible();
+      if (!modal.visible) {
+        // Clear inline styles (empty string lets the stylesheet rule win)
+        // and the lock class. Never assign "auto" or any forced value.
+        document.body.classList.remove("modal-scroll-locked");
+        document.body.style.overflow = "";
+        document.body.style.position = "";
+        document.body.style.height   = "";
+        document.documentElement.style.overflow = "";
+        document.documentElement.style.height   = "";
+      }
+      console.info("[ScrollLock]", {
+        source:        source,
+        body_overflow: document.body.style.overflow || "(empty)",
+        html_overflow: document.documentElement.style.overflow || "(empty)",
+        body_position: document.body.style.position || "(empty)",
+        body_height:   document.body.style.height   || "(empty)",
+        html_height:   document.documentElement.style.height || "(empty)",
+        body_class:    document.body.className || "(empty)",
+        modal_state:   modal.visible ? ("visible:" + modal.id) : "no-modal-visible",
+        scrollY:       (typeof window !== "undefined") ? window.scrollY : null
+      });
+      paintScrollDebugOverlay(source, modal);
+    } catch (_e) {}
+  }
+  // Back-compat aliases used elsewhere in this file.
+  function emergencyUnlock(source) { unlockScroll(source); }
+  function sweepScrollLock(source) { unlockScroll(source); }
+
+  // ?debug_scroll=1 floating panel — shown only when the URL flag is on.
+  // Updates in place on every emergencyUnlock call so we can watch the
+  // live state from a remote tech's iPhone.
+  let _scrollDebugEnabled = false;
+  try {
+    const dbg = new URLSearchParams(location.search || "").get("debug_scroll");
+    _scrollDebugEnabled = dbg === "1" || dbg === "true";
+  } catch (_e) {}
+  function paintScrollDebugOverlay(source, modal) {
+    if (!_scrollDebugEnabled) return;
+    let host = document.getElementById("pioneer-scroll-debug-overlay");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "pioneer-scroll-debug-overlay";
+      host.style.cssText =
+        "position:fixed;top:8px;right:8px;z-index:99999;" +
+        "background:rgba(15,23,42,0.92);color:#f8fafc;" +
+        "font:11px/1.4 ui-monospace,Menlo,monospace;" +
+        "padding:8px 10px;border-radius:6px;max-width:260px;" +
+        "pointer-events:auto;white-space:pre-wrap;";
+      document.body.appendChild(host);
+      host.addEventListener("click", function () {
+        if (host.parentNode) host.parentNode.removeChild(host);
+      });
+    }
+    host.textContent =
+      "[scroll-debug] tap to dismiss\n" +
+      "source: " + source + "\n" +
+      "body overflow: " + (document.body.style.overflow || "(empty)") + "\n" +
+      "html overflow: " + (document.documentElement.style.overflow || "(empty)") + "\n" +
+      "body class: " + (document.body.className || "(empty)") + "\n" +
+      "modal: " + (modal && modal.visible ? modal.id : "none") + "\n" +
+      "scrollY: " + ((typeof window !== "undefined") ? window.scrollY : "?");
+  }
+
+  if (typeof window !== "undefined") {
+    // Multi-trigger emergency unlock. Each trigger is cheap; we run a
+    // lot of them because the cost of NOT unlocking is a stranded tech.
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () { emergencyUnlock("dom-content-loaded"); });
+    } else {
+      setTimeout(function () { emergencyUnlock("script-load"); }, 0);
+    }
+    window.addEventListener("pageshow", function (e) {
+      emergencyUnlock("pageshow:persisted=" + (e && e.persisted ? "true" : "false"));
+    });
+    window.addEventListener("focus", function () { emergencyUnlock("window-focus"); });
+    // First user interaction also unlocks — covers the "modal closed but
+    // overflow stuck" Safari edge.
+    document.addEventListener("touchstart", function () { emergencyUnlock("touchstart"); }, { once: true, passive: true });
+    document.addEventListener("click",      function () { emergencyUnlock("click");      }, { once: true });
+    setTimeout(function () { emergencyUnlock("delayed-500ms");  },  500);
+    setTimeout(function () { emergencyUnlock("delayed-1500ms"); }, 1500);
+    setTimeout(function () { emergencyUnlock("delayed-3000ms"); }, 3000);
   }
 
   window.PIONEER_TODAY_WORK = { init: init };

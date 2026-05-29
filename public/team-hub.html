@@ -14,6 +14,14 @@
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles/team-hub-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
 <body>
 
@@ -138,6 +146,85 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" hidden>
 
+      <!-- ===== Install PioneerOps card =====
+           Hidden by default. pwa-install-ui.js reveals it when the app
+           is installable AND not already running standalone AND the
+           user hasn't tapped "Maybe Later" in the last 30 days.
+           Tapping Install runs the native Android/Chromium prompt, or
+           opens the iOS Add-to-Home-Screen modal below. -->
+      <section class="card team-hub-section install-card" id="install-card" hidden>
+        <div class="install-card-row">
+          <span class="install-card-icon" aria-hidden="true">📱</span>
+          <div class="install-card-body">
+            <h2 class="install-card-title">Install PioneerOps</h2>
+            <p class="install-card-desc">
+              Get one-tap access to your shifts, DCRs, customer info, and team resources.
+            </p>
+          </div>
+        </div>
+        <div class="install-card-actions">
+          <button type="button" class="install-card-btn install-card-btn-primary"
+                  id="install-card-install-btn">
+            Install App
+          </button>
+          <button type="button" class="install-card-btn install-card-btn-secondary"
+                  id="install-card-later-btn">
+            Maybe Later
+          </button>
+        </div>
+      </section>
+
+      <!-- iOS "Add to Home Screen" instructions modal. Shown only when
+           the install button is tapped on an iOS device, or as a
+           fallback when no native prompt is available. Hidden by
+           default; pwa-install-ui.js toggles visibility. -->
+      <div class="install-ios-overlay" id="install-ios-modal" hidden role="dialog"
+           aria-modal="true" aria-labelledby="install-ios-title">
+        <div class="install-ios-backdrop" data-action="close-install-ios"></div>
+        <div class="install-ios-sheet">
+          <button type="button" class="install-ios-close" data-action="close-install-ios"
+                  aria-label="Close">×</button>
+          <h2 class="install-ios-title" id="install-ios-title">Add PioneerOps to your Home Screen</h2>
+          <p class="install-ios-lede">Three quick taps. Open it like an app from your home screen anytime.</p>
+          <ol class="install-ios-steps">
+            <li>
+              <span class="install-ios-step-num">1</span>
+              <span class="install-ios-step-text">
+                Tap the <strong>Share</strong> button
+                <span class="install-ios-share-glyph" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                       stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 16V4" />
+                    <path d="m7 9 5-5 5 5" />
+                    <path d="M5 12v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" />
+                  </svg>
+                </span>
+                at the bottom of Safari.
+              </span>
+            </li>
+            <li>
+              <span class="install-ios-step-num">2</span>
+              <span class="install-ios-step-text">
+                Scroll and tap <strong>Add to Home Screen</strong>.
+              </span>
+            </li>
+            <li>
+              <span class="install-ios-step-num">3</span>
+              <span class="install-ios-step-text">
+                Tap <strong>Add</strong> in the top-right corner.
+              </span>
+            </li>
+          </ol>
+          <p class="install-ios-footnote">
+            That's it — PioneerOps lives on your home screen and stays signed in.
+          </p>
+          <button type="button" class="install-ios-done" data-action="close-install-ios">
+            Got it
+          </button>
+        </div>
+      </div>
+
       <!-- ===== Section 0 — Announcements ===== -->
       <!-- Populated by team-hub.js once auth resolves. Each active
            (non-archived, within starts_at..expires_at) announcement
@@ -152,9 +239,203 @@
         </div>
       </section>
 
+      <!-- ===== Upcoming Team Schedule (compact card) =====
+           Reads `published_team_schedule/current` and shows a teaser
+           of the next few shifts plus the published range. The full
+           view lives at /team-schedule.html (View Full Schedule
+           button below). The PDF backup, if uploaded, is folded into
+           this card as small secondary links.
+
+           Deferred-publish model: Team Hub is NOT a live view of
+           Deputy edits. Admins publish when ready (Admin → Schedule).
+
+           Phase 2 TODO:
+             • "Changed since last publish" highlights when a fresh
+               snapshot lands
+             • tentative-week labels (Week 3 is less certain than
+               Weeks 1-2)
+             • personal-schedule preview (top 3 of MY shifts on the
+               compact card, "switch to all team" link)
+             • shift swaps / PTO overlays / open-shift coverage -->
+      <section class="card team-hub-section team-hub-published-schedule"
+               id="team-hub-published-schedule-section" hidden>
+        <header class="team-hub-section-head th-published-head">
+          <h2 class="team-hub-section-title">📅 Upcoming Team Schedule</h2>
+          <p class="team-hub-section-sub" id="th-published-sub">
+            The published team schedule. Updated by an admin when ready.
+          </p>
+        </header>
+
+        <div class="th-published-meta" id="th-published-meta" hidden>
+          <span class="th-published-range" id="th-published-range">—</span>
+          <span class="th-published-dot" aria-hidden="true">·</span>
+          <span class="th-published-when" id="th-published-when">—</span>
+        </div>
+
+        <p class="th-published-notes" id="th-published-notes" hidden></p>
+
+        <!-- Compact teaser: ~5 upcoming shifts, day-grouped. The full
+             schedule view lives on /team-schedule.html. -->
+        <div class="th-published-days" id="th-published-days" hidden></div>
+
+        <p class="th-published-overflow" id="th-published-overflow" hidden>
+          + <span id="th-published-overflow-count">0</span> more in the full schedule
+        </p>
+
+        <p class="th-published-empty" id="th-published-empty" hidden>
+          No upcoming shifts in the published snapshot. Check back later or ask an admin to republish.
+        </p>
+
+        <div class="th-published-actions" id="th-published-actions" hidden>
+          <a class="th-schedule-btn is-primary" href="/team-schedule.html">View Full Schedule →</a>
+          <a class="th-schedule-btn" id="th-published-pdf-link" href="#"
+             target="_blank" rel="noopener noreferrer" hidden>View printable PDF</a>
+          <a class="th-schedule-btn" id="th-published-pdf-download" href="#"
+             hidden>Download PDF</a>
+        </div>
+
+        <!-- Admin-only empty hint when no snapshot has been published yet. -->
+        <p class="th-schedule-empty" id="th-published-admin-empty" hidden>
+          No schedule published yet. Publish from
+          <a href="/admin?tab=schedule">Admin → Schedule</a>.
+        </p>
+      </section>
+
       <!-- Today's Work has its own page now (/work.html). Team Hub
            is back to training/forms/announcements only — plus the
            new public-safe Pioneer Quality section below. -->
+
+      <!-- ===== Team Requests & Reports =====
+           Single consolidated section for the four operational forms
+           techs reach for. Keep it high on the page (right under the
+           Upcoming Schedule + Announcements) but below the role-nav,
+           which already exposes Today's Work / DCR.
+
+           The two attendance flows are deliberately split into two
+           cards (urgent vs planned) so techs never pick from a
+           confusing combined form:
+             • Call Out          → /call-out.html
+             • Request Time Off  → /time-off.html
+           Shift Acceptance + Safety Incident remain GHL widgets
+           (no Pioneer-native form yet). -->
+      <section class="card team-hub-section team-hub-requests">
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">Requests &amp; Support</h2>
+          <p class="team-hub-section-sub">
+            Submit attendance, schedule, and safety items here. Use Need Help Now
+            for urgent roadblocks that can't wait.
+          </p>
+        </header>
+        <div class="team-hub-grid">
+          <!-- 1. Need Help Now — urgent escalation to April for after-hours
+               roadblocks. Opens a small action sheet with Call / Text
+               buttons that are real <a tel:> / <a sms:> anchors, so the
+               OS routes natively to the dialer / Messages app. -->
+          <button type="button" class="team-hub-card is-form team-hub-card--needhelp"
+                  data-action="open-needhelp">
+            <span class="team-hub-card-eyebrow">Urgent only</span>
+            <span class="team-hub-card-title">Need Help Now?</span>
+            <span class="team-hub-card-desc">Access problem, lockout, alarm, safety, injury, or anything that's blocking you from continuing or leaving.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <!-- 2. Planned time off. -->
+          <a class="team-hub-card is-form"
+             href="/time-off.html">
+            <span class="team-hub-card-eyebrow">Planned</span>
+            <span class="team-hub-card-title">Request Time Off</span>
+            <span class="team-hub-card-desc">For planned vacation, appointments, or days you need off.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
+          </a>
+
+          <!-- 3. Same-day call-out / running late. -->
+          <a class="team-hub-card is-form team-hub-card--urgent"
+             href="/call-out.html">
+            <span class="team-hub-card-eyebrow">Same day</span>
+            <span class="team-hub-card-title">Call Out / Running Late</span>
+            <span class="team-hub-card-desc">For urgent shift issues, missed shifts, or arriving late.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
+          </a>
+
+          <!-- 4. Pioneer-native open-shift coverage. Replaces the legacy
+               GHL "Shift Acceptance" widget. Routes to /open-shifts.html
+               which lists currently-open shifts + atomic accept.
+               Earns a $25 Rockstar bonus on admin confirmation. -->
+          <a class="team-hub-card is-form team-hub-card--rockstar"
+             href="/open-shifts.html">
+            <span class="team-hub-card-eyebrow team-hub-card-eyebrow--rockstar">$25 Rockstar</span>
+            <span class="team-hub-card-title">Open Shift Pickup</span>
+            <span class="team-hub-card-desc">Help cover an open shift and earn a $25 Rockstar bonus.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
+            <span class="team-hub-card-badge" id="th-open-shifts-badge" hidden></span>
+          </a>
+
+          <!-- 5. Non-urgent improvement ideas — the constructive
+               counterweight to Need Help Now. -->
+          <a class="team-hub-card is-form team-hub-card--improve"
+             href="/improve.html">
+            <span class="team-hub-card-eyebrow">Non-urgent</span>
+            <span class="team-hub-card-title">Help Improve Pioneer</span>
+            <span class="team-hub-card-desc">Share ideas, friction, or workflow improvements that can make Pioneer better.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
+          </a>
+
+          <!-- 6. Safety incident / near miss intake. Stays at GHL until
+               the Pioneer-native intake form lands. -->
+          <a class="team-hub-card is-form"
+             href="https://api.leadconnectorhq.com/widget/form/Y8QiwgpmRrkOe7F6exoa"
+             target="_blank" rel="noopener noreferrer">
+            <span class="team-hub-card-eyebrow">Safety</span>
+            <span class="team-hub-card-title">Safety Incident / Near Miss</span>
+            <span class="team-hub-card-desc">Report an incident, injury, hazard, or near miss.</span>
+            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- "Need Help Now?" action sheet. Opened from the urgent card
+           above. Real <a tel:> + <a sms:> anchors so iOS / Android
+           route natively to the dialer + Messages app. No body
+           scroll lock, no popup behavior, no auth dependency. -->
+      <div class="need-help-overlay" id="need-help-overlay" hidden role="dialog"
+           aria-modal="true" aria-labelledby="need-help-title">
+        <div class="need-help-backdrop" data-action="close-needhelp"></div>
+        <div class="need-help-sheet">
+          <button type="button" class="need-help-close" data-action="close-needhelp"
+                  aria-label="Close">×</button>
+          <p class="need-help-eyebrow">April · Operations support</p>
+          <h2 class="need-help-title" id="need-help-title">Need help right now?</h2>
+          <p class="need-help-body">
+            If this is urgent and needs attention right away, call or text April.
+            Slack is not the best place for urgent after-hours issues — use call
+            or text for anything that needs help right now.
+          </p>
+          <p class="need-help-911">
+            If anyone is in immediate danger, call <strong>911</strong> first.
+          </p>
+          <div class="need-help-actions">
+            <a class="need-help-btn need-help-btn-call"
+               href="tel:+15098283335"
+               data-action="dial">
+              <span aria-hidden="true">📞</span> Call April
+            </a>
+            <a class="need-help-btn need-help-btn-text"
+               href="sms:+15098283335?&amp;body=Hi%20April%2C%20I%20need%20urgent%20help%20with%3A%20"
+               data-action="dial">
+              <span aria-hidden="true">💬</span> Text April
+            </a>
+            <button type="button" class="need-help-btn need-help-btn-cancel"
+                    data-action="close-needhelp">
+              Cancel
+            </button>
+          </div>
+          <p class="need-help-footnote">
+            Use this only for urgent roadblocks — access problems, alarm /
+            security codes, lockouts, safety concerns, accidents, or anything
+            that has to be handled before you can continue or leave.
+          </p>
+        </div>
+      </div>
 
       <!-- ===== Pioneer Quality (public visibility) =====
            Tech-safe aggregate read via pioneerQualityViewV1. Shows
@@ -199,89 +480,32 @@
         </p>
       </section>
 
-      <!-- ===== Section 1 — Training & Courses ===== -->
-      <section class="card team-hub-section">
+      <!-- ===== Rockstar Team Players =====
+           Public recognition of techs who covered an open shift this
+           calendar month. Reads rockstar_bonuses where monthKey =
+           current YYYY-MM. Names + counts only; dollar amounts are
+           NOT shown publicly (admin view shows dollars in Admin →
+           Attendance → Open Shifts).
+
+           Phase 2 TODO:
+             • per-tech personal lifetime tally
+             • quarterly recognition rollup
+             • opt-out flag for techs who prefer not to be listed -->
+      <section class="card team-hub-section team-hub-rockstar"
+               id="team-hub-rockstar-section" hidden>
         <header class="team-hub-section-head">
-          <h2 class="team-hub-section-title">Training &amp; Courses</h2>
+          <h2 class="team-hub-section-title">🌟 Rockstar Team Players this month</h2>
           <p class="team-hub-section-sub">
-            Employees are encouraged to review these trainings anytime.
-          </p>
-          <p class="team-hub-section-sub">
-            First time using training? You may be asked to sign in once at
-            <code>courses.pioneercomclean.com</code>.
+            Thanks for helping the team by covering open shifts.
           </p>
         </header>
-        <div class="team-hub-grid">
-          <a class="team-hub-card"
-             href="https://courses.pioneercomclean.com/products/9b0789c2-7afb-406f-a913-4df4cde47b16"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Training</span>
-            <span class="team-hub-card-title">Cleaning Training Technique Videos</span>
-            <span class="team-hub-card-desc">Video walkthroughs of cleaning techniques. Opens the Pioneer training portal.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-          <a class="team-hub-card"
-             href="https://courses.pioneercomclean.com/products/09ead679-6009-4338-8bd3-658c35286e67"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Training</span>
-            <span class="team-hub-card-title">Cleaning PCC Style Training</span>
-            <span class="team-hub-card-desc">The Pioneer Commercial Cleaning standard. Opens the Pioneer training portal.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-          <a class="team-hub-card"
-             href="https://courses.pioneercomclean.com/products/f2cc38bb-28f1-4bc0-9887-2a882e452e41"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Training</span>
-            <span class="team-hub-card-title">PCC Safety Program</span>
-            <span class="team-hub-card-desc">Safety policy and procedure training. Opens the Pioneer training portal.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-          <a class="team-hub-card"
-             href="https://courses.pioneercomclean.com"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Library</span>
-            <span class="team-hub-card-title">All Training Library</span>
-            <span class="team-hub-card-desc">View all Pioneer training and courses.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-        </div>
+        <ul class="team-hub-rockstar-list" id="th-rockstar-list"></ul>
       </section>
 
-      <!-- ===== Section 2 — Team Forms ===== -->
-      <section class="card team-hub-section">
-        <header class="team-hub-section-head">
-          <h2 class="team-hub-section-title">Team Forms</h2>
-          <p class="team-hub-section-sub">
-            Quick links to the most-used Pioneer forms.
-          </p>
-        </header>
-        <div class="team-hub-grid">
-          <a class="team-hub-card is-form"
-             href="https://api.leadconnectorhq.com/widget/form/EmTQg4eH0qRMYMnQo53z"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Form</span>
-            <span class="team-hub-card-title">Call Out / Vacation Request</span>
-            <span class="team-hub-card-desc">Request time off or report a call-out.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-          <a class="team-hub-card is-form"
-             href="https://api.leadconnectorhq.com/widget/form/DUsEF4cVqJnDWwvAv6ik"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Form</span>
-            <span class="team-hub-card-title">Shift Acceptance Form</span>
-            <span class="team-hub-card-desc">Confirm an accepted shift.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-          <a class="team-hub-card is-form"
-             href="https://api.leadconnectorhq.com/widget/form/Y8QiwgpmRrkOe7F6exoa"
-             target="_blank" rel="noopener noreferrer">
-            <span class="team-hub-card-eyebrow">Form</span>
-            <span class="team-hub-card-title">Safety Incident / Near Miss Report</span>
-            <span class="team-hub-card-desc">Report an injury, safety concern, unsafe condition, or near miss.</span>
-            <span class="team-hub-card-arrow" aria-hidden="true">↗</span>
-          </a>
-        </div>
-      </section>
+      <!-- Safety Training section removed — that page lives in the top
+           navigation (/training.html) and doesn't need a duplicate doorway
+           here. Team Hub focuses on the operational resources techs use
+           every day; nav handles cross-page discovery. -->
 
       <!-- Section 3 (Announcements) used to live here as a placeholder.
            Moved to the top of the page (.team-hub-announcements) once
@@ -357,6 +581,45 @@
   <script src="staff-auth.js"></script>
   <script src="info-tip.js"></script>
   <script src="walkthrough.js"></script>
-  <script src="team-hub.js"></script>
+  <script src="celebrate.js?v=20260528-installux"></script>
+  <script src="customer-display.js?v=20260528-installux"></script>
+  <script src="team-hub.js?v=20260528-installux"></script>
+  <script src="pwa-install-ui.js?v=20260528-installux"></script>
+  <script>
+    // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.
+    // Real <a tel:> + <a sms:> anchors, so dialing is native and never
+    // depends on JS popup behavior. Escape + backdrop + Cancel all close.
+    (function () {
+      "use strict";
+      const overlay = document.getElementById("need-help-overlay");
+      if (!overlay) return;
+      function open() {
+        overlay.hidden = false;
+        // Focus the Call button so iOS keyboard users land on the most
+        // common action; no scroll lock.
+        const callBtn = overlay.querySelector(".need-help-btn-call");
+        if (callBtn) setTimeout(function () { try { callBtn.focus(); } catch (_e) {} }, 30);
+      }
+      function close() { overlay.hidden = true; }
+      document.addEventListener("click", function (ev) {
+        const t = ev.target;
+        const opener = t && t.closest && t.closest('[data-action="open-needhelp"]');
+        if (opener) { ev.preventDefault(); open(); return; }
+        const closer = t && t.closest && t.closest('[data-action="close-needhelp"]');
+        if (closer) { ev.preventDefault(); close(); return; }
+        // The dial buttons (Call / Text) also dismiss the sheet a beat
+        // after tap so when the user returns from the dialer / Messages
+        // the page is in a clean state. Native navigation already
+        // happened via the href; we just clean up the modal.
+        const dialer = t && t.closest && t.closest('[data-action="dial"]');
+        if (dialer) { setTimeout(close, 200); }
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape" && !overlay.hidden) close();
+      });
+    })();
+  </script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

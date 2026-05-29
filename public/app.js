@@ -37,8 +37,8 @@
   // blocks autoplay or the audio file is missing. Set to `false` to kill
   // the feature entirely without removing the wiring.
   const ENABLE_DCR_SUCCESS_SOUND   = true;
-  const DCR_SUCCESS_SOUND_SRC      = "/assets/sounds/dcr-complete-flush.mp3";
-  const DCR_SUCCESS_SOUND_VOLUME   = 0.25;
+  const DCR_SUCCESS_SOUND_SRC      = "/assets/sounds/dcr-success.mp3";
+  const DCR_SUCCESS_SOUND_VOLUME   = 0.30;
   // Tracks the most-recent submissionId we played the sound for. Same
   // id arriving twice (e.g. success-card rerender) → no replay.
   let _dcrSuccessSoundLastPlayedId = null;
@@ -173,9 +173,17 @@
   function getCustomerDcrEmailEnabled(c) { return c.dcr_email_enabled !== false; }
   function getCustomerReviewLinks(c) { return (c.review_links && typeof c.review_links === "object") ? c.review_links : {}; }
   function getCustomerDisplayLabel(c){
-    // Spec: location_name if present, otherwise customer_name. Falls back
-    // gracefully so a bare doc still shows *something* selectable.
-    return getCustomerLocation(c) || getCustomerName(c) || getCustomerSlug(c) || "(unnamed customer)";
+    // Canonical display name — routes through the shared helper so
+    // `displayNameMode + customDisplayName` are honored consistently
+    // with every other surface (Team Hub schedule, Today's Work cards,
+    // Customer Info, Yesterday's Work, DCR email, customer report).
+    // The "(unnamed customer)" last-resort string is kept for the
+    // dropdown's still-selectable affordance.
+    if (window.PioneerCustomerDisplay) {
+      const label = window.PioneerCustomerDisplay.getCustomerDisplayName(c);
+      if (label) return label;
+    }
+    return getCustomerName(c) || getCustomerLocation(c) || getCustomerSlug(c) || "(unnamed customer)";
   }
 
   function getTechName(t)        { return t.display_name || t.tech_display_name || t.name || ""; }
@@ -363,12 +371,17 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  function applyDeputyShiftFromUrl() {
+  function applyDeputyShiftFromUrl(staffArg) {
     const banner = document.getElementById("deputy-shift-banner");
     const metaEl = document.getElementById("deputy-shift-banner-meta");
     const actEl  = document.getElementById("deputy-shift-banner-actions");
     if (!banner || !metaEl || !actEl) return;
     if (!deputyShiftParams) { banner.hidden = true; return; }
+    // Cached staff fallback — earlier boot paths sometimes call this
+    // without an explicit staff arg, but the assigned-shift handoff
+    // needs the signed-in user's tech identity. Keep working either way.
+    const staffForCard = staffArg || (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
+      ? window.STAFF_AUTH.getCachedStaff() : null);
 
     // Match priority: explicit slug, then exact customer_name (case-
     // insensitive), then exact location_name, then substring of the
@@ -535,6 +548,157 @@
     }
 
     banner.hidden = false;
+
+    // ----------------------------------------------------------------
+    // Assigned-shift summary card.
+    //
+    // When the handoff is confident — customer matched + pioneer work
+    // session present + signed-in user owns the shift — collapse the
+    // manual Visit Details section and surface a four-line summary
+    // ("complete tonight's assigned shift", not "fill out a generic
+    // form"). Falls back to the original setup form for:
+    //   • unmatched customer (tech still needs to pick)
+    //   • no pioneer_session_id (DCR opened outside the Start Work flow)
+    //   • admin viewing another tech's shift (no auto-populate)
+    //   • the staff record is missing or denied
+    // Admins get an inline "Change shift / Advanced" toggle to fall back
+    // to the manual form for office overrides; cleaning techs never see it.
+    paintAssignedShiftSummary({
+      matchedOption: matched,
+      staff:         staffForCard,
+      banner:        banner
+    });
+  }
+
+  function paintAssignedShiftSummary(ctx) {
+    const card = document.getElementById("assigned-shift-summary");
+    const visit = document.getElementById("visit-details-section");
+    if (!card || !visit) return;
+    const params = deputyShiftParams;
+    if (!params) return;
+
+    // Confident handoff guard: every input must be present for the card
+    // to take over. Otherwise leave the manual form in place — that's
+    // the safe fallback the user explicitly asked for.
+    const hasSession = !!String(params.pioneer_session_id || "").trim();
+    const techMatched = ctx.staff && ctx.staff.tech && ctx.staff.tech.slug;
+    const techIsCleaner = ctx.staff && ctx.staff.role === "cleaning_tech";
+    // Admin path: only auto-populate when the admin is also the tech of
+    // record on the shift (rare but valid — admins occasionally pick up
+    // shifts). For the much more common "admin reviewing another tech's
+    // shift" case, fall back to the manual form so the admin can edit.
+    const adminOwnsShift = ctx.staff && ctx.staff.role === "admin" &&
+      techMatched &&
+      String(params.deputy_shift_id || "").length > 0 &&
+      // The assigned-shift card shows the SIGNED-IN tech's name. For an
+      // admin who isn't the assignee, the card would be misleading. We
+      // detect this by checking whether the shift's employee_email param
+      // (when present) matches the admin's email — but the URL doesn't
+      // carry that today, so for the pilot we conservatively only auto-
+      // populate for cleaning_tech role. Admins see the manual form +
+      // banner (existing behavior).
+      false;
+
+    if (!hasSession || !ctx.matchedOption || !techMatched || (!techIsCleaner && !adminOwnsShift)) {
+      // Fallback to manual form. Make sure the card is hidden in case a
+      // previous render left it visible (e.g., draft restore edge case).
+      card.hidden = true;
+      visit.hidden = false;
+      return;
+    }
+
+    // ---- All preconditions met — paint the card + hide the manual form.
+    const custEl = document.getElementById("assigned-shift-customer-name");
+    const techEl = document.getElementById("assigned-shift-tech-name");
+    const dateEl = document.getElementById("assigned-shift-date");
+    const timeEl = document.getElementById("assigned-shift-time");
+
+    if (custEl) {
+      // textContent is the helper-derived display label (honors
+      // displayNameMode + customDisplayName). dataset.name carries the
+      // raw `customer_name` field — used downstream for the DCR doc's
+      // identity-style `customer_name` write, but we don't want to
+      // show that raw value when an admin has authored a different
+      // public-facing display string.
+      const custName =
+        ctx.matchedOption.textContent ||
+        (ctx.matchedOption.dataset && ctx.matchedOption.dataset.name) ||
+        params.customer_name ||
+        "(customer)";
+      custEl.textContent = custName;
+    }
+    if (techEl) {
+      const techDisplayName =
+        (ctx.staff.tech && ctx.staff.tech.display_name) ||
+        (els.tech && els.tech.selectedOptions[0] && els.tech.selectedOptions[0].textContent.trim()) ||
+        ctx.staff.email || "";
+      techEl.textContent = techDisplayName;
+    }
+    if (dateEl) {
+      dateEl.textContent = formatAssignedShiftDate(params.sync_date);
+    }
+    if (timeEl) {
+      const range = formatScheduledRange(params.scheduled_start, params.scheduled_end);
+      timeEl.textContent = range || "Time not set";
+    }
+
+    // Align clean_date with the shift's sync_date so the submission
+    // carries the right operational day even if the tech opens the DCR
+    // after midnight Pacific. Manual flow keeps "today" as its default.
+    if (params.sync_date && /^\d{4}-\d{2}-\d{2}$/.test(params.sync_date) && els.cleanDate) {
+      els.cleanDate.value = params.sync_date;
+      try { els.cleanDate.dispatchEvent(new Event("change", { bubbles: true })); } catch (_e) {}
+    }
+
+    // Admins ONLY get the advanced toggle. Cleaning techs see the four
+    // lines and head straight into the checklist — no fallback exposed.
+    const toggle = document.getElementById("assigned-shift-advanced-toggle");
+    if (toggle) {
+      const showToggle = ctx.staff && ctx.staff.role === "admin";
+      toggle.hidden = !showToggle;
+      if (showToggle && !toggle.dataset.wired) {
+        toggle.dataset.wired = "1";
+        toggle.addEventListener("click", function () {
+          const open = visit.hidden;
+          visit.hidden = !open;
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.textContent = open ? "Hide advanced" : "Change shift / Advanced";
+        });
+      }
+    }
+
+    // The Deputy banner duplicates info shown by the summary card. Hide
+    // it in the assigned-shift mode so the screen stays focused.
+    if (ctx.banner) ctx.banner.hidden = true;
+
+    card.hidden = false;
+    visit.hidden = true;
+    try {
+      console.info("[DCR] assigned-shift summary applied", {
+        shift_id:       params.deputy_shift_id,
+        session_id:     params.pioneer_session_id,
+        customer_slug:  ctx.matchedOption.value,
+        tech_slug:      ctx.staff.tech && ctx.staff.tech.slug,
+        sync_date:      params.sync_date
+      });
+    } catch (_e) {}
+  }
+
+  // Format YYYY-MM-DD (Pacific calendar day, as emitted by Deputy sync)
+  // into "Monday, May 26" — the human-readable variant the summary card
+  // wants. Falls back to the raw string on parse failure so a bad input
+  // never blanks the card.
+  function formatAssignedShiftDate(yyyymmdd) {
+    if (!yyyymmdd || !/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return yyyymmdd || "";
+    try {
+      // Build noon-Pacific so DST + timezone never flip the calendar day.
+      const d = new Date(yyyymmdd + "T12:00:00-07:00");
+      if (isNaN(d.getTime())) return yyyymmdd;
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "long", day: "numeric"
+      }).format(d);
+    } catch (_e) { return yyyymmdd; }
   }
 
   // Re-apply the saved draft's customer + tech selection after the live
@@ -916,14 +1080,133 @@
       const stillComplete = section.items.every(function (item) {
         return isItemComplete(sectionId, item.id);
       });
-      if (stillComplete) collapseSection(sectionId);
+      if (stillComplete) {
+        debugDcrScroll("completedSection", { sectionId: sectionId, scrollY: window.scrollY });
+        collapseSection(sectionId);
+      }
     }, 450);
   }
 
   function collapseSection(sectionId) {
+    // Resolve the scroll target BEFORE the layout shrinks. Once the
+    // section is marked is-collapsed, its items go display:none and the
+    // page height drops by hundreds of pixels — if we measure positions
+    // AFTER that, "next section" can land at the wrong y. Capturing the
+    // element here means we just call scrollIntoView on it post-collapse
+    // and the browser handles the rest.
+    const nextSectionId = findNextIncompleteSectionId(sectionId);
+    const beforeY = (typeof window !== "undefined") ? window.scrollY : 0;
     sectionCollapsed[sectionId] = true;
     applyCollapseState(sectionId);
     scheduleSaveDraft();
+
+    // After the .is-collapsed class flips, the browser needs one frame
+    // to recompute layout. Schedule the scroll in requestAnimationFrame
+    // so we never read stale coordinates. Falls back to setTimeout for
+    // older runtimes.
+    const doScroll = function () {
+      scrollToSectionHeader(nextSectionId, { source: "auto-collapse", completedSectionId: sectionId, beforeY: beforeY });
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () { window.requestAnimationFrame(doScroll); });
+    } else {
+      setTimeout(doScroll, 32);
+    }
+  }
+
+  // Iterate config sections in order; return the FIRST section AFTER
+  // `currentSectionId` that still has unfinished items. Returns null if
+  // every later section is already complete (caller falls back to the
+  // submit/affirmation area). Manually-collapsed sections still count
+  // as incomplete if their underlying items aren't all done — we want
+  // to land on the user's next work, not their next visible card.
+  function findNextIncompleteSectionId(currentSectionId) {
+    const sections = (window.DCR_FORM_CONFIG && window.DCR_FORM_CONFIG.checklist_sections) || [];
+    let started = false;
+    for (let i = 0; i < sections.length; i++) {
+      const s = sections[i];
+      if (!started) {
+        if (s.id === currentSectionId) started = true;
+        continue;
+      }
+      const incomplete = !s.items.every(function (item) {
+        return isItemComplete(s.id, item.id);
+      });
+      if (incomplete) return s.id;
+    }
+    return null;
+  }
+
+  // Sum of sticky-at-top elements (brand header + DCR sticky context).
+  // Used as the scroll offset so the section header doesn't tuck behind
+  // the sticky strip. Computed at scroll-time so it adapts when the
+  // sticky context bar is hidden (e.g. on /admin pages or before the
+  // form hydrates).
+  function stickyOffsetTop() {
+    let bottom = 0;
+    const candidates = document.querySelectorAll(".brand-header, .dcr-sticky-context");
+    candidates.forEach(function (el) {
+      if (!el || el.hidden) return;
+      const rect = el.getBoundingClientRect();
+      // Element is currently stuck at the top when its top is at/near 0.
+      // Anything stuck below ~12px isn't pinned (it's scrolled off).
+      if (rect.top <= 4 && rect.bottom > bottom) bottom = rect.bottom;
+    });
+    return bottom;
+  }
+
+  // Centralized scroll helper. Always uses block:start with a sticky
+  // offset adjustment so the next section's header lands just below the
+  // sticky strip — never one section past it.
+  function scrollToSectionHeader(sectionId, ctx) {
+    ctx = ctx || {};
+    let target = null;
+    if (sectionId) {
+      target = document.querySelector('.checklist-card[data-section-id="' + sectionId + '"]');
+    }
+    if (!target) {
+      // No remaining incomplete section — fall back to the sign-and-submit
+      // area so the tech sees what's next. Affirmation checkbox is the
+      // most actionable anchor; submit button is the visual destination.
+      target = document.getElementById("affirm") ||
+               document.getElementById("submit-btn") ||
+               document.querySelector(".submit-bar") ||
+               null;
+    }
+    debugDcrScroll("nextIncompleteSection", { sectionId: sectionId, target: target ? (target.id || target.dataset.sectionId || "(fallback)") : "(none)" });
+    if (!target) return;
+    const offset = stickyOffsetTop();
+    const rect   = target.getBoundingClientRect();
+    const beforeY = window.scrollY || window.pageYOffset || 0;
+    const desiredY = beforeY + rect.top - offset - 8;   // 8px breathing room
+    const finalY   = Math.max(0, desiredY);
+    debugDcrScroll("scrollTarget", {
+      sectionId: sectionId, offset: offset,
+      rectTop: rect.top, beforeY: beforeY, desiredY: desiredY, finalY: finalY,
+      completedSectionId: ctx.completedSectionId
+    });
+    window.scrollTo({ top: finalY, behavior: "smooth" });
+    // Log the resolved scroll position on the next frame for debug
+    // verification — useful when tuning the offset on a real device.
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          debugDcrScroll("afterY", { scrollY: window.scrollY });
+        });
+      });
+    }
+  }
+
+  // ?debug_dcr_scroll=1 surfaces the auto-collapse → scroll trace in the
+  // browser console. Off by default — there's no visual indicator.
+  let _DCR_SCROLL_DEBUG = false;
+  try {
+    const u = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
+    _DCR_SCROLL_DEBUG = u.get("debug_dcr_scroll") === "1" || u.get("debug_dcr_scroll") === "true";
+  } catch (_e) {}
+  function debugDcrScroll(label, meta) {
+    if (!_DCR_SCROLL_DEBUG) return;
+    try { console.info("[DCRScroll] " + label, meta || ""); } catch (_e) {}
   }
 
   function toggleSectionCollapse(sectionId) {
@@ -2160,6 +2443,7 @@
       if (!idToken) {
         throw new Error("You're not signed in. Refresh the page and sign in again.");
       }
+      try { console.info("[DCR] send start", { submissionId: submissionId, customer_slug: payload.customer_slug }); } catch (_e) {}
       const res = await fetch(window.SUBMIT_DCR_V1_URL, {
         method: "POST",
         headers: {
@@ -2177,10 +2461,18 @@
         throw new Error(`${body.error || `Server returned ${res.status}`}${details}`);
       }
 
+      try {
+        console.info("[DCR] submit accepted", {
+          submission_id: body.submission_id || submissionId,
+          email_status:  (body.email && body.email.status) || null,
+          feedback_links_generated:
+            !!(body.feedback && (body.feedback.complimentUrl || body.feedback.problemUrl))
+        });
+      } catch (_e) {}
       clearDraft();
       onSuccess(body.submission_id || submissionId, body.zapier || null);
     } catch (err) {
-      console.error(err);
+      console.error("[DCR] submit failed", err);
       hideUploadProgress();
       setStatus("err", `Submission failed: ${err.message || err}`);
     } finally {
@@ -2199,6 +2491,7 @@
     $("success-submission-id").textContent = submissionId;
     renderSuccessZapier(zapierStatus);
     spawnConfetti();
+    paintSuccessGoldenPath();
     $("success-card").hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
     triggerCelebration();
@@ -2208,6 +2501,35 @@
     // submit celebration moment, not "open".
     const sticky = document.getElementById("dcr-sticky-context");
     if (sticky) sticky.hidden = true;
+  }
+
+  // Show the right post-submit affordance block:
+  //   • Session-linked DCR (came in from Start Work) → "Final step"
+  //     panel with Finish Work + Open Deputy.
+  //   • Manual / admin / no session → calmer fallback with
+  //     "Back to Today's Work" + "Start another DCR".
+  function paintSuccessGoldenPath() {
+    const sessionId = (deputyShiftParams && String(deputyShiftParams.pioneer_session_id || "").trim()) || "";
+    const finalStep = document.getElementById("success-final-step");
+    const noSession = document.getElementById("success-no-session");
+    if (sessionId) {
+      if (finalStep) finalStep.hidden = false;
+      if (noSession) noSession.hidden = true;
+      const finishBtn = document.getElementById("success-finish-work");
+      if (finishBtn) {
+        finishBtn.onclick = function () {
+          // /work.html?finishSession=<id> triggers today-work.js to
+          // close the session AND surface the Deputy clock-out reminder
+          // via the existing finishWork code path. One tap on this
+          // button = one server write = one Deputy reminder. No
+          // duplicated logic between DCR and Today's Work surfaces.
+          window.location.href = "/work.html?finishSession=" + encodeURIComponent(sessionId);
+        };
+      }
+    } else {
+      if (finalStep) finalStep.hidden = true;
+      if (noSession) noSession.hidden = false;
+    }
   }
 
   // Tiny optional delight: a soft flush sound effect after a confirmed
@@ -2317,9 +2639,12 @@
     }, 280);
   }
 
-  // Surface the Zapier delivery status on the success card without alarming the
-  // user when the webhook isn't configured yet. Hidden when status is missing
-  // or "not_configured" — those aren't actionable for the cleaner.
+  // Surface the delivery status on the success card. Currently the
+  // submit pipeline is fully native PioneerOps (no Zapier); the
+  // function name + CSS class are kept for stability but the user-
+  // facing copy now reflects the native pipeline. Hidden when status
+  // is missing or "not_configured" — those aren't actionable for the
+  // cleaner.
   function renderSuccessZapier(status) {
     const el = $("success-zapier");
     if (!el) return;
@@ -2329,11 +2654,11 @@
     if (!status || !status.status || status.status === "not_configured") return;
     if (status.status === "sent") {
       el.classList.add("is-sent");
-      el.textContent = "Sent to Zapier";
+      el.textContent = "Submitted to PioneerOps";
       el.hidden = false;
     } else if (status.status === "failed") {
       el.classList.add("is-failed");
-      el.textContent = "Zapier delivery pending — saved for retry";
+      el.textContent = "Delivery pending — saved for retry";
       el.hidden = false;
     }
   }
@@ -2899,7 +3224,7 @@
         // Deputy-shift handoff — if the URL carries shift params from
         // Today's Assignments, prefill the customer dropdown and paint
         // the banner. Runs LAST so it overrides any draft selection.
-        applyDeputyShiftFromUrl();
+        applyDeputyShiftFromUrl(staff);
       }).catch(function (err) {
         // loadCustomersAndTechs already painted its in-dropdown error.
         // Surface a console hint for debugging.

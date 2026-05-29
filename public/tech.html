@@ -15,6 +15,14 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="tech.css" />
   <link rel="stylesheet" href="styles/tech-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
 <body class="tech-body">
 
@@ -557,6 +565,9 @@
   <script src="info-tip.js"></script>
   <script src="walkthrough.js"></script>
   <script src="customer-sop.js"></script>
-  <script src="tech.js"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <script src="tech.js?v=20260528-displayname"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

@@ -23,6 +23,14 @@
        If unavailable (offline / ad blocker / CDN miss), the success card
        falls back to an animated SVG check via the `:not(:defined)` CSS rule. -->
   <script async src="https://unpkg.com/@lottiefiles/lottie-player@2.0.8/dist/lottie-player.js"></script>
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
 <body>
 
@@ -267,8 +275,40 @@
       </div>
 
 
-      <!-- 1. Visit details -->
-      <section class="card">
+      <!-- 1a. Assigned shift summary — compact card shown when the DCR
+           was opened from Today's Work (Start Work click). app.js fills
+           the four lines (customer · tech · date · time) from the URL
+           params + the signed-in staff record, then hides the manual
+           Visit Details section below. Admins get a small "Change shift
+           / Advanced" toggle to fall back to manual entry. -->
+      <section class="card assigned-shift-card" id="assigned-shift-summary" hidden>
+        <div class="assigned-shift-row assigned-shift-customer">
+          <span class="assigned-shift-icon" aria-hidden="true">📍</span>
+          <strong class="assigned-shift-value" id="assigned-shift-customer-name">—</strong>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">👤</span>
+          <span class="assigned-shift-value" id="assigned-shift-tech-name">—</span>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">📅</span>
+          <span class="assigned-shift-value" id="assigned-shift-date">—</span>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">🕘</span>
+          <span class="assigned-shift-value" id="assigned-shift-time">—</span>
+        </div>
+        <button type="button" class="assigned-shift-advanced-toggle"
+                id="assigned-shift-advanced-toggle"
+                aria-expanded="false" hidden>
+          Change shift / Advanced
+        </button>
+      </section>
+
+      <!-- 1. Visit details
+           Hidden by app.js when the assigned-shift summary takes over.
+           Visible for: manual DCRs, admin overrides, unmatched shifts. -->
+      <section class="card" id="visit-details-section">
         <h2 class="card-title">Visit details</h2>
         <p class="card-sub">Who, where, and when.</p>
 
@@ -385,7 +425,7 @@
         <div id="photo-preview" class="photo-grid" aria-live="polite"></div>
         <div class="photo-counter"><span id="photo-counter-text">0 of 12</span></div>
 
-        <p class="video-note"><strong>Note:</strong> videos go in Slack — this form is for photos only.</p>
+        <p class="video-note"><strong>Note:</strong> this form is for photos only — share any videos directly with the office team.</p>
       </section>
 
       <!-- 11. Occupancy -->
@@ -558,16 +598,51 @@
           <path class="success-check-path" fill="none" d="M14 27 l8 8 l16 -16" />
         </svg>
       </div>
-      <h2>DCR submitted</h2>
-      <p class="success-lede">Thanks for helping keep Pioneer excellent.</p>
-      <p class="success-sub">Photos and signature saved.</p>
+      <h2>DCR submitted. Great work.</h2>
+      <p class="success-lede">Photos and signature saved.</p>
+
+      <!-- Golden-path next steps. Visible whenever the DCR was opened
+           from Today's Work (i.e. ?pioneer_session_id=… in the URL).
+           app.js wires the Finish Work button to /work.html?finishSession=
+           which today-work.js auto-closes on boot. Open Deputy is a real
+           anchor — never JS-driven, never popup-blocked. -->
+      <div class="success-final-step" id="success-final-step" hidden>
+        <p class="success-final-step-title">Final step</p>
+        <p class="success-final-step-body">
+          Finish Work in PioneerOps so we know this clean is complete.
+          Then clock out in Deputy.
+        </p>
+        <div class="success-actions">
+          <button type="button" class="success-btn success-btn-primary" id="success-finish-work">
+            Finish Work in PioneerOps
+          </button>
+          <a class="success-btn success-btn-secondary" id="success-open-deputy"
+             href="https://once.deputy.com/my" target="_blank" rel="noopener noreferrer">
+            Open Deputy App
+          </a>
+        </div>
+        <p class="success-helper">Deputy is still the official time clock.</p>
+        <a class="success-link" id="success-back-to-work" href="/work.html">
+          ← Back to Today's Work
+        </a>
+      </div>
+
+      <!-- Fallback when no work session is linked (manual DCR / admin
+           use). Keeps Start Another DCR available without it being the
+           primary action for a tech finishing a shift. -->
+      <div class="success-no-session" id="success-no-session" hidden>
+        <a class="success-btn success-btn-secondary" id="success-back-to-work-manual" href="/work.html">
+          Back to Today's Work
+        </a>
+        <button type="button" class="success-link" id="new-dcr-btn">Start another DCR</button>
+      </div>
+
       <div class="submission-id-row">
         <span class="submission-id-label">Submission ID</span>
         <code id="success-submission-id"></code>
       </div>
       <!-- Populated by app.js when the function returns a zapier status. -->
       <div id="success-zapier" class="success-zapier" hidden></div>
-      <button type="button" class="new-dcr-btn" id="new-dcr-btn">Start another DCR</button>
     </section>
 
     </div><!-- /#staff-auth-content -->
@@ -593,6 +668,9 @@
   <script src="dcr-form-config.js"></script>
   <script src="submit-dcr-v1.js"></script>
   <script src="mandatory-modal.js"></script>
-  <script src="app.js"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <script src="app.js?v=20260528-displayname"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

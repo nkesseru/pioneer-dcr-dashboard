@@ -1,0 +1,217 @@
+/* Pioneer DCR Hub — /supply-station.html access card.
+ *
+ * Sits above the order form. Calm Pioneer style — soft slate paper +
+ * a thin teal accent strip — distinct enough from the white order
+ * form that the security/access intent reads at a glance, but not so
+ * loud that it shouts on a mobile screen.
+ *
+ * Code pills (gate + lock) use tabular numerals + dark ink, large
+ * tap target, copy-to-clipboard via supply-station.js. */
+
+.ss-access-card {
+  position: relative;
+  padding: 16px 18px 14px;
+  margin-bottom: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbfb 100%);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-left: 3px solid var(--pc-teal, #14b8a6);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+  overflow: hidden;
+  min-width: 0;
+}
+
+.ss-access-head { margin-bottom: 14px; }
+.ss-access-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  letter-spacing: 0.1px;
+}
+.ss-access-sub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted, #6b7280);
+}
+
+.ss-access-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ss-access-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 10px;
+  min-width: 0;
+}
+.ss-access-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ss-access-row-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--ink-muted, #64748b);
+}
+.ss-access-row-help {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted, #6b7280);
+  white-space: normal;
+}
+.ss-access-row-help strong {
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tap-to-copy targets — visible affordance with a hover lift +
+   an animated "is-copied" pulse on successful copy. */
+.ss-copy-target {
+  appearance: none;
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  position: relative;
+}
+.ss-copy-target::after {
+  content: "Tap to copy";
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-muted, #94a3b8);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.ss-copy-target:hover::after { opacity: 1; }
+.ss-copy-target.is-copied { transform: scale(0.98); transition: transform 120ms ease; }
+
+.ss-code-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1.5px;
+  color: var(--ink, #0f172a);
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 1px rgba(13, 18, 24, 0.04);
+}
+.ss-code-pill:hover {
+  background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #6ee7b7;
+}
+.ss-code-pill--gate { color: #0f172a; }
+.ss-code-pill--lock { color: #0f766e; }
+
+.ss-access-address {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  line-height: 1.35;
+  border-bottom: 1px dashed transparent;
+  word-break: break-word;
+}
+.ss-access-address:hover { border-bottom-color: var(--ink-muted, #94a3b8); }
+
+.ss-access-unit {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  color: var(--ink, #0f172a);
+  background: #f8fafc;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 8px;
+}
+
+.ss-access-maps-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.ss-access-maps-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+
+/* Warning strip — soft amber. Tone is "reminder", not "alarm". */
+.ss-access-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #78350f;
+  background: #fff8e1;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+.ss-access-warning-icon { font-size: 14px; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+
+/* Toast — slides up from the bottom of the card. Auto-dismisses
+   after ~2.2s (timer in supply-station.js). */
+.ss-access-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translate(-50%, 12px);
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(180deg, #0f766e 0%, #115e59 100%);
+  border-radius: 999px;
+  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.45);
+  z-index: 60;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+.ss-access-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 600px) {
+  .ss-access-card { padding: 14px 14px 12px; }
+  .ss-access-row { padding: 10px; gap: 8px 10px; }
+  .ss-access-row--address { flex-direction: column; align-items: flex-start; }
+  .ss-access-maps-btn { width: 100%; justify-content: center; }
+  .ss-code-pill { font-size: 16.5px; padding: 7px 12px; letter-spacing: 1.2px; }
+  .ss-copy-target::after { display: none; }   /* hint is desktop-only */
+}

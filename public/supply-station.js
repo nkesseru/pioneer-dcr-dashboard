@@ -448,11 +448,78 @@
     }
   }
 
+  /* ---------- Supply Station Access — tap-to-copy + toast ----------
+     The access card lives above the order form. Each pill/address
+     button declares its copy payload via data-copy + a label for the
+     confirmation toast. Wired once globally; the card is the only
+     surface with .ss-copy-target so the delegate is safe. */
+  function wireSupplyStationAccessCopy() {
+    let toastTimer = null;
+    function showCopyToast(label) {
+      const toastEl = $("ss-access-toast");
+      if (!toastEl) return;
+      toastEl.textContent = label + " copied";
+      toastEl.hidden = false;
+      // Reflow trick: re-trigger the fade-in animation if the toast
+      // is already up when a second copy happens.
+      toastEl.classList.remove("is-visible");
+      void toastEl.offsetWidth;
+      toastEl.classList.add("is-visible");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () {
+        toastEl.classList.remove("is-visible");
+        toastEl.hidden = true;
+      }, 2200);
+    }
+    function copyToClipboard(text) {
+      // Modern API where available; falls back to the textarea trick
+      // for the rare browser without permissions (or on insecure
+      // contexts during local testing).
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise(function (resolve, reject) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          ok ? resolve() : reject(new Error("execCommand copy failed"));
+        } catch (err) { reject(err); }
+      });
+    }
+
+    document.addEventListener("click", function (ev) {
+      const target = ev.target.closest && ev.target.closest(".ss-copy-target[data-copy]");
+      if (!target) return;
+      ev.preventDefault();
+      const payload = target.dataset.copy || "";
+      const label   = target.dataset.copyLabel || "Code";
+      if (!payload) return;
+      copyToClipboard(payload).then(function () {
+        showCopyToast(label);
+        // Subtle pulse on the button so the user sees the action
+        // even before the toast lands.
+        target.classList.add("is-copied");
+        setTimeout(function () { target.classList.remove("is-copied"); }, 350);
+      }).catch(function (err) {
+        console.warn("[supply-station] clipboard write failed", err);
+        showCopyToast("Couldn't copy — long-press to select");
+      });
+    });
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
     wireSignOutButtons();
     wireForm();
+    wireSupplyStationAccessCopy();
     setStaffAuthState("checking");
     try {
       window.STAFF_AUTH.init({

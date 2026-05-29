@@ -206,13 +206,13 @@
   function friendlyDeniedMessage(reason, email) {
     const who = email ? "Your account (" + email + ")" : "Your account";
     if (reason === "archived") {
-      return who + " is archived.";
+      return "Your PioneerOps access is not active. Please contact Pioneer management.";
     }
     if (reason === "dcr_disabled") {
-      return who + " is not currently enabled for Pioneer DCR access.";
+      return "Your PioneerOps access is not currently enabled. Please contact Pioneer management.";
     }
     // Default / not_on_staff_list / unknown
-    return who + " is not currently enabled for Pioneer DCR access.";
+    return "Your PioneerOps access is not active. Please contact Pioneer management.";
   }
 
   function fire(state, info) {
@@ -353,7 +353,14 @@
       "If an account exists for that email, a reset link has been sent. " +
       "Check your inbox and spam folder for an email from Pioneer Commercial Cleaning.";
     try {
-      await firebase.auth().sendPasswordResetEmail(e);
+      // actionCodeSettings.url ensures Firebase routes the user back
+      // to /login.html after they set their new password. Without
+      // it, the reset success page is a dead end (the issue Makaila
+      // hit during pilot prep).
+      await firebase.auth().sendPasswordResetEmail(e, {
+        url: window.location.origin + "/login.html",
+        handleCodeInApp: false
+      });
       return { ok: true, message: antiEnumMessage };
     } catch (err) {
       const code = err && err.code;

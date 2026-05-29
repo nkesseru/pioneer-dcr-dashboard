@@ -1,0 +1,258 @@
+/* Pioneer DCR Hub — tokenized customer report page.
+   Visually echoes the V6 email template: dark ink on warm-light cards,
+   teal accents, mobile-first. Pilot v20260527-tokenreport. */
+
+:root {
+  --pc-ink:    #0f172a;
+  --pc-muted:  #475569;
+  --pc-bg:     #f8fafc;
+  --pc-card:   #ffffff;
+  --pc-border: #e2e8f0;
+  --pc-teal:   #0d9488;
+  --pc-success:#047857;
+  --pc-warn:   #b45309;
+  --pc-danger: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body.dcr-report-page {
+  background: var(--pc-bg);
+  color: var(--pc-ink);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.dcr-report-header {
+  background: #0d1218;
+  color: #f1f5f9;
+  padding: 14px 18px;
+}
+.dcr-report-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.dcr-report-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+.dcr-report-brand-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.dcr-report-main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 24px 18px 64px;
+}
+
+.dcr-state {
+  text-align: center;
+  padding: 48px 12px;
+}
+.dcr-state h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.dcr-state-help {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--pc-muted);
+}
+
+.dcr-report-title-block {
+  text-align: center;
+  margin: 6px 0 20px;
+}
+.dcr-report-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pc-teal);
+  font-weight: 700;
+}
+.dcr-report-customer {
+  margin: 6px 0 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--pc-ink);
+}
+.dcr-report-date {
+  margin: 0;
+  font-size: 14px;
+  color: var(--pc-muted);
+}
+
+.dcr-card {
+  background: var(--pc-card);
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  padding: 18px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.dcr-card-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pc-muted);
+  font-weight: 800;
+}
+
+.dcr-tech-card { padding-bottom: 14px; }
+.dcr-tech-row  { display: flex; align-items: center; gap: 12px; }
+.dcr-tech-photo {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 56px;
+  box-shadow: 0 0 0 1px var(--pc-border);
+}
+.dcr-tech-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pc-muted);
+  font-weight: 800;
+}
+.dcr-tech-name {
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 2px;
+  line-height: 1.25;
+}
+.dcr-tech-tenure {
+  font-size: 13.5px;
+  color: var(--pc-muted);
+  margin-top: 2px;
+}
+.dcr-tech-summary {
+  margin: 12px 0 0;
+  font-size: 15px;
+  color: var(--pc-ink);
+  line-height: 1.5;
+}
+.dcr-signed-line {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--pc-muted);
+}
+
+.dcr-issue-card { display: flex; flex-direction: column; gap: 8px; }
+.dcr-issue-pill {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dcr-pill-green  { background: rgba(4, 120, 87, 0.10); color: var(--pc-success); }
+.dcr-pill-yellow { background: rgba(180, 83,   9, 0.12); color: var(--pc-warn); }
+.dcr-pill-red    { background: rgba(185, 28,  28, 0.10); color: var(--pc-danger); }
+.dcr-issue-message {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.dcr-checklist-section { margin-bottom: 14px; }
+.dcr-checklist-section:last-child { margin-bottom: 0; }
+.dcr-checklist-head {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.dcr-checklist-items {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.dcr-checklist-items li::marker { color: var(--pc-success); }
+.dcr-empty-note { color: var(--pc-muted); font-size: 14px; }
+
+.dcr-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.dcr-photo {
+  margin: 0;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+.dcr-photo img {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+}
+.dcr-photo figcaption {
+  font-size: 12px;
+  color: var(--pc-muted);
+  padding: 6px 8px;
+}
+
+.dcr-feedback-card { text-align: left; }
+.dcr-feedback-sub {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--pc-muted);
+}
+.dcr-feedback-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dcr-feedback-btn {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.dcr-feedback-btn-praise {
+  background: var(--pc-teal);
+  color: #052e2b;
+}
+.dcr-feedback-btn-praise:active { background: #0b7e74; }
+.dcr-feedback-btn-issue {
+  background: #f1f5f9;
+  color: var(--pc-ink);
+  border: 1px solid var(--pc-border);
+}
+.dcr-feedback-btn-issue:active { background: #e2e8f0; }
+
+.dcr-report-footer {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--pc-muted);
+}
+.dcr-report-footer p { margin: 4px 0; }
+.dcr-report-footer code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(15, 23, 42, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.dcr-report-footer a { color: var(--pc-muted); text-decoration: underline; }
+
+@media (max-width: 480px) {
+  .dcr-report-customer { font-size: 22px; }
+  .dcr-tech-photo { width: 48px; height: 48px; flex-basis: 48px; }
+  .dcr-photo img  { height: 110px; }
+}

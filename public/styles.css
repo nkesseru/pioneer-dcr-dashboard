@@ -97,6 +97,16 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+
+/* Pilot v20260526-scrollrestore — modal-scroll-locked is the ONLY
+   legitimate way to lock scroll. Modals add the class on open and
+   remove it on close. Everything else stays scrollable by browser
+   default. NO global !important overrides on html/body — the prior
+   version of this block stranded every page on desktop. */
+body.modal-scroll-locked {
+  overflow: hidden;
+}
+
 body {
   background: var(--pc-bg);
   color: var(--pc-text);
@@ -1557,6 +1567,101 @@ select {
     0 2px 6px rgba(13, 18, 24, 0.20),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* Golden-path success block — guides the tech from DCR submit to
+   Finish Work to Deputy clock-out. Sits above the submission ID. */
+.success-final-step {
+  margin: 8px 0 16px;
+  padding: 14px 16px 12px;
+  background: rgba(20, 184, 166, 0.06);
+  border: 1px solid rgba(20, 184, 166, 0.25);
+  border-left: 4px solid var(--pc-teal, #14b8a6);
+  border-radius: 10px;
+  text-align: left;
+}
+.success-final-step-title {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: var(--pc-text-muted, #475569);
+  text-transform: uppercase;
+}
+.success-final-step-body {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--pc-text, #0f172a);
+}
+.success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.success-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  min-height: 46px;
+  border: 0;
+  transition: background var(--t-fast, 160ms), transform 80ms;
+}
+.success-btn:active { transform: translateY(1px); }
+.success-btn-primary {
+  background: var(--pc-teal, #14b8a6);
+  color: #052e2b;
+  border: 1px solid #0d9488;
+  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.30);
+}
+.success-btn-primary:hover  { background: #0d9488; }
+.success-btn-primary:active { background: #0b7e74; }
+.success-btn-secondary {
+  background: #ffffff;
+  color: var(--pc-text, #0f172a);
+  border: 1px solid #cbd5e1;
+}
+.success-btn-secondary:hover  { background: #f8fafc; }
+.success-btn-secondary:active { background: #e2e8f0; }
+
+.success-helper {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--pc-text-muted, #64748b);
+  text-align: center;
+}
+.success-link {
+  display: inline-block;
+  font-size: 13.5px;
+  color: var(--pc-text-muted, #475569);
+  text-decoration: underline;
+  background: transparent;
+  border: 0;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.success-link:hover { color: var(--pc-text, #0f172a); }
+
+.success-no-session {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 14px;
+}
+.success-no-session .success-link { margin-top: 2px; }
+
+@media (min-width: 480px) {
+  .success-actions { flex-direction: row; }
+  .success-actions .success-btn { flex: 1 1 0; }
 }
 
 /* ==========================================================================
@@ -3525,3 +3630,57 @@ body.is-signing-in .login-bg { display: block; }
   border-color: rgba(227, 109, 109, 0.35);
 }
 .team-hub-empty-diag-bad .team-hub-empty-diag-title { color: #8a2a2a; }
+
+/* ==========================================================================
+   Assigned-shift summary card — replaces manual Visit Details when the
+   DCR opens from Today's Work with a confident shift handoff.
+   Pilot v20260526-shiftcontext.
+   ========================================================================== */
+
+.assigned-shift-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem 1.05rem 0.9rem;
+  border-left: 4px solid var(--pc-teal, #14b8a6);
+}
+
+.assigned-shift-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: #1f2937;
+}
+
+.assigned-shift-row .assigned-shift-icon {
+  flex: 0 0 1.25rem;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.assigned-shift-value {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+.assigned-shift-customer .assigned-shift-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.005em;
+}
+
+.assigned-shift-advanced-toggle {
+  margin-top: 0.4rem;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 0.3rem 0.1rem;
+  color: #475569;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.assigned-shift-advanced-toggle:hover { color: #0f172a; }
