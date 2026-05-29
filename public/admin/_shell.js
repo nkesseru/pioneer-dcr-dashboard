@@ -79,6 +79,50 @@
       '</div>';
   }
 
+  /* ---------- modal + toast helpers ----------
+   * openModal / closeModal manage the .admin-modal overflow lock + aria
+   * state. showToast appends a transient toast that auto-removes after
+   * 3.5s. All three are pure-DOM — no Firebase, no closure deps. Used
+   * by 15 + 15 + 77 call sites across admin.js as of Phase 6a; moved
+   * here so the per-tab extractions in Phase 6b+ can import them
+   * without staying coupled to admin.js's IIFE.
+   */
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = false;
+    el.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    // Focus the first text-like input for keyboard ergonomics.
+    const firstInput = el.querySelector('input[type="text"], input[type="email"], input[type="url"], input[type="tel"], textarea');
+    if (firstInput) setTimeout(function () { firstInput.focus(); }, 60);
+  }
+
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = true;
+    el.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    const errEl = el.querySelector(".admin-modal-err");
+    if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+  }
+
+  function showToast(kind, msg) {
+    const root = document.getElementById("toast-container");
+    if (!root) return;
+    const t = document.createElement("div");
+    t.className = "toast toast-" + kind;
+    t.textContent = msg;
+    root.appendChild(t);
+    // Next-frame class flip so the CSS transition fires.
+    requestAnimationFrame(function () { t.classList.add("is-shown"); });
+    setTimeout(function () {
+      t.classList.remove("is-shown");
+      setTimeout(function () { t.remove(); }, 320);
+    }, 3500);
+  }
+
   /* ---------- badge helpers ---------- */
 
   function badge(cls, label) {
@@ -132,6 +176,9 @@
     setStatus: setStatus,
     hideAllStatuses: hideAllStatuses,
     showFatal: showFatal,
+    openModal: openModal,
+    closeModal: closeModal,
+    showToast: showToast,
     badge: badge,
     activeBadge: activeBadge,
     dcrEnabledBadge: dcrEnabledBadge,
