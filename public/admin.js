@@ -86,6 +86,9 @@
   if (!window.__pioneerAdmin.tabs.customers) {
     throw new Error("admin.js: admin/tab-customers.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.tabs.techs) {
+    throw new Error("admin.js: admin/tab-techs.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -208,7 +211,8 @@
 
   // customers moved to tab-customers.js (Phase 15). Consumers read via
   // window.__pioneerAdmin.deps.getCustomers().
-  let techs     = [];
+  // techs moved to tab-techs.js (Phase 16a). Consumers read via
+  // window.__pioneerAdmin.deps.getTechs().
   // dcrs moved to tab-recent-dcrs.js (Phase 11). Consumers read via
   // window.__pioneerAdmin.deps.getDcrs().
 
@@ -226,14 +230,8 @@
   // section that explains where they're managed.
   let admins = [];
 
-  // Edit-modal staging for cleaning_tech ↔ customer assignments. Lives at
-  // module scope so the search filter can re-render the list without
-  // losing checks made before the user typed. Reset on every modal open.
-  let pendingTechAssigned = new Set();
-
-  // Same idea for the Add/Login Setup modal — separate Set so opening
-  // the create modal doesn't trample any in-progress edit modal state.
-  let pendingTechCreateAssigned = new Set();
+  // pendingTechAssigned + pendingTechCreateAssigned moved to
+  // tab-techs.js (Phase 16a). Both staging sets are owned by the tab.
 
   /* wireTabs, setStatus, hideAllStatuses, showFatal, badge family, and
      activateTab moved to public/admin/_shell.js — imported via the
@@ -251,224 +249,11 @@
      onSave methods that admin.js wire helpers (wireSearch +
      wireWriteControls) call through the namespace. */
 
-  /* ---------- cleaning techs ---------- */
 
-  // Small avatar-strip thumbnail for the techs admin list. Mirrors the
-  // customer-facing DCR-email identity bubble so admins notice at a
-  // glance which techs still need a real photo. The .is-missing class
-  // turns the chip red+warning so the eye catches it without having to
-  // open the row.
-  function techThumb(t) {
-    const photo = (t.photoUrl || t.profilePhotoUrl || "").trim();
-    if (photo) {
-      return '<span class="tech-row-thumb" aria-hidden="true">' +
-               '<img src="' + escapeHtml(photo) + '" alt="" loading="lazy" />' +
-             '</span>';
-    }
-    const initial = (getTechName(t) || "P").charAt(0).toUpperCase();
-    return '<span class="tech-row-thumb is-missing" aria-hidden="true">' +
-             escapeHtml(initial) +
-           '</span>';
-  }
-
-  function techCard(t) {
-    const name    = getTechName(t) || "(unnamed tech)";
-    const slug    = getTechSlug(t);
-    const active  = getActive(t);
-    const enabled = getDcrEnabled(t);
-
-    // Assignments summary. Replaces the prior metrics_cache cell — that
-    // field was never populated in practice. "Needs assignments" is shown
-    // only for active techs so archived rows don't shout for attention.
-    const assigned    = Array.isArray(t.assigned_customer_slugs) ? t.assigned_customer_slugs : [];
-    const assignedN   = assigned.length;
-    const assignedTxt = assignedN === 0 ? "None" : (assignedN + (assignedN === 1 ? " customer" : " customers"));
-    const needsAssign = active && assignedN === 0;
-
-    // Per-tech on-budget summary. Admin-only — never surfaced to techs
-    // themselves (see techHubViewV1 / tech.js — they get customer-level
-    // budget info, not their own scoreboard).
-    // dcrs now lives in tab-recent-dcrs.js (Phase 11) — same
-    // read-through-bridge pattern as customerCard above.
-    const dcrs = window.__pioneerAdmin.deps.getDcrs();
-    const budgetStats     = computeBudgetStats(dcrs, { kind: "tech", slug: slug });
-    const budgetBadgeHtml = budgetRowBadge(budgetStats);
-    const budgetTooltip   = budgetTooltipText(budgetStats);
-
-    // Photo/signature asset chips — surface missing media for active
-    // techs (and only active techs; archived rows shouldn't shout).
-    // The customer-facing DCR trust promise treats the photo as
-    // required and the signature as strongly preferred.
-    const hasPhoto = !!(t.photoUrl || t.profilePhotoUrl);
-    const hasSig   = !!t.signatureUrl;
-    let assetChips = "";
-    if (active && !hasPhoto) {
-      assetChips +=
-        '<span class="tech-row-asset-chip tech-row-asset-chip-bad"' +
-              ' title="Customer-facing DCR emails show initials instead of a real photo. Required for the trust promise.">' +
-          'No photo' +
-        '</span>';
-    }
-    if (active && !hasSig) {
-      assetChips +=
-        '<span class="tech-row-asset-chip"' +
-              ' title="Tech signature missing — signed receipt area in the DCR email collapses.">' +
-          'No signature' +
-        '</span>';
-    }
-
-    // Archived techs never show "DCR enabled"-style positive chrome.
-    // The dcr_enabled flag stays stored unchanged (so reactivation
-    // doesn't lose the prior config) but visually we replace the
-    // active-tech chip set with a clear archived-state cluster.
-    let badges;
-    if (active) {
-      badges =
-        assetChips +
-        activeBadge(true) +
-        dcrEnabledBadge(enabled) +
-        (needsAssign ? badge("is-warn", "Needs assignments") : "") +
-        budgetBadgeHtml;
-    } else {
-      badges =
-        badge("is-off", "Archived") +
-        badge("is-warn", "Access removed") +
-        badge("is-muted", "Historical records preserved");
-    }
-
-    // Archive label flips for archived rows. (archiveExtraCls is no
-    // longer needed — Archive lives inside the overflow menu now, and
-    // .row-overflow-item-warn handles the color affordance.)
-    const archiveLabel = active ? "Archive" : "Reactivate";
-
-    // Account-status hint: when the last invite/reset was sent. Shows
-    // "—" when never invited. The button label flips between
-    // "Send invite" (no prior invite) and "Reinvite" (at least one
-    // prior invite landed) based on the V6 inviteSentAt field, with
-    // back-compat fallbacks to the legacy snake_case fields.
-    const email     = (t.email || "").toLowerCase().trim();
-    const lastSent  = t.inviteSentAt || t.last_invite_sent_at || t.last_reset_sent_at;
-    const lastSentTxt = lastSent ? formatTimestamp(lastSent) : "—";
-    const canResend = active && !!email;
-    const hasBeenInvited = !!lastSent;
-    const inviteBtnLabel = hasBeenInvited ? "Reinvite" : "Send invite";
-    const inviteBtnTitle = hasBeenInvited
-      ? "Send a fresh password-reset email to this tech (re-uses the existing Firebase Auth user)"
-      : "Send the first invite to this tech (password-reset link the recipient can use to set up access)";
-    const inviteStatus = String(t.inviteStatus || "").toLowerCase();
-    const inviteLastError = String(t.inviteLastError || "").trim();
-
-    // "Promote to Admin" — only visible for active techs with a real
-    // email who DON'T already have admin access. We check both the
-    // hardcoded root list and the loaded /admins cache. The button is
-    // re-rendered after loadAdmins/loadTechs, so toggling admin status
-    // refreshes the items on next paint.
-    const alreadyAdmin = email
-      ? (isRootAdmin(email) ||
-         admins.some(function (a) {
-           return (a.email || a.id || "").toLowerCase() === email && a.active !== false;
-         }))
-      : false;
-    const canPromote = active && !!email && !alreadyAdmin;
-
-    return (
-      '<div class="admin-row" role="listitem" data-id="' + escapeHtml(t.id) + '">' +
-        '<div class="row-primary" style="display:flex;align-items:center;gap:10px;">' +
-          techThumb(t) +
-          '<div>' +
-            '<span class="row-name">' + escapeHtml(name) + '</span>' +
-            '<span class="row-sub">'  + escapeHtml(slug || "—") + '</span>' +
-          '</div>' +
-        '</div>' +
-        '<div class="row-cell">' +
-          '<span class="cell-label">Experience</span>' + escapeHtml(t.experience_level || "—") +
-        '</div>' +
-        '<div class="row-cell">' +
-          '<span class="cell-label">Assigned</span>' + escapeHtml(assignedTxt) +
-        '</div>' +
-        '<div class="row-cell">' +
-          '<span class="cell-label">Invite sent</span>' + escapeHtml(lastSentTxt) +
-        '</div>' +
-        '<div class="row-actions"' + (budgetTooltip ? ' title="' + escapeHtml(budgetTooltip) + '"' : '') + '>' +
-          '<div class="pill-badges">' + badges + '</div>' +
-          // Primary action.
-          '<button class="row-btn" type="button" data-action="edit">Edit</button>' +
-          // Photo + signature manager.
-          '<button class="row-btn row-btn-secondary" type="button" data-action="media"' +
-            ' title="Upload or change this tech\'s profile photo and signature">Media</button>' +
-          // Secondary action — only when actually possible.
-          (canResend
-            ? '<button class="row-btn row-btn-secondary" type="button" data-action="resend"' +
-                ' title="' + escapeHtml(inviteBtnTitle) + '">' +
-                escapeHtml(inviteBtnLabel) +
-              '</button>'
-            : "") +
-          // Surface a visible "Invite errored" chip when the last
-          // attempt failed. The chip is non-interactive — admin
-          // clicks the Reinvite button next to it to retry.
-          (canResend && inviteStatus === "error"
-            ? '<span class="tech-row-asset-chip tech-row-asset-chip-bad"' +
-                ' title="' + escapeHtml(inviteLastError || "Last invite attempt failed") + '">' +
-                'Invite errored' +
-              '</span>'
-            : "") +
-          // Overflow menu — contains Promote / Archive(/Reactivate) / Delete.
-          // The trigger button is .row-btn-more; the popover is a sibling
-          // .row-overflow-menu that admin.js toggles via aria-expanded.
-          '<div class="row-overflow" data-overflow>' +
-            '<button class="row-btn row-btn-more" type="button" data-action="more"' +
-              ' aria-haspopup="menu" aria-expanded="false" aria-label="More actions">' +
-              'More <span aria-hidden="true">▾</span>' +
-            '</button>' +
-            '<div class="row-overflow-menu" role="menu" hidden>' +
-              (canPromote
-                ? '<button class="row-overflow-item" role="menuitem" type="button" data-action="promote">Promote to Admin</button>'
-                : "") +
-              '<button class="row-overflow-item row-overflow-item-warn" role="menuitem" type="button"' +
-                ' data-action="archive">' + escapeHtml(archiveLabel) + '</button>' +
-              '<div class="row-overflow-item-sep" aria-hidden="true"></div>' +
-              '<button class="row-overflow-item row-overflow-item-danger" role="menuitem" type="button"' +
-                ' data-action="delete"' +
-                ' title="Permanently delete this tech. Only works for techs with no DCRs / supply / issues history.">' +
-                'Delete' +
-              '</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  function renderTechs(list) {
-    const root = $("tech-list");
-    const cnt  = $("tech-count");
-    if (!root) return;
-    if (cnt)  cnt.textContent = list.length + ' tech' + (list.length === 1 ? '' : 's');
-    root.innerHTML = list.map(techCard).join("");
-    if (list.length === 0 && techs.length === 0) setStatus("tech", "empty");
-    else hideAllStatuses("tech");
-  }
-
-  async function loadTechs() {
-    setStatus("tech", "loading");
-    try {
-      const snap = await db.collection("cleaning_techs").get();
-      techs = snap.docs.map(function (d) {
-        return Object.assign({ id: d.id }, d.data());
-      });
-      techs.sort(function (a, b) {
-        return getTechName(a).localeCompare(getTechName(b));
-      });
-      renderTechs(techs);
-      refreshAttentionStrip();
-    } catch (err) {
-      console.error("loadTechs failed", err);
-      setStatus("tech", "error",
-        "Couldn't load cleaning techs: " + (err.message || err) +
-        "\n\nIf this says 'permission-denied', verify firestore.rules allow read on /cleaning_techs."
-      );
-    }
-  }
+  /* Cleaning Techs core (techThumb + techCard + renderTechs + loadTechs)
+     moved to public/admin/tab-techs.js (Phase 16a). Boot rewires
+     auth-state-change loadTechs() → tabs.techs.refresh(). Other modules
+     read techs via window.__pioneerAdmin.deps.getTechs(). */
 
 
   /* Recent DCRs tab moved to public/admin/tab-recent-dcrs.js (Phase 11).
@@ -482,7 +267,7 @@
   async function loadDcrsAndRerenderDependents() {
     await window.__pioneerAdmin.tabs.recentDcrs.refresh();
     window.__pioneerAdmin.tabs.customers.applyFilter();
-    if (typeof applyCurrentTechFilter     === "function") applyCurrentTechFilter();
+    window.__pioneerAdmin.tabs.techs.applyFilter();
     if (typeof refreshAttentionStrip      === "function") refreshAttentionStrip();
   }
 
@@ -1490,8 +1275,10 @@
     // -- Compute counts from in-memory caches --
     // dcrIssues now lives in tab-dcr-issues.js (Phase 12); read via bridge.
     // customers now lives in tab-customers.js (Phase 15); read via bridge.
+    // techs     now lives in tab-techs.js     (Phase 16a); read via bridge.
     const dcrIssues = window.__pioneerAdmin.deps.getDcrIssues();
     const customers = window.__pioneerAdmin.deps.getCustomers();
+    const techs     = window.__pioneerAdmin.deps.getTechs();
     const newIssues = dcrIssues.filter(function (it) {
       return (it.status || "new") === "new";
     }).length;
@@ -1830,7 +1617,7 @@
     // both the search-input handler AND the post-save row refresh use the same
     // filter logic (avoids "save → re-render → search query forgotten").
     if (cs) cs.addEventListener("input", function () { window.__pioneerAdmin.tabs.customers.applyFilter(); });
-    if (ts) ts.addEventListener("input", applyCurrentTechFilter);
+    if (ts) ts.addEventListener("input", function () { window.__pioneerAdmin.tabs.techs.applyFilter(); });
 
     if (ds) ds.addEventListener("input", function () {
       window.__pioneerAdmin.tabs.recentDcrs.renderFiltered(ds.value);
@@ -2024,7 +1811,7 @@
     if (currentAuthEmail !== email) {
       currentAuthEmail = email;
       window.__pioneerAdmin.tabs.customers.refresh();
-      loadTechs();
+      window.__pioneerAdmin.tabs.techs.refresh();
       loadDcrsAndRerenderDependents();
       loadSupplyRequests();
       window.__pioneerAdmin.tabs.dcrIssues.refresh();
@@ -3298,7 +3085,7 @@
       // "Promote to Admin" button. Repaint techs whenever the admins
       // cache changes so the button disappears the moment a tech
       // becomes an admin (and reappears if they're deactivated).
-      try { applyCurrentTechFilter(); } catch (e) { /* tech panel may not be rendered yet */ }
+      try { window.__pioneerAdmin.tabs.techs.applyFilter(); } catch (e) { /* tech panel may not be rendered yet */ }
     } catch (err) {
       console.error("loadAdmins failed", err);
       setStatus("admins", "error",
@@ -3597,7 +3384,7 @@
     // Refresh both caches so the row repaints without the Promote
     // button and the Admins tab shows the new doc.
     try { await loadAdmins(); } catch (e) { /* non-fatal */ }
-    try { applyCurrentTechFilter(); } catch (e) { /* non-fatal */ }
+    try { window.__pioneerAdmin.tabs.techs.applyFilter(); } catch (e) { /* non-fatal */ }
   }
 
   /* ---------- Resend invite (admin row + tech row) ---------- */
@@ -3935,160 +3722,11 @@
   //
   // Shared by the tech-EDIT modal (state = pendingTechAssigned) and the
   // tech-CREATE modal (state = pendingTechCreateAssigned).
-  function renderAssignmentChecklist(opts) {
-    const listEl   = opts && opts.listEl;
-    const searchEl = opts && opts.searchEl;
-    const countEl  = opts && opts.countEl;
-    const staging  = opts && opts.staging;
-    if (!listEl || !staging) return;
-
-    const q = (searchEl && searchEl.value ? searchEl.value.trim().toLowerCase() : "");
-    // customers now lives in tab-customers.js (Phase 15); read via bridge.
-    const customers = window.__pioneerAdmin.deps.getCustomers();
-    const active = customers.filter(function (c) { return getActive(c); });
-
-    const rows = active.filter(function (c) {
-      if (!q) return true;
-      return (
-        getCustomerName(c).toLowerCase().includes(q) ||
-        getCustomerSlug(c).toLowerCase().includes(q)
-      );
-    });
-
-    if (rows.length === 0) {
-      listEl.innerHTML =
-        '<p class="tech-assignments-empty">' +
-          (q ? "No customers match your search." : "No active customers to assign yet.") +
-        '</p>';
-    } else {
-      listEl.innerHTML = rows.map(function (c) {
-        const slug    = getCustomerSlug(c);
-        const name    = getCustomerName(c) || "(unnamed customer)";
-        const checked = staging.has(slug) ? " checked" : "";
-        return (
-          '<label class="tech-assignments-row" role="listitem" data-slug="' + escapeHtml(slug) + '">' +
-            '<input type="checkbox" data-assign-slug="' + escapeHtml(slug) + '"' + checked + ' />' +
-            '<span class="row-name">' + escapeHtml(name) + '</span>' +
-            '<span class="row-slug">' + escapeHtml(slug) + '</span>' +
-          '</label>'
-        );
-      }).join("");
-    }
-
-    if (countEl) {
-      countEl.textContent =
-        staging.size + " of " + active.length +
-        (active.length === 1 ? " customer assigned" : " customers assigned");
-    }
-  }
-
-  function renderTechAssignments() {
-    renderAssignmentChecklist({
-      listEl:   $("tech-assignments-list"),
-      searchEl: $("tech-assignments-search"),
-      countEl:  $("tech-assignments-count"),
-      staging:  pendingTechAssigned
-    });
-  }
-
-  function openTechEditModal(t) {
-    $("tech-edit-id").value             = t.id;
-    $("tech-edit-display-name").value   = getTechName(t);
-    $("tech-edit-email").value          = t.email || "";
-    $("tech-edit-phone").value          = t.phone || "";
-    $("tech-edit-active").checked       = getActive(t);
-    $("tech-edit-dcr-enabled").checked  = getDcrEnabled(t);
-    $("tech-edit-notes").value          = t.notes || "";
-    setModalError("tech-edit-modal", "");
-
-    // Seed the staging set from the doc. Lowercase + trim defends against
-    // stray casing from older writes. The Set dedupes naturally.
-    pendingTechAssigned = new Set();
-    const existing = Array.isArray(t.assigned_customer_slugs) ? t.assigned_customer_slugs : [];
-    for (let i = 0; i < existing.length; i++) {
-      const s = String(existing[i] || "").toLowerCase().trim();
-      if (s) pendingTechAssigned.add(s);
-    }
-
-    // Wrapped so a thrown error inside the assignment renderer never
-    // prevents the modal from opening. A missing customers cache, a stale
-    // DOM, or a partial deploy should degrade to "modal opens, list shows
-    // an error in console" instead of "Edit button does nothing".
-    try {
-      const searchEl = $("tech-assignments-search");
-      if (searchEl) searchEl.value = "";
-      renderTechAssignments(t);
-    } catch (err) {
-      console.error("renderTechAssignments failed (modal still opening)", err);
-      const listEl = $("tech-assignments-list");
-      if (listEl) {
-        listEl.innerHTML =
-          '<p class="tech-assignments-empty">' +
-            "Couldn't load the customer list. You can still save other fields." +
-          '</p>';
-      }
-    }
-
-    openModal("tech-edit-modal");
-  }
-
-  async function onTechEditSave() {
-    const id = $("tech-edit-id").value;
-    if (!id) return;
-    const idx = techs.findIndex(function (x) { return x.id === id; });
-    if (idx < 0) {
-      setModalError("tech-edit-modal", "Couldn't find this tech in the local cache. Refresh the page and try again.");
-      return;
-    }
-
-    const displayName = $("tech-edit-display-name").value.trim();
-    if (!displayName) {
-      setModalError("tech-edit-modal", "Display name is required.");
-      return;
-    }
-
-    // Sorted + deduped slug list. Sorting keeps Firestore diffs stable
-    // across saves (saves bandwidth on the listener path and keeps the
-    // doc readable in the console).
-    const assignedSlugs = Array.from(pendingTechAssigned).sort();
-
-    const updates = {
-      display_name:            displayName,
-      email:                   $("tech-edit-email").value.trim(),
-      phone:                   $("tech-edit-phone").value.trim(),
-      active:                  $("tech-edit-active").checked,
-      dcr_enabled:             $("tech-edit-dcr-enabled").checked,
-      notes:                   $("tech-edit-notes").value.trim(),
-      assigned_customer_slugs: assignedSlugs,
-      updated_at:              firebase.firestore.FieldValue.serverTimestamp(),
-      updated_by:              getCurrentAdminEmail()
-    };
-
-    setModalSaving("tech-edit-modal", true);
-    setModalError("tech-edit-modal", "");
-    try {
-      await db.collection("cleaning_techs").doc(id).update(updates);
-      techs[idx] = Object.assign({}, techs[idx], updates, { updated_at: new Date() });
-      applyCurrentTechFilter();
-      closeModal("tech-edit-modal");
-      showToast("ok", "Tech updated.");
-    } catch (err) {
-      handleAdminWriteError(err, { context: "tech save", modalId: "tech-edit-modal" });
-    } finally {
-      setModalSaving("tech-edit-modal", false);
-    }
-  }
-
-  // ---- Cleaning tech: CREATE / login setup ----
-
-  function renderTechCreateAssignments() {
-    renderAssignmentChecklist({
-      listEl:   $("tech-create-assignments-list"),
-      searchEl: $("tech-create-assignments-search"),
-      countEl:  $("tech-create-assignments-count"),
-      staging:  pendingTechCreateAssigned
-    });
-  }
+  /* renderAssignmentChecklist + renderTechAssignments + openTechEditModal
+     + onTechEditSave + renderTechCreateAssignments moved to
+     public/admin/tab-techs.js (Phase 16a). The tab init() wires the
+     assignment checklist listeners; admin.js wireWriteControls calls
+     window.__pioneerAdmin.tabs.techs.{openEditModal, onSaveEdit}. */
 
   // Slug derived from the display name field. Matches the server-side
   // slugifyForTech() shape so the field acts as a true preview.
@@ -4101,242 +3739,10 @@
       .slice(0, 64);
   }
 
-  function resetTechCreateModal() {
-    $("tech-create-display-name").value = "";
-    $("tech-create-email").value        = "";
-    $("tech-create-phone").value        = "";
-    $("tech-create-slug").value         = "";
-    const search = $("tech-create-assignments-search");
-    if (search) search.value = "";
-    pendingTechCreateAssigned = new Set();
-
-    // Reset radio choice to the recommended default. For pilot we lead
-    // with the temporary-password flow — it doesn't depend on email
-    // delivery and works on Safari without the reset-link handoff.
-    const tempRadio = $("tech-create-mode-temp");
-    if (tempRadio) tempRadio.checked = true;
-
-    // Hide success pane, show form pane.
-    $("tech-create-form-pane").hidden    = false;
-    $("tech-create-success-pane").hidden = true;
-    $("tech-create-reset-block").hidden  = true;
-    $("tech-create-temp-block").hidden   = true;
-    $("tech-create-reset-link").value    = "";
-    $("tech-create-temp-password").value = "";
-
-    // Save/cancel/done button states.
-    $("tech-create-save").hidden   = false;
-    $("tech-create-cancel").hidden = false;
-    $("tech-create-done").hidden   = true;
-
-    setModalError("tech-create-modal", "");
-    setModalSaving("tech-create-modal", false);
-  }
-
-  function openTechCreateModal() {
-    resetTechCreateModal();
-
-    try {
-      renderTechCreateAssignments();
-    } catch (err) {
-      console.error("renderTechCreateAssignments failed (modal still opening)", err);
-      const listEl = $("tech-create-assignments-list");
-      if (listEl) {
-        listEl.innerHTML =
-          '<p class="tech-assignments-empty">' +
-            "Couldn't load the customer list. You can still create the login." +
-          '</p>';
-      }
-    }
-
-    openModal("tech-create-modal");
-  }
-
-  async function onTechCreateSave() {
-    const displayName = $("tech-create-display-name").value.trim();
-    const email       = $("tech-create-email").value.trim();
-    const phone       = $("tech-create-phone").value.trim();
-    let   slug        = $("tech-create-slug").value.trim().toLowerCase();
-    const sendReset   = $("tech-create-mode-reset").checked;
-
-    if (!displayName) { setModalError("tech-create-modal", "Display name is required."); return; }
-    if (!email)       { setModalError("tech-create-modal", "Email is required.");        return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setModalError("tech-create-modal", "That doesn't look like a valid email address.");
-      return;
-    }
-    if (!slug) slug = slugifyForTech(displayName);
-    if (!slug) { setModalError("tech-create-modal", "Couldn't derive a tech slug from the display name."); return; }
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      setModalError("tech-create-modal", "Tech slug must be lowercase letters, digits, and dashes only.");
-      return;
-    }
-
-    const url = (window.CREATE_CLEANING_TECH_LOGIN_URL || "").trim();
-    if (!url || /REPLACE_WITH/.test(url)) {
-      setModalError("tech-create-modal",
-        "CREATE_CLEANING_TECH_LOGIN_URL is not configured in firebase-config.js. " +
-        "Deploy the function and paste its URL into firebase-config.js.");
-      return;
-    }
-
-    // ID token of the signed-in admin. The function verifies admin role
-    // server-side; this is just the credential, not the authorization.
-    let idToken = null;
-    try {
-      const u = firebase.auth().currentUser;
-      if (u) idToken = await u.getIdToken();
-    } catch (e) { /* swallowed; null token → 401 below */ }
-    if (!idToken) {
-      setModalError("tech-create-modal", "You appear to be signed out. Refresh the page and sign in again.");
-      return;
-    }
-
-    const body = {
-      display_name:            displayName,
-      email:                   email,
-      phone:                   phone,
-      tech_slug:               slug,
-      assigned_customer_slugs: Array.from(pendingTechCreateAssigned).sort(),
-      send_password_reset:     !!sendReset
-    };
-
-    setModalSaving("tech-create-modal", true);
-    setModalError("tech-create-modal", "");
-
-    let result = null;
-    try {
-      const res = await fetch(url, {
-        method:  "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": "Bearer " + idToken
-        },
-        body: JSON.stringify(body)
-      });
-      result = await res.json().catch(function () { return {}; });
-      if (!res.ok || !result.ok) {
-        // Log the full server response to the browser console so the
-        // developer can see the underlying auth/* code (e.g.
-        // auth/insufficient-permission, auth/operation-not-allowed)
-        // even when the friendly toast text is more concise.
-        console.error("createCleaningTechLoginV1 returned an error", {
-          http_status:  res.status,
-          server_code:  result && result.code,
-          server_error: result && result.error,
-          details:      result && result.details,
-          full_body:    result
-        });
-        const detailParts = (result && Array.isArray(result.details))
-          ? result.details.join(" · ") : null;
-        const codeSuffix = (result && result.code) ? " [" + result.code + "]" : "";
-        const msg = (result && result.error)
-          ? (result.error + (
-              // If the server already embedded the code in the error text,
-              // don't double-print it. Otherwise append the bracketed code
-              // so support can pattern-match the failure quickly.
-              codeSuffix && result.error.indexOf(result.code) >= 0 ? "" : codeSuffix
-            ))
-          : (detailParts || ("Server returned " + res.status + codeSuffix));
-        setModalError("tech-create-modal", msg);
-        setModalSaving("tech-create-modal", false);
-        return;
-      }
-    } catch (err) {
-      console.error("createCleaningTechLoginV1 fetch failed", err);
-      setModalError("tech-create-modal",
-        "Couldn't reach the create-login service. Check your connection and try again.");
-      setModalSaving("tech-create-modal", false);
-      return;
-    }
-
-    // ---- Success path ----
-    //
-    // Server has created/updated the Firebase Auth user AND the
-    // cleaning_techs doc. If the admin chose "send reset email", we ALSO
-    // trigger Firebase's hosted reset email from the client so the tech
-    // gets a real email (the server returned a backup link too). The
-    // client-triggered email is best-effort — a failure just means the
-    // tech relies on the backup link.
-    let clientResetEmailSent = false;
-    if (sendReset) {
-      try {
-        await firebase.auth().sendPasswordResetEmail(email);
-        clientResetEmailSent = true;
-      } catch (err) {
-        console.warn("sendPasswordResetEmail (client) failed; admin can share the backup link",
-          err && err.code, err && err.message);
-      }
-    }
-
-    // Refresh local techs cache so the new row appears immediately.
-    try {
-      const docSnap = await db.collection("cleaning_techs").doc(result.tech_slug).get();
-      if (docSnap.exists) {
-        const fresh = Object.assign({ id: docSnap.id }, docSnap.data());
-        const idx = techs.findIndex(function (x) { return x.id === fresh.id; });
-        if (idx >= 0) techs[idx] = fresh;
-        else techs.push(fresh);
-        techs.sort(function (a, b) { return getTechName(a).localeCompare(getTechName(b)); });
-        applyCurrentTechFilter();
-      }
-    } catch (err) {
-      console.warn("Post-create techs refresh failed (UI may be stale until reload)", err);
-    }
-
-    // Paint the success pane.
-    $("tech-create-form-pane").hidden    = true;
-    $("tech-create-success-pane").hidden = false;
-    $("tech-create-save").hidden         = true;
-    $("tech-create-cancel").hidden       = true;
-    $("tech-create-done").hidden         = false;
-
-    $("tech-create-success-title").textContent =
-      result.auth_user_created ? "Login created." : "Login already existed — tech updated.";
-
-    const subEl = $("tech-create-success-sub");
-    const subParts = [];
-    subParts.push("Tech slug: " + result.tech_slug);
-    subParts.push("Email: " + (result.email || email));
-    subEl.textContent = subParts.join(" · ");
-
-    if (sendReset) {
-      $("tech-create-reset-block").hidden = false;
-      $("tech-create-reset-link").value   = result.reset_link || "";
-      const noteEl = $("tech-create-success-note");
-      if (clientResetEmailSent && result.reset_link) {
-        noteEl.textContent =
-          "Firebase has emailed the tech a reset link. The backup link above is yours to copy if needed.";
-      } else if (clientResetEmailSent && !result.reset_link) {
-        noteEl.textContent =
-          "Firebase has emailed the tech a reset link. (Backup-link generation failed server-side — tell the tech to check their inbox/spam.)";
-      } else if (!clientResetEmailSent && result.reset_link) {
-        noteEl.textContent =
-          "Firebase didn't accept the email send from this browser — copy the backup link above and share it manually.";
-      } else {
-        noteEl.textContent =
-          "We couldn't email the tech automatically AND the backup link generation failed. Use the Forgot password flow on the sign-in page as a fallback.";
-      }
-    } else if (result.temporary_password) {
-      $("tech-create-temp-block").hidden = false;
-      $("tech-create-temp-password").value = result.temporary_password;
-      $("tech-create-success-note").textContent =
-        "Share this password privately — we will not show it again. The tech should change it on first sign-in.";
-    } else {
-      // Reset wasn't requested AND no temp password was returned — that
-      // happens when the email already had a Firebase Auth user
-      // (idempotent reuse). Nothing to share; the existing password is
-      // unchanged.
-      $("tech-create-success-note").textContent =
-        "This email already had a Firebase Auth login — we reused it and updated the cleaning_techs doc. " +
-        "The tech's existing password is unchanged.";
-    }
-
-    showToast("ok", "Tech login ready.");
-    setModalSaving("tech-create-modal", false);
-  }
-
-  // Copy-to-clipboard for the success pane. Falls back to selecting the
+  /* resetTechCreateModal + openTechCreateModal + onTechCreateSave moved
+     to public/admin/tab-techs.js (Phase 16a). Callers use
+     window.__pioneerAdmin.tabs.techs.openCreateModal /
+     onSaveCreate. */
   // input if the Clipboard API isn't available (e.g. older Safari).
   async function copyInputValue(inputId, btnId) {
     const input = $(inputId);
@@ -4856,20 +4262,14 @@
   // the modal + the techs list row (so the thumbnail and chips refresh
   // without a full Firestore re-read).
   function patchTechCacheAndRepaint(techId, patch) {
-    const idx = techs.findIndex(function (t) { return t.id === techId; });
-    if (idx < 0) return null;
-    techs[idx] = Object.assign({}, techs[idx], patch);
-    // Repaint just this row in place to avoid losing other admin state.
-    const row = document.querySelector('#tech-list [data-id="' + cssEsc(techId) + '"]');
-    if (row && row.parentElement) {
-      const wrapper = document.createElement("div");
-      wrapper.innerHTML = techCard(techs[idx]).trim();
-      const next = wrapper.firstElementChild;
-      if (next) row.parentElement.replaceChild(next, row);
-    }
-    paintTechMediaModal(techs[idx]);
+    // techs + techCard live in tab-techs.js (Phase 16a). The tab module
+    // exposes applyPatch which patches the cache + re-renders the row.
+    // The local media-modal paint + attention-strip refresh stay here.
+    const updated = window.__pioneerAdmin.tabs.techs.applyPatch(techId, patch);
+    if (!updated) return null;
+    paintTechMediaModal(updated);
     if (typeof refreshAttentionStrip === "function") refreshAttentionStrip();
-    return techs[idx];
+    return updated;
   }
   /* cssEsc moved to public/admin/_utils.js (Phase 4a) — imported via
      the top-of-IIFE destructure. */
@@ -5041,337 +4441,11 @@
     }
   }
 
-  /* --------------------------------------------------------------------
-   * Archive-confirm DOM modal.
-   *
-   * window.confirm() is auto-cancelled by Chrome automation tooling
-   * (and accidentally easy to accept on iPad-style devices). This is
-   * a real in-page dialog that returns a Promise<boolean>. Resolved
-   * true on the destructive button, false on Cancel / backdrop / Esc.
-   *
-   * Injected once on first call; reused thereafter.
-   * ------------------------------------------------------------------ */
-  let _archiveModalEl       = null;
-  let _archiveModalResolver = null;
-  function ensureArchiveConfirmMarkup() {
-    if (_archiveModalEl) return _archiveModalEl;
-    const overlay = document.createElement("div");
-    overlay.id = "tech-archive-confirm";
-    overlay.className = "tech-archive-overlay";
-    overlay.hidden = true;
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-labelledby", "tech-archive-title");
-    overlay.innerHTML =
-      '<div class="tech-archive-backdrop" data-archive-close></div>' +
-      '<div class="tech-archive-sheet">' +
-        '<button type="button" class="tech-archive-close" data-archive-close aria-label="Cancel">×</button>' +
-        '<h2 class="tech-archive-title" id="tech-archive-title">Archive team member?</h2>' +
-        '<p class="tech-archive-lede">' +
-          'This will remove PioneerOps access for this team member.' +
-        '</p>' +
-        '<ul class="tech-archive-bullets">' +
-          '<li>They will be signed out of the app on next page load.</li>' +
-          '<li>They will not be able to start work, submit DCRs, send SOS alerts, or reply to announcements.</li>' +
-          '<li>Their historical records stay intact.</li>' +
-          '<li>You can reactivate them later.</li>' +
-        '</ul>' +
-        '<div class="tech-archive-actions">' +
-          '<button type="button" class="tech-archive-btn tech-archive-btn-cancel" data-archive-cancel>Cancel</button>' +
-          '<button type="button" class="tech-archive-btn tech-archive-btn-confirm" data-archive-confirm>Archive team member</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    overlay.addEventListener("click", function (ev) {
-      const t = ev.target;
-      if (!t) return;
-      if (t.closest("[data-archive-confirm]")) { resolveArchiveModal(true);  return; }
-      if (t.closest("[data-archive-cancel]"))  { resolveArchiveModal(false); return; }
-      if (t.closest("[data-archive-close]"))   { resolveArchiveModal(false); return; }
-    });
-    document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape" && _archiveModalEl && !_archiveModalEl.hidden) resolveArchiveModal(false);
-    });
-    _archiveModalEl = overlay;
-    return overlay;
-  }
-  function resolveArchiveModal(result) {
-    if (_archiveModalEl) _archiveModalEl.hidden = true;
-    if (_archiveModalResolver) {
-      const r = _archiveModalResolver;
-      _archiveModalResolver = null;
-      r(!!result);
-    }
-  }
-  function openArchiveConfirmModal(name) {
-    const overlay = ensureArchiveConfirmMarkup();
-    const titleEl = document.getElementById("tech-archive-title");
-    if (titleEl) titleEl.textContent = "Archive " + (name || "this team member") + "?";
-    overlay.hidden = false;
-    // Focus the Cancel button so a quick Enter doesn't accidentally
-    // confirm a destructive action.
-    const cancel = overlay.querySelector("[data-archive-cancel]");
-    if (cancel) setTimeout(function () { try { cancel.focus(); } catch (_e) {} }, 30);
-    return new Promise(function (resolve) {
-      _archiveModalResolver = resolve;
-    });
-  }
-
-  // ---- Cleaning tech: archive / reactivate ----
-
-  async function onTechArchive(t) {
-    const name        = getTechName(t) || t.id;
-    const isArchiving = getActive(t);
-    const email       = String(t.email || "").toLowerCase().trim();
-    if (isArchiving) {
-      // Real DOM modal — window.confirm is auto-dismissed by Chrome
-      // automation tooling and felt too easy to accept accidentally.
-      const confirmed = await openArchiveConfirmModal(name);
-      if (!confirmed) return;
-    } else {
-      // Reactivate is calmer; a single Continue prompt is enough.
-      if (!window.confirm(
-        "Reactivate " + name + "?\n\n" +
-        "They'll regain PioneerOps access (assuming dcr_enabled stays on)."
-      )) return;
-    }
-
-    const adminEmail = getCurrentAdminEmail();
-    const sts = firebase.firestore.FieldValue.serverTimestamp();
-    const updates = isArchiving
-      ? { active: false, archived_at: sts,  archived_by: adminEmail, updated_at: sts, updated_by: adminEmail }
-      : { active: true,  archived_at: null, archived_by: null,       updated_at: sts, updated_by: adminEmail };
-
-    try {
-      // 1. Flip the tech doc.
-      await db.collection("cleaning_techs").doc(t.id).update(updates);
-
-      // 2. Update the active-staff index (this is the rule's gate). On
-      //    reactivate we re-write the doc; on archive we either flip
-      //    active=false on the existing index doc OR delete it. We
-      //    keep the doc for audit but set active=false so the rule
-      //    helper denies on `active == true`.
-      if (email) {
-        const idxRef = db.collection("active_techs_by_email").doc(email);
-        try {
-          if (isArchiving) {
-            await idxRef.set({
-              active:      false,
-              slug:        t.id,
-              email:       email,
-              archived_at: sts,
-              archived_by: adminEmail
-            }, { merge: true });
-          } else {
-            await idxRef.set({
-              active:        true,
-              slug:          t.id,
-              email:         email,
-              reactivated_at: sts,
-              reactivated_by: adminEmail
-            }, { merge: true });
-          }
-        } catch (idxErr) {
-          console.warn("[archive] active_techs_by_email update failed (non-fatal)", idxErr);
-        }
-      }
-
-      // 3. On archive, ask the Cloud Function to disable the auth user
-      //    + revoke refresh tokens. Non-fatal — even if this fails,
-      //    Firestore rules already deny field-tech writes.
-      let authRevoked = false;
-      if (isArchiving && email) {
-        try {
-          authRevoked = await callDisableAuthUserForTech(email);
-        } catch (revokeErr) {
-          console.warn("[archive] auth revoke failed (non-fatal — rules still deny)", revokeErr);
-        }
-      } else if (!isArchiving && email) {
-        // Reactivate path — re-enable the auth user if it was disabled.
-        try {
-          await callEnableAuthUserForTech(email);
-        } catch (revokeErr) {
-          console.warn("[reactivate] auth re-enable failed (non-fatal)", revokeErr);
-        }
-      }
-
-      const idx = techs.findIndex(function (x) { return x.id === t.id; });
-      if (idx >= 0) {
-        techs[idx] = Object.assign({}, techs[idx], updates, {
-          updated_at:  new Date(),
-          archived_at: isArchiving ? new Date() : null
-        });
-      }
-      applyCurrentTechFilter();
-      if (isArchiving) {
-        showToast("ok",
-          authRevoked
-            ? "Team member archived and PioneerOps access removed."
-            : "Team member archived. PioneerOps writes are now denied; their auth account is still enabled (configure SET_TECH_AUTH_DISABLED_URL to fully sign them out)."
-        );
-      } else {
-        showToast("ok", "Team member reactivated — PioneerOps access restored.");
-      }
-    } catch (err) {
-      handleAdminWriteError(err, { context: "tech archive" });
-    }
-  }
-
-  // Calls the Cloud Function that disables the Firebase Auth user +
-  // revokes refresh tokens. Returns true on success, false otherwise.
-  async function callDisableAuthUserForTech(email) {
-    const url = window.SET_TECH_AUTH_DISABLED_URL;
-    if (!url) {
-      console.warn("[archive] SET_TECH_AUTH_DISABLED_URL not configured — skipping auth revoke");
-      return false;
-    }
-    const u = firebase.auth().currentUser;
-    if (!u) return false;
-    const idToken = await u.getIdToken();
-    const res = await fetch(url, {
-      method:  "POST",
-      headers: {
-        "Authorization": "Bearer " + idToken,
-        "Content-Type":  "application/json"
-      },
-      body: JSON.stringify({ email: email, disabled: true })
-    });
-    const body = await res.json().catch(function () { return {}; });
-    return !!(res.ok && body && body.ok);
-  }
-  async function callEnableAuthUserForTech(email) {
-    const url = window.SET_TECH_AUTH_DISABLED_URL;
-    if (!url) return false;
-    const u = firebase.auth().currentUser;
-    if (!u) return false;
-    const idToken = await u.getIdToken();
-    const res = await fetch(url, {
-      method:  "POST",
-      headers: {
-        "Authorization": "Bearer " + idToken,
-        "Content-Type":  "application/json"
-      },
-      body: JSON.stringify({ email: email, disabled: false })
-    });
-    const body = await res.json().catch(function () { return {}; });
-    return !!(res.ok && body && body.ok);
-  }
-
-  /* ---------- HARD delete a cleaning tech ----------
-     Calls deleteCleaningTechV1. The server is the source of truth on
-     whether the delete is allowed — the client just renders whatever
-     came back. Two known refusal cases:
-       • HTTP 409 with body.blocked === true → operational history
-         exists. We surface the server's `reasons[]` list verbatim so
-         the admin knows what to clean up first (typically: archive
-         instead).
-       • Any other non-200 / body.ok === false → surface the server
-         error code so support can pattern-match. */
-  async function onTechDelete(t) {
-    const name = getTechName(t) || t.id;
-    if (!window.confirm(
-      "PERMANENTLY DELETE " + name + "?\n\n" +
-      "This removes the cleaning_techs doc and disables the Firebase Auth user " +
-      "(unless they're also an admin).\n\n" +
-      "Only works if this tech has no DCRs, supply requests, issues, or notifications. " +
-      "Otherwise you'll need to archive instead.\n\n" +
-      "This action cannot be undone."
-    )) return;
-
-    const url = (window.DELETE_CLEANING_TECH_URL || "").trim();
-    if (!url || /REPLACE_WITH/.test(url)) {
-      showToast("err", "DELETE_CLEANING_TECH_URL isn't configured in firebase-config.js.");
-      return;
-    }
-    let idToken = null;
-    try {
-      const u = firebase.auth().currentUser;
-      if (u) idToken = await u.getIdToken();
-    } catch (e) { /* swallowed */ }
-    if (!idToken) {
-      showToast("err", "You appear to be signed out. Refresh and sign in again.");
-      return;
-    }
-
-    let result = null;
-    let httpStatus = 0;
-    try {
-      const res = await fetch(url, {
-        method:  "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": "Bearer " + idToken
-        },
-        body: JSON.stringify({ tech_slug: t.id })
-      });
-      httpStatus = res.status;
-      result = await res.json().catch(function () { return {}; });
-    } catch (err) {
-      console.error("deleteCleaningTechV1 fetch failed", err);
-      showToast("err", "Couldn't reach the delete service. Check your connection and try again.");
-      return;
-    }
-
-    // 409 = blocked by history. Surface the reasons so the admin knows.
-    if (httpStatus === 409 && result && result.blocked) {
-      const reasons = Array.isArray(result.reasons) ? result.reasons.join(", ") : "linked records";
-      window.alert(
-        "Cannot permanently delete — archive instead.\n\n" +
-        name + " has linked records in: " + reasons + "."
-      );
-      showToast("err", "Delete blocked — archive instead. Linked: " + reasons + ".");
-      return;
-    }
-
-    if (httpStatus !== 200 || !result || !result.ok) {
-      console.error("deleteCleaningTechV1 returned an error", { status: httpStatus, body: result });
-      const codeBit = (result && result.code) ? " [" + result.code + "]" : "";
-      const msg = (result && result.error) || ("Server returned " + httpStatus + codeBit);
-      showToast("err", "Delete failed: " + msg);
-      return;
-    }
-
-    // ---- Success path ----
-    // Remove the tech from the local cache + re-render. Also refresh
-    // admins so the "promoted from this tech" admin doc (if any) shows
-    // its cleaning_tech_slug cleared in the next paint.
-    techs = techs.filter(function (x) { return x.id !== t.id; });
-    applyCurrentTechFilter();
-    try { await loadAdmins(); } catch (e) { /* non-fatal */ }
-
-    const bits = [];
-    bits.push("Cleaning tech " + name + " deleted.");
-    if (result.is_also_admin) {
-      bits.push("Firebase Auth user PRESERVED (still admin).");
-    } else if (result.auth_user_disabled) {
-      bits.push("Firebase Auth user disabled.");
-    } else if (result.auth_user_disable_err) {
-      bits.push("Auth user disable failed (" + result.auth_user_disable_err + ") — disable manually in Firebase Console.");
-    }
-    if (result.admin_doc_cleared) {
-      bits.push("Cleared cleaning_tech_slug on the matching admin doc.");
-    }
-    showToast("ok", bits.join(" "));
-  }
-
-  // ---- Filter helpers extracted so saves can re-render with the active search ----
-
-  /* applyCurrentCustomerFilter moved to public/admin/tab-customers.js
-     (Phase 15). Callers in admin.js use
-     window.__pioneerAdmin.tabs.customers.applyFilter(). */
-
-  function applyCurrentTechFilter() {
-    const ts = $("tech-search");
-    const q = ts ? ts.value.trim().toLowerCase() : "";
-    if (!q) return renderTechs(techs);
-    const filtered = techs.filter(function (t) {
-      return (
-        getTechName(t).toLowerCase().includes(q) ||
-        getTechSlug(t).toLowerCase().includes(q)
-      );
-    });
-    renderTechs(filtered);
-  }
+  /* Tech archive-confirm modal + onTechArchive + auth-disable/enable
+     helpers + onTechDelete + applyCurrentTechFilter moved to
+     public/admin/tab-techs.js (Phase 16a). Callers in admin.js use
+     window.__pioneerAdmin.tabs.techs.{onArchive, onDelete, applyFilter}
+     and the deps bridge for cross-tab reads. */
 
 
   /* Customer Notes + Note Suggestions tabs moved to
@@ -5448,6 +4522,8 @@
 
   // Build all the indexes the renderers need, in one pass each.
   function buildMappingIndexes() {
+    // techs now lives in tab-techs.js (Phase 16a); read via bridge.
+    const techs = window.__pioneerAdmin.deps.getTechs();
     const techsByDeputyId           = {};
     const techsByDeputyEmail        = {};
     const techsByEmailKey           = {};
@@ -7018,7 +6094,7 @@
     try {
       await db.collection("cleaning_techs").doc(slug).update(update);
       showToast("ok", "Tech mapping saved. Applies to all future shifts.");
-      await loadTechs();
+      await window.__pioneerAdmin.tabs.techs.refresh();
       renderDeputyMappingEmployees();
     } catch (err) {
       handleAdminWriteError(err, { context: "deputy employee mapping" });
@@ -7266,6 +6342,8 @@
         if (!btn) return;
         const row = btn.closest("[data-id]");
         if (!row) return;
+        // techs now lives in tab-techs.js (Phase 16a); read via bridge.
+        const techs = window.__pioneerAdmin.deps.getTechs();
         const t = techs.find(function (x) { return x.id === row.dataset.id; });
         if (!t) return;
 
@@ -7283,10 +6361,10 @@
         // dialog or modal.
         closeAllRowOverflowMenus();
 
-        if (action === "edit")    openTechEditModal(t);
-        if (action === "media")   openTechMediaModal(t);
-        if (action === "archive") onTechArchive(t);
-        if (action === "delete")  onTechDelete(t);
+        if (action === "edit")    window.__pioneerAdmin.tabs.techs.openEditModal(t);
+        if (action === "media")   openTechMediaModal(t);  // stays in admin.js (Phase 16b)
+        if (action === "archive") window.__pioneerAdmin.tabs.techs.onArchive(t);
+        if (action === "delete")  window.__pioneerAdmin.tabs.techs.onDelete(t);
         if (action === "resend") {
           const email = (t.email || "").toLowerCase().trim();
           if (email) sendResetInviteFor(email, null);
@@ -7336,9 +6414,9 @@
       window.__pioneerAdmin.tabs.customers.onSave();
     });
     const techSave = $("tech-edit-save");
-    if (techSave) techSave.addEventListener("click", onTechEditSave);
+    if (techSave) techSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveEdit(); });
     const techCreateSave = $("tech-create-save");
-    if (techCreateSave) techCreateSave.addEventListener("click", onTechCreateSave);
+    if (techCreateSave) techCreateSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveCreate(); });
 
     // "+ Add customer" button → opens the customer modal in create mode.
     const custCreateOpen = $("customer-create-open");
@@ -7370,55 +6448,10 @@
 
     // "+ Add tech / Login setup" button — opens the create modal.
     const techCreateOpen = $("tech-create-open");
-    if (techCreateOpen) techCreateOpen.addEventListener("click", openTechCreateModal);
+    if (techCreateOpen) techCreateOpen.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.openCreateModal(); });
 
-    // Generic helper: wire one assignments checklist (search + delegated
-    // checkbox toggles) to its staging Set. Shared by edit + create.
-    function wireAssignmentChecklist(opts) {
-      const search  = $(opts.searchId);
-      const list    = $(opts.listId);
-      const countId = opts.countId;
-      const staging = opts.staging;
-      const reRender = opts.reRender;
-      if (search) {
-        search.addEventListener("input", function () {
-          try { reRender(); }
-          catch (err) { console.error("assignments re-render failed", err); }
-        });
-      }
-      if (list) {
-        list.addEventListener("change", function (ev) {
-          const cb = ev.target.closest('input[type="checkbox"][data-assign-slug]');
-          if (!cb) return;
-          const slug = (cb.dataset.assignSlug || "").toLowerCase().trim();
-          if (!slug) return;
-          if (cb.checked) staging().add(slug);
-          else            staging().delete(slug);
-          const countEl = $(countId);
-          if (countEl) {
-            const total = window.__pioneerAdmin.deps.getCustomers().filter(function (c) { return getActive(c); }).length;
-            countEl.textContent =
-              staging().size + " of " + total +
-              (total === 1 ? " customer assigned" : " customers assigned");
-          }
-        });
-      }
-    }
-
-    wireAssignmentChecklist({
-      searchId: "tech-assignments-search",
-      listId:   "tech-assignments-list",
-      countId:  "tech-assignments-count",
-      staging:  function () { return pendingTechAssigned; },
-      reRender: renderTechAssignments
-    });
-    wireAssignmentChecklist({
-      searchId: "tech-create-assignments-search",
-      listId:   "tech-create-assignments-list",
-      countId:  "tech-create-assignments-count",
-      staging:  function () { return pendingTechCreateAssigned; },
-      reRender: renderTechCreateAssignments
-    });
+    // Assignment checklist wiring moved to tab-techs.js (Phase 16a).
+    // Its init() — called from boot — wires both checklists.
 
     // Tech-create modal — auto-derive slug from display name as the admin
     // types. We do NOT overwrite the slug field once the admin has typed
@@ -10408,10 +9441,13 @@
     // are extracted in later phases.
     window.__pioneerAdmin.deps = {
       getCustomers:          function () { return window.__pioneerAdmin.tabs.customers.getCustomers(); },
-      getTechs:              function () { return techs; },
+      getTechs:              function () { return window.__pioneerAdmin.tabs.techs.getTechs(); },
       getDcrs:               function () { return window.__pioneerAdmin.tabs.recentDcrs.getDcrs(); },
       getDcrIssues:          function () { return window.__pioneerAdmin.tabs.dcrIssues.getDcrIssues(); },
       getSupplyRequests:     function () { return supplyRequests; },
+      getAdmins:             function () { return admins; },
+      loadAdmins:            function () { return loadAdmins(); },
+      refreshAttentionStrip: function () { return refreshAttentionStrip(); },
       getCurrentAdminEmail:  getCurrentAdminEmail,
       handleAdminWriteError: handleAdminWriteError,
       setModalError:         setModalError,
@@ -10429,6 +9465,7 @@
     window.__pioneerAdmin.tabs.noteSuggestions.init();
     window.__pioneerAdmin.tabs.serviceRecoveries.init();
     window.__pioneerAdmin.tabs.training.init();
+    window.__pioneerAdmin.tabs.techs.init();
     wireDeputyMappingControls();
     wireScheduleControls();
     wireScheduleImportControls();
