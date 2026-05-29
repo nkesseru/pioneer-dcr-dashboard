@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer Team Schedule</title>
+  <!-- PioneerOps shared UI foundation (load before page-specific CSS). -->
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/team-hub-overrides.css" />
+  <link rel="stylesheet" href="styles/team-schedule.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Team Schedule</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <nav class="role-nav" id="role-nav" data-current-page="team-hub" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Team Schedule</h1>
+      <p class="subtitle">Nightly coverage and tech assignments.</p>
+    </section>
+
+    <!-- Auth screens — same gates as the other staff pages. -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Sign in with your active Pioneer staff account.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer DCR access.
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- Authorized content -->
+    <div id="staff-auth-content" hidden>
+
+      <!-- Meta strip — published-at + range + view-range + back to Team Hub -->
+      <section class="card ts-meta-card" id="ts-meta-card" hidden>
+        <div class="ts-meta">
+          <span class="ts-meta-range" id="ts-meta-range">—</span>
+          <span class="ts-meta-dot" aria-hidden="true">·</span>
+          <span class="ts-meta-when" id="ts-meta-when">—</span>
+          <span class="ts-meta-dot ts-meta-dot--hide-mobile" aria-hidden="true">·</span>
+          <span class="ts-meta-shifts" id="ts-meta-shifts">—</span>
+        </div>
+        <div class="ts-meta-actions">
+          <a class="th-schedule-btn" href="/team-hub.html">← Back to Team Hub</a>
+          <a class="th-schedule-btn" id="ts-pdf-link" href="#" target="_blank" rel="noopener noreferrer" hidden>View printable PDF</a>
+        </div>
+      </section>
+
+      <!-- ===== Scheduled Time Off (visibility) =====
+           Compact-by-default panel. The full schedule is the primary
+           thing on this page — time-off visibility is supporting
+           context, so we collapse the 60-day heatmap behind a
+           <details> wrapper. Closed state shows a single-line summary
+           ("3 upcoming time-off dates · 1 critical coverage day").
+           Open state reveals the heatmap.
+
+           Open-on-arrival via ?timeOff=open in the URL — used by the
+           "View scheduled time off" link in /time-off.html. -->
+      <details class="card ts-tto-card" id="ts-time-off" hidden>
+        <summary class="ts-tto-summary">
+          <div class="ts-tto-summary-main">
+            <h2 class="ts-tto-title">Scheduled Time Off</h2>
+            <p class="ts-tto-summary-line" id="ts-tto-summary-line">—</p>
+          </div>
+          <span class="ts-tto-summary-cta">View time-off calendar</span>
+          <span class="ts-tto-summary-chevron" aria-hidden="true">▸</span>
+        </summary>
+
+        <div class="ts-tto-body">
+          <div class="ts-tto-legend" aria-label="Time-off heatmap legend">
+            <span class="ts-tto-legend-item"><span class="ts-tto-sw ts-tto-sw--yellow"></span>1 off</span>
+            <span class="ts-tto-legend-item"><span class="ts-tto-sw ts-tto-sw--orange"></span>2 off</span>
+            <span class="ts-tto-legend-item"><span class="ts-tto-sw ts-tto-sw--red"></span>3+ off · critical</span>
+          </div>
+          <div class="ts-tto-empty" id="ts-tto-empty" hidden>No scheduled time off in the next 60 days.</div>
+          <div class="ts-tto-grid" id="ts-tto-grid"></div>
+        </div>
+      </details>
+
+      <!-- Compact sticky toolbar. Two rows max, both compact:
+             Row 1: [1W][2W][3W]   [List][Calendar]
+             Row 2: [Scope ▼]  [Customer ▼]
+           The Tech filter is folded into the Scope dropdown (as a
+           "— Tech: …" group) so we keep all filtering capability in
+           one control. Sticky-positioned so it stays visible while
+           scrolling deep into Week 3. -->
+      <section class="ts-toolbar" id="ts-filters-card" hidden>
+        <div class="ts-toolbar-row ts-toolbar-row--primary">
+          <div class="ts-pill-group ts-filter-range" role="tablist" aria-label="View range">
+            <button class="ts-pill" type="button" data-range="1" role="tab" aria-selected="false">1W</button>
+            <button class="ts-pill" type="button" data-range="2" role="tab" aria-selected="false">2W</button>
+            <button class="ts-pill" type="button" data-range="3" role="tab" aria-selected="false">3W</button>
+          </div>
+          <div class="ts-pill-group ts-filter-view" role="tablist" aria-label="View mode">
+            <button class="ts-pill" type="button" data-view="assignment" role="tab" aria-selected="false">Assignments</button>
+            <button class="ts-pill" type="button" data-view="list"       role="tab" aria-selected="false">List</button>
+            <button class="ts-pill" type="button" data-view="calendar"   role="tab" aria-selected="false">Coverage</button>
+          </div>
+        </div>
+        <div class="ts-toolbar-row ts-toolbar-row--secondary">
+          <select class="ts-select" id="ts-filter-scope" aria-label="Scope filter (team / mine / specific tech)">
+            <option value="all">All team</option>
+            <option value="mine">My schedule</option>
+          </select>
+          <select class="ts-select" id="ts-filter-customer" aria-label="Customer filter">
+            <option value="all">All customers</option>
+          </select>
+          <span class="ts-filter-summary" id="ts-filter-summary">—</span>
+        </div>
+      </section>
+
+      <!-- Empty + status -->
+      <div class="ts-empty" id="ts-empty" hidden>
+        <p>No published schedule yet. Ask an admin to publish from <a href="/admin?tab=schedule">Admin → Schedule</a>.</p>
+      </div>
+      <div class="ts-empty" id="ts-no-matches" hidden>
+        <p>No shifts match the current filters.</p>
+      </div>
+
+      <!-- Assignment View — Pioneer-native dispatch board. Grouped by
+           day → tech → customer/building. Designed for the operational
+           question "what must be completed tonight, by whom" rather
+           than a time-boxed calendar grid. Default view for cleaning
+           techs + admins. Calendar + List remain as supervisor /
+           printable alternatives.
+
+           Phase 2 TODO:
+             • per-shift status chips (Remaining / In Progress /
+               Completed) — needs a write-back path from DCR submit
+               so the snapshot reflects completion in near-real-time
+             • optional "open buildings without owners" surface for
+               supervisors
+             • drag-to-reassign within a day (admins only) -->
+      <div class="ts-assignment" id="ts-assignment" hidden></div>
+
+      <!-- List view — vertical week → day → shift rows. The original
+           render path; preserved because some users (and some screen
+           reader workflows) prefer linear scanning. -->
+      <div class="ts-weeks" id="ts-weeks" hidden></div>
+
+      <!-- Calendar view — 7-column grid per week, one row per snapshot
+           week (1/2/3 weeks based on the range pills). Cells use the
+           same week-bucket logic as the list view (week N = startDate
+           + 7N..startDate + 7N+6) so the data lines up across views.
+           Horizontally scrollable on narrow screens; on very small
+           viewports we automatically default to List, but users can
+           still toggle back to Calendar. -->
+      <div class="ts-calendar" id="ts-calendar" hidden></div>
+
+      <!-- Shift detail drawer was here. Disabled in pilot — the modal
+           was opening with placeholder dashes in unusual edge cases.
+           See the matching note in team-schedule.js. Re-enable when
+           we have a guaranteed path to always-populated detail.
+
+           Phase 2 TODO:
+             • re-add a shift detail drawer (Pioneer-styled, populated
+               from a guaranteed shift record)
+             • "Start work on this shift" → /work.html?deputy_shift_id=…
+             • inline copy-to-clipboard for address/security code -->
+
+    </div><!-- /#staff-auth-content -->
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Team Schedule</p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="customer-display.js?v=20260528-displayfallback"></script>
+  <script src="team-schedule.js?v=20260528-displayfallback"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

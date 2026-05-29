@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Help Improve Pioneer</title>
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/improve.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img" src="assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">PioneerOps</div>
+      </div>
+    </div>
+    <div class="brand-accent" aria-hidden="true"></div>
+    <nav class="role-nav" id="role-nav" data-current-page="improve" aria-label="Primary" hidden></nav>
+  </header>
+
+  <main class="improve-main">
+
+    <!-- Auth states (mirrors the form pages) -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking your account…</p>
+    </section>
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Pioneer Team sign-in</p>
+      <p class="staff-auth-sub">Sign in to share an improvement idea.</p>
+      <button type="button" class="staff-google-btn" id="staff-google-signin">
+        <span>Sign in with Google</span>
+      </button>
+    </section>
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">We couldn't verify your account</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">Reach out to senior management if this looks wrong.</p>
+      <button type="button" class="staff-google-btn is-secondary" data-staff-signout>Use a different account</button>
+    </section>
+
+    <div id="staff-auth-content" hidden>
+
+      <section class="hero improve-hero">
+        <h1>Help Improve Pioneer</h1>
+        <p class="subtitle">Operational improvement, problem solving, ownership culture.</p>
+      </section>
+
+      <!-- Mode switch — standard improvement (default) or a separate
+           protected concern flow for harassment / discrimination /
+           retaliation / serious ethics or safety concerns. -->
+      <section class="card improve-mode-card">
+        <div class="improve-mode-seg" role="tablist" aria-label="Submission type">
+          <button type="button" class="improve-mode-btn is-active" data-mode="improvement"
+                  role="tab" aria-selected="true">
+            Help Improve Pioneer
+          </button>
+          <button type="button" class="improve-mode-btn" data-mode="protected"
+                  role="tab" aria-selected="false">
+            Protected concern
+          </button>
+        </div>
+        <p class="improve-mode-help" id="improve-mode-help">
+          Help us improve how Pioneer operates. Share friction, ideas, workflow
+          improvements, operational issues, or opportunities to make the company
+          stronger. Senior management reviews every submission.
+          <strong>Focus on helping improve the system, not attacking people.</strong>
+        </p>
+        <p class="improve-mode-microcopy">
+          The best ideas usually come from the people doing the work every day.
+        </p>
+      </section>
+
+      <!-- ====================================================
+           Mode A — Standard improvement form
+           ==================================================== -->
+      <form id="improve-form" class="card improve-form" autocomplete="off" novalidate>
+        <p class="improve-tip">
+          You're signed in as <strong id="improve-signed-in-name">—</strong>.
+          Standard improvements aren't anonymous — your name helps us follow up if we have a question.
+        </p>
+
+        <div class="field">
+          <label for="improve-category">Category (optional)</label>
+          <select id="improve-category">
+            <option value="">— Pick one —</option>
+            <option value="pioneerops_ux">PioneerOps UX</option>
+            <option value="customer">Customer issue</option>
+            <option value="supplies">Supplies</option>
+            <option value="scheduling">Scheduling</option>
+            <option value="communication">Communication</option>
+            <option value="safety">Safety</option>
+            <option value="operations">Operations</option>
+            <option value="equipment">Equipment</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <label class="check-row">
+          <input type="checkbox" id="improve-is-pioneerops-issue" />
+          <span>This is specifically a PioneerOps app issue (bug, confusing workflow, missing feature)</span>
+        </label>
+
+        <div class="field">
+          <label for="improve-problem">What's the problem?</label>
+          <textarea id="improve-problem" rows="4" maxlength="1200"
+                    placeholder="Describe what's getting in the way."></textarea>
+          <p class="field-helper">Stay specific and operational — names of customers / accounts / steps are great.</p>
+        </div>
+
+        <div class="field">
+          <label for="improve-why">Why does it matter?</label>
+          <textarea id="improve-why" rows="3" maxlength="800"
+                    placeholder="What's the impact on the work, the team, or the customer?"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="improve-suggest">What do you think would improve it?</label>
+          <textarea id="improve-suggest" rows="4" maxlength="1500"
+                    placeholder="Your idea for a better way. Doesn't have to be perfect."></textarea>
+        </div>
+
+        <div class="field">
+          <span class="label-text">Screenshots or photos (optional)</span>
+          <input type="file" id="improve-photos" accept="image/*" multiple />
+          <p class="field-helper">Up to 3 images, 5 MB each. Helpful for showing operational issues, workflow steps, or app screens.</p>
+          <div class="improve-photo-previews" id="improve-photo-previews"></div>
+        </div>
+
+        <div class="improve-form-status" id="improve-form-status" aria-live="polite"></div>
+        <div class="improve-form-error"  id="improve-form-error"  role="alert" hidden></div>
+
+        <div class="improve-form-actions">
+          <button type="submit" class="modal-btn-save" id="improve-submit">Send to the team</button>
+        </div>
+      </form>
+
+      <!-- ====================================================
+           Mode B — Protected concern form
+           ==================================================== -->
+      <form id="protected-form" class="card improve-form improve-form-protected" autocomplete="off" novalidate hidden>
+        <div class="improve-protected-callout">
+          <strong>Protected concern.</strong>
+          Use this for harassment, discrimination, retaliation, or serious ethics
+          or safety concerns. Reports go to senior management only.
+        </div>
+
+        <label class="check-row">
+          <input type="checkbox" id="protected-anonymous" />
+          <span>Submit anonymously — leave my name off this report</span>
+        </label>
+
+        <div class="field">
+          <label for="protected-what">Tell us what happened.</label>
+          <textarea id="protected-what" rows="5" maxlength="2000"
+                    placeholder="Describe the situation in your own words."></textarea>
+        </div>
+
+        <div class="field">
+          <label for="protected-context">Any context that would help us look into this?</label>
+          <textarea id="protected-context" rows="3" maxlength="1200"
+                    placeholder="People involved, when it happened, where, anything else useful."></textarea>
+        </div>
+
+        <div class="field">
+          <label for="protected-resolution">What would help resolve this?</label>
+          <textarea id="protected-resolution" rows="3" maxlength="1200"
+                    placeholder="What outcome are you looking for?"></textarea>
+        </div>
+
+        <div class="improve-form-status" id="protected-form-status" aria-live="polite"></div>
+        <div class="improve-form-error"  id="protected-form-error"  role="alert" hidden></div>
+
+        <div class="improve-form-actions">
+          <button type="submit" class="modal-btn-save" id="protected-submit">Send protected concern</button>
+        </div>
+      </form>
+
+      <!-- Success state -->
+      <section class="card improve-success" id="improve-success" hidden>
+        <div class="improve-success-icon" aria-hidden="true">🤝</div>
+        <h2 id="improve-success-title">Thanks — we got it.</h2>
+        <p class="improve-success-body" id="improve-success-body">
+          Senior management reviews every submission. We'll follow up if we need
+          clarification, and we'll let the team know when improvements ship from
+          ideas like this.
+        </p>
+        <div class="improve-success-actions">
+          <button type="button" class="panel-action" id="improve-success-another">Share another improvement</button>
+          <a class="panel-action" href="/team-hub.html">Back to Team Hub</a>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code></p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="celebrate.js?v=20260528-companyops"></script>
+  <script src="improve.js?v=20260528-companyops"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

@@ -106,11 +106,12 @@
   }
 
   /* ---------- snapshot state ---------- */
-  let snapshot      = null;     // raw published_team_schedule/current data
-  let pdfBackup     = null;     // raw team_schedule/current data (if any)
-  let currentStaff  = null;
-  let techDirectory = new Map(); // techSlug → { display_name, photo_url, color, email }
-  let renderedShifts = [];      // filtered shifts in current view order
+  let snapshot          = null;     // raw published_team_schedule/current data
+  let pdfBackup         = null;     // raw team_schedule/current data (if any)
+  let currentStaff      = null;
+  let techDirectory     = new Map(); // techSlug → { display_name, photo_url, color, email }
+  let customerDirectory = new Map(); // customer_slug → /customers/{slug} doc
+  let renderedShifts    = [];      // filtered shifts in current view order
 
   // Filter state. View mode defaults to "assignment" (Pioneer-native
   // dispatch board) on first visit; existing localStorage preferences
@@ -250,6 +251,39 @@
       snapshot  = null;
       pdfBackup = null;
     }
+  }
+
+  // Render-time fallback for the canonical display name. The publish
+  // snapshot bakes the helper's output, but when the customer doc is
+  // edited AFTER the last sync, the snapshot is stale. Loading the
+  // customers directory once on boot lets us override the snapshot's
+  // customerName with the live helper string for any row whose slug
+  // resolves. customer_slug stays untouched in every other code path.
+  async function loadCustomerDirectory() {
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore().collection("customers").get();
+      customerDirectory = new Map();
+      snap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.active === false) return;
+        const slug = data.customer_slug || d.id;
+        if (!slug) return;
+        customerDirectory.set(String(slug).trim(), Object.assign({ id: d.id }, data));
+      });
+    } catch (err) {
+      console.warn("[team-schedule] customer directory read failed", err);
+      customerDirectory = new Map();
+    }
+  }
+  function resolveDisplayName(shiftLikeRow) {
+    if (!shiftLikeRow) return "";
+    const slug = String(shiftLikeRow.customerSlug || shiftLikeRow.customer_slug || "").trim();
+    if (slug && customerDirectory.has(slug) && window.PioneerCustomerDisplay) {
+      const helperName = window.PioneerCustomerDisplay.getCustomerDisplayName(customerDirectory.get(slug));
+      if (helperName) return helperName;
+    }
+    return String(shiftLikeRow.customerName || shiftLikeRow.customer_name || "").trim();
   }
 
   async function loadTechDirectory() {
@@ -450,7 +484,7 @@
       }
       const cKey = s.customerSlug || s.customerName || "";
       if (cKey && !custMap.has(cKey)) {
-        custMap.set(cKey, s.customerName || cKey);
+        custMap.set(cKey, resolveDisplayName(s) || cKey);
       }
     });
 
@@ -534,7 +568,7 @@
           escapeHtml(initial) +
         '</span>';
 
-    const customerLabel = s.customerName || s.customerSlug || "Unassigned";
+    const customerLabel = resolveDisplayName(s) || s.customerSlug || "Unassigned";
     const timeFull      = s.endTime
       ? (escapeHtml(s.startTime) + "–" + escapeHtml(s.endTime))
       :  escapeHtml(s.startTime);
@@ -687,7 +721,7 @@
   // by the tech-color bullet on the left + the surrounding tech
   // section header above.
   function renderAssignmentCard(s) {
-    const customer  = s.customerName || s.customerSlug || "Unassigned building";
+    const customer  = resolveDisplayName(s) || s.customerSlug || "Unassigned building";
     const timeRange = s.endTime
       ? (escapeHtml(s.startTime) + "–" + escapeHtml(s.endTime))
       : (escapeHtml(s.startTime) || "");
@@ -980,7 +1014,7 @@
               avatar +
               '<div class="ts-row-body">' +
                 '<div class="ts-row-line">' +
-                  '<span class="ts-row-customer">' + escapeHtml(s.customerName || "Unassigned") + '</span>' +
+                  '<span class="ts-row-customer">' + escapeHtml(resolveDisplayName(s) || "Unassigned") + '</span>' +
                   statusHtml +
                 '</div>' +
                 '<div class="ts-row-line ts-row-line--secondary">' +
@@ -1087,13 +1121,185 @@
     });
   }
 
+  /* ---------- Scheduled Time Off heatmap ----------
+     Reusable per-day pressure visualization. Same rules + look as
+     the admin Attendance calendar:
+       0 = white, 1 = yellow, 2 = orange, 3+ = red
+     Built into the Team Schedule page so techs see coverage pressure
+     before requesting their own day off. Names are listed inline at
+     desktop widths + always present in the tooltip. */
+  async function loadScheduledTimeOff() {
+    const grid    = $("ts-tto-grid");
+    const wrap    = $("ts-time-off");
+    const emptyEl = $("ts-tto-empty");
+    if (!grid || !wrap) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    let snap;
+    try {
+      snap = await firebase.firestore()
+        .collection("time_off_requests")
+        .where("status", "in", ["pending", "approved"])
+        .get();
+    } catch (err) {
+      console.warn("[team-schedule] time_off_requests read failed", err);
+      // Stay hidden — never break the page just because the
+      // visibility section can't load.
+      return;
+    }
+
+    const today  = (function () {
+      try {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Los_Angeles",
+          year: "numeric", month: "2-digit", day: "2-digit"
+        }).format(new Date());
+      } catch (_e) { return new Date().toISOString().slice(0, 10); }
+    })();
+    const horizonDays = 60;
+    const horizonEnd  = (function () {
+      const ms = new Date(today + "T12:00:00Z").getTime() + (horizonDays - 1) * 86400000;
+      return new Date(ms).toISOString().slice(0, 10);
+    })();
+
+    // Build date → entries[] across the horizon.
+    const byDate = new Map();
+    for (let i = 0; i < horizonDays; i++) {
+      const d = (function () {
+        const ms = new Date(today + "T12:00:00Z").getTime() + i * 86400000;
+        return new Date(ms).toISOString().slice(0, 10);
+      })();
+      byDate.set(d, []);
+    }
+    snap.docs.forEach(function (doc) {
+      const x = doc.data() || {};
+      const start = x.startDate;
+      const end   = x.endDate || start;
+      if (!start) return;
+      let cur = start;
+      let safety = 0;
+      while (cur <= end && safety < 120) {
+        if (byDate.has(cur)) {
+          byDate.get(cur).push({
+            name:   x.techName || x.techEmail || "Tech",
+            status: x.status
+          });
+        }
+        // advance cur by 1 day
+        const ms = new Date(cur + "T12:00:00Z").getTime() + 86400000;
+        cur = new Date(ms).toISOString().slice(0, 10);
+        safety += 1;
+        if (cur > horizonEnd) break;
+      }
+    });
+
+    // Compute compact summary stats for the collapsed-by-default panel.
+    // "Upcoming time-off dates" = number of distinct dates in the next
+    // 7 days that have at least one (approved + pending) request.
+    // "Critical coverage day" = a day in the next 7 with 3+ off.
+    const next7End = (function () {
+      const ms = new Date(today + "T12:00:00Z").getTime() + 6 * 86400000;
+      return new Date(ms).toISOString().slice(0, 10);
+    })();
+    let upcomingWithAnyOff   = 0;
+    let upcomingCriticalDays = 0;
+    let totalEntries         = 0;
+    byDate.forEach(function (entries, date) {
+      totalEntries += entries.length;
+      if (date >= today && date <= next7End) {
+        if (entries.length >= 1) upcomingWithAnyOff   += 1;
+        if (entries.length >= 3) upcomingCriticalDays += 1;
+      }
+    });
+
+    const summaryLineEl = $("ts-tto-summary-line");
+    if (summaryLineEl) {
+      const parts = [];
+      parts.push(upcomingWithAnyOff +
+        (upcomingWithAnyOff === 1 ? " upcoming time-off date" : " upcoming time-off dates") +
+        " · next 7 days");
+      if (upcomingCriticalDays > 0) {
+        parts.push(upcomingCriticalDays +
+          (upcomingCriticalDays === 1 ? " critical coverage day" : " critical coverage days"));
+      }
+      summaryLineEl.textContent = parts.join(" · ");
+      summaryLineEl.classList.toggle("is-critical", upcomingCriticalDays > 0);
+    }
+
+    if (totalEntries === 0) {
+      grid.innerHTML = "";
+      if (emptyEl) emptyEl.hidden = false;
+      wrap.hidden = false;
+      // Cache empty so /time-off page's warning lookup still works.
+      window.tsTimeOffByDate = byDate;
+      return;
+    }
+    if (emptyEl) emptyEl.hidden = true;
+
+    const cellsHtml = Array.from(byDate.entries()).map(function (kv) {
+      const d = kv[0];
+      const entries = kv[1];
+      const count = entries.length;
+      let level = "none";
+      if      (count >= 3) level = "red";
+      else if (count === 2) level = "orange";
+      else if (count === 1) level = "yellow";
+      const isToday = (d === today);
+      let wkday = "", monthDay = "";
+      try {
+        wkday = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles", weekday: "short"
+        }).format(new Date(d + "T12:00:00Z"));
+        monthDay = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles", month: "short", day: "numeric"
+        }).format(new Date(d + "T12:00:00Z"));
+      } catch (_e) { wkday = ""; monthDay = d; }
+
+      const namesHtml = entries.length
+        ? '<ul class="ts-tto-names">' +
+            entries.map(function (e) {
+              return '<li class="ts-tto-name ts-tto-name--' + e.status + '">' +
+                escapeHtml(e.name) +
+                (e.status === "pending" ? ' <em>(pending)</em>' : '') +
+                '</li>';
+            }).join("") +
+          '</ul>'
+        : '';
+      const tooltipParts = count > 0
+        ? [count + (count === 1 ? " person" : " people") + " requested off on " + monthDay]
+            .concat(entries.map(function (e) {
+              return "· " + e.name + (e.status === "pending" ? " (pending)" : "");
+            }))
+        : ["No requests off on " + monthDay];
+      return (
+        '<div class="ts-tto-cell ts-tto-cell--' + level +
+          (isToday ? ' is-today' : '') + '"' +
+          ' title="' + escapeHtml(tooltipParts.join("\n")) + '">' +
+          '<div class="ts-tto-head">' +
+            '<span class="ts-tto-wkday">' + escapeHtml(wkday) + '</span>' +
+            '<span class="ts-tto-date">' + escapeHtml(monthDay) + '</span>' +
+            (count > 0 ? '<span class="ts-tto-count">' + count + '</span>' : '') +
+          '</div>' +
+          namesHtml +
+        '</div>'
+      );
+    }).join("");
+
+    grid.innerHTML = cellsHtml;
+    wrap.hidden = false;
+    // Stash for cross-page use: /time-off.html reads window.opener?... no.
+    // Just keep this as a module-scope-style global in case future code
+    // wants to read it from the same page.
+    window.tsTimeOffByDate = byDate;
+  }
+
   async function bootForStaff(staff) {
     currentStaff = staff;
     paintStaffIdentity(staff);
     renderRoleNav(staff && staff.role);
     setStaffAuthState("content");
 
-    await Promise.all([loadSnapshot(), loadTechDirectory()]);
+    await Promise.all([loadSnapshot(), loadTechDirectory(), loadCustomerDirectory()]);
     applyDefaultRange();
     applyDefaultViewMode();
     paintMetaCard();
@@ -1102,6 +1308,26 @@
     if (filtersCard) filtersCard.hidden = !snapshot;
     wireFilterControls();
     renderShifts();
+    // Soft-load the Scheduled Time Off visibility — non-blocking.
+    // Honor ?timeOff=open: when the user followed the "View scheduled
+    // time off" link from /time-off.html, pre-open the panel so they
+    // don't have to click again. Default behavior remains collapsed.
+    loadScheduledTimeOff().then(function () {
+      try {
+        const params = new URLSearchParams(window.location.search || "");
+        if (params.get("timeOff") === "open" || window.location.hash === "#ts-time-off") {
+          const det = $("ts-time-off");
+          if (det) {
+            det.open = true;
+            // Scroll into view a beat after the panel expands so the
+            // user lands on the heatmap, not the summary.
+            setTimeout(function () {
+              try { det.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_e) {}
+            }, 50);
+          }
+        }
+      } catch (_e) {}
+    });
   }
 
   /* ---------- boot ---------- */
