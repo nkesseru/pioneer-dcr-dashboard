@@ -6,7 +6,11 @@
  *   • ALLOWED_ADMIN_EMAILS      — single-source-of-truth allowlist
  *   • isRootAdmin(email)        — sync allowlist check
  *   • escapeHtml(s)             — HTML-entity escape
- *   • formatTimestamp(ts)       — Firestore-tolerant date formatter
+ *   • cssEsc(s)                 — CSS attribute-selector escape (" and \)
+ *   • formatTimestamp(ts)       — Firestore-tolerant date formatter (locale)
+ *   • tsToMs(ts)                — Firestore/ISO/number → ms reader
+ *   • formatImprovementDate(ts) — short Pacific-time formatter
+ *                                 (used by SOS, Improvements, Announcements)
  *   • getCustomer*(c) / getTech*(t) — schema-tolerant field accessors
  *
  * Surface lives at window.__pioneerAdmin.utils. Loaded BEFORE admin.js
@@ -77,6 +81,44 @@
     return String(ts);
   }
 
+  /* ---------- shared time/escape helpers ----------
+   * tsToMs is the canonical Firestore-Timestamp / ISO / number reader.
+   * dcrTsToMs (in admin/_budget.js) is now an alias to this — same impl,
+   * one source of truth. Mirrors the server-side helper in
+   * functions/index.js.
+   */
+  function tsToMs(ts) {
+    if (!ts) return null;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts._seconds === "number") return ts._seconds * 1000;
+    return null;
+  }
+
+  // Short Pacific-time formatter used across SOS, Improvements, and
+  // Announcements panels. Returns "—" on unreadable input.
+  function formatImprovementDate(ts) {
+    const ms = tsToMs(ts);
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms));
+    } catch (_e) { return "—"; }
+  }
+
+  // Escape a string for use inside a CSS attribute-selector value, e.g.
+  // document.querySelector('input[data-x="' + cssEsc(id) + '"]'). Escapes
+  // only " and \ since those are the characters that break the selector
+  // string.
+  function cssEsc(s) {
+    return String(s == null ? "" : s).replace(/(["\\])/g, "\\$1");
+  }
+
   /* ---------- defensive field accessors ---------- */
 
   function getCustomerName(c)     { return c.customer_name  || c.name         || c.display_name || ""; }
@@ -101,7 +143,10 @@
     ALLOWED_ADMIN_EMAILS: ALLOWED_ADMIN_EMAILS,
     isRootAdmin: isRootAdmin,
     escapeHtml: escapeHtml,
+    cssEsc: cssEsc,
     formatTimestamp: formatTimestamp,
+    tsToMs: tsToMs,
+    formatImprovementDate: formatImprovementDate,
     getCustomerName: getCustomerName,
     getCustomerSlug: getCustomerSlug,
     getCustomerEmail: getCustomerEmail,

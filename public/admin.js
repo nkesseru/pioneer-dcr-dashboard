@@ -55,7 +55,10 @@
     ALLOWED_ADMIN_EMAILS,
     isRootAdmin,
     escapeHtml,
+    cssEsc,
     formatTimestamp,
+    tsToMs,
+    formatImprovementDate,
     getCustomerName,
     getCustomerSlug,
     getCustomerEmail,
@@ -2767,17 +2770,8 @@
            '</article>';
   }
 
-  function formatImprovementDate(ts) {
-    const ms = tsToMs(ts);
-    if (!ms) return "—";
-    try {
-      return new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/Los_Angeles",
-        month: "short", day: "numeric",
-        hour: "numeric", minute: "2-digit", hour12: true
-      }).format(new Date(ms));
-    } catch (_e) { return "—"; }
-  }
+  /* formatImprovementDate moved to public/admin/_utils.js (Phase 4a) —
+     imported via the top-of-IIFE destructure. */
 
   async function updateImprovementStatus(selectEl) {
     const id     = selectEl.getAttribute("data-improvement-id");
@@ -2936,15 +2930,9 @@
     return { startMs: start.getTime(), endMs: end.getTime() };
   }
 
-  function tsToMs(ts) {
-    if (!ts) return null;
-    if (typeof ts === "number") return ts;
-    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
-    if (typeof ts.toMillis === "function") return ts.toMillis();
-    if (typeof ts.seconds === "number") return ts.seconds * 1000;
-    if (typeof ts._seconds === "number") return ts._seconds * 1000;
-    return null;
-  }
+  /* tsToMs moved to public/admin/_utils.js (Phase 4a) — imported via
+     the top-of-IIFE destructure. Canonical impl; _budget.js's dcrTsToMs
+     is now an alias for the same function. */
 
   function formatTimeRangePT(startMs, endMs) {
     function fmt(ms) {
@@ -7132,9 +7120,8 @@
     if (typeof refreshAttentionStrip === "function") refreshAttentionStrip();
     return techs[idx];
   }
-  function cssEsc(s) {
-    return String(s == null ? "" : s).replace(/(["\\])/g, "\\$1");
-  }
+  /* cssEsc moved to public/admin/_utils.js (Phase 4a) — imported via
+     the top-of-IIFE destructure. */
 
   async function handleTechMediaUpload(kind, file) {
     const techId = _techMediaCurrentId;

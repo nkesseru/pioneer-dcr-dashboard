@@ -35,10 +35,16 @@
 (function () {
   "use strict";
 
-  if (!window.__pioneerAdmin || !window.__pioneerAdmin.shell) {
-    throw new Error("admin/_budget.js: admin/_shell.js (and _utils.js) must load first");
+  if (!window.__pioneerAdmin || !window.__pioneerAdmin.shell || !window.__pioneerAdmin.utils) {
+    throw new Error("admin/_budget.js: admin/_utils.js + admin/_shell.js must load first");
   }
   const { badge } = window.__pioneerAdmin.shell;
+  const { tsToMs } = window.__pioneerAdmin.utils;
+
+  // dcrTsToMs is kept as an alias for the canonical tsToMs (moved to
+  // _utils.js in Phase 4a). One source of truth — the alias preserves
+  // the existing export name + every internal reference below.
+  const dcrTsToMs = tsToMs;
 
   function getOnBudget(doc) {
     if (!doc || typeof doc !== "object") return null;
@@ -56,18 +62,6 @@
       if (v === "yes" || v === "true")  return true;
     }
     if (typeof doc.on_time_budget === "boolean") return doc.on_time_budget;
-    return null;
-  }
-
-  // tsToMs — tolerant Firestore-timestamp / ISO / number reader. Matches
-  // the server-side helper in functions/index.js.
-  function dcrTsToMs(ts) {
-    if (!ts) return null;
-    if (typeof ts === "number")                      return ts;
-    if (typeof ts === "string")                      { const t = Date.parse(ts); return isNaN(t) ? null : t; }
-    if (typeof ts.toMillis === "function")           return ts.toMillis();
-    if (typeof ts.seconds === "number")              return ts.seconds * 1000;
-    if (ts._seconds && typeof ts._seconds === "number") return ts._seconds * 1000;
     return null;
   }
 
