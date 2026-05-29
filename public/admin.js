@@ -44,6 +44,9 @@
   if (!window.__pioneerAdmin || !window.__pioneerAdmin.utils) {
     throw new Error("admin.js: admin/_utils.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.shell) {
+    throw new Error("admin.js: admin/_shell.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -60,6 +63,18 @@
     getTechName,
     getTechSlug
   } = window.__pioneerAdmin.utils;
+  const {
+    wireTabs,
+    setStatus,
+    hideAllStatuses,
+    showFatal,
+    badge,
+    activeBadge,
+    dcrEnabledBadge,
+    dcrEmailBadge,
+    activateTab,
+    registerTabActivator
+  } = window.__pioneerAdmin.shell;
 
   // Two-tier admin check mirroring isPioneerAdmin() in firestore.rules
   // and verifyStaffOrReject() in functions/index.js:
@@ -171,61 +186,9 @@
   // the create modal doesn't trample any in-progress edit modal state.
   let pendingTechCreateAssigned = new Set();
 
-  /* ---------- tab wiring ---------- */
-
-  function wireTabs() {
-    $$(".admin-tab").forEach(function (tab) {
-      tab.addEventListener("click", function () {
-        const name = tab.dataset.tab;
-        $$(".admin-tab").forEach(function (t) {
-          const active = t === tab;
-          t.classList.toggle("is-active", active);
-          t.setAttribute("aria-selected", active ? "true" : "false");
-        });
-        $$(".admin-panel").forEach(function (p) {
-          p.hidden = p.dataset.panel !== name;
-        });
-      });
-    });
-  }
-
-  /* ---------- shared panel state UI ---------- */
-
-  function setStatus(panelKey, state, message) {
-    ["loading", "error", "empty"].forEach(function (k) {
-      const el = $(`${panelKey}-${k}`);
-      if (el) el.hidden = k !== state;
-    });
-    if (state === "error" && message) {
-      const errEl = $(`${panelKey}-error`);
-      if (errEl) errEl.textContent = message;
-    }
-  }
-  function hideAllStatuses(panelKey) {
-    ["loading", "error", "empty"].forEach(function (k) {
-      const el = $(`${panelKey}-${k}`);
-      if (el) el.hidden = true;
-    });
-  }
-  function showFatal(msg) {
-    document.body.innerHTML =
-      '<div class="admin-status admin-error" style="margin:40px auto;max-width:520px;">' +
-        escapeHtml(msg) +
-      '</div>';
-  }
-
-  /* ---------- badge helpers ---------- */
-
-  function badge(cls, label) {
-    return '<span class="badge ' + cls + '">' + escapeHtml(label) + '</span>';
-  }
-  function activeBadge(isActive)     { return isActive ? badge("is-on", "Active")      : badge("is-off", "Archived"); }
-  function dcrEnabledBadge(enabled)  { return enabled  ? badge("is-on", "DCR enabled") : badge("is-off", "DCR off"); }
-  // Three distinct states must be readable at a glance: Active/Archived,
-  // DCR on/off (form visibility), DCR EMAIL on/off (customer-email delivery).
-  // The badge label spells it out so the difference between DCR and DCR-email
-  // is unambiguous to a sleep-deprived ops admin scanning the list.
-  function dcrEmailBadge(enabled)    { return enabled  ? badge("is-on", "DCR email on") : badge("is-off", "DCR email off"); }
+  /* wireTabs, setStatus, hideAllStatuses, showFatal, badge family, and
+     activateTab moved to public/admin/_shell.js — imported via the
+     top-of-IIFE destructure. Tab activators are registered in boot. */
 
   /* ---------- on-budget analytics (no extra Firestore reads) ----------
    *
@@ -2537,41 +2500,9 @@
     });
   }
 
-  // Helper for programmatic tab activation. Mirrors the click handler
-  // already wired by wireTabs() — toggles is-active + the panel hidden
-  // attribute. Defensive null-checks so a missing tab is a no-op.
-  function activateTab(tabKey) {
-    const tabs   = document.querySelectorAll(".admin-tab[data-tab]");
-    const panels = document.querySelectorAll(".admin-panel[data-panel]");
-    tabs.forEach(function (t) {
-      const on = (t.dataset.tab === tabKey);
-      t.classList.toggle("is-active", on);
-      t.setAttribute("aria-selected", on ? "true" : "false");
-    });
-    panels.forEach(function (p) {
-      p.hidden = (p.dataset.panel !== tabKey);
-    });
-    // First activation of the Operational Feed tab — mount the
-    // shared renderer with admin permissions + status filter.
-    if (tabKey === "feed")     mountOperationalFeedOnce();
-    // Training reports are lazy-loaded on first tab open and refreshed
-    // on the Refresh button. Idempotent.
-    if (tabKey === "training") loadTrainingReport();
-    // First activation of the Schedule tab triggers the initial load;
-    // subsequent activations re-read in case another admin uploaded a
-    // new schedule from a different session.
-    if (tabKey === "schedule") {
-      loadTeamSchedule();
-      loadPublishedSnapshot();
-      loadScheduleDraft();
-    }
-    if (tabKey === "attendance") loadAttendance();
-    if (tabKey === "tech-health") loadTechHealth();
-    if (tabKey === "pilot-readiness") initPilotReadinessOnce();
-    if (tabKey === "yesterday") initYesterdayOnce();
-    if (tabKey === "improvements") initImprovementsOnce();
-    if (tabKey === "sos") initSosOnce();
-  }
+  /* activateTab moved to public/admin/_shell.js. Tab-specific lazy-load
+     callbacks are registered with registerTabActivator() in boot below
+     so the shell remains decoupled from tab implementations. */
 
   /* --------------------------------------------------------------------
    * Pioneer SOS — admin review panel.
@@ -14055,6 +13986,25 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     wireTabs();
+    // Register on-activate lazy-load callbacks. Behavior matches the
+    // original inline activateTab dispatch: feed mounts the shared
+    // renderer; training, schedule (3 loaders), attendance, tech-health
+    // are idempotent re-reads on each open; pilot-readiness, yesterday,
+    // improvements, and sos are once-only initializers gated by their
+    // own wired flags.
+    registerTabActivator("feed",            mountOperationalFeedOnce);
+    registerTabActivator("training",        loadTrainingReport);
+    registerTabActivator("schedule",        function () {
+      loadTeamSchedule();
+      loadPublishedSnapshot();
+      loadScheduleDraft();
+    });
+    registerTabActivator("attendance",      loadAttendance);
+    registerTabActivator("tech-health",     loadTechHealth);
+    registerTabActivator("pilot-readiness", initPilotReadinessOnce);
+    registerTabActivator("yesterday",       initYesterdayOnce);
+    registerTabActivator("improvements",    initImprovementsOnce);
+    registerTabActivator("sos",             initSosOnce);
     wireSearch();
     wireRefresh();
     wireSupplyControls();
