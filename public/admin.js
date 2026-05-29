@@ -83,6 +83,9 @@
   if (!window.__pioneerAdmin.tabs.yesterdaysWork) {
     throw new Error("admin.js: admin/tab-yesterdays-work.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.tabs.customers) {
+    throw new Error("admin.js: admin/tab-customers.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -203,7 +206,8 @@
 
   /* ---------- state ---------- */
 
-  let customers = [];
+  // customers moved to tab-customers.js (Phase 15). Consumers read via
+  // window.__pioneerAdmin.deps.getCustomers().
   let techs     = [];
   // dcrs moved to tab-recent-dcrs.js (Phase 11). Consumers read via
   // window.__pioneerAdmin.deps.getDcrs().
@@ -239,212 +243,13 @@
      the top-of-IIFE destructure. computeBudgetStats now takes the dcrs
      array as its first parameter; callers below pass it explicitly. */
 
-  /* ---------- customers ---------- */
 
-  function customerCard(c) {
-    const name         = getCustomerName(c) || "(unnamed customer)";
-    const slug         = getCustomerSlug(c);
-    const email        = getCustomerEmail(c);
-    const location     = getCustomerLocation(c);
-    const active       = getActive(c);
-    const enabled      = getDcrEnabled(c);
-    const emailEnabled = getDcrEmailEnabled(c);
-
-    // Per-customer on-budget summary. Computed lazily here from the
-    // in-memory dcrs cache — no extra Firestore reads. Returns "" when
-    // we have no usable data for this customer.
-    // dcrs now lives in tab-recent-dcrs.js (Phase 11); read through the
-    // deps bridge once at the top of the card render so the rest of the
-    // body uses the local name unchanged.
-    const dcrs = window.__pioneerAdmin.deps.getDcrs();
-    const budgetStats   = computeBudgetStats(dcrs, { kind: "customer", slug: slug });
-    const budgetBadgeHtml = budgetRowBadge(budgetStats);
-    const budgetTooltip   = budgetTooltipText(budgetStats);
-
-    // Operational metrics line — high-value, scan-friendly counts only.
-    // Open issues / open supply / 30-day issue count / last clean / last
-    // issue date / first open unresolved issue summary. Absent rows are
-    // omitted to keep the line one row max even on dense customers.
-    // dcrIssues now lives in tab-dcr-issues.js (Phase 12); read through
-    // the deps bridge once so the rest of the body uses the local name.
-    const dcrIssues = window.__pioneerAdmin.deps.getDcrIssues();
-    const cutoffMs30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const customerOpenIssues = dcrIssues.filter(function (it) {
-      return it.customer_slug === slug &&
-             (it.status || "new") !== "resolved" &&
-             (it.status || "new") !== "closed_no_action";
-    });
-    const openIssues  = customerOpenIssues.length;
-    const recentIssues = dcrIssues.filter(function (it) {
-      if (it.customer_slug !== slug) return false;
-      const ms = supplyTsToMs(it.created_at);
-      return ms != null && ms >= cutoffMs30;
-    }).length;
-    // Reserved for the future `customer_complaints` collection. When
-    // that ships, swap this constant for a count derived from a
-    // module-scope `complaints` cache (same priority as issues —
-    // admin-only, no tech leak).
-    const recentComplaints = 0;
-    const openSupply = supplyRequests.filter(function (r) {
-      return r.customer_slug === slug && (r.status || "new") !== "closed";
-    }).length;
-    // Most recent issue date for this customer (any status).
-    let lastIssueMs = null;
-    let firstOpenIssueSummary = "";
-    for (let i = 0; i < dcrIssues.length; i++) {
-      const it = dcrIssues[i];
-      if (it.customer_slug !== slug) continue;
-      const ms = supplyTsToMs(it.created_at);
-      if (ms != null && (lastIssueMs == null || ms > lastIssueMs)) lastIssueMs = ms;
-    }
-    if (customerOpenIssues.length > 0) {
-      // Pick the newest open issue's summary as the customer's flagged
-      // attention item. dcrIssues is loaded newest-first, so the first
-      // open match is the newest. Truncate to keep the line readable.
-      const s = customerOpenIssues[0].issue_summary || "";
-      firstOpenIssueSummary = s.length > 80 ? s.slice(0, 77) + "…" : s;
-    }
-    let lastCleanDate = "";
-    for (let i = 0; i < dcrs.length; i++) {
-      if (dcrs[i].customer_slug === slug && dcrs[i].clean_date) {
-        if (!lastCleanDate || dcrs[i].clean_date > lastCleanDate) lastCleanDate = dcrs[i].clean_date;
-      }
-    }
-    const lastIssueLabel = lastIssueMs
-      ? new Date(lastIssueMs).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      : "";
-
-    const metricsParts = [];
-    if (openIssues       > 0) metricsParts.push(openIssues       + " open issue"   + (openIssues       === 1 ? "" : "s"));
-    if (recentIssues     > 0) metricsParts.push(recentIssues     + " issue"        + (recentIssues     === 1 ? "" : "s") + " · 30d");
-    if (recentComplaints > 0) metricsParts.push(recentComplaints + " complaint"    + (recentComplaints === 1 ? "" : "s") + " · 30d");
-    if (openSupply       > 0) metricsParts.push(openSupply       + " open supply");
-    if (lastIssueLabel)       metricsParts.push("Last issue " + lastIssueLabel);
-    if (lastCleanDate)        metricsParts.push("Last clean " + lastCleanDate);
-    const metricsLineHtml = metricsParts.length
-      ? '<span class="row-metrics">' + escapeHtml(metricsParts.join(" · ")) + '</span>'
-      : '';
-    // Secondary single-line peek at the most actionable open-issue
-    // summary. Only renders when there's at least one open issue.
-    const issueSummaryHtml = firstOpenIssueSummary
-      ? '<span class="row-metrics is-issue-summary" title="' +
-          escapeHtml(customerOpenIssues[0].issue_summary || "") + '">⚠ ' +
-          escapeHtml(firstOpenIssueSummary) + '</span>'
-      : '';
-
-    // High-value badges only. Hidden behind Edit: slug + email + slack
-    // + review URLs (admin can drill in via Edit when they need them).
-    // The "X open issues" warn pill is omitted when 0 to avoid the
-    // green-everywhere noise the old layout suffered.
-    const issuesBadgeHtml = openIssues > 0
-      ? badge("is-warn", openIssues + " open issue" + (openIssues === 1 ? "" : "s"))
-      : "";
-    const openSupplyBadgeHtml = openSupply > 0
-      ? badge("is-neutral", openSupply + " open supply")
-      : "";
-    // SOP status chip — read by window.CustomerSop.statusForCustomer
-    // (loaded by admin.html via <script src="customer-sop.js">). Codes:
-    //   has_sop       → green "Has SOP"
-    //   no_sop        → gray "No SOP"
-    //   needs_review  → amber "Needs Review"
-    //   inactive      → gray "Inactive in Deputy"
-    let sopBadgeHtml = "";
-    if (window.CustomerSop && typeof window.CustomerSop.statusForCustomer === "function") {
-      const st = window.CustomerSop.statusForCustomer(c);
-      const cls = st.code === "has_sop"      ? "is-on"
-                : st.code === "needs_review" ? "is-warn"
-                : st.code === "inactive"     ? "is-off"
-                : "is-neutral";
-      sopBadgeHtml = badge(cls, "SOP: " + st.label);
-    }
-
-    const badges =
-      activeBadge(active) +
-      dcrEnabledBadge(enabled) +
-      dcrEmailBadge(emailEnabled) +
-      budgetBadgeHtml +
-      issuesBadgeHtml +
-      openSupplyBadgeHtml +
-      sopBadgeHtml;
-
-    const archiveLabel    = active ? "Archive" : "Reactivate";
-    const archiveExtraCls = active ? ""        : " row-btn-reactivate";
-
-    // Slug + email moved off the row to reduce visual clutter — both
-    // remain editable in the Edit modal. The row name carries a
-    // title="…" so admins who want the slug at a glance can hover.
-    const rowTitle = "Slug: " + (slug || "—") + (email ? "\nEmail: " + email : "");
-
-    return (
-      '<div class="admin-row" role="listitem" data-id="' + escapeHtml(c.id) + '" title="' + escapeHtml(rowTitle) + '">' +
-        '<div class="row-primary">' +
-          '<span class="row-name">'  + escapeHtml(name) + '</span>' +
-          '<span class="row-sub">'   + escapeHtml(location || "—") + '</span>' +
-          metricsLineHtml +
-          issueSummaryHtml +
-        '</div>' +
-        '<div class="row-actions"' + (budgetTooltip ? ' title="' + escapeHtml(budgetTooltip) + '"' : '') + '>' +
-          '<div class="pill-badges">' + badges + '</div>' +
-          '<button class="row-btn" type="button" data-action="edit">Edit</button>' +
-          '<button class="row-btn' + archiveExtraCls + '" type="button" data-action="archive">' + archiveLabel + '</button>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  // V6 pilot fix — "No customers in Firestore yet" was sometimes
-  // showing alongside populated customer cards because renderCustomers
-  // can fire from the search filter BEFORE loadCustomers resolves
-  // (race when the user types in the search box during load). The
-  // empty-state should ONLY appear after the load completes AND the
-  // resulting list is truly empty. customersLoaded becomes true on
-  // the first successful loadCustomers run; until then, the empty
-  // state stays suppressed.
-  let customersLoaded = false;
-
-  function renderCustomers(list) {
-    const root = $("customer-list");
-    const cnt  = $("customer-count");
-    if (!root) return;
-    if (cnt)  cnt.textContent = list.length + ' customer' + (list.length === 1 ? '' : 's');
-    root.innerHTML = list.map(customerCard).join("");
-    // Show "No customers in Firestore yet" ONLY when:
-    //   • load has finished (customersLoaded === true),
-    //   • the cache is genuinely empty (customers.length === 0),
-    //   • and the current view list is empty.
-    // A search-filter that returns zero is NOT empty — the cache has
-    // customers; the user just filtered them out. That case lands
-    // in `hideAllStatuses` below.
-    if (list.length === 0 && customersLoaded && customers.length === 0) {
-      setStatus("customer", "empty");
-    } else {
-      hideAllStatuses("customer");
-    }
-  }
-
-  async function loadCustomers() {
-    setStatus("customer", "loading");
-    try {
-      // Order client-side after fetch so docs with either `name` or
-      // `customer_name` sort correctly.
-      const snap = await db.collection("customers").get();
-      customers = snap.docs.map(function (d) {
-        return Object.assign({ id: d.id }, d.data());
-      });
-      customers.sort(function (a, b) {
-        return getCustomerName(a).localeCompare(getCustomerName(b));
-      });
-      customersLoaded = true;
-      renderCustomers(customers);
-      refreshAttentionStrip();
-    } catch (err) {
-      console.error("loadCustomers failed", err);
-      setStatus("customer", "error",
-        "Couldn't load customers: " + (err.message || err) +
-        "\n\nIf this says 'permission-denied', verify firestore.rules allow read on /customers."
-      );
-    }
-  }
+  /* Customers tab moved to public/admin/tab-customers.js (Phase 15).
+     Owns the customers array; admin-side modules read it via
+     window.__pioneerAdmin.deps.getCustomers(). The tab also exposes
+     applyFilter / openCreateModal / openEditModal / onArchive /
+     onSave methods that admin.js wire helpers (wireSearch +
+     wireWriteControls) call through the namespace. */
 
   /* ---------- cleaning techs ---------- */
 
@@ -676,7 +481,7 @@
      wrapper. */
   async function loadDcrsAndRerenderDependents() {
     await window.__pioneerAdmin.tabs.recentDcrs.refresh();
-    if (typeof applyCurrentCustomerFilter === "function") applyCurrentCustomerFilter();
+    window.__pioneerAdmin.tabs.customers.applyFilter();
     if (typeof applyCurrentTechFilter     === "function") applyCurrentTechFilter();
     if (typeof refreshAttentionStrip      === "function") refreshAttentionStrip();
   }
@@ -1684,7 +1489,9 @@
 
     // -- Compute counts from in-memory caches --
     // dcrIssues now lives in tab-dcr-issues.js (Phase 12); read via bridge.
+    // customers now lives in tab-customers.js (Phase 15); read via bridge.
     const dcrIssues = window.__pioneerAdmin.deps.getDcrIssues();
+    const customers = window.__pioneerAdmin.deps.getCustomers();
     const newIssues = dcrIssues.filter(function (it) {
       return (it.status || "new") === "new";
     }).length;
@@ -2022,7 +1829,7 @@
     // Delegated to applyCurrentCustomerFilter / applyCurrentTechFilter so that
     // both the search-input handler AND the post-save row refresh use the same
     // filter logic (avoids "save → re-render → search query forgotten").
-    if (cs) cs.addEventListener("input", applyCurrentCustomerFilter);
+    if (cs) cs.addEventListener("input", function () { window.__pioneerAdmin.tabs.customers.applyFilter(); });
     if (ts) ts.addEventListener("input", applyCurrentTechFilter);
 
     if (ds) ds.addEventListener("input", function () {
@@ -2216,7 +2023,7 @@
     showAuthState("content", { email: user.email, displayName: user.displayName || "" });
     if (currentAuthEmail !== email) {
       currentAuthEmail = email;
-      loadCustomers();
+      window.__pioneerAdmin.tabs.customers.refresh();
       loadTechs();
       loadDcrsAndRerenderDependents();
       loadSupplyRequests();
@@ -4013,88 +3820,12 @@
 
   // ---- Customer: edit ----
 
-  function openCustomerEditModal(c) {
-    // Switch the modal to edit mode — hides the slug row via the
-    // [data-mode="edit"] CSS rule and resets the title/save labels.
-    const modal = $("customer-edit-modal");
-    if (modal) modal.dataset.mode = "edit";
-    const title = $("customer-modal-title");
-    if (title) title.textContent = "Edit customer";
-    const save  = $("customer-edit-save");
-    if (save) save.textContent = "Save";
-
-    $("cust-edit-id").value                  = c.id;
-    $("cust-edit-name").value                = getCustomerName(c);
-    $("cust-edit-location").value            = getCustomerLocation(c);
-    $("cust-edit-email").value               = getCustomerEmail(c);
-    $("cust-edit-active").checked            = getActive(c);
-    $("cust-edit-dcr-enabled").checked       = getDcrEnabled(c);
-    $("cust-edit-dcr-email-enabled").checked = getDcrEmailEnabled(c);
-    $("cust-edit-slack").value               = c.slack_channel || "";
-    const rl = (c.review_links && typeof c.review_links === "object") ? c.review_links : {};
-    $("cust-edit-five-star").value           = rl.five_star_url || "";
-    $("cust-edit-issue-url").value           = rl.issue_url     || "";
-    $("cust-edit-notes").value               = c.notes || "";
-    // Populate the read-only Deputy Integration block.
-    populateCustomerDeputyIntegration(c);
-    // Populate the read-only SOP block (admin mode — shows raw notes).
-    populateCustomerSopBlock(c);
-    // Blank the create-only slug input to defend against stale carry-over.
-    const slugEl = $("cust-create-slug");
-    if (slugEl) { slugEl.value = ""; delete slugEl.dataset.touched; }
-    setModalError("customer-edit-modal", "");
-    openModal("customer-edit-modal");
-  }
-
-  // Read-only Deputy debugging panel on the customer edit modal.
-  // Sources: c.deputy_company_id (stored), c.deputy_company_name
-  // (stored), most recent shift in deputyMappingShifts whose
-  // customer_slug equals this customer.
-  // Render the SOP blocks inside the customer edit modal. Two
-  // independent renders:
-  //   • PUBLIC block — reads the flat sop* fields off the customer doc.
-  //   • ADMIN-ONLY SECURE block — fetches customer_secure/{slug} live
-  //     (firestore.rules denies non-admin reads). Empty state when no
-  //     secure doc exists.
-  async function populateCustomerSopBlock(c) {
-    const publicBody = $("cust-edit-sop-body");
-    const secureBody = $("cust-edit-secure-body");
-    if (!c || !window.CustomerSop) {
-      if (publicBody) publicBody.innerHTML = '<div class="sop-empty">customer-sop.js not loaded.</div>';
-      if (secureBody) secureBody.innerHTML = '<div class="sop-empty">customer-sop.js not loaded.</div>';
-      return;
-    }
-    // Public block — sync render from the customer doc fields.
-    if (publicBody && typeof window.CustomerSop.renderPublic === "function") {
-      window.CustomerSop.renderPublic(publicBody, c);
-    }
-    // Secure block — fetch the sibling customer_secure doc. The read
-    // is gated by firestore.rules; this admin client has access. If
-    // hasSecureSop is false we still attempt the read so we can
-    // detect a stale "true" flag (cheap — single doc get).
-    if (!secureBody) return;
-    secureBody.innerHTML = '<div class="sop-empty">Loading secure ops…</div>';
-    try {
-      const slug = getCustomerSlug(c);
-      const snap = await db.collection("customer_secure").doc(slug).get();
-      if (snap.exists) {
-        window.CustomerSop.renderSecure(secureBody, snap.data() || {});
-      } else {
-        secureBody.innerHTML =
-          '<div class="sop-empty">No secure ops doc on file for this customer. ' +
-          (c.hasSecureSop
-            ? 'Customer doc has <code>hasSecureSop: true</code> but the secure doc is missing — re-run the seed parser to repair.'
-            : 'No codes / contacts / raw Deputy notes detected during import.') +
-          '</div>';
-      }
-    } catch (err) {
-      console.warn("[admin] customer_secure read failed", err && err.code);
-      secureBody.innerHTML =
-        '<div class="sop-empty">Couldn\'t load secure ops: ' +
-        escapeHtml(err && err.message || "unknown") +
-        '. Confirm you\'re signed in as an admin and firestore.rules has the /customer_secure block deployed.</div>';
-    }
-  }
+  /* openCustomerEditModal + populateCustomerSopBlock moved to
+     public/admin/tab-customers.js (Phase 15). populateCustomerDeputyIntegration
+     below STAYS in admin.js because it reads deputyMappingShifts +
+     toMillis + fmtLastSeenPT from the still-in-admin Deputy module;
+     the tab module reaches it via the deps bridge entry
+     populateCustomerDeputyIntegration. */
 
   function populateCustomerDeputyIntegration(c) {
     const slug    = getCustomerSlug(c);
@@ -4148,6 +3879,8 @@
       healthClass = "is-inactive";
     } else {
       // Look for duplicates: another active customer with same cid.
+      // customers now lives in tab-customers.js (Phase 15); read via bridge.
+      const customers = window.__pioneerAdmin.deps.getCustomers();
       const dupes = customers.filter(function (other) {
         if (getCustomerSlug(other) === slug) return false;
         if (!getActive(other)) return false;
@@ -4187,223 +3920,10 @@
     }
   }
 
-  /* ---- Customer: CREATE (Add customer) ----
-   *
-   * Writes a new customer doc keyed by the user-edited slug. The slug
-   * input is auto-derived from the customer/location name (the admin
-   * can override). On save:
-   *   1. Validate required fields + slug shape.
-   *   2. Check Firestore for an existing doc at customers/{slug}; reject
-   *      if it exists to prevent silent overwrites.
-   *   3. Use `.set()` (not `.update()`) so the create stamps fire and
-   *      the doc is materialised even if no prior placeholder existed.
-   *
-   * Permission: gated by firestore.rules → isPioneerAdmin(). No new
-   * rules required — the customers/{id} rule already allows create for
-   * the admin allowlist.
-   */
-  function openCustomerCreateModal() {
-    const modal = $("customer-edit-modal");
-    if (modal) modal.dataset.mode = "create";
-    const title = $("customer-modal-title");
-    if (title) title.textContent = "Add customer";
-    const save  = $("customer-edit-save");
-    if (save) save.textContent = "Add customer";
-
-    $("cust-edit-id").value                  = "";
-    $("cust-edit-name").value                = "";
-    $("cust-edit-location").value            = "";
-    $("cust-edit-email").value               = "";
-    $("cust-edit-active").checked            = true;       // sensible defaults
-    $("cust-edit-dcr-enabled").checked       = true;
-    $("cust-edit-dcr-email-enabled").checked = true;
-    $("cust-edit-slack").value               = "";
-    $("cust-edit-five-star").value           = "";
-    $("cust-edit-issue-url").value           = "";
-    $("cust-edit-notes").value               = "";
-
-    const slugEl = $("cust-create-slug");
-    if (slugEl) { slugEl.value = ""; delete slugEl.dataset.touched; }
-
-    setModalError("customer-edit-modal", "");
-    openModal("customer-edit-modal");
-  }
-
-  async function onCustomerCreateSave() {
-    const name     = $("cust-edit-name").value.trim();
-    const location = $("cust-edit-location").value.trim();
-    const slugIn   = $("cust-create-slug").value.trim().toLowerCase();
-    const slug     = slugIn || slugifyForTech(location || name);
-
-    if (!name) {
-      setModalError("customer-edit-modal", "Customer name is required.");
-      return;
-    }
-    if (!location) {
-      setModalError("customer-edit-modal", "Location name is required.");
-      return;
-    }
-    if (!slug) {
-      setModalError("customer-edit-modal", "Customer slug is required (couldn't derive one from the name).");
-      return;
-    }
-    if (!/^[a-z0-9-]+$/.test(slug)) {
-      setModalError("customer-edit-modal", "Slug must be lowercase letters, digits, and dashes only.");
-      return;
-    }
-
-    setModalSaving("customer-edit-modal", true);
-    setModalError("customer-edit-modal", "");
-
-    // Duplicate-slug guard. The doc ID IS the slug, so a get() suffices
-    // — no compound index needed. We could race against a concurrent
-    // create from another admin tab, but the second .set() would still
-    // overwrite the first. Acceptable for two-admin-max usage; revisit
-    // if we ever expose this to >5 concurrent writers.
-    try {
-      const existing = await db.collection("customers").doc(slug).get();
-      if (existing.exists) {
-        setModalError("customer-edit-modal",
-          "A customer with slug '" + slug + "' already exists. Pick a different slug.");
-        setModalSaving("customer-edit-modal", false);
-        return;
-      }
-    } catch (err) {
-      handleAdminWriteError(err, { context: "customer slug-uniqueness check", modalId: "customer-edit-modal" });
-      setModalSaving("customer-edit-modal", false);
-      return;
-    }
-
-    const adminEmail = getCurrentAdminEmail();
-    const sts        = firebase.firestore.FieldValue.serverTimestamp();
-    const doc = {
-      // Slug stored on the doc too (in addition to being the doc ID) so
-      // existing helpers that prefer doc.customer_slug keep working.
-      customer_slug:     slug,
-      customer_name:     name,
-      location_name:     location,
-      customer_email:    $("cust-edit-email").value.trim(),
-      active:            $("cust-edit-active").checked,
-      dcr_enabled:       $("cust-edit-dcr-enabled").checked,
-      dcr_email_enabled: $("cust-edit-dcr-email-enabled").checked,
-      slack_channel:     $("cust-edit-slack").value.trim(),
-      review_links: {
-        five_star_url:   $("cust-edit-five-star").value.trim(),
-        issue_url:       $("cust-edit-issue-url").value.trim()
-      },
-      notes:             $("cust-edit-notes").value.trim(),
-      created_at:        sts,
-      created_by:        adminEmail,
-      updated_at:        sts,
-      updated_by:        adminEmail
-    };
-
-    try {
-      await db.collection("customers").doc(slug).set(doc);
-      // Patch local cache + re-render. We push a hydrated copy with
-      // client-side timestamps (display only) — the next loadCustomers
-      // refresh will replace with the server values.
-      const local = Object.assign({ id: slug }, doc, {
-        created_at: new Date(),
-        updated_at: new Date()
-      });
-      customers.push(local);
-      customers.sort(function (a, b) {
-        return getCustomerName(a).localeCompare(getCustomerName(b));
-      });
-      applyCurrentCustomerFilter();
-      closeModal("customer-edit-modal");
-      showToast("ok", "Customer added.");
-    } catch (err) {
-      handleAdminWriteError(err, { context: "customer create", modalId: "customer-edit-modal" });
-    } finally {
-      setModalSaving("customer-edit-modal", false);
-    }
-  }
-
-  async function onCustomerEditSave() {
-    const id = $("cust-edit-id").value;
-    if (!id) return;
-    const idx = customers.findIndex(function (x) { return x.id === id; });
-    if (idx < 0) {
-      setModalError("customer-edit-modal", "Couldn't find this customer in the local cache. Refresh the page and try again.");
-      return;
-    }
-
-    const name = $("cust-edit-name").value.trim();
-    if (!name) {
-      setModalError("customer-edit-modal", "Customer name is required.");
-      return;
-    }
-
-    const updates = {
-      customer_name:     name,
-      location_name:     $("cust-edit-location").value.trim(),
-      customer_email:    $("cust-edit-email").value.trim(),
-      active:            $("cust-edit-active").checked,
-      dcr_enabled:       $("cust-edit-dcr-enabled").checked,
-      dcr_email_enabled: $("cust-edit-dcr-email-enabled").checked,
-      slack_channel:     $("cust-edit-slack").value.trim(),
-      review_links: {
-        five_star_url:   $("cust-edit-five-star").value.trim(),
-        issue_url:       $("cust-edit-issue-url").value.trim()
-      },
-      notes:             $("cust-edit-notes").value.trim(),
-      updated_at:        firebase.firestore.FieldValue.serverTimestamp(),
-      updated_by:        getCurrentAdminEmail()
-    };
-
-    setModalSaving("customer-edit-modal", true);
-    setModalError("customer-edit-modal", "");
-    try {
-      await db.collection("customers").doc(id).update(updates);
-      // Patch the local cache so the row reflects the new state immediately.
-      customers[idx] = Object.assign({}, customers[idx], updates, {
-        updated_at:   new Date(),
-        review_links: updates.review_links  // overwrite (don't shallow-merge)
-      });
-      applyCurrentCustomerFilter();
-      closeModal("customer-edit-modal");
-      showToast("ok", "Customer updated.");
-    } catch (err) {
-      handleAdminWriteError(err, { context: "customer save", modalId: "customer-edit-modal" });
-    } finally {
-      setModalSaving("customer-edit-modal", false);
-    }
-  }
-
-  // ---- Customer: archive / reactivate ----
-
-  async function onCustomerArchive(c) {
-    const name        = getCustomerName(c) || c.id;
-    const isArchiving = getActive(c);   // currently active → archiving
-    const verb        = isArchiving ? "Archive" : "Reactivate";
-    const summary     = isArchiving
-      ? "They'll be hidden from the DCR form. No data is deleted — you can reactivate later."
-      : "They'll reappear in the DCR form (assuming dcr_enabled stays on).";
-    if (!window.confirm(verb + " " + name + "?\n\n" + summary)) return;
-
-    const adminEmail = getCurrentAdminEmail();
-    const sts = firebase.firestore.FieldValue.serverTimestamp();
-    const updates = isArchiving
-      ? { active: false, archived_at: sts,  archived_by: adminEmail, updated_at: sts, updated_by: adminEmail }
-      : { active: true,  archived_at: null, archived_by: null,       updated_at: sts, updated_by: adminEmail };
-
-    try {
-      await db.collection("customers").doc(c.id).update(updates);
-      const idx = customers.findIndex(function (x) { return x.id === c.id; });
-      if (idx >= 0) {
-        customers[idx] = Object.assign({}, customers[idx], updates, {
-          updated_at:  new Date(),
-          archived_at: isArchiving ? new Date() : null
-        });
-      }
-      applyCurrentCustomerFilter();
-      showToast("ok", isArchiving ? "Customer archived." : "Customer reactivated.");
-    } catch (err) {
-      handleAdminWriteError(err, { context: "customer archive" });
-    }
-  }
+  /* Customer CREATE / EDIT / ARCHIVE modal functions moved to
+     public/admin/tab-customers.js (Phase 15). admin.js boot wires
+     the customer-edit-save / customer-create-open buttons to the
+     tab namespace methods via wireWriteControls. */
 
   // ---- Cleaning tech: edit ----
 
@@ -4423,6 +3943,8 @@
     if (!listEl || !staging) return;
 
     const q = (searchEl && searchEl.value ? searchEl.value.trim().toLowerCase() : "");
+    // customers now lives in tab-customers.js (Phase 15); read via bridge.
+    const customers = window.__pioneerAdmin.deps.getCustomers();
     const active = customers.filter(function (c) { return getActive(c); });
 
     const rows = active.filter(function (c) {
@@ -5834,20 +5356,10 @@
 
   // ---- Filter helpers extracted so saves can re-render with the active search ----
 
-  function applyCurrentCustomerFilter() {
-    const cs = $("customer-search");
-    const q = cs ? cs.value.trim().toLowerCase() : "";
-    if (!q) return renderCustomers(customers);
-    const filtered = customers.filter(function (c) {
-      return (
-        getCustomerName(c).toLowerCase().includes(q) ||
-        getCustomerSlug(c).toLowerCase().includes(q) ||
-        getCustomerEmail(c).toLowerCase().includes(q) ||
-        getCustomerLocation(c).toLowerCase().includes(q)
-      );
-    });
-    renderCustomers(filtered);
-  }
+  /* applyCurrentCustomerFilter moved to public/admin/tab-customers.js
+     (Phase 15). Callers in admin.js use
+     window.__pioneerAdmin.tabs.customers.applyFilter(). */
+
   function applyCurrentTechFilter() {
     const ts = $("tech-search");
     const q = ts ? ts.value.trim().toLowerCase() : "";
@@ -6295,6 +5807,8 @@
   //   • duplicateActiveByCompanyId — companyId → [activeCustomer,...]
   //     populated when two-plus active customers share the same id
   function buildCustomerByDeputyCompanyIndex() {
+    // customers now lives in tab-customers.js (Phase 15); read via bridge.
+    const customers = window.__pioneerAdmin.deps.getCustomers();
     const activeByCompanyId    = {};
     const inactiveByCompanyId  = {};
     const duplicateActiveByCompanyId = {};
@@ -6709,7 +6223,7 @@
     // is in "show inactive" mode AND admin really meant it. We can't
     // tell which here, so just block silently — the inactive option
     // in the picker is already labeled "(inactive)".
-    const targetCustomer = customers.find(function (c) { return getCustomerSlug(c) === slug; });
+    const targetCustomer = window.__pioneerAdmin.deps.getCustomers().find(function (c) { return getCustomerSlug(c) === slug; });
     if (targetCustomer && !getActive(targetCustomer) && !showInactiveInCustomerPicker) {
       showToast("err", "That customer is inactive. Toggle 'Show inactive' first if you really want to map it.");
       return;
@@ -6722,7 +6236,7 @@
         updated_by:           getCurrentAdminEmail()
       });
       showToast("ok", "Mapped Deputy company to customer. Next sync auto-resolves every matching shift.");
-      await loadCustomers();
+      await window.__pioneerAdmin.tabs.customers.refresh();
       renderDeputyCompanies();
       renderDeputyConnectionHealth();
     } catch (err) {
@@ -6735,7 +6249,7 @@
   // working normally — just no longer auto-resolves Deputy shifts.
   async function removeCompanyMapping(slug, cid) {
     if (!slug) { showToast("err", "Missing customer slug."); return; }
-    const customer = customers.find(function (c) { return getCustomerSlug(c) === slug; });
+    const customer = window.__pioneerAdmin.deps.getCustomers().find(function (c) { return getCustomerSlug(c) === slug; });
     if (!customer) { showToast("err", "Couldn't find that customer."); return; }
     const msg = "Remove Deputy company mapping from this customer?\n\n" +
                 'Customer: ' + getCustomerName(customer) + '\n' +
@@ -6751,7 +6265,7 @@
         updated_by:           getCurrentAdminEmail()
       });
       showToast("ok", "Deputy company mapping removed.");
-      await loadCustomers();
+      await window.__pioneerAdmin.tabs.customers.refresh();
       renderDeputyCompanies();
       renderDeputyConnectionHealth();
     } catch (err) {
@@ -6767,7 +6281,7 @@
     if (cid == null || cid === "") { showToast("err", "Missing Deputy Company ID."); return; }
     const cidStr = String(cid);
     // Find every customer currently claiming this Company.Id.
-    const claimants = customers.filter(function (c) {
+    const claimants = window.__pioneerAdmin.deps.getCustomers().filter(function (c) {
       const ccid = c.deputy_company_id != null && c.deputy_company_id !== ""
                      ? c.deputy_company_id
                      : c.deputy_location_id;
@@ -6781,7 +6295,7 @@
     const toRemove = claimants.filter(function (c) { return getCustomerSlug(c) !== keepSlug; });
     if (toRemove.length === 0) {
       showToast("ok", "Already resolved — no other claimants found.");
-      await loadCustomers();
+      await window.__pioneerAdmin.tabs.customers.refresh();
       renderDeputyCompanies();
       renderDeputyConnectionHealth();
       return;
@@ -6805,7 +6319,7 @@
       });
       await batch.commit();
       showToast("ok", "Duplicate resolved.");
-      await loadCustomers();
+      await window.__pioneerAdmin.tabs.customers.refresh();
       renderDeputyCompanies();
       renderDeputyConnectionHealth();
     } catch (err) {
@@ -7230,7 +6744,7 @@
     const slug  = String(customerSlug || "").trim();
     if (!alias) { showToast("err", "Enter an alias first."); return; }
     if (!slug)  { showToast("err", "Pick a Pioneer customer first."); return; }
-    const customer = customers.find(function (c) { return getCustomerSlug(c) === slug; });
+    const customer = window.__pioneerAdmin.deps.getCustomers().find(function (c) { return getCustomerSlug(c) === slug; });
     if (!customer) { showToast("err", "Couldn't find that customer."); return; }
 
     const docId = aliasDocId(alias);
@@ -7433,7 +6947,7 @@
     status("Reading customer fields…");
     const existingIds = new Set(customerAliases.map(function (a) { return a.id; }));
     const writes = [];
-    customers.forEach(function (c) {
+    window.__pioneerAdmin.deps.getCustomers().forEach(function (c) {
       if (!getActive(c)) return;
       const slug = getCustomerSlug(c);
       if (!slug) return;
@@ -7722,6 +7236,7 @@
 
   function wireWriteControls() {
     // Customer list — event-delegated Edit / Archive clicks.
+    // customers array now lives in tab-customers.js (Phase 15); read via bridge.
     const custRoot = $("customer-list");
     if (custRoot) {
       custRoot.addEventListener("click", function (ev) {
@@ -7729,10 +7244,11 @@
         if (!btn) return;
         const row = btn.closest("[data-id]");
         if (!row) return;
+        const customers = window.__pioneerAdmin.deps.getCustomers();
         const c = customers.find(function (x) { return x.id === row.dataset.id; });
         if (!c) return;
-        if (btn.dataset.action === "edit")    openCustomerEditModal(c);
-        if (btn.dataset.action === "archive") onCustomerArchive(c);
+        if (btn.dataset.action === "edit")    window.__pioneerAdmin.tabs.customers.openEditModal(c);
+        if (btn.dataset.action === "archive") window.__pioneerAdmin.tabs.customers.onArchive(c);
       });
     }
     // Tech list — same pattern, plus overflow-menu toggling.
@@ -7817,10 +7333,7 @@
     // modals (tech-edit-modal vs tech-create-modal).
     const custSave = $("customer-edit-save");
     if (custSave) custSave.addEventListener("click", function () {
-      const modal = $("customer-edit-modal");
-      const mode  = modal ? (modal.dataset.mode || "edit") : "edit";
-      if (mode === "create") onCustomerCreateSave();
-      else                   onCustomerEditSave();
+      window.__pioneerAdmin.tabs.customers.onSave();
     });
     const techSave = $("tech-edit-save");
     if (techSave) techSave.addEventListener("click", onTechEditSave);
@@ -7829,7 +7342,9 @@
 
     // "+ Add customer" button → opens the customer modal in create mode.
     const custCreateOpen = $("customer-create-open");
-    if (custCreateOpen) custCreateOpen.addEventListener("click", openCustomerCreateModal);
+    if (custCreateOpen) custCreateOpen.addEventListener("click", function () {
+      window.__pioneerAdmin.tabs.customers.openCreateModal();
+    });
 
     // Auto-slug on the customer-create modal — derive from location_name
     // (preferred) or customer_name as the admin types, until the admin
@@ -7881,7 +7396,7 @@
           else            staging().delete(slug);
           const countEl = $(countId);
           if (countEl) {
-            const total = customers.filter(function (c) { return getActive(c); }).length;
+            const total = window.__pioneerAdmin.deps.getCustomers().filter(function (c) { return getActive(c); }).length;
             countEl.textContent =
               staging().size + " of " + total +
               (total === 1 ? " customer assigned" : " customers assigned");
@@ -10892,21 +10407,23 @@
     // infra, admin-email, write-error handler). Goes away when those
     // are extracted in later phases.
     window.__pioneerAdmin.deps = {
-      getCustomers:          function () { return customers; },
+      getCustomers:          function () { return window.__pioneerAdmin.tabs.customers.getCustomers(); },
       getTechs:              function () { return techs; },
       getDcrs:               function () { return window.__pioneerAdmin.tabs.recentDcrs.getDcrs(); },
       getDcrIssues:          function () { return window.__pioneerAdmin.tabs.dcrIssues.getDcrIssues(); },
+      getSupplyRequests:     function () { return supplyRequests; },
       getCurrentAdminEmail:  getCurrentAdminEmail,
       handleAdminWriteError: handleAdminWriteError,
       setModalError:         setModalError,
-      setModalSaving:        setModalSaving
+      setModalSaving:        setModalSaving,
+      populateCustomerDeputyIntegration: populateCustomerDeputyIntegration
     };
     // DCR Issues tab fires onChange after every load + save so admin.js
     // can refresh the attention strip + customer rows (which display
     // open-issue counts derived from the dcrIssues array).
     window.__pioneerAdmin.tabs.dcrIssues.onChange(function () {
       if (typeof refreshAttentionStrip      === "function") refreshAttentionStrip();
-      if (typeof applyCurrentCustomerFilter === "function") applyCurrentCustomerFilter();
+      window.__pioneerAdmin.tabs.customers.applyFilter();
     });
     window.__pioneerAdmin.tabs.customerNotes.init();
     window.__pioneerAdmin.tabs.noteSuggestions.init();
