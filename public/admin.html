@@ -16,6 +16,13 @@
   <link rel="stylesheet" href="admin.css" />
   <link rel="stylesheet" href="training.css" />
   <link rel="stylesheet" href="styles/admin-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
 </head>
 <body class="admin-body">
 
@@ -143,51 +150,69 @@
          per firestore.rules). See refreshDayHealthMetrics24h. -->
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
-      <!-- "Today's Operations" — native PioneerOps DCR pipeline health.
+      <!-- "Current Ops Day" — native PioneerOps DCR pipeline health.
+           Window is Pioneer ops-day-aligned (4 PM Pacific cutoff, see
+           getOpsDayWindow() in admin.js), not midnight or rolling 24h.
            Layout:
-             1. Eyebrow + dynamic title
-             2. Headline stat row: New issues today / DCR emails sent · 24h /
-                Failed DCR emails · 24h (failures tile is hidden when count is 0)
-             3. Dashboard bullets: Customer links active / Delivered · 24h /
-                Failures · 24h / Feedback · 24h
-             4. Footer line — operational summary + (optional) Review link
+             1. Eyebrow "Current Ops Day" + dynamic title + window label
+                (e.g., "Yesterday 4 PM → Today 4 PM")
+             2. Headline stat row: New issues / DCR emails sent /
+                Failed DCR emails — all "· ops day"
+             3. Dashboard bullets: Customer links active / Delivered /
+                Failures / Feedback — all "· ops day"
+             4. Yesterday Review (collapsible) — previous ops-day counts
+             5. Footer line — operational summary + (optional) Review link
            Open tracking is intentionally NOT shown — we don't track opens
            today, so a fake "—" or zero would mislead. See the TODO block
            in admin.js for the future tracking-pixel / click-event plan. -->
       <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
         <header class="health-head">
-          <span class="health-eyebrow">Today's Operations</span>
+          <span class="health-eyebrow">Current Ops Day</span>
           <h2 class="health-title" id="admin-day-health-title">Loading native DCR pipeline metrics…</h2>
+          <!-- Pacific-anchored window label, populated by
+               refreshAdminDayHealth from the dayHealthOps window.
+               Examples: "Today 4 PM → Tomorrow 4 PM" /
+                         "Yesterday 4 PM → Today 4 PM". -->
+          <p class="health-window" id="admin-day-health-window" hidden></p>
         </header>
 
         <!-- Headline stats. Each tile renders a single big number with
              a tight label. The failures tile (admin-day-health-stat-failures-wrap)
              stays hidden when there have been zero failures in the
-             last 24h so the card reads as calm. -->
+             current ops day so the card reads as calm. -->
         <div class="admin-day-health-stats" id="admin-day-health-stats">
           <div class="admin-day-health-stat" data-tone="neutral">
             <span class="admin-day-health-stat-value" id="admin-day-health-stat-new-issues">—</span>
-            <span class="admin-day-health-stat-label">New issues today</span>
+            <span class="admin-day-health-stat-label">New issues · ops day</span>
           </div>
           <div class="admin-day-health-stat" data-tone="positive">
             <span class="admin-day-health-stat-value" id="admin-day-health-stat-emails-sent">—</span>
-            <span class="admin-day-health-stat-label">DCR emails sent · 24h</span>
+            <span class="admin-day-health-stat-label">DCR emails sent · ops day</span>
           </div>
           <div class="admin-day-health-stat admin-day-health-stat-bad"
                id="admin-day-health-stat-failures-wrap" data-tone="attention" hidden>
             <span class="admin-day-health-stat-value" id="admin-day-health-stat-failures">—</span>
-            <span class="admin-day-health-stat-label">Failed DCR emails · 24h</span>
+            <span class="admin-day-health-stat-label">Failed DCR emails · ops day</span>
           </div>
         </div>
 
         <ul class="health-checklist" id="admin-day-health-checklist">
           <li data-state="ok" id="admin-day-health-li-links">— customer links active</li>
-          <li data-state="ok" id="admin-day-health-li-delivered">— DCR emails delivered · 24h</li>
-          <li data-state="ok" id="admin-day-health-li-failures">0 DCR email failures · 24h</li>
-          <li data-state="ok" id="admin-day-health-li-feedback">— customer feedback received · 24h</li>
+          <li data-state="ok" id="admin-day-health-li-delivered">— DCR emails delivered · ops day</li>
+          <li data-state="ok" id="admin-day-health-li-failures">0 DCR email failures · ops day</li>
+          <li data-state="ok" id="admin-day-health-li-feedback">— customer feedback received · ops day</li>
         </ul>
+
+        <!-- Previous Ops Day collapsible summary. Hidden until metrics
+             load so we never show a placeholder line. Compact /
+             muted on purpose — admins glance, optionally expand. -->
+        <details class="health-prev" id="admin-day-health-prev" hidden>
+          <summary>Yesterday Review · Previous Ops Day</summary>
+          <p class="health-prev-line" id="admin-day-health-prev-summary">—</p>
+        </details>
+
         <footer class="health-foot">
-          <span id="admin-day-health-foot-left">Native PioneerOps metrics · refreshed on tab load</span>
+          <span id="admin-day-health-foot-left">Native PioneerOps metrics · 4 PM Pacific ops-day cutoff</span>
           <a href="#admin-ops-overview" id="admin-day-health-foot-right" hidden>Review</a>
         </footer>
       </section>
@@ -259,6 +284,7 @@
           <button class="admin-tab is-active" data-tab="customers" role="tab" aria-selected="true">Customers</button>
           <button class="admin-tab"           data-tab="techs"     role="tab" aria-selected="false">Cleaning Techs</button>
           <button class="admin-tab"           data-tab="dcrs"      role="tab" aria-selected="false">Recent DCRs</button>
+          <button class="admin-tab"           data-tab="yesterday" role="tab" aria-selected="false">Yesterday's Work</button>
           <button class="admin-tab"           data-tab="supply"    role="tab" aria-selected="false">
             Supply Requests
             <span class="admin-tab-badge" id="supply-tab-badge"
@@ -304,6 +330,19 @@
                   aria-label="Pending suggestions"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="improvements" role="tab" aria-selected="false">
+            Improvements
+            <span class="admin-tab-badge" id="improvements-tab-badge"
+                  title="New submissions awaiting review"
+                  aria-label="New improvement submissions" hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="tech-health" role="tab" aria-selected="false">
+            Tech Health
+            <span class="admin-tab-badge" id="tech-health-tab-badge"
+                  title="Techs flagged Watch or Needs Support"
+                  aria-label="Techs needing attention"
+                  hidden>0</span>
+          </button>
         </div>
       </div>
 
@@ -318,7 +357,22 @@
           <button class="admin-tab"           data-tab="announcements" role="tab" aria-selected="false">Announcements</button>
           <button class="admin-tab"           data-tab="admins"        role="tab" aria-selected="false">Admins</button>
           <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
+          <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
+          <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
+            Attendance
+            <span class="admin-tab-badge" id="attendance-tab-badge"
+                  title="Pending time-off requests + new call-outs"
+                  aria-label="Pending attendance items"
+                  hidden>0</span>
+          </button>
           <button class="admin-tab"           data-tab="deputy"        role="tab" aria-selected="false">Deputy</button>
+          <button class="admin-tab"           data-tab="sos"           role="tab" aria-selected="false">
+            SOS Events
+            <span class="admin-tab-badge" id="sos-tab-badge"
+                  title="Open SOS events awaiting acknowledgment"
+                  aria-label="Open SOS events" hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="pilot-readiness" role="tab" aria-selected="false">Pilot Readiness</button>
         </div>
       </div>
     </nav>
@@ -445,6 +499,49 @@
       <div class="admin-status admin-empty"   id="dcr-empty" hidden>No DCR submissions yet.</div>
 
       <div class="admin-list" id="dcr-list" role="list"></div>
+    </section>
+
+    <!-- ================== Yesterday's Work / Nightly Recap ================== -->
+    <!-- Admin-only operational recap for the previous ops day window
+         (4pm PT → 4pm PT). Tells admin "what happened last night" with
+         per-tech grouping, shift→DCR matching, and status traffic lights.
+         Pure frontend — admin reads cover every collection it needs. -->
+    <section class="card admin-panel" data-panel="yesterday" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Yesterday's Work</h2>
+          <p class="panel-sub" id="yesterday-window-label">Pioneer ops window · 4pm → 4pm Pacific</p>
+        </div>
+        <div class="panel-header-actions yesterday-date-controls">
+          <button class="panel-action" id="yesterday-prev-day" type="button" aria-label="Previous day">←</button>
+          <input class="yesterday-date-input" id="yesterday-date" type="date" />
+          <button class="panel-action" id="yesterday-next-day" type="button" aria-label="Next day">→</button>
+          <button class="panel-action" id="yesterday-refresh" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <div class="admin-status admin-loading" id="yesterday-loading" hidden>Pulling shifts, sessions, DCRs, and email status…</div>
+      <div class="admin-status admin-error"   id="yesterday-error"   hidden></div>
+
+      <div id="yesterday-summary" class="yesterday-summary" hidden></div>
+
+      <div id="yesterday-by-tech" class="yesterday-by-tech"></div>
+
+      <div id="yesterday-unmatched-dcrs" class="yesterday-extra" hidden>
+        <h3 class="yesterday-extra-head">Unmatched DCRs</h3>
+        <p class="yesterday-extra-sub">DCRs submitted that don't link to a scheduled shift in this window.</p>
+        <div id="yesterday-unmatched-dcrs-list"></div>
+      </div>
+
+      <div id="yesterday-unmatched-shifts" class="yesterday-extra" hidden>
+        <h3 class="yesterday-extra-head">Unmatched shifts</h3>
+        <p class="yesterday-extra-sub">Scheduled shifts with no submitted DCR. Top of the follow-up list.</p>
+        <div id="yesterday-unmatched-shifts-list"></div>
+      </div>
+
+      <div class="admin-status admin-empty" id="yesterday-empty" hidden>
+        No scheduled work in this window.
+      </div>
     </section>
 
     <!-- ================== Supply Requests ================== -->
@@ -940,6 +1037,69 @@
       </div>
     </section>
 
+    <!-- ================== Pilot Readiness ================== -->
+    <!-- Admin-only pre-rollout audit. Runs the same engine as
+         `node scripts/pilot-readiness-check.js` against every active
+         cleaning_techs row. Read-only — no writes, no test docs. -->
+    <section class="card admin-panel" data-panel="pilot-readiness" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Pilot Readiness</h2>
+          <p class="panel-sub">
+            Pre-flight check for every active cleaning tech. Verifies Firebase Auth,
+            Deputy mapping, upcoming shifts, customer setup, and the structural
+            inputs each Firestore rule needs. No writes — safe to run repeatedly.
+          </p>
+        </div>
+        <div class="panel-header-actions">
+          <button class="panel-action" id="pilot-readiness-run" type="button">Run check</button>
+          <button class="panel-action" id="pilot-readiness-refresh" type="button" hidden>Refresh</button>
+          <button class="panel-action" id="pilot-readiness-copy" type="button" hidden>Copy report</button>
+        </div>
+      </header>
+
+      <div class="admin-status admin-loading" id="pilot-readiness-loading" hidden>Running checks — this can take 10–30 seconds depending on roster size…</div>
+      <div class="admin-status admin-error"   id="pilot-readiness-error"   hidden></div>
+
+      <div id="pilot-readiness-summary" class="pilot-readiness-summary" hidden></div>
+      <div id="pilot-readiness-results" class="pilot-readiness-results" hidden></div>
+
+      <div class="admin-status admin-empty" id="pilot-readiness-empty" hidden>
+        No active cleaning_techs to check. Add a tech in the Cleaning Techs tab first.
+      </div>
+    </section>
+
+    <!-- ================== SOS Events ==================
+         Pioneer SOS — Phase 1 lone-worker protection. Real-time read
+         of `emergency_events`. Admin-only via Firestore rules.
+         Severity-driven chrome. Resolve workflow with notes. -->
+    <section class="card admin-panel" data-panel="sos" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">SOS Events</h2>
+          <p class="panel-sub">
+            Live feed of Pioneer SOS alerts. Help-needed (amber) and emergency
+            (red) events fan out via SMS to April, Kirby, and Nick. Mark
+            resolved once the situation is handled.
+          </p>
+        </div>
+        <button class="panel-action" id="sos-refresh" type="button">Refresh</button>
+      </header>
+
+      <div class="sos-filter-bar">
+        <button type="button" class="sos-filter is-active" data-filter="open">Open</button>
+        <button type="button" class="sos-filter" data-filter="critical">Critical only</button>
+        <button type="button" class="sos-filter" data-filter="resolved">Resolved</button>
+        <button type="button" class="sos-filter" data-filter="all">All</button>
+      </div>
+
+      <div class="admin-status admin-loading" id="sos-loading" hidden>Loading SOS events…</div>
+      <div class="admin-status admin-error"   id="sos-error" hidden></div>
+      <div class="admin-status admin-empty"   id="sos-empty" hidden>No SOS events yet — quiet shift, good.</div>
+
+      <div class="sos-list" id="sos-list" role="list"></div>
+    </section>
+
     <!-- ================== Service Recoveries ================== -->
     <!-- Operational board for follow-up tasks tied to a customer
          (and optionally an inspection). Admin-only — service
@@ -990,6 +1150,647 @@
       <div class="admin-status admin-empty"   id="recoveries-empty" hidden>No service recoveries yet. Create one from an inspection's detail view.</div>
 
       <div class="admin-list" id="recoveries-list" role="list"></div>
+    </section>
+
+    <!-- ================== Help Improve Pioneer ==================
+         Admin review surface for the operational improvement channel
+         (and separate protected-concern reports). Reads
+         pioneer_improvements. Admin-only; rule enforces the read gate. -->
+    <section class="card admin-panel" data-panel="improvements" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Help Improve Pioneer</h2>
+          <p class="panel-sub">
+            Operational improvement ideas from the team, plus a separate
+            protected-concern channel. Triage with status, follow up if
+            needed, mark Implemented when something ships.
+          </p>
+        </div>
+        <button class="panel-action" id="improvements-refresh" type="button">Refresh</button>
+      </header>
+
+      <div class="improvements-filter-bar">
+        <button type="button" class="improvements-filter is-active" data-filter="open">Open</button>
+        <button type="button" class="improvements-filter" data-filter="implemented">Implemented</button>
+        <button type="button" class="improvements-filter" data-filter="protected">Protected only</button>
+        <button type="button" class="improvements-filter" data-filter="all">All</button>
+      </div>
+
+      <div class="admin-status admin-loading" id="improvements-loading" hidden>Loading submissions…</div>
+      <div class="admin-status admin-error"   id="improvements-error" hidden></div>
+      <div class="admin-status admin-empty"   id="improvements-empty" hidden>No submissions yet. Share the /improve.html link with the team.</div>
+
+      <div class="improvements-list" id="improvements-list" role="list"></div>
+    </section>
+
+    <!-- ================== Tech Health ==================
+         Operational support dashboard. NOT surveillance, NOT public
+         ranking. Admin-only. Reads existing PioneerOps signals over
+         the trailing 30 days to surface reliability, positive
+         contribution, and watch signals per cleaning tech.
+
+         Statuses:
+           • stable        — default; nothing to flag
+           • watch         — early-warning thresholds met (e.g.,
+                             ≥ 2 call-outs OR ≥ 2 over-budget DCRs)
+           • needs-support — clearer pattern (≥ 4 call-outs); admin
+                             should check in supportively
+
+         Positive surfacing leads:
+           DCRs submitted, open-shift pickups, Rockstar bonuses,
+           5-star inspections.
+
+         Phase 2 TODO:
+           • midnight cron: shifts that ended in Deputy with no
+             matching DCR → email Kirby + flag tech as Watch
+           • complaint/compliment linkage via dcrId join
+           • customer continuity (consistent customers vs frequent
+             reassignments)
+           • opt-in "support check-in" workflow with manager notes -->
+    <section class="card admin-panel" data-panel="tech-health" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Tech Health</h2>
+          <p class="panel-sub">
+            Operational support view. Last 30 days, per active tech. Use this to <strong>spot patterns and check in</strong> — not to score or rank.
+          </p>
+        </div>
+        <button class="panel-action" id="tech-health-refresh" type="button">Refresh</button>
+      </header>
+
+      <nav class="tech-health-filter" role="tablist" aria-label="Filter by status">
+        <button class="tech-health-pill is-active" data-th-filter="all" role="tab" aria-selected="true">All</button>
+        <button class="tech-health-pill"           data-th-filter="needs-support" role="tab" aria-selected="false">Needs Support</button>
+        <button class="tech-health-pill"           data-th-filter="watch"        role="tab" aria-selected="false">Watch</button>
+        <button class="tech-health-pill"           data-th-filter="stable"       role="tab" aria-selected="false">Stable</button>
+      </nav>
+
+      <div class="admin-status admin-loading" id="tech-health-loading">Loading tech health…</div>
+      <div class="admin-status admin-error"   id="tech-health-error" hidden></div>
+      <div class="admin-status admin-empty"   id="tech-health-empty" hidden>No active techs to display.</div>
+
+      <div class="tech-health-list" id="tech-health-list" role="list"></div>
+
+      <p class="tech-health-note">
+        This view is for operational support. Watch flags are early signals — they're a prompt to talk with the tech, not a judgment.
+      </p>
+    </section>
+
+    <!-- ================== Attendance (Time-Off + Call-Outs) ================== -->
+    <!-- Office-manager surface for the two attendance flows.
+         Tabs: Pending Time Off · Approved Time Off · Call-Outs · Calendar.
+
+         Phase 2 TODO:
+           • Cloud Function on call_outs/time_off_requests create →
+             email Kirby (replaces the in-app notification doc)
+           • Notify tech back when status changes (approved/denied/
+             acknowledged/resolved)
+           • Blackout windows + max-people-off-per-day rule -->
+    <section class="card admin-panel" data-panel="attendance" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Time-Off & Call-Outs</h2>
+          <p class="panel-sub">
+            Office-manager review surface. Approve / deny planned requests, acknowledge urgent call-outs, and scan the staffing-risk calendar.
+          </p>
+        </div>
+        <button class="panel-action" id="attendance-refresh" type="button"
+                title="Re-read call_outs and time_off_requests">Refresh</button>
+      </header>
+
+      <nav class="attendance-subtabs" role="tablist" aria-label="Attendance sub-tabs">
+        <button class="attendance-subtab is-active" data-attn-tab="pending"  role="tab" aria-selected="true">
+          Pending Time Off
+          <span class="attendance-subtab-badge" id="attn-pending-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="approved" role="tab" aria-selected="false">Approved Time Off</button>
+        <button class="attendance-subtab"           data-attn-tab="callouts" role="tab" aria-selected="false">
+          Call-Outs
+          <span class="attendance-subtab-badge" id="attn-callouts-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="openshifts" role="tab" aria-selected="false">
+          Open Shifts
+          <span class="attendance-subtab-badge" id="attn-openshifts-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="calendar" role="tab" aria-selected="false">Calendar</button>
+      </nav>
+
+      <div class="admin-status admin-loading" id="attendance-loading">Loading attendance data…</div>
+      <div class="admin-status admin-error"   id="attendance-error" hidden></div>
+
+      <!-- Sub-panels — only one visible at a time. -->
+      <section class="attendance-subpanel is-active" data-attn-panel="pending">
+        <div class="admin-status admin-empty" id="attn-pending-empty" hidden>No pending time-off requests.</div>
+        <div class="admin-list" id="attn-pending-list" role="list"></div>
+      </section>
+      <section class="attendance-subpanel" data-attn-panel="approved" hidden>
+        <div class="admin-status admin-empty" id="attn-approved-empty" hidden>No approved time-off requests yet.</div>
+        <div class="admin-list" id="attn-approved-list" role="list"></div>
+      </section>
+      <section class="attendance-subpanel" data-attn-panel="callouts" hidden>
+        <div class="admin-status admin-empty" id="attn-callouts-empty" hidden>No recent call-outs.</div>
+        <div class="admin-list" id="attn-callouts-list" role="list"></div>
+      </section>
+      <!-- Open Shifts — admin CRUD on open_shift_requests. Create new
+           open shifts, see what's open, see what's been accepted by
+           a tech (awaiting confirmation), confirm coverage (which
+           writes a rockstar_bonuses doc), or cancel. -->
+      <section class="attendance-subpanel" data-attn-panel="openshifts" hidden>
+        <header class="attn-os-head">
+          <div>
+            <h3 class="attn-os-title">Open Shifts &amp; Rockstar Bonuses</h3>
+            <p class="attn-os-sub">Create open shifts when a call-out needs coverage. Confirm the tech who picks it up to record their $25 Rockstar bonus.</p>
+          </div>
+          <button type="button" class="panel-action" id="attn-os-new-btn">+ New open shift</button>
+        </header>
+
+        <!-- Create form. Hidden until "+ New open shift" is clicked. -->
+        <form class="attn-os-form" id="attn-os-form" hidden autocomplete="off" novalidate>
+          <div class="attn-os-form-grid">
+            <label class="attn-os-field">
+              <span>Customer / building</span>
+              <input type="text" id="attn-os-customer-name" required maxlength="160" placeholder="e.g. Baker Construction" />
+            </label>
+            <label class="attn-os-field">
+              <span>Customer slug (optional)</span>
+              <input type="text" id="attn-os-customer-slug" maxlength="80" placeholder="baker-construction" />
+            </label>
+            <label class="attn-os-field">
+              <span>Shift date</span>
+              <input type="date" id="attn-os-shift-date" required />
+            </label>
+            <label class="attn-os-field">
+              <span>Shift time (optional)</span>
+              <input type="text" id="attn-os-shift-time" maxlength="40" placeholder="e.g. 5:00pm-8:30pm" />
+            </label>
+            <label class="attn-os-field attn-os-field--wide">
+              <span>Notes (optional)</span>
+              <textarea id="attn-os-notes" rows="2" maxlength="400" placeholder="Anything the team should know — access codes, special instructions, etc."></textarea>
+            </label>
+          </div>
+          <div class="attn-os-form-actions">
+            <div class="attn-os-form-status" id="attn-os-form-status" aria-live="polite"></div>
+            <button type="button" class="panel-action" id="attn-os-form-cancel">Cancel</button>
+            <button type="submit" class="modal-btn-save" id="attn-os-form-submit">Create open shift</button>
+          </div>
+        </form>
+
+        <div class="admin-status admin-empty" id="attn-os-empty" hidden>No open or accepted shifts right now.</div>
+        <div class="admin-list" id="attn-os-list" role="list"></div>
+      </section>
+
+      <section class="attendance-subpanel" data-attn-panel="calendar" hidden>
+        <p class="attendance-calendar-help">
+          Each cell counts how many people have requested off (approved + pending). Red dates are critically difficult for coverage — additional requests may be hard to approve.
+        </p>
+        <div class="attn-cal-legend" aria-label="Calendar color legend">
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--yellow"></span>1 off</span>
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--orange"></span>2 off</span>
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--red"></span>3+ off · critical</span>
+        </div>
+        <div class="attendance-calendar" id="attn-calendar"></div>
+      </section>
+    </section>
+
+    <!-- ================== Team Schedule ==================
+         Pilot v1 — single source of truth lives in
+         `team_schedule/current` (Firestore) and the file blob in
+         `team-schedules/{yyyymm}/{timestamp}-{filename}` (Storage).
+         Admin uploads a PDF (preferred) or image; Team Hub renders
+         "View / Download" buttons under an Announcements-adjacent
+         section.
+
+         Phase 2 TODO:
+           • native Deputy monthly schedule sync (auto-overwrite this
+             doc from a scheduled function — no manual upload needed)
+           • team schedule calendar view (per-tech, per-customer,
+             per-date filters)
+           • current week vs current month toggle
+           • upload history archive (Firestore subcollection) so admins
+             can roll back to a prior PDF if needed
+    -->
+    <section class="card admin-panel" data-panel="schedule" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Team Schedule</h2>
+          <p class="panel-sub" id="schedule-sub">
+            One button. Pulls the latest Deputy schedule and updates Team Hub.
+          </p>
+        </div>
+        <button class="panel-action" id="schedule-refresh" type="button"
+                title="Re-read team_schedule/current and published_team_schedule/current">Refresh</button>
+      </header>
+
+      <!-- ============ Primary action: Sync next 21 days from Deputy ============
+           Single-button workflow. Wraps the existing publish pipeline
+           (refreshDeputyShiftsRangeV1 → read deputy_shift_cache →
+           write published_team_schedule/current) with simple language
+           and a success summary the office can read at a glance. -->
+      <section class="schedule-sync-primary" id="schedule-sync-primary">
+        <header class="schedule-sync-head">
+          <div>
+            <h3 class="schedule-sync-title">Sync next 21 days from Deputy</h3>
+            <p class="schedule-sync-sub">
+              This pulls the latest published Deputy shifts and updates the Team Hub schedule.
+            </p>
+          </div>
+        </header>
+
+        <div class="schedule-sync-actions">
+          <button type="button" class="panel-action panel-action-primary" id="schedule-sync-now-btn">
+            Sync next 21 days from Deputy
+          </button>
+        </div>
+
+        <div class="schedule-sync-status"  id="schedule-sync-status"  aria-live="polite" hidden></div>
+        <div class="schedule-sync-error"   id="schedule-sync-error"   role="alert" hidden></div>
+
+        <!-- Success summary — shown after a clean sync. Populated by admin.js. -->
+        <div class="schedule-sync-success" id="schedule-sync-success" hidden>
+          <div class="schedule-sync-success-row schedule-sync-success-headline">
+            <span class="schedule-sync-success-icon" aria-hidden="true">✅</span>
+            <strong>Schedule synced.</strong>
+          </div>
+          <dl class="schedule-sync-success-stats">
+            <div><dt>Shifts</dt><dd id="schedule-sync-success-shifts">—</dd></div>
+            <div><dt>Range</dt><dd id="schedule-sync-success-range">—</dd></div>
+            <div><dt>Published</dt><dd id="schedule-sync-success-when">—</dd></div>
+          </dl>
+          <p class="schedule-sync-success-note">Published to Team Hub.</p>
+          <div class="schedule-sync-success-actions">
+            <a class="panel-action" id="schedule-sync-view-link" href="/team-schedule.html" target="_blank" rel="noopener noreferrer">
+              View Team Schedule ↗
+            </a>
+          </div>
+        </div>
+
+        <!-- Per-day breakdown stays available for the office that wants
+             to triage which days returned zero shifts. Hidden under a
+             disclosure so the calm success summary above stays the
+             primary readout. -->
+        <details class="schedule-sync-debug" id="schedule-sync-debug" hidden>
+          <summary>Sync details (per-day breakdown)</summary>
+          <div class="schedule-publish-debug-body" id="schedule-sync-debug-body"></div>
+        </details>
+      </section>
+
+      <!-- ============ Advanced: PDF backup ============
+           PDF upload + parse path kept available for non-Deputy
+           imports / printable archive. Collapsed by default; admins
+           rarely need it now that Deputy sync is the primary path. -->
+      <details class="schedule-advanced" id="schedule-advanced-pdf">
+        <summary class="schedule-advanced-summary">
+          Backup PDF (not needed for normal schedule updates)
+        </summary>
+        <p class="schedule-advanced-help">
+          Optional. Upload a printable PDF for the office archive. Team Hub
+          will surface a "View printable PDF" button alongside the live
+          Deputy snapshot, but no parsing is required.
+        </p>
+
+      <!-- ============ Schedule Import V1 ============
+           Primary path while Deputy's range API is unreliable. Admin
+           pastes (or extracts from PDF) the next 1-3 weeks of
+           schedule text → the parser produces a draft of shifts →
+           admin reviews/edits in the table below → "Publish from
+           draft" writes the snapshot to `published_team_schedule/current`,
+           which Team Hub already reads.
+
+           Phase 2 TODO:
+             • improve parser heuristics with sample real-world PDFs
+             • sync direct from Deputy when range API is reliable
+             • detect changes week-to-week (diff vs previous draft)
+             • auto-highlight updated shifts in the editor
+             • OCR fallback for image-only PDFs
+             • per-tech color preview in the editor table -->
+      <section class="schedule-import-block" id="schedule-import-block">
+        <header class="schedule-import-head">
+          <div>
+            <h3 class="schedule-published-title">Publish the team schedule</h3>
+            <p class="schedule-published-sub">
+              Export the Deputy schedule PDF, upload it below, then publish it to Team Hub
+              in three taps.
+            </p>
+          </div>
+        </header>
+
+        <!-- Recommended workflow strip — visual flow + numbered steps so
+             the office staff sees the simple path at a glance. -->
+        <div class="schedule-flow" aria-label="Recommended workflow">
+          <ol class="schedule-flow-strip">
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">📄</span>
+              <span class="schedule-flow-label">Deputy PDF</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">⤴</span>
+              <span class="schedule-flow-label">Upload</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">✨</span>
+              <span class="schedule-flow-label">Extract</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">👀</span>
+              <span class="schedule-flow-label">Review</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">📣</span>
+              <span class="schedule-flow-label">Publish</span>
+            </li>
+          </ol>
+          <ol class="schedule-flow-steps">
+            <li>Export the schedule PDF from Deputy.</li>
+            <li>Upload the PDF below.</li>
+            <li>Click <strong>Extract from current PDF</strong>.</li>
+            <li>Review the schedule that appears.</li>
+            <li>Publish to Team Hub.</li>
+          </ol>
+        </div>
+
+        <div class="schedule-import-actions">
+          <button type="button" class="panel-action panel-action-primary" id="schedule-import-from-pdf"
+                  title="Pull the schedule out of the currently uploaded PDF">
+            Extract from current PDF
+          </button>
+        </div>
+
+        <div class="schedule-import-status" id="schedule-import-status" aria-live="polite"></div>
+        <div class="schedule-import-error"  id="schedule-import-error" role="alert" hidden></div>
+
+        <!-- Advanced / Manual Import — collapsed by default. Kept available
+             for admins who want to hand-edit the parsed text, debug a
+             parser issue, or paste a schedule from a non-Deputy source. -->
+        <details class="schedule-import-advanced" id="schedule-import-advanced">
+          <summary class="schedule-import-advanced-summary">
+            Advanced / Manual Import
+          </summary>
+          <p class="schedule-import-advanced-help">
+            Most schedules go through the Extract button above. Use this only when
+            the office is hand-typing a schedule, or when Nick has asked you to
+            paste a debug copy.
+          </p>
+          <label class="schedule-import-label">
+            <span class="schedule-import-label-text">Advanced manual schedule import</span>
+            <textarea id="schedule-import-text" rows="6"
+                      placeholder="Paste schedule text here, then click Convert below."></textarea>
+          </label>
+          <div class="schedule-import-controls">
+            <label class="schedule-import-year">
+              <span>Year (for date inference)</span>
+              <input type="number" id="schedule-import-year" min="2024" max="2099" />
+            </label>
+            <button type="button" class="panel-action" id="schedule-import-clear"
+                    title="Clear the paste area">Clear</button>
+            <button type="button" class="modal-btn-save" id="schedule-import-parse">
+              Convert to schedule draft
+            </button>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ Draft Review & Publish ============
+           Visible only when a draft exists. Each row is an editable
+           shift; admins can fix parsed values, add/remove rows, then
+           "Publish from draft" to push to `published_team_schedule/current`.
+           Low-confidence rows get a warning chip + a yellow row tint. -->
+      <section class="schedule-draft-block" id="schedule-draft-block" hidden>
+        <header class="schedule-import-head">
+          <div>
+            <h3 class="schedule-published-title">Draft review & publish</h3>
+            <p class="schedule-published-sub" id="schedule-draft-meta">—</p>
+          </div>
+          <div class="schedule-draft-head-actions">
+            <button type="button" class="panel-action" id="schedule-draft-add-row">+ Add shift</button>
+          </div>
+        </header>
+
+        <div class="schedule-draft-table-wrap">
+          <table class="schedule-draft-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Tech</th>
+                <th>Customer</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Notes</th>
+                <th>Conf</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody id="schedule-draft-rows"></tbody>
+          </table>
+        </div>
+
+        <div class="schedule-draft-actions">
+          <div class="schedule-draft-status" id="schedule-draft-status" aria-live="polite"></div>
+          <div class="schedule-draft-error"  id="schedule-draft-error" role="alert" hidden></div>
+          <div class="schedule-draft-buttons">
+            <button type="button" class="panel-action" id="schedule-draft-save">Save draft</button>
+            <button type="button" class="panel-action" id="schedule-draft-discard">Discard draft</button>
+            <button type="button" class="modal-btn-save" id="schedule-draft-publish">Publish from draft</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Published from Deputy ============
+           Reads `deputy_shift_cache` for sync_date in
+           [today, today+13] (Pacific), normalizes each row by joining
+           the cached employee_email / employee_display_name / customer_slug
+           / customer_name, and overwrites `published_team_schedule/current`.
+
+           Snapshot model is intentional: Team Hub does NOT reflect live
+           Deputy edits — admins publish when ready. The cache only
+           contains days that have been Deputy-synced; today is synced
+           every 10 minutes, future days require an admin Deputy refresh
+           per day.
+
+           Phase 2 TODO:
+             • monthly calendar view + printable export
+             • personal "my schedule" filtering on the tech side
+             • shift swaps / PTO overlays / open-shift coverage
+             • live vs deferred publish modes (currently always deferred)
+             • auto-sync future Deputy days as part of the publish step
+             • server-side publish (Cloud Function) so a scheduled job
+               can re-publish nightly without an admin browser open
+             • "Open Deputy" button per shift (deep-link to roster) -->
+      <section class="schedule-published" id="schedule-published-block">
+        <header class="schedule-published-head">
+          <div>
+            <h3 class="schedule-published-title">Publish directly from Deputy (secondary)</h3>
+            <p class="schedule-published-sub" id="schedule-published-meta">
+              Loading current published snapshot…
+            </p>
+            <p class="schedule-published-sub schedule-published-aside">
+              Use this when Deputy reliably returns the full date range. While Deputy's
+              future-day API is unreliable, prefer the Import path above.
+            </p>
+          </div>
+        </header>
+
+        <div class="admin-status admin-loading" id="schedule-published-loading">Loading published snapshot…</div>
+        <div class="admin-status admin-error"   id="schedule-published-error" hidden></div>
+        <div class="admin-status admin-empty"   id="schedule-published-empty" hidden>
+          Nothing published yet. Click <strong>Publish next 14 days from Deputy</strong> below.
+        </div>
+
+        <!-- Snapshot summary — populated by admin.js when
+             published_team_schedule/current exists. -->
+        <div class="schedule-published-summary" id="schedule-published-summary" hidden>
+          <dl class="schedule-published-stats">
+            <div><dt>Published</dt><dd id="schedule-published-when">—</dd></div>
+            <div><dt>Range</dt><dd id="schedule-published-range">—</dd></div>
+            <div><dt>Shifts</dt><dd id="schedule-published-count">—</dd></div>
+            <div><dt>Techs</dt><dd id="schedule-published-techs">—</dd></div>
+          </dl>
+          <p class="schedule-published-notes" id="schedule-published-notes" hidden></p>
+        </div>
+
+        <!-- Publish form. Notes are optional. Publishing OVERWRITES the
+             current snapshot — there is no per-publish history yet
+             (Phase 2 TODO).
+
+             "Sync future days from Deputy first" is ON by default and
+             calls refreshDeputyShiftsRangeV1 server-side, which loops
+             the daily Deputy sync for the chosen horizon before the
+             snapshot is read. Turn it off to publish from whatever is
+             already in deputy_shift_cache (faster but possibly stale). -->
+        <form class="schedule-publish-form" id="schedule-publish-form" autocomplete="off" novalidate>
+          <fieldset class="schedule-publish-horizon" id="schedule-publish-horizon-fs">
+            <legend>Publish range</legend>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="7" />
+              <span>7 days</span>
+            </label>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="14" />
+              <span>14 days</span>
+            </label>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="21" checked />
+              <span>21 days (default)</span>
+            </label>
+          </fieldset>
+
+          <label class="schedule-publish-checkbox">
+            <input type="checkbox" id="schedule-publish-sync-first" checked />
+            <span>
+              Sync future days from Deputy first
+              <em class="schedule-publish-checkbox-help">
+                Recommended — pulls fresh Deputy shifts for every day in the range before publishing.
+              </em>
+            </span>
+          </label>
+
+          <label class="schedule-publish-label">
+            <span class="schedule-publish-label-text">Publish notes (optional)</span>
+            <textarea id="schedule-publish-notes" rows="2" maxlength="400"
+                      placeholder="e.g. Updated for the May 18 shift swaps. Please confirm any conflicts by Friday."></textarea>
+          </label>
+
+          <div class="schedule-publish-status" id="schedule-publish-status" aria-live="polite"></div>
+          <div class="schedule-publish-error"  id="schedule-publish-error" role="alert" hidden></div>
+
+          <!-- Per-day breakdown rendered after a publish. Lists Deputy
+               fetch count + cache docs found per date so admins can
+               see exactly which days returned zero shifts and decide
+               whether that's Deputy reality or a sync issue. -->
+          <details class="schedule-publish-debug" id="schedule-publish-debug" hidden>
+            <summary>Publish details (per-day breakdown)</summary>
+            <div class="schedule-publish-debug-body" id="schedule-publish-debug-body"></div>
+          </details>
+
+          <div class="schedule-publish-actions">
+            <button type="submit" class="modal-btn-save" id="schedule-publish-submit">
+              Publish to Team Hub
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ============ Printable PDF backup ============
+           Kept as a fallback / printable version. Some admins / techs
+           prefer a single-page PDF; the Deputy-powered snapshot above
+           is the primary view on Team Hub. -->
+      <section class="schedule-pdf-block">
+        <header class="schedule-pdf-head">
+          <h3 class="schedule-pdf-title">Printable PDF backup</h3>
+          <p class="schedule-pdf-sub">
+            Optional. Upload a printable PDF version of the schedule. Team Hub
+            renders a "View printable PDF" button alongside the Deputy snapshot.
+          </p>
+        </header>
+
+      <div class="admin-status admin-loading" id="schedule-loading">Loading current schedule…</div>
+      <div class="admin-status admin-error"   id="schedule-error" hidden></div>
+
+      <!-- Current schedule summary — populated by admin.js when
+           team_schedule/current exists. Hidden until first paint. -->
+      <div class="schedule-current" id="schedule-current" hidden>
+        <div class="schedule-current-meta">
+          <span class="schedule-current-eyebrow">Currently published</span>
+          <p class="schedule-current-filename" id="schedule-current-filename">—</p>
+          <p class="schedule-current-uploaded" id="schedule-current-uploaded">—</p>
+          <p class="schedule-current-notes" id="schedule-current-notes" hidden></p>
+        </div>
+        <div class="schedule-current-actions">
+          <a class="panel-action" id="schedule-current-view" href="#"
+             target="_blank" rel="noopener noreferrer"
+             title="Open the current schedule in a new tab">View</a>
+          <a class="panel-action" id="schedule-current-download" href="#"
+             title="Download the current schedule">Download</a>
+        </div>
+      </div>
+
+      <!-- Empty state — admin-only since this panel is admin-only. -->
+      <div class="admin-status admin-empty" id="schedule-empty" hidden>
+        No schedule uploaded yet. Pick a PDF below to publish the first one.
+      </div>
+
+      <!-- Upload form. Effective month + notes are both optional. -->
+      <form class="schedule-upload-form" id="schedule-upload-form" autocomplete="off" novalidate>
+        <fieldset class="schedule-upload-fields">
+          <legend>Update Team Schedule</legend>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Schedule file</span>
+            <input type="file" id="schedule-upload-file"
+                   accept="application/pdf,image/png,image/jpeg,image/webp"
+                   aria-describedby="schedule-upload-file-help" />
+            <span class="schedule-upload-file-help" id="schedule-upload-file-help">
+              PDF preferred. PNG/JPG/WEBP also accepted. Max 10 MB.
+            </span>
+          </label>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Effective month (optional)</span>
+            <input type="month" id="schedule-upload-effective-month"
+                   aria-label="Effective month for this schedule" />
+          </label>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Notes (optional)</span>
+            <textarea id="schedule-upload-notes" rows="2" maxlength="400"
+                      placeholder="e.g. May 2026 schedule — please confirm any conflicts by Friday."></textarea>
+          </label>
+
+          <div class="schedule-upload-status" id="schedule-upload-status" aria-live="polite"></div>
+          <div class="schedule-upload-error"  id="schedule-upload-error" role="alert" hidden></div>
+
+          <div class="schedule-upload-actions">
+            <button type="submit" class="modal-btn-save" id="schedule-upload-submit">
+              Upload PDF backup
+            </button>
+          </div>
+        </fieldset>
+      </form>
+      </section><!-- /.schedule-pdf-block -->
+      </details><!-- /.schedule-advanced /pdf+import -->
     </section>
 
     </div><!-- /#auth-content -->
@@ -1051,13 +1852,15 @@
           <label class="check-field"><input type="checkbox" id="cust-edit-dcr-enabled" />
             <span><strong>DCR enabled</strong> &mdash; show in DCR form dropdown</span></label>
           <label class="check-field"><input type="checkbox" id="cust-edit-dcr-email-enabled" />
-            <span><strong>Send daily DCR email to customer</strong> &mdash; Zapier skips the Gmail step when off; Slack / Sheets / GHL still run</span></label>
+            <span><strong>Send daily DCR email to customer</strong>
+              <em class="check-field-help">When off: customer email delivery is disabled. PioneerOps internal tracking still runs.</em>
+            </span></label>
         </div>
 
         <div class="field-row">
-          <label for="cust-edit-slack">Slack channel</label>
+          <label for="cust-edit-slack">Internal channel reference</label>
           <input type="text" id="cust-edit-slack" autocomplete="off"
-                 placeholder="#customer-acme" />
+                 placeholder="#customer-acme or internal notes channel" />
         </div>
 
         <div class="field-group">
@@ -1465,9 +2268,9 @@
             <div class="field-group-title">Password reset link (backup)</div>
             <p class="field-group-sub">
               Firebase has already emailed this reset link to the tech. Copy it
-              here if you'd prefer to send it via text or Slack as a backup. The
-              link expires according to Firebase's default policy (typically
-              one hour).
+              here if you'd prefer to send it via text or another secure channel
+              as a backup. The link expires according to Firebase's default
+              policy (typically one hour).
             </p>
             <div class="tech-create-copy-row">
               <input type="text" id="tech-create-reset-link" readonly />
@@ -1565,9 +2368,9 @@
             <div class="field-group-title">Password reset link (backup)</div>
             <p class="field-group-sub">
               Firebase has already emailed this reset link to the new admin.
-              Copy it here if you'd prefer to send it via text or Slack as a
-              backup. Expires per Firebase's default policy (typically one
-              hour).
+              Copy it here if you'd prefer to send it via text or another
+              secure channel as a backup. Expires per Firebase's default
+              policy (typically one hour).
             </p>
             <div class="tech-create-copy-row">
               <input type="text" id="admin-create-reset-link" readonly />
@@ -1862,11 +2665,33 @@
         </div>
 
         <div class="field-group">
+          <div class="field-group-title">Audience</div>
+          <label class="check-field">
+            <input type="radio" name="announcement-audience" value="all" checked id="announcement-audience-all" />
+            <span><strong>All active staff</strong> &mdash; everyone with a Pioneer login.</span>
+          </label>
+          <label class="check-field">
+            <input type="radio" name="announcement-audience" value="selected" id="announcement-audience-selected" />
+            <span><strong>Selected team members</strong> &mdash; pick from active cleaning techs below.</span>
+          </label>
+          <div class="ann-recipient-picker" id="announcement-recipient-picker" hidden>
+            <input type="search" class="admin-search" id="announcement-recipient-search"
+                   placeholder="Search techs…" autocomplete="off" />
+            <div class="ann-recipient-counter" id="announcement-recipient-counter">0 selected</div>
+            <div class="ann-recipient-list" id="announcement-recipient-list"></div>
+          </div>
+        </div>
+
+        <div class="field-group">
           <div class="field-group-title">Visibility &amp; behavior</div>
           <label class="check-field"><input type="checkbox" id="announcement-edit-active" checked />
             <span><strong>Active</strong> &mdash; visible to staff. Uncheck to hide.</span></label>
           <label class="check-field"><input type="checkbox" id="announcement-edit-mandatory" />
             <span><strong>Mandatory</strong> &mdash; pops a blocking modal staff must read before continuing.</span></label>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-require-ack" />
+            <span><strong>Require acknowledgement</strong> &mdash; recipients see an "Acknowledge" button on Team Hub.</span></label>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-require-reply" />
+            <span><strong>Require reply</strong> &mdash; the announcement stays open on Team Hub until each recipient replies.</span></label>
         </div>
 
         <div class="field-row">
@@ -1974,6 +2799,9 @@
   <script src="info-tip.js"></script>
   <script src="operational-feed.js"></script>
   <script src="customer-sop.js"></script>
-  <script src="admin.js"></script>
+  <script src="celebrate.js?v=20260528-displayfallback"></script>
+  <script src="customer-display.js?v=20260528-displayfallback"></script>
+  <script src="admin.js?v=20260528-displayfallback"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

@@ -695,12 +695,24 @@
         '</span>';
     }
 
-    const badges =
-      assetChips +
-      activeBadge(active) +
-      dcrEnabledBadge(enabled) +
-      (needsAssign ? badge("is-warn", "Needs assignments") : "") +
-      budgetBadgeHtml;
+    // Archived techs never show "DCR enabled"-style positive chrome.
+    // The dcr_enabled flag stays stored unchanged (so reactivation
+    // doesn't lose the prior config) but visually we replace the
+    // active-tech chip set with a clear archived-state cluster.
+    let badges;
+    if (active) {
+      badges =
+        assetChips +
+        activeBadge(true) +
+        dcrEnabledBadge(enabled) +
+        (needsAssign ? badge("is-warn", "Needs assignments") : "") +
+        budgetBadgeHtml;
+    } else {
+      badges =
+        badge("is-off", "Archived") +
+        badge("is-warn", "Access removed") +
+        badge("is-muted", "Historical records preserved");
+    }
 
     // Archive label flips for archived rows. (archiveExtraCls is no
     // longer needed — Archive lives inside the overflow menu now, and
@@ -2130,60 +2142,131 @@
      do NOT fake it." */
   let inspectionsThisWeekCount = null;  // null = not yet loaded, number = resolved
 
-  // V6 — 24h-window metrics for the Today's Operations card. Both
-  // queries cap their reads at 200 docs (twice today's expected
-  // volume on a worst-case office). The numbers are cached for the
-  // page lifetime; refreshDayHealthMetrics24h() can be called to
-  // refetch (e.g. after an admin manually sends a DCR email).
+  // Ops-day-window metrics for the Today's Operations card. Replaces
+  // the prior rolling-24h window with a Pioneer ops-day window that
+  // resets at 4 PM Pacific (see getOpsDayWindow above). Queries fetch
+  // BOTH the current ops day AND the previous one in a single sweep:
+  // we ask Firestore for everything `>= previousOpsStart` and bucket
+  // in memory, so we get the "Yesterday Review" counts for free.
+  //
+  // Caps each read at 400 docs (twice the old 200 since the window
+  // is twice as wide).
+  let dayHealthOps = {
+    loaded:    false,
+    queryError: null,
+    window:    null,           // { current{Start,End}, previous{Start,End}, opsDayLabel }
+    current:   { emailsSent: 0, emailsFailed: 0, feedback: 0, callOuts: 0 },
+    previous:  { emailsSent: 0, emailsFailed: 0, feedback: 0, callOuts: 0 }
+  };
+  // Old global name kept as an alias to avoid churn in callers that
+  // read .emailsSent / .emailsFailed / .feedbackReceived during the
+  // transition. Set by refreshDayHealthMetricsOpsDay().
   let dayHealth24h = {
     loaded:           false,
-    emailsSent:       0,   // dcr_email_payloads with sentAt >= 24h ago
-    emailsFailed:     0,   // payloads with createdAt >= 24h ago AND no sentAt
-    feedbackReceived: 0,   // customer_feedback with createdAt >= 24h ago
+    emailsSent:       0,
+    emailsFailed:     0,
+    feedbackReceived: 0,
     queryError:       null
   };
 
-  async function refreshDayHealthMetrics24h() {
-    try {
-      const db   = firebase.firestore();
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const cutoffTs = firebase.firestore.Timestamp.fromDate(cutoff);
+  async function refreshDayHealthMetricsOpsDay() {
+    const win = getOpsDayWindow(new Date());
+    try { console.info("[OpsDay] current window",  { start: win.currentOpsStart.toISOString(),  end: win.currentOpsEnd.toISOString() }); } catch (_e) {}
+    try { console.info("[OpsDay] previous window", { start: win.previousOpsStart.toISOString(), end: win.previousOpsEnd.toISOString() }); } catch (_e) {}
 
-      // We query payloads by createdAt (always stamped) rather than
-      // sentAt (only set on success), then bucket client-side. This
-      // catches BOTH delivered and failed sends in one query.
-      const [payloadsSnap, feedbackSnap] = await Promise.all([
+    try {
+      const db = firebase.firestore();
+      const prevStartTs = firebase.firestore.Timestamp.fromDate(win.previousOpsStart);
+
+      // Pull everything since the START of the previous ops day in a
+      // single shot per collection. We bucket into current vs previous
+      // client-side using JS timestamp compares.
+      const [payloadsSnap, feedbackSnap, callOutsSnap] = await Promise.all([
         db.collection("dcr_email_payloads")
-          .where("createdAt", ">=", cutoffTs)
-          .limit(200).get(),
+          .where("createdAt", ">=", prevStartTs)
+          .limit(400).get(),
         db.collection("customer_feedback")
-          .where("createdAt", ">=", cutoffTs)
-          .limit(200).get()
+          .where("createdAt", ">=", prevStartTs)
+          .limit(400).get(),
+        db.collection("call_outs")
+          .where("submittedAt", ">=", prevStartTs)
+          .limit(400).get()
+          // Call-outs collection didn't exist when this metric set was
+          // first wired. We catch a possible missing-collection / rules
+          // error below so the whole refresh doesn't blow up if it's
+          // empty.
+          .catch(function (err) {
+            console.warn("[OpsDay] call_outs query failed (soft)", err && err.message);
+            return { docs: [] };
+          })
       ]);
 
-      let sent = 0;
-      let failed = 0;
-      payloadsSnap.docs.forEach(function (d) {
-        const data = d.data() || {};
-        if (data.sentAt) sent += 1;
-        else             failed += 1;
+      function tsMs(t) {
+        if (!t) return 0;
+        if (typeof t.toMillis === "function") return t.toMillis();
+        if (typeof t.seconds  === "number")   return t.seconds * 1000;
+        return 0;
+      }
+      function bucketBy(snap, getTs, bucket) {
+        (snap.docs || []).forEach(function (d) {
+          const data = d.data ? (d.data() || {}) : {};
+          const ms   = tsMs(getTs(data));
+          if (!ms) return;
+          if      (ms >= win.currentOpsStart.getTime()  && ms < win.currentOpsEnd.getTime())  bucket.current(data);
+          else if (ms >= win.previousOpsStart.getTime() && ms < win.previousOpsEnd.getTime()) bucket.previous(data);
+        });
+      }
+
+      const counts = {
+        current:  { emailsSent: 0, emailsFailed: 0, feedback: 0, callOuts: 0 },
+        previous: { emailsSent: 0, emailsFailed: 0, feedback: 0, callOuts: 0 }
+      };
+      bucketBy(payloadsSnap, function (d) { return d.createdAt; }, {
+        current:  function (d) { if (d.sentAt) counts.current.emailsSent  += 1; else counts.current.emailsFailed  += 1; },
+        previous: function (d) { if (d.sentAt) counts.previous.emailsSent += 1; else counts.previous.emailsFailed += 1; }
       });
+      bucketBy(feedbackSnap, function (d) { return d.createdAt; }, {
+        current:  function () { counts.current.feedback  += 1; },
+        previous: function () { counts.previous.feedback += 1; }
+      });
+      bucketBy(callOutsSnap, function (d) { return d.submittedAt; }, {
+        current:  function () { counts.current.callOuts  += 1; },
+        previous: function () { counts.previous.callOuts += 1; }
+      });
+
+      dayHealthOps = {
+        loaded:    true,
+        queryError: null,
+        window:    win,
+        current:   counts.current,
+        previous:  counts.previous
+      };
+      // Legacy alias for callers still reading dayHealth24h. Maps to
+      // the CURRENT ops-day numbers (which is what "today" means now).
       dayHealth24h = {
         loaded:           true,
-        emailsSent:       sent,
-        emailsFailed:     failed,
-        feedbackReceived: feedbackSnap.size,
+        emailsSent:       counts.current.emailsSent,
+        emailsFailed:     counts.current.emailsFailed,
+        feedbackReceived: counts.current.feedback,
         queryError:       null
       };
     } catch (err) {
-      console.warn("refreshDayHealthMetrics24h failed (soft)", err && err.message);
+      console.warn("refreshDayHealthMetricsOpsDay failed (soft)", err && err.message);
+      dayHealthOps = Object.assign({}, dayHealthOps, {
+        loaded:     true,
+        window:     win,
+        queryError: String(err && err.message || err)
+      });
       dayHealth24h = Object.assign({}, dayHealth24h, {
-        loaded:     true,                   // we tried
+        loaded:     true,
         queryError: String(err && err.message || err)
       });
     }
     refreshAttentionStrip();
   }
+  // Keep the old name as an alias so any unconverted caller still
+  // triggers the refresh. Cheap, no behavior change.
+  const refreshDayHealthMetrics24h = refreshDayHealthMetricsOpsDay;
 
   function refreshAttentionStrip() {
     function paintCount(id, n, tone) {
@@ -2247,17 +2330,60 @@
     }
 
     // -- Today's Operations card --
+    // Compute ops-day-windowed counts from in-memory caches. These
+    // sit alongside the Firestore-derived counts in dayHealthOps.
+    function tsMs(t) {
+      if (!t) return 0;
+      if (typeof t.toMillis === "function") return t.toMillis();
+      if (typeof t.seconds  === "number")   return t.seconds * 1000;
+      if (typeof t === "number") return t;
+      if (typeof t === "string") { const x = Date.parse(t); return isNaN(x) ? 0 : x; }
+      return 0;
+    }
+    function inWindow(ms, startMs, endMs) {
+      return ms >= startMs && ms < endMs;
+    }
+    const win = (dayHealthOps && dayHealthOps.window) || getOpsDayWindow(new Date());
+    const cs = win.currentOpsStart.getTime(),  ce = win.currentOpsEnd.getTime();
+    const ps = win.previousOpsStart.getTime(), pe = win.previousOpsEnd.getTime();
+
+    const newIssuesCurrent  = dcrIssues.filter(function (it) { return inWindow(tsMs(it.createdAt), cs, ce); }).length;
+    const newIssuesPrevious = dcrIssues.filter(function (it) { return inWindow(tsMs(it.createdAt), ps, pe); }).length;
+    const supplyCurrent     = supplyRequests.filter(function (r) { return inWindow(tsMs(r.createdAt), cs, ce); }).length;
+    const supplyPrevious    = supplyRequests.filter(function (r) { return inWindow(tsMs(r.createdAt), ps, pe); }).length;
+
     refreshAdminDayHealth({
-      newIssues:        newIssues,
+      // Cache-derived attention KPIs (cumulative, unchanged):
       openSupply:       openSupply,
       emailOff:         emailOff,
       needsAssign:      needsAssign,
       linksActive:      linksActive,
-      emailsSent24h:    dayHealth24h.emailsSent,
-      emailsFailed24h:  dayHealth24h.emailsFailed,
-      feedback24h:      dayHealth24h.feedbackReceived,
-      metricsLoaded:    dayHealth24h.loaded,
-      metricsError:     dayHealth24h.queryError
+      // Ops-day-windowed counters:
+      window:           win,
+      metricsLoaded:    dayHealthOps.loaded,
+      metricsError:     dayHealthOps.queryError,
+      newIssues:        newIssuesCurrent,
+      current: {
+        newIssues:    newIssuesCurrent,
+        emailsSent:   dayHealthOps.current.emailsSent,
+        emailsFailed: dayHealthOps.current.emailsFailed,
+        feedback:     dayHealthOps.current.feedback,
+        callOuts:     dayHealthOps.current.callOuts,
+        supply:       supplyCurrent
+      },
+      previous: {
+        newIssues:    newIssuesPrevious,
+        emailsSent:   dayHealthOps.previous.emailsSent,
+        emailsFailed: dayHealthOps.previous.emailsFailed,
+        feedback:     dayHealthOps.previous.feedback,
+        callOuts:     dayHealthOps.previous.callOuts,
+        supply:       supplyPrevious
+      },
+      // Legacy aliases for the existing render code paths in
+      // refreshAdminDayHealth — preserves call-site stability.
+      emailsSent24h:    dayHealthOps.current.emailsSent,
+      emailsFailed24h:  dayHealthOps.current.emailsFailed,
+      feedback24h:      dayHealthOps.current.feedback
     });
   }
 
@@ -2343,7 +2469,47 @@
       liFeedback.setAttribute("data-state",
         c.metricsLoaded ? "ok" : "neutral");
       liFeedback.textContent = (c.metricsLoaded ? c.feedback24h : "—") +
-        " customer feedback message" + (c.feedback24h === 1 ? "" : "s") + " · 24h";
+        " customer feedback message" + (c.feedback24h === 1 ? "" : "s") + " · ops day";
+    }
+    if (liDelivered) {
+      // Update label wording from "· 24h" → "· ops day" so it reflects
+      // the new window. (Re-run after the original assignment above so
+      // the suffix sticks no matter which branch set the count.)
+      liDelivered.textContent = (c.metricsLoaded ? c.emailsSent24h : "—") +
+        " DCR email" + (c.emailsSent24h === 1 ? "" : "s") + " delivered · ops day";
+    }
+    if (liFailures) {
+      liFailures.textContent = (c.metricsLoaded ? c.emailsFailed24h : "—") +
+        " DCR email failure" + (c.emailsFailed24h === 1 ? "" : "s") + " · ops day";
+    }
+
+    // ---- Ops-day window caption ----
+    const capEl = $("admin-day-health-window");
+    if (capEl) {
+      const lbl = c.window && c.window.opsDayLabel;
+      capEl.textContent = lbl || "";
+      capEl.hidden = !lbl;
+    }
+
+    // ---- Previous Ops Day summary row ----
+    // Small muted strip beneath the bullets. Hidden until metrics
+    // load so we don't show a placeholder "Yesterday: 0 / 0 / 0 ..."
+    // line at first paint. The <details> wrapper keeps the dashboard
+    // compact — admins expand when they want to compare.
+    const prevDetails = $("admin-day-health-prev");
+    const prevSummary = $("admin-day-health-prev-summary");
+    if (prevDetails && prevSummary && c.metricsLoaded && c.previous) {
+      const p = c.previous;
+      prevSummary.textContent =
+        p.newIssues   + (p.newIssues   === 1 ? " issue · "    : " issues · ") +
+        p.emailsSent  + (p.emailsSent  === 1 ? " DCR · "      : " DCRs · ") +
+        p.emailsFailed + (p.emailsFailed === 1 ? " failure · " : " failures · ") +
+        p.callOuts    + (p.callOuts    === 1 ? " call-out · " : " call-outs · ") +
+        p.feedback    + (p.feedback    === 1 ? " feedback · " : " feedback · ") +
+        p.supply      + (p.supply      === 1 ? " supply request" : " supply requests");
+      prevDetails.hidden = false;
+    } else if (prevDetails) {
+      prevDetails.hidden = true;
     }
   }
 
@@ -2433,6 +2599,1335 @@
     // Training reports are lazy-loaded on first tab open and refreshed
     // on the Refresh button. Idempotent.
     if (tabKey === "training") loadTrainingReport();
+    // First activation of the Schedule tab triggers the initial load;
+    // subsequent activations re-read in case another admin uploaded a
+    // new schedule from a different session.
+    if (tabKey === "schedule") {
+      loadTeamSchedule();
+      loadPublishedSnapshot();
+      loadScheduleDraft();
+    }
+    if (tabKey === "attendance") loadAttendance();
+    if (tabKey === "tech-health") loadTechHealth();
+    if (tabKey === "pilot-readiness") initPilotReadinessOnce();
+    if (tabKey === "yesterday") initYesterdayOnce();
+    if (tabKey === "improvements") initImprovementsOnce();
+    if (tabKey === "sos") initSosOnce();
+  }
+
+  /* --------------------------------------------------------------------
+   * Pioneer SOS — admin review panel.
+   *
+   * Reads emergency_events (admin-only via Firestore rule). Real-time
+   * snapshot listener so a new alert appears without manual refresh.
+   * Each card shows severity, tech, location, time, details, geolocation
+   * link (if available), and notification status. Resolve button writes
+   * status=resolved + resolved_at + resolved_by + resolution_notes.
+   * ------------------------------------------------------------------ */
+  let sosWired = false;
+  let sosFilter = "open";
+  let sosUnsubscribe = null;
+  let sosLastEvents = [];
+
+  function initSosOnce() {
+    if (sosWired) {
+      sosStartListening();
+      return;
+    }
+    sosWired = true;
+    const refresh = document.getElementById("sos-refresh");
+    if (refresh) refresh.addEventListener("click", function () { sosStartListening(true); });
+    document.querySelectorAll(".sos-filter").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        sosFilter = btn.dataset.filter || "open";
+        document.querySelectorAll(".sos-filter").forEach(function (b) { b.classList.toggle("is-active", b === btn); });
+        renderSosList();
+      });
+    });
+    sosStartListening();
+  }
+
+  function sosStartListening(forceRebind) {
+    if (sosUnsubscribe && !forceRebind) return;
+    if (sosUnsubscribe && forceRebind) {
+      try { sosUnsubscribe(); } catch (_e) {}
+      sosUnsubscribe = null;
+    }
+    const loading = document.getElementById("sos-loading");
+    const errEl   = document.getElementById("sos-error");
+    if (loading) loading.hidden = false;
+    if (errEl)   errEl.hidden = true;
+    try {
+      sosUnsubscribe = firebase.firestore()
+        .collection("emergency_events")
+        .orderBy("createdAt", "desc")
+        .limit(200)
+        .onSnapshot(function (snap) {
+          sosLastEvents = snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data()); });
+          if (loading) loading.hidden = true;
+          renderSosList();
+          updateSosBadge();
+        }, function (err) {
+          console.error("[sos-admin] snapshot failed", err);
+          if (loading) loading.hidden = true;
+          if (errEl) { errEl.textContent = "Couldn't load SOS events: " + (err && err.message || "unknown"); errEl.hidden = false; }
+        });
+    } catch (err) {
+      if (loading) loading.hidden = true;
+      if (errEl) { errEl.textContent = "Couldn't open SOS listener: " + (err && err.message); errEl.hidden = false; }
+    }
+  }
+
+  function updateSosBadge() {
+    const badge = document.getElementById("sos-tab-badge");
+    if (!badge) return;
+    const open = sosLastEvents.filter(function (e) {
+      return String(e.status || "open") !== "resolved";
+    }).length;
+    if (open > 0) { badge.textContent = String(open); badge.hidden = false; }
+    else          { badge.textContent = "0";          badge.hidden = true;  }
+  }
+
+  function renderSosList() {
+    const list  = document.getElementById("sos-list");
+    const empty = document.getElementById("sos-empty");
+    if (!list) return;
+    const filtered = sosLastEvents.filter(function (e) {
+      const s = String(e.status || "open");
+      const sev = String(e.severity || "help_needed");
+      if (sosFilter === "open")     return s !== "resolved";
+      if (sosFilter === "critical") return sev === "critical";
+      if (sosFilter === "resolved") return s === "resolved";
+      return true;
+    });
+    if (filtered.length === 0) {
+      list.innerHTML = "";
+      if (empty) {
+        empty.textContent = sosLastEvents.length === 0
+          ? "No SOS events yet — quiet shift, good."
+          : "Nothing matches this filter.";
+        empty.hidden = false;
+      }
+      return;
+    }
+    if (empty) empty.hidden = true;
+    list.innerHTML = filtered.map(renderSosCard).join("");
+    list.querySelectorAll("button[data-sos-resolve]").forEach(function (btn) {
+      btn.addEventListener("click", function () { resolveSosEvent(btn); });
+    });
+  }
+
+  function renderSosCard(e) {
+    const id       = e._id;
+    const severity = String(e.severity || "help_needed");
+    const status   = String(e.status || "open");
+    const notif    = String(e.notificationStatus || "pending");
+    const notified = e.notified || {};
+    const created  = formatImprovementDate(e.createdAt);
+    const techName = escapeHtml(e.techName || e.createdByEmail || "(unknown)");
+    const customer = e.customerName || e.locationName || "";
+    const customerLine = customer
+      ? '<span class="sos-evt-customer">📍 ' + escapeHtml(customer) + '</span>'
+      : '<span class="sos-evt-customer sos-evt-customer-empty">No shift in progress</span>';
+    const details  = e.details ? escapeHtml(String(e.details)) : "";
+    const detailsBlock = details
+      ? '<p class="sos-evt-details">' + details.replace(/\n/g, "<br>") + '</p>'
+      : '<p class="sos-evt-details sos-evt-details-empty">(no description provided)</p>';
+    const geo = e.geolocation;
+    const geoLine = (geo && geo.lat != null && geo.lng != null)
+      ? '<a class="sos-evt-geo" href="https://maps.google.com/?q=' + Number(geo.lat) + ',' + Number(geo.lng) +
+        '" target="_blank" rel="noopener noreferrer">📌 Open in Maps</a>'
+      : '';
+    const shiftRef = e.shiftId
+      ? '<span class="sos-evt-meta-piece">Shift #' + escapeHtml(String(e.shiftId)) + '</span>'
+      : '';
+
+    const notifBits = [];
+    notifBits.push((notified.april ? "✓ April" : "✗ April"));
+    notifBits.push((notified.kirby ? "✓ Kirby" : "✗ Kirby"));
+    notifBits.push((notified.nick  ? "✓ Nick"  : "✗ Nick"));
+    let notifLabel;
+    if (notif === "sent")                     notifLabel = "SMS sent · " + notifBits.join(" · ");
+    else if (notif === "partial")             notifLabel = "Partial · " + notifBits.join(" · ");
+    else if (notif === "sms_provider_missing")notifLabel = "SMS provider not configured · call manually";
+    else if (notif === "failed")              notifLabel = "SMS dispatch failed · call manually";
+    else                                       notifLabel = "Dispatching…";
+
+    const resolutionBlock = status === "resolved"
+      ? '<div class="sos-evt-resolution">' +
+          '<p class="sos-evt-resolution-when">Resolved ' +
+            escapeHtml(formatImprovementDate(e.resolved_at) || "") +
+            (e.resolved_by && e.resolved_by.displayName
+              ? ' by ' + escapeHtml(e.resolved_by.displayName) : '') +
+          '</p>' +
+          (e.resolution_notes
+            ? '<p class="sos-evt-resolution-notes">' + escapeHtml(e.resolution_notes) + '</p>'
+            : '') +
+        '</div>'
+      : '<div class="sos-evt-resolve">' +
+          '<input type="text" class="sos-evt-notes" data-sos-notes="' + escapeHtml(id) + '"' +
+            ' placeholder="Resolution notes (what happened, how it was handled)" maxlength="300" />' +
+          '<button type="button" class="panel-action" data-sos-resolve="' + escapeHtml(id) + '">Mark resolved</button>' +
+        '</div>';
+
+    return '<article class="sos-evt sos-evt-' + escapeHtml(severity) + ' sos-evt-' + escapeHtml(status) + '" data-sos-id="' + escapeHtml(id) + '">' +
+             '<header class="sos-evt-head">' +
+               '<span class="sos-evt-sev sos-sev-' + escapeHtml(severity) + '">' +
+                 (severity === "critical" ? "🚨 EMERGENCY" : "⚠ HELP NEEDED") +
+               '</span>' +
+               '<strong class="sos-evt-tech">' + techName + '</strong>' +
+               '<span class="sos-evt-time">' + escapeHtml(created) + '</span>' +
+             '</header>' +
+             '<div class="sos-evt-meta">' +
+               customerLine +
+               (geoLine ? ' · ' + geoLine : '') +
+               (shiftRef ? ' · ' + shiftRef : '') +
+             '</div>' +
+             detailsBlock +
+             '<div class="sos-evt-notif">' + escapeHtml(notifLabel) + '</div>' +
+             '<div class="sos-evt-callbar">' +
+               '<a class="sos-evt-call-btn" href="tel:+15098283335">📞 Call April</a>' +
+               '<a class="sos-evt-call-btn" href="tel:911">📞 911</a>' +
+             '</div>' +
+             resolutionBlock +
+           '</article>';
+  }
+
+  async function resolveSosEvent(btn) {
+    const id = btn.getAttribute("data-sos-resolve");
+    if (!id) return;
+    const notesEl = document.querySelector('input[data-sos-notes="' + cssEsc(id) + '"]');
+    const notes = String((notesEl && notesEl.value) || "").trim();
+    if (!notes) {
+      alert("Add a one-line resolution note before marking resolved.");
+      if (notesEl) notesEl.focus();
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+      const u = firebase.auth().currentUser;
+      await firebase.firestore().collection("emergency_events").doc(id).set({
+        status:            "resolved",
+        resolution_notes:  notes,
+        resolved_at:       firebase.firestore.FieldValue.serverTimestamp(),
+        resolved_by: {
+          uid:         (u && u.uid)         || null,
+          email:       (u && u.email)       || null,
+          displayName: (u && u.displayName) || (u && u.email) || "admin"
+        }
+      }, { merge: true });
+    } catch (err) {
+      console.error("[sos-admin] resolve failed", err);
+      btn.disabled = false;
+      btn.textContent = "Mark resolved";
+      alert("Couldn't save: " + (err && err.message));
+    }
+  }
+
+  /* --------------------------------------------------------------------
+   * Help Improve Pioneer — admin review panel.
+   * Reads pioneer_improvements (admin-only via Firestore rule). Lists
+   * each submission with the 3 answers, optional category/photos, and
+   * status workflow (submitted / reviewing / needs_clarification /
+   * implemented / declined). Protected concerns get a distinct chrome
+   * + an "Anonymous submission" tag (identity hidden in the card body
+   * but still on the doc for serious-followup audit).
+   * ------------------------------------------------------------------ */
+  let improvementsWired = false;
+  let improvementsCurrentFilter = "open";
+  let improvementsLastDocs = [];
+
+  const IMPROVEMENT_STATUSES = [
+    { value: "submitted",           label: "New" },
+    { value: "reviewing",           label: "Reviewing" },
+    { value: "needs_clarification", label: "Needs clarification" },
+    { value: "implemented",         label: "Implemented" },
+    { value: "declined",            label: "Declined" }
+  ];
+  const IMPROVEMENT_CATEGORY_LABELS = {
+    pioneerops_ux: "PioneerOps UX",
+    customer:      "Customer issue",
+    supplies:      "Supplies",
+    scheduling:    "Scheduling",
+    communication: "Communication",
+    safety:        "Safety",
+    operations:    "Operations",
+    equipment:     "Equipment",
+    other:         "Other",
+    protected:     "Protected concern"
+  };
+
+  function initImprovementsOnce() {
+    if (improvementsWired) {
+      loadImprovements();
+      return;
+    }
+    improvementsWired = true;
+    const refresh = document.getElementById("improvements-refresh");
+    if (refresh) refresh.addEventListener("click", function () { loadImprovements(); });
+    document.querySelectorAll(".improvements-filter").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        improvementsCurrentFilter = btn.dataset.filter || "open";
+        document.querySelectorAll(".improvements-filter").forEach(function (b) {
+          b.classList.toggle("is-active", b === btn);
+        });
+        renderImprovements();
+      });
+    });
+    loadImprovements();
+  }
+
+  async function loadImprovements() {
+    const loading = document.getElementById("improvements-loading");
+    const errEl   = document.getElementById("improvements-error");
+    const empty   = document.getElementById("improvements-empty");
+    const list    = document.getElementById("improvements-list");
+    if (loading) loading.hidden = false;
+    if (errEl)   errEl.hidden   = true;
+    if (empty)   empty.hidden   = true;
+    if (list)    list.innerHTML = "";
+    try {
+      const db   = firebase.firestore();
+      const snap = await db.collection("pioneer_improvements")
+        .orderBy("created_at", "desc")
+        .limit(200)
+        .get();
+      improvementsLastDocs = snap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data());
+      });
+      renderImprovements();
+      updateImprovementsBadge();
+    } catch (err) {
+      console.error("[improvements] load failed", err);
+      if (errEl) {
+        errEl.textContent = "Couldn't load improvements: " + (err && err.message || "unknown");
+        errEl.hidden = false;
+      }
+    } finally {
+      if (loading) loading.hidden = true;
+    }
+  }
+
+  function updateImprovementsBadge() {
+    const badge = document.getElementById("improvements-tab-badge");
+    if (!badge) return;
+    const openCount = improvementsLastDocs.filter(function (d) {
+      const s = String(d.status || "submitted");
+      return s === "submitted" || s === "needs_clarification";
+    }).length;
+    if (openCount > 0) { badge.textContent = String(openCount); badge.hidden = false; }
+    else               { badge.textContent = "0"; badge.hidden = true; }
+  }
+
+  function renderImprovements() {
+    const list  = document.getElementById("improvements-list");
+    const empty = document.getElementById("improvements-empty");
+    if (!list) return;
+    const filtered = improvementsLastDocs.filter(function (d) {
+      const s = String(d.status || "submitted");
+      if (improvementsCurrentFilter === "open") {
+        return s !== "implemented" && s !== "declined";
+      }
+      if (improvementsCurrentFilter === "implemented") return s === "implemented";
+      if (improvementsCurrentFilter === "protected")   return d.is_protected === true;
+      return true; // all
+    });
+    if (filtered.length === 0) {
+      list.innerHTML = "";
+      if (empty) {
+        empty.textContent = improvementsLastDocs.length === 0
+          ? "No submissions yet. Share the /improve.html link with the team."
+          : "Nothing matches this filter. Try another one above.";
+        empty.hidden = false;
+      }
+      return;
+    }
+    if (empty) empty.hidden = true;
+    list.innerHTML = filtered.map(renderImprovementCard).join("");
+    // Wire status-change selects + admin-note textareas.
+    list.querySelectorAll("select[data-improvement-id]").forEach(function (sel) {
+      sel.addEventListener("change", function () { updateImprovementStatus(sel); });
+    });
+    list.querySelectorAll("button[data-action='save-notes']").forEach(function (btn) {
+      btn.addEventListener("click", function () { saveImprovementNotes(btn); });
+    });
+  }
+
+  function renderImprovementCard(d) {
+    const id = d._id || d.submission_id;
+    const status = String(d.status || "submitted");
+    const isProtected = d.is_protected === true;
+    const anon = d.is_anonymous === true;
+    const submitter = anon
+      ? "Anonymous"
+      : (escapeHtml(d.submitted_by_name || d.submitted_by_email || "(unknown)"));
+    const submitterMeta = anon ? "" : (
+      d.submitted_by_email ? ('<span class="impr-meta-email">' + escapeHtml(d.submitted_by_email) + '</span>') : ''
+    );
+    const categoryLabel = IMPROVEMENT_CATEGORY_LABELS[d.category] || (d.category || "—");
+    const photos = Array.isArray(d.photo_urls) ? d.photo_urls : [];
+    const photosHtml = photos.length === 0 ? "" :
+      '<div class="impr-photos">' +
+        photos.map(function (u, i) {
+          return '<a class="impr-photo" href="' + escapeHtml(u) + '" target="_blank" rel="noopener noreferrer">' +
+                   '<img src="' + escapeHtml(u) + '" alt="Screenshot ' + (i + 1) + '" />' +
+                 '</a>';
+        }).join("") +
+      '</div>';
+    const statusOptions = IMPROVEMENT_STATUSES.map(function (s) {
+      return '<option value="' + s.value + '"' + (s.value === status ? ' selected' : '') + '>' + escapeHtml(s.label) + '</option>';
+    }).join("");
+    const createdAt = formatImprovementDate(d.created_at);
+    const lastChangeAt = (d.last_status_change_at && tsToMs(d.last_status_change_at) !== tsToMs(d.created_at))
+      ? formatImprovementDate(d.last_status_change_at)
+      : "";
+
+    const protectedBadge = isProtected
+      ? '<span class="impr-tag impr-tag-protected">Protected</span>'
+      : '';
+    const anonBadge = anon
+      ? '<span class="impr-tag impr-tag-anon">Anonymous</span>'
+      : '';
+    const pioneerOpsBadge = d.is_pioneerops_issue
+      ? '<span class="impr-tag impr-tag-app">PioneerOps app</span>'
+      : '';
+
+    return '<article class="impr-card impr-status-' + status + (isProtected ? ' is-protected' : '') + '" data-id="' + escapeHtml(id) + '">' +
+             '<header class="impr-card-head">' +
+               '<div class="impr-card-titles">' +
+                 '<strong class="impr-card-submitter">' + submitter + '</strong> ' +
+                 (submitterMeta ? submitterMeta : '') +
+                 '<div class="impr-card-meta">' +
+                   '<span class="impr-meta-cat">' + escapeHtml(categoryLabel) + '</span> · ' +
+                   '<span class="impr-meta-date">' + escapeHtml(createdAt) + '</span>' +
+                   (lastChangeAt ? ' · <span class="impr-meta-changed">status changed ' + escapeHtml(lastChangeAt) + '</span>' : '') +
+                 '</div>' +
+               '</div>' +
+               '<div class="impr-card-tags">' + protectedBadge + anonBadge + pioneerOpsBadge + '</div>' +
+             '</header>' +
+             '<dl class="impr-card-answers">' +
+               '<div><dt>Problem</dt><dd>' + escapeHtml(d.problem || "—") + '</dd></div>' +
+               '<div><dt>Why it matters</dt><dd>' + escapeHtml(d.why_matters || "—") + '</dd></div>' +
+               '<div><dt>Suggested improvement</dt><dd>' + escapeHtml(d.suggested_improvement || "—") + '</dd></div>' +
+             '</dl>' +
+             photosHtml +
+             '<div class="impr-card-admin">' +
+               '<label class="impr-status-label">' +
+                 '<span>Status</span>' +
+                 '<select data-improvement-id="' + escapeHtml(id) + '">' + statusOptions + '</select>' +
+               '</label>' +
+               '<label class="impr-notes-label">' +
+                 '<span>Admin notes (internal)</span>' +
+                 '<textarea rows="2" data-improvement-id="' + escapeHtml(id) + '" data-field="admin_notes">' + escapeHtml(d.admin_notes || "") + '</textarea>' +
+               '</label>' +
+               '<button type="button" class="panel-action impr-save-notes" data-action="save-notes" data-improvement-id="' + escapeHtml(id) + '">Save notes</button>' +
+             '</div>' +
+           '</article>';
+  }
+
+  function formatImprovementDate(ts) {
+    const ms = tsToMs(ts);
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms));
+    } catch (_e) { return "—"; }
+  }
+
+  async function updateImprovementStatus(selectEl) {
+    const id     = selectEl.getAttribute("data-improvement-id");
+    const status = selectEl.value;
+    if (!id || !status) return;
+    selectEl.disabled = true;
+    try {
+      const db  = firebase.firestore();
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      const u   = firebase.auth().currentUser;
+      const update = {
+        status: status,
+        updated_at: sts,
+        last_status_change_at: sts,
+        last_status_change_by: {
+          uid:         (u && u.uid) || null,
+          email:       (u && u.email) || null,
+          displayName: (u && u.displayName) || (u && u.email) || "admin"
+        }
+      };
+      if (status === "implemented") {
+        update.implemented_at = sts;
+      }
+      await db.collection("pioneer_improvements").doc(id).set(update, { merge: true });
+      const card = selectEl.closest(".impr-card");
+      if (card) {
+        IMPROVEMENT_STATUSES.forEach(function (s) {
+          card.classList.remove("impr-status-" + s.value);
+        });
+        card.classList.add("impr-status-" + status);
+      }
+      // Reflect locally so the badge + filter update without a refetch.
+      const local = improvementsLastDocs.find(function (d) { return (d._id || d.submission_id) === id; });
+      if (local) local.status = status;
+      updateImprovementsBadge();
+    } catch (err) {
+      console.error("[improvements] status update failed", err);
+      alert("Couldn't update status: " + (err && err.message));
+    } finally {
+      selectEl.disabled = false;
+    }
+  }
+
+  async function saveImprovementNotes(btn) {
+    const id = btn.getAttribute("data-improvement-id");
+    if (!id) return;
+    const ta = document.querySelector(
+      'textarea[data-improvement-id="' + cssEsc(id) + '"][data-field="admin_notes"]'
+    );
+    if (!ta) return;
+    const value = String(ta.value || "").trim();
+    btn.disabled = true;
+    const origLabel = btn.textContent;
+    btn.textContent = "Saving…";
+    try {
+      await firebase.firestore().collection("pioneer_improvements").doc(id).set({
+        admin_notes: value,
+        updated_at:  firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      btn.textContent = "Saved";
+      setTimeout(function () { btn.textContent = origLabel; }, 1400);
+    } catch (err) {
+      console.error("[improvements] save notes failed", err);
+      btn.textContent = origLabel;
+      alert("Couldn't save notes: " + (err && err.message));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /* --------------------------------------------------------------------
+   * Yesterday's Work / Nightly Recap — admin-only operational recap.
+   *
+   * Pure frontend. Admin reads cover every collection it needs:
+   *   deputy_shift_cache · pioneer_work_sessions · dcr_submissions ·
+   *   dcr_issues · cleaning_techs · customers.
+   *
+   * Matching shift → DCR runs strongest-first:
+   *   1. dcr.pioneer_session_id === shift.shift_id
+   *   2. dcr.deputy_shift_id    === shift.shift_id
+   *   3. tech_slug + customer_slug + clean_date == sync_date
+   *   4. tech_email + customer_slug + clean_date (final fallback)
+   *
+   * Email status comes from `emailStatus` on the dcr_submissions doc
+   * (set by dcrEmail.js). Legacy `zapier.status` is shown only in the
+   * debug payload — it is NOT used to decide GREEN/YELLOW/RED.
+   *
+   * Status traffic light:
+   *   GREEN  — DCR submitted, no issue, native email sent or skipped
+   *   YELLOW — DCR submitted but: issue flagged, OR email failed,
+   *            OR has_problem on form
+   *   RED    — scheduled/started but no DCR submitted, OR red-tier issue
+   * ------------------------------------------------------------------ */
+  let yesterdayWired = false;
+  let yesterdayLastReport = null;
+
+  function initYesterdayOnce() {
+    if (yesterdayWired) {
+      // Already wired — keep current date but re-fetch fresh data.
+      loadYesterdayReport();
+      return;
+    }
+    yesterdayWired = true;
+    const dateEl  = document.getElementById("yesterday-date");
+    const prevBtn = document.getElementById("yesterday-prev-day");
+    const nextBtn = document.getElementById("yesterday-next-day");
+    const refresh = document.getElementById("yesterday-refresh");
+    if (dateEl) {
+      dateEl.value = pacificYesterdayDate();
+      dateEl.addEventListener("change", function () { loadYesterdayReport(); });
+    }
+    if (prevBtn) prevBtn.addEventListener("click", function () { shiftYesterdayDate(-1); });
+    if (nextBtn) nextBtn.addEventListener("click", function () { shiftYesterdayDate(1); });
+    if (refresh) refresh.addEventListener("click", function () { loadYesterdayReport(); });
+    loadYesterdayReport();
+  }
+
+  // YYYY-MM-DD in America/Los_Angeles for today and yesterday.
+  function pacificDateString(d) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Los_Angeles",
+      year: "numeric", month: "2-digit", day: "2-digit"
+    }).format(d);
+  }
+  function pacificTodayDate() { return pacificDateString(new Date()); }
+  function pacificYesterdayDate() {
+    return pacificDateString(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  }
+  function shiftYesterdayDate(deltaDays) {
+    const el = document.getElementById("yesterday-date");
+    if (!el || !el.value) return;
+    const [y, m, d] = el.value.split("-").map(Number);
+    const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    base.setUTCDate(base.getUTCDate() + deltaDays);
+    el.value = pacificDateString(base);
+    loadYesterdayReport();
+  }
+
+  function nextDay(yyyymmdd) {
+    const [y, m, d] = yyyymmdd.split("-").map(Number);
+    const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    base.setUTCDate(base.getUTCDate() + 1);
+    return pacificDateString(base);
+  }
+
+  // The ops window for a selected date = [selected 4pm PT, next 4pm PT).
+  // Returns ISO strings for label rendering + millisecond bounds for
+  // optional scheduled_start filtering (the primary key is sync_date).
+  function opsWindowFor(selectedDate) {
+    const start = new Date(selectedDate + "T16:00:00-07:00");
+    const end   = new Date(nextDay(selectedDate) + "T16:00:00-07:00");
+    // -07:00 is fine year-round here because PioneerOps is fixed Pacific
+    // — DST jitter of one hour at the boundary doesn't change WHICH
+    // shifts fall in the window, since deputy_shift_cache buckets by
+    // sync_date.
+    return { startMs: start.getTime(), endMs: end.getTime() };
+  }
+
+  function tsToMs(ts) {
+    if (!ts) return null;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts._seconds === "number") return ts._seconds * 1000;
+    return null;
+  }
+
+  function formatTimeRangePT(startMs, endMs) {
+    function fmt(ms) {
+      if (!ms) return "";
+      try {
+        return new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles",
+          hour: "numeric", minute: "2-digit", hour12: true
+        }).format(new Date(ms));
+      } catch (_e) { return ""; }
+    }
+    const s = fmt(startMs);
+    const e = fmt(endMs);
+    if (s && e) return s + " – " + e;
+    return s || e || "";
+  }
+
+  function normEmail(e) { return String(e == null ? "" : e).trim().toLowerCase(); }
+  function normSlug(s)  { return String(s == null ? "" : s).trim().toLowerCase(); }
+
+  async function loadYesterdayReport() {
+    const dateEl  = document.getElementById("yesterday-date");
+    const loading = document.getElementById("yesterday-loading");
+    const errEl   = document.getElementById("yesterday-error");
+    const sumEl   = document.getElementById("yesterday-summary");
+    const techEl  = document.getElementById("yesterday-by-tech");
+    const undcrEl = document.getElementById("yesterday-unmatched-dcrs");
+    const unshEl  = document.getElementById("yesterday-unmatched-shifts");
+    const emptyEl = document.getElementById("yesterday-empty");
+    const labelEl = document.getElementById("yesterday-window-label");
+    if (!dateEl) return;
+
+    const selected = dateEl.value || pacificYesterdayDate();
+    const nextDate = nextDay(selected);
+    const opsWindow = opsWindowFor(selected);
+
+    if (loading) loading.hidden = false;
+    if (errEl)   errEl.hidden   = true;
+    if (sumEl)   sumEl.hidden   = true;
+    if (techEl)  techEl.innerHTML = "";
+    if (undcrEl) undcrEl.hidden = true;
+    if (unshEl)  unshEl.hidden  = true;
+    if (emptyEl) emptyEl.hidden = true;
+    if (labelEl) {
+      labelEl.textContent = "Ops window · " + selected + " 4:00pm PT → " +
+        nextDate + " 4:00pm PT";
+    }
+
+    try {
+      const db = firebase.firestore();
+      const dateRange = [selected, nextDate];
+
+      const [shiftsSnap, sessionsSnap, dcrsSnap, issuesSnap, techsSnap, customersSnap] = await Promise.all([
+        db.collection("deputy_shift_cache").where("sync_date", "in", dateRange).get(),
+        db.collection("pioneer_work_sessions").where("sync_date", "in", dateRange).get(),
+        db.collection("dcr_submissions").where("clean_date", "in", dateRange).get(),
+        db.collection("dcr_issues").where("clean_date", "in", dateRange).get().catch(function () { return { docs: [] }; }),
+        db.collection("cleaning_techs").get(),
+        db.collection("customers").get()
+      ]);
+
+      const shifts    = shiftsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const sessions  = sessionsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const dcrs      = dcrsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const issues    = (issuesSnap.docs || []).map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const techs     = techsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const customers = customersSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+
+      // Optional finer filter: when a shift carries a scheduled_start
+      // outside the 24h ops window, drop it. Shifts with no start time
+      // fall back to sync_date attribution.
+      const inWindow = function (shift) {
+        const sMs = tsToMs(shift.start_time);
+        if (sMs == null) return true;
+        return sMs >= opsWindow.startMs && sMs < opsWindow.endMs;
+      };
+      const filteredShifts = shifts.filter(inWindow);
+
+      const report = buildYesterdayReport({
+        selected:   selected,
+        shifts:     filteredShifts,
+        sessions:   sessions,
+        dcrs:       dcrs,
+        issues:     issues,
+        techs:      techs,
+        customers:  customers
+      });
+      yesterdayLastReport = report;
+
+      renderYesterdaySummary(report);
+      renderYesterdayByTech(report);
+      renderYesterdayUnmatched(report);
+
+      if (report.summary.scheduled === 0 && report.summary.dcrs_submitted === 0) {
+        if (emptyEl) emptyEl.hidden = false;
+      }
+    } catch (err) {
+      console.error("yesterday: load failed", err);
+      if (errEl) {
+        errEl.textContent = "Couldn't load: " + (err && err.message ? err.message : "unknown error");
+        errEl.hidden = false;
+      }
+    } finally {
+      if (loading) loading.hidden = true;
+    }
+  }
+
+  function buildYesterdayReport(ctx) {
+    const sessionByShiftId = Object.create(null);
+    ctx.sessions.forEach(function (s) {
+      const k = String(s.deputy_shift_id || s.id);
+      sessionByShiftId[k] = s;
+    });
+    const customerBySlug = Object.create(null);
+    ctx.customers.forEach(function (c) {
+      customerBySlug[normSlug(c.customer_slug || c.id)] = c;
+    });
+    const techBySlug = Object.create(null);
+    const techByEmail = Object.create(null);
+    ctx.techs.forEach(function (t) {
+      techBySlug[normSlug(t.tech_slug || t.id)] = t;
+      if (t.email) techByEmail[normEmail(t.email)] = t;
+    });
+    const issuesByDcrId = Object.create(null);
+    ctx.issues.forEach(function (i) {
+      const k = String(i.dcr_submission_id || i.submission_id || "");
+      if (!k) return;
+      if (!issuesByDcrId[k]) issuesByDcrId[k] = [];
+      issuesByDcrId[k].push(i);
+    });
+
+    // Build the dcr-match index by every key we might match on.
+    const dcrByPioneerSession = Object.create(null);
+    const dcrByDeputyShift    = Object.create(null);
+    const dcrByTripleKey      = Object.create(null); // techSlug|custSlug|cleanDate
+    const dcrByEmailKey       = Object.create(null); // techEmail|custSlug|cleanDate
+    ctx.dcrs.forEach(function (d) {
+      const psid = String(d.pioneer_session_id || "").trim();
+      if (psid) dcrByPioneerSession[psid] = d;
+      const dsid = String(d.deputy_shift_id || "").trim();
+      if (dsid) dcrByDeputyShift[dsid] = d;
+      const triple = normSlug(d.tech_slug) + "|" + normSlug(d.customer_slug) + "|" + (d.clean_date || "");
+      dcrByTripleKey[triple] = d;
+      const emailKey = normEmail(d.submitted_by_email || d.tech_email) + "|" + normSlug(d.customer_slug) + "|" + (d.clean_date || "");
+      dcrByEmailKey[emailKey] = d;
+    });
+    const matchedDcrIds = Object.create(null);
+
+    function matchDcrForShift(shift, session) {
+      const sid = String(shift.shift_id || shift.id);
+      // 1. pioneer_session_id (set when DCR opened from Start Work)
+      if (dcrByPioneerSession[sid]) {
+        matchedDcrIds[dcrByPioneerSession[sid].submission_id] = true;
+        return { dcr: dcrByPioneerSession[sid], match_path: "pioneer_session_id" };
+      }
+      // 2. deputy_shift_id (same value but stamped via the session writeback)
+      if (dcrByDeputyShift[sid]) {
+        matchedDcrIds[dcrByDeputyShift[sid].submission_id] = true;
+        return { dcr: dcrByDeputyShift[sid], match_path: "deputy_shift_id" };
+      }
+      // 3. tech_slug + customer_slug + clean_date
+      const techSlug   = normSlug(shift.employee_slug || (session && session.tech_slug));
+      const custSlug   = normSlug(shift.customer_slug || (session && session.selected_customer_slug));
+      const cleanDate  = shift.sync_date || (session && session.sync_date) || "";
+      if (techSlug && custSlug && cleanDate) {
+        const k = techSlug + "|" + custSlug + "|" + cleanDate;
+        if (dcrByTripleKey[k]) {
+          matchedDcrIds[dcrByTripleKey[k].submission_id] = true;
+          return { dcr: dcrByTripleKey[k], match_path: "tech_slug+customer_slug+clean_date" };
+        }
+      }
+      // 4. tech_email + customer_slug + clean_date (final fallback)
+      const techEmail = normEmail(shift.employee_email || (session && session.tech_email));
+      if (techEmail && custSlug && cleanDate) {
+        const k = techEmail + "|" + custSlug + "|" + cleanDate;
+        if (dcrByEmailKey[k]) {
+          matchedDcrIds[dcrByEmailKey[k].submission_id] = true;
+          return { dcr: dcrByEmailKey[k], match_path: "tech_email+customer_slug+clean_date" };
+        }
+      }
+      return { dcr: null, match_path: null };
+    }
+
+    // Per-shift row.
+    const rows = ctx.shifts.map(function (shift) {
+      const sid = String(shift.shift_id || shift.id);
+      const session = sessionByShiftId[sid] || null;
+      const matched = matchDcrForShift(shift, session);
+      const dcr = matched.dcr;
+
+      const sessStatus = session ? String(session.status || "").toLowerCase() : "";
+      const started   = !!session && sessStatus !== "not_started";
+      const finished  = sessStatus === "finished" || sessStatus === "needs_finish" || !!dcr;
+
+      // Email status (native). Ignore zapier.status — legacy.
+      const emailStatus = dcr ? String(dcr.emailStatus || "").toLowerCase() : "";
+      const emailError  = dcr ? (dcr.emailError || "") : "";
+      const issueTier   = dcr
+        ? String((dcr.issueRouting && dcr.issueRouting.tier) || dcr.issueTier || "").toLowerCase()
+        : "";
+      const hasProblem = !!(dcr && dcr.form_data && dcr.form_data.has_problem === true);
+      const issueDocs  = dcr ? (issuesByDcrId[dcr.submission_id] || []) : [];
+
+      // Traffic light.
+      let status = "RED";
+      let statusReason = "Scheduled but no DCR submitted";
+      if (dcr) {
+        if (issueTier === "red") {
+          status = "RED"; statusReason = "DCR flagged red tier";
+        } else if (issueTier === "yellow" || hasProblem) {
+          status = "YELLOW"; statusReason = hasProblem
+            ? "DCR notes a problem on this visit"
+            : "DCR flagged yellow tier";
+        } else if (emailStatus === "failed") {
+          status = "YELLOW"; statusReason = "Customer email delivery failed";
+        } else {
+          status = "GREEN"; statusReason = "Submitted cleanly";
+        }
+      } else if (started && !dcr) {
+        status = "RED"; statusReason = "Started but no DCR submitted";
+      }
+
+      const techSlug = normSlug(shift.employee_slug || (session && session.tech_slug));
+      const techRecord = techBySlug[techSlug] ||
+        techByEmail[normEmail(shift.employee_email)] ||
+        null;
+      const techDisplay = (techRecord && techRecord.display_name) ||
+        shift.employee_display_name ||
+        shift.employee_email || "(unknown tech)";
+
+      const custSlug = normSlug(shift.customer_slug || (session && session.selected_customer_slug));
+      const customer = customerBySlug[custSlug] || null;
+      // Canonical helper — applies displayNameMode + customDisplayName
+      // when the customer doc carries the new schema fields. Falls back
+      // to the shift-level customer_name (Deputy sync output) when no
+      // doc lookup is available.
+      const customerName =
+        (customer && window.PioneerCustomerDisplay
+          && window.PioneerCustomerDisplay.getCustomerDisplayName(customer)) ||
+        (customer && (customer.customer_name || customer.name)) ||
+        shift.customer_name || "(no customer)";
+
+      return {
+        shift_id:        sid,
+        tech_slug:       techSlug,
+        tech_display:    techDisplay,
+        tech_email:      normEmail(shift.employee_email || (techRecord && techRecord.email)),
+        customer_slug:   custSlug,
+        customer_name:   customerName,
+        scheduled_start: tsToMs(shift.start_time),
+        scheduled_end:   tsToMs(shift.end_time),
+        sync_date:       shift.sync_date || "",
+        session:         session,
+        started:         started,
+        finished:        finished,
+        dcr:             dcr,
+        match_path:      matched.match_path,
+        email_status:    emailStatus || (dcr ? "(not run)" : ""),
+        email_error:     emailError,
+        issue_tier:      issueTier,
+        has_problem:     hasProblem,
+        issue_docs:      issueDocs,
+        status:          status,
+        status_reason:   statusReason
+      };
+    });
+
+    // Aggregate per-tech.
+    const byTechKey = Object.create(null);
+    rows.forEach(function (r) {
+      const k = r.tech_slug || r.tech_email || r.tech_display;
+      if (!byTechKey[k]) {
+        byTechKey[k] = {
+          tech_slug:     r.tech_slug,
+          tech_display:  r.tech_display,
+          tech_email:    r.tech_email,
+          rows:          [],
+          counts: { scheduled: 0, started: 0, finished: 0, dcrs: 0, issues: 0,
+                    emails_sent: 0, emails_failed: 0 }
+        };
+      }
+      const bucket = byTechKey[k];
+      bucket.rows.push(r);
+      bucket.counts.scheduled++;
+      if (r.started)  bucket.counts.started++;
+      if (r.finished) bucket.counts.finished++;
+      if (r.dcr)      bucket.counts.dcrs++;
+      if (r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem) bucket.counts.issues++;
+      if (r.email_status === "sent")   bucket.counts.emails_sent++;
+      if (r.email_status === "failed") bucket.counts.emails_failed++;
+    });
+    const byTech = Object.keys(byTechKey).map(function (k) { return byTechKey[k]; });
+    byTech.sort(function (a, b) {
+      return String(a.tech_display || "").localeCompare(String(b.tech_display || ""));
+    });
+
+    // Unmatched DCRs (in window but didn't match any shift).
+    const unmatchedDcrs = ctx.dcrs.filter(function (d) {
+      return !matchedDcrIds[d.submission_id];
+    });
+
+    // Unmatched shifts (no DCR found).
+    const unmatchedShifts = rows.filter(function (r) { return !r.dcr; });
+
+    // Top-line counts.
+    const summary = {
+      window_start_date: ctx.selected,
+      window_end_date:   nextDay(ctx.selected),
+      scheduled:         rows.length,
+      started:           rows.filter(function (r) { return r.started;  }).length,
+      finished:          rows.filter(function (r) { return r.finished; }).length,
+      dcrs_submitted:    ctx.dcrs.length,
+      dcrs_missing:      unmatchedShifts.length,
+      issues:            rows.filter(function (r) {
+                           return r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem;
+                         }).length,
+      emails_sent:       rows.filter(function (r) { return r.email_status === "sent";   }).length,
+      emails_failed:     rows.filter(function (r) { return r.email_status === "failed"; }).length
+    };
+
+    return {
+      generated_at:      new Date().toISOString(),
+      selected_date:     ctx.selected,
+      summary:           summary,
+      by_tech:           byTech,
+      unmatched_dcrs:    unmatchedDcrs,
+      unmatched_shifts: unmatchedShifts
+    };
+  }
+
+  function renderYesterdaySummary(report) {
+    const el = document.getElementById("yesterday-summary");
+    if (!el) return;
+    const s = report.summary;
+    el.innerHTML =
+      '<div class="ydw-stat"><span class="ydw-stat-label">Scheduled shifts</span><strong>'  + s.scheduled       + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Started</span><strong>'           + s.started         + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Finished</span><strong>'          + s.finished        + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">DCRs submitted</span><strong>'    + s.dcrs_submitted  + '</strong></div>' +
+      '<div class="ydw-stat ydw-stat-warn"><span class="ydw-stat-label">DCRs missing</span><strong>' + s.dcrs_missing + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Issues</span><strong>'            + s.issues          + '</strong></div>' +
+      '<div class="ydw-stat ydw-stat-pass"><span class="ydw-stat-label">Emails sent</span><strong>' + s.emails_sent  + '</strong></div>' +
+      '<div class="ydw-stat ydw-stat-fail"><span class="ydw-stat-label">Emails failed</span><strong>' + s.emails_failed + '</strong></div>';
+    el.hidden = false;
+  }
+
+  function renderYesterdayByTech(report) {
+    const el = document.getElementById("yesterday-by-tech");
+    if (!el) return;
+    if (report.by_tech.length === 0) {
+      el.innerHTML = "";
+      return;
+    }
+    const debug = isYesterdayDebug();
+    el.innerHTML = report.by_tech.map(function (bucket) {
+      const c = bucket.counts;
+      const techHeader =
+        '<header class="ydw-tech-head">' +
+          '<strong class="ydw-tech-name">' + escapeHtml(bucket.tech_display || "(unknown)") + '</strong> ' +
+          '<span class="ydw-tech-meta">' +
+            escapeHtml(bucket.tech_slug || "") +
+            (bucket.tech_email ? " · " + escapeHtml(bucket.tech_email) : "") +
+          '</span>' +
+          '<span class="ydw-tech-counts">' +
+            c.scheduled + ' assigned · ' + c.started + ' started · ' + c.finished + ' finished · ' +
+            c.dcrs + ' DCR' + (c.dcrs === 1 ? '' : 's') +
+            (c.issues > 0 ? ' · <span class="ydw-tag warn">' + c.issues + ' issue' + (c.issues === 1 ? '' : 's') + '</span>' : '') +
+            (c.emails_failed > 0 ? ' · <span class="ydw-tag fail">' + c.emails_failed + ' email failed</span>' : '') +
+          '</span>' +
+        '</header>';
+      const rows = bucket.rows.map(function (r) { return renderYesterdayRow(r, debug); }).join("");
+      return '<article class="ydw-tech">' + techHeader + '<ul class="ydw-row-list">' + rows + '</ul></article>';
+    }).join("");
+  }
+
+  function renderYesterdayRow(r, debug) {
+    const timeText = formatTimeRangePT(r.scheduled_start, r.scheduled_end) || "(no scheduled time)";
+    const statusBadge = '<span class="ydw-status ydw-' + r.status + '">' + r.status + '</span>';
+    const startedChip  = r.started  ? '<span class="ydw-chip">Started</span>'  : '';
+    const finishedChip = r.finished ? '<span class="ydw-chip">Finished</span>' : '';
+    const dcrChip = r.dcr
+      ? '<span class="ydw-chip pass">DCR</span>'
+      : '<span class="ydw-chip fail">No DCR</span>';
+    const issueChip = (r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem)
+      ? '<span class="ydw-chip warn">Issue</span>'
+      : '';
+    let emailChip = '';
+    if (r.dcr) {
+      if (r.email_status === "sent")    emailChip = '<span class="ydw-chip pass">Email sent</span>';
+      else if (r.email_status === "failed") emailChip = '<span class="ydw-chip fail" title="' + escapeHtml(r.email_error || "") + '">Email delivery failed</span>';
+      else if (r.email_status === "skipped") emailChip = '<span class="ydw-chip">Email skipped (opt-out)</span>';
+      else                              emailChip = '<span class="ydw-chip">Email not yet sent</span>';
+    }
+    const dcrLink = r.dcr
+      ? '<a class="ydw-link" href="#" data-ydw-dcr="' + escapeHtml(r.dcr.submission_id) + '">View DCR</a>'
+      : '';
+    const reportLink = (r.dcr && r.dcr.report_url)
+      ? ' · <a class="ydw-link" href="' + escapeHtml(r.dcr.report_url) + '" target="_blank" rel="noopener noreferrer">Customer report ↗</a>'
+      : '';
+    const viewCount = (r.dcr && Number(r.dcr.report_view_count) > 0)
+      ? ('<span class="ydw-chip pass" title="Last viewed: ' +
+          escapeHtml(formatReportViewedTime(r.dcr.last_report_viewed_at)) + '">' +
+          'Customer viewed ' + Number(r.dcr.report_view_count) + 'x' +
+        '</span>')
+      : (r.dcr && r.dcr.report_url
+          ? '<span class="ydw-chip" title="Customer has not opened the link yet">Customer report unread</span>'
+          : '');
+    const custLink = r.customer_slug
+      ? '<a class="ydw-link" href="/admin?customer_slug=' + escapeHtml(r.customer_slug) + '#customer-' + escapeHtml(r.customer_slug) + '" target="_blank" rel="noopener">View customer</a>'
+      : '';
+    const reason  = '<span class="ydw-row-reason">' + escapeHtml(r.status_reason) + '</span>';
+    const debugBlock = debug
+      ? '<div class="ydw-debug">' +
+          'shift_id=' + escapeHtml(r.shift_id) +
+          (r.dcr ? ' · dcr=' + escapeHtml(r.dcr.submission_id) : '') +
+          (r.match_path ? ' · matched_by=' + escapeHtml(r.match_path) : '') +
+          (r.dcr && r.dcr.zapier && r.dcr.zapier.status
+            ? ' · zapier=' + escapeHtml(String(r.dcr.zapier.status)) + ' (legacy)'
+            : '') +
+        '</div>'
+      : '';
+    return '<li class="ydw-row ydw-row-' + r.status + '">' +
+             '<div class="ydw-row-head">' +
+               statusBadge +
+               '<strong class="ydw-row-customer">' + escapeHtml(r.customer_name) + '</strong>' +
+               '<span class="ydw-row-time">' + escapeHtml(timeText) + '</span>' +
+             '</div>' +
+             '<div class="ydw-row-chips">' +
+               startedChip + finishedChip + dcrChip + issueChip + emailChip + viewCount +
+             '</div>' +
+             reason +
+             '<div class="ydw-row-actions">' + dcrLink + (dcrLink && custLink ? ' · ' : '') + custLink + reportLink + '</div>' +
+             debugBlock +
+           '</li>';
+  }
+
+  function renderYesterdayUnmatched(report) {
+    const undcrEl     = document.getElementById("yesterday-unmatched-dcrs");
+    const undcrListEl = document.getElementById("yesterday-unmatched-dcrs-list");
+    const unshEl      = document.getElementById("yesterday-unmatched-shifts");
+    const unshListEl  = document.getElementById("yesterday-unmatched-shifts-list");
+
+    if (undcrEl && undcrListEl) {
+      if (report.unmatched_dcrs.length === 0) {
+        undcrEl.hidden = true;
+      } else {
+        undcrListEl.innerHTML = report.unmatched_dcrs.map(function (d) {
+          return '<div class="ydw-unmatched-row">' +
+                   '<strong>' + escapeHtml(d.customer_name || d.customer_slug || "(no customer)") + '</strong>' +
+                   ' — ' + escapeHtml(d.tech_display_name || d.tech_slug || d.submitted_by_email || "") +
+                   ' · ' + escapeHtml(d.clean_date || "") +
+                   ' · ' + '<a class="ydw-link" href="#" data-ydw-dcr="' + escapeHtml(d.submission_id) + '">View DCR</a>' +
+                 '</div>';
+        }).join("");
+        undcrEl.hidden = false;
+      }
+    }
+    if (unshEl && unshListEl) {
+      if (report.unmatched_shifts.length === 0) {
+        unshEl.hidden = true;
+      } else {
+        unshListEl.innerHTML = report.unmatched_shifts.map(function (r) {
+          return '<div class="ydw-unmatched-row">' +
+                   '<strong>' + escapeHtml(r.customer_name) + '</strong>' +
+                   ' — ' + escapeHtml(r.tech_display) +
+                   ' · ' + escapeHtml(formatTimeRangePT(r.scheduled_start, r.scheduled_end) || r.sync_date) +
+                   ' · <em>' + escapeHtml(r.status_reason) + '</em>' +
+                 '</div>';
+        }).join("");
+        unshEl.hidden = false;
+      }
+    }
+  }
+
+  function formatReportViewedTime(ts) {
+    const ms = tsToMs(ts);
+    if (!ms) return "(unknown)";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms));
+    } catch (_e) { return "(unknown)"; }
+  }
+
+  function isYesterdayDebug() {
+    try {
+      const u = new URLSearchParams(location.search || "");
+      const v = u.get("debug_yesterday");
+      return v === "1" || v === "true";
+    } catch (_e) { return false; }
+  }
+
+  // "View DCR" anchor delegate — jumps to Recent DCRs tab and scrolls
+  // the target row into view. Uses event delegation since each report
+  // render replaces the DOM. Idempotent — re-binding the listener is
+  // safe because once-only flag.
+  let _ydwViewDcrWired = false;
+  function wireYesterdayViewDcr() {
+    if (_ydwViewDcrWired) return;
+    _ydwViewDcrWired = true;
+    document.addEventListener("click", function (ev) {
+      const a = ev.target && ev.target.closest && ev.target.closest("[data-ydw-dcr]");
+      if (!a) return;
+      ev.preventDefault();
+      const submissionId = a.getAttribute("data-ydw-dcr");
+      if (!submissionId) return;
+      activateTab("dcrs");
+      // Defer the scroll-into-view a beat so the Recent DCRs panel has
+      // a chance to render if it hadn't been opened yet.
+      setTimeout(function () {
+        const row = document.querySelector('#dcr-list [data-id="' + cssEsc(submissionId) + '"]');
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          row.classList.add("admin-row-highlight");
+          setTimeout(function () { row.classList.remove("admin-row-highlight"); }, 2000);
+        }
+      }, 250);
+    });
+  }
+  // Wire on first init.
+  (function () {
+    const origInit = initYesterdayOnce;
+    initYesterdayOnce = function () { wireYesterdayViewDcr(); origInit(); };
+  })();
+
+  /* --------------------------------------------------------------------
+   * Pilot Readiness — admin-only pre-rollout audit panel.
+   *
+   * Calls `pilotReadinessCheckV1` (admin-gated HTTPS endpoint). Renders
+   * the per-tech PASS/WARN/FAIL breakdown grouped by category. The Run
+   * check button is the explicit trigger — we don't auto-run on tab
+   * activate because the report touches Firebase Auth + Firestore for
+   * every tech and we don't want a hot reload to thrash the API.
+   * ------------------------------------------------------------------ */
+  let pilotReadinessWired = false;
+  let pilotReadinessLastReport = null;
+
+  function initPilotReadinessOnce() {
+    if (pilotReadinessWired) return;
+    pilotReadinessWired = true;
+    const runBtn     = document.getElementById("pilot-readiness-run");
+    const refreshBtn = document.getElementById("pilot-readiness-refresh");
+    const copyBtn    = document.getElementById("pilot-readiness-copy");
+    if (runBtn)     runBtn.addEventListener("click", function () { runPilotReadiness(); });
+    if (refreshBtn) refreshBtn.addEventListener("click", function () { runPilotReadiness(); });
+    if (copyBtn)    copyBtn.addEventListener("click", function () { copyPilotReadinessReport(); });
+  }
+
+  async function runPilotReadiness() {
+    const url = window.PILOT_READINESS_CHECK_URL;
+    const loadingEl = document.getElementById("pilot-readiness-loading");
+    const errEl     = document.getElementById("pilot-readiness-error");
+    const summaryEl = document.getElementById("pilot-readiness-summary");
+    const resultsEl = document.getElementById("pilot-readiness-results");
+    const emptyEl   = document.getElementById("pilot-readiness-empty");
+    const runBtn    = document.getElementById("pilot-readiness-run");
+    const refreshBtn = document.getElementById("pilot-readiness-refresh");
+    const copyBtn   = document.getElementById("pilot-readiness-copy");
+
+    if (!url) {
+      if (errEl) { errEl.textContent = "PILOT_READINESS_CHECK_URL not configured in firebase-config.js."; errEl.hidden = false; }
+      return;
+    }
+    if (loadingEl) loadingEl.hidden = false;
+    if (errEl)     errEl.hidden = true;
+    if (summaryEl) summaryEl.hidden = true;
+    if (resultsEl) resultsEl.hidden = true;
+    if (emptyEl)   emptyEl.hidden = true;
+    if (runBtn)    runBtn.disabled = true;
+
+    let idToken = null;
+    try {
+      const u = firebase.auth().currentUser;
+      if (u) idToken = await u.getIdToken();
+    } catch (_e) {}
+    if (!idToken) {
+      if (errEl) { errEl.textContent = "You appear to be signed out. Refresh and sign in again."; errEl.hidden = false; }
+      if (loadingEl) loadingEl.hidden = true;
+      if (runBtn)    runBtn.disabled = false;
+      return;
+    }
+
+    try {
+      const res = await fetch(url, {
+        method:  "GET",
+        headers: { "Authorization": "Bearer " + idToken }
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body.ok) {
+        const msg = (body && body.error) || ("Server returned " + res.status);
+        if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
+        return;
+      }
+      pilotReadinessLastReport = body.report;
+      renderPilotReadinessReport(body.report);
+      if (refreshBtn) refreshBtn.hidden = false;
+      if (copyBtn)    copyBtn.hidden    = false;
+      if (runBtn)     runBtn.hidden     = true;
+    } catch (err) {
+      console.error("pilotReadinessCheckV1 fetch failed", err);
+      if (errEl) {
+        errEl.textContent = "Couldn't reach the readiness service. " + (err && err.message ? err.message : "Check your connection and try again.");
+        errEl.hidden = false;
+      }
+    } finally {
+      if (loadingEl) loadingEl.hidden = true;
+      if (runBtn)    runBtn.disabled = false;
+    }
+  }
+
+  function renderPilotReadinessReport(report) {
+    const summaryEl = document.getElementById("pilot-readiness-summary");
+    const resultsEl = document.getElementById("pilot-readiness-results");
+    const emptyEl   = document.getElementById("pilot-readiness-empty");
+    if (!report || !Array.isArray(report.techs)) return;
+    if (report.techs.length === 0) {
+      if (emptyEl) emptyEl.hidden = false;
+      return;
+    }
+    const s = report.summary || { tech_count: report.techs.length, pass: 0, warn: 0, fail: 0 };
+
+    if (summaryEl) {
+      summaryEl.innerHTML =
+        '<div class="pr-summary-row">' +
+          '<span class="pr-summary-stat pr-stat-total">' +
+            '<strong>' + s.tech_count + '</strong> tech' + (s.tech_count === 1 ? "" : "s") + ' checked' +
+          '</span>' +
+          '<span class="pr-summary-stat pr-stat-pass">' +
+            '<strong>' + s.pass + '</strong> PASS' +
+          '</span>' +
+          '<span class="pr-summary-stat pr-stat-warn">' +
+            '<strong>' + s.warn + '</strong> WARN' +
+          '</span>' +
+          '<span class="pr-summary-stat pr-stat-fail">' +
+            '<strong>' + s.fail + '</strong> FAIL' +
+          '</span>' +
+          '<span class="pr-summary-stat pr-stat-time">' +
+            'Generated ' + escapeHtml(report.generated_at || "") +
+          '</span>' +
+        '</div>';
+      summaryEl.hidden = false;
+    }
+
+    if (resultsEl) {
+      resultsEl.innerHTML = report.techs.map(function (t) {
+        const grouped = Object.create(null);
+        (t.checks || []).forEach(function (c) {
+          if (!grouped[c.category]) grouped[c.category] = [];
+          grouped[c.category].push(c);
+        });
+        const groupHtml = Object.keys(grouped).map(function (cat) {
+          const rows = grouped[cat].map(function (c) {
+            return '<li class="pr-check pr-' + escapeHtml(c.level) + '">' +
+                     '<span class="pr-check-badge">' + escapeHtml(c.level) + '</span> ' +
+                     '<span class="pr-check-label">' + escapeHtml(c.label) + '</span>' +
+                     (c.detail
+                       ? '<div class="pr-check-detail">' + escapeHtml(c.detail) + '</div>'
+                       : '') +
+                   '</li>';
+          }).join("");
+          return '<div class="pr-category">' +
+                   '<h4 class="pr-category-head">' + escapeHtml(cat) + '</h4>' +
+                   '<ul class="pr-check-list">' + rows + '</ul>' +
+                 '</div>';
+        }).join("");
+        return '<article class="pr-tech pr-tech-' + escapeHtml(t.overall) + '">' +
+                 '<header class="pr-tech-head">' +
+                   '<span class="pr-tech-badge">' + escapeHtml(t.overall) + '</span> ' +
+                   '<strong class="pr-tech-name">' + escapeHtml(t.display_name || t.tech_slug) + '</strong> ' +
+                   '<span class="pr-tech-meta">' + escapeHtml(t.tech_slug || "") +
+                     (t.email ? ' · ' + escapeHtml(t.email) : '') +
+                   '</span>' +
+                 '</header>' +
+                 groupHtml +
+               '</article>';
+      }).join("");
+      resultsEl.hidden = false;
+    }
+  }
+
+  function copyPilotReadinessReport() {
+    if (!pilotReadinessLastReport) return;
+    const r = pilotReadinessLastReport;
+    const lines = [];
+    lines.push("Pioneer DCR Hub — Pilot Readiness");
+    lines.push("Generated " + (r.generated_at || ""));
+    lines.push("Techs: " + r.summary.tech_count + " · PASS " + r.summary.pass +
+               " · WARN " + r.summary.warn + " · FAIL " + r.summary.fail);
+    lines.push("");
+    (r.techs || []).forEach(function (t) {
+      lines.push("[" + t.overall + "] " + (t.display_name || t.tech_slug) +
+                 "  ·  " + t.tech_slug + (t.email ? " · " + t.email : ""));
+      const grouped = Object.create(null);
+      (t.checks || []).forEach(function (c) {
+        if (!grouped[c.category]) grouped[c.category] = [];
+        grouped[c.category].push(c);
+      });
+      Object.keys(grouped).forEach(function (cat) {
+        lines.push("  [" + cat + "]");
+        grouped[cat].forEach(function (c) {
+          lines.push("    " + c.level + "  " + c.label);
+          if (c.detail) lines.push("        " + c.detail);
+        });
+      });
+      lines.push("");
+    });
+    const text = lines.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        const btn = document.getElementById("pilot-readiness-copy");
+        if (btn) {
+          const orig = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(function () { btn.textContent = orig; }, 1500);
+        }
+      }).catch(function (e) {
+        console.warn("clipboard write failed", e);
+        window.prompt("Copy the report below:", text);
+      });
+    } else {
+      window.prompt("Copy the report below:", text);
+    }
   }
 
   // Idempotent mount: subsequent clicks on the Feed tab do nothing.
@@ -3012,12 +4507,111 @@
         '<p class="announcement-body">' + escapeHtml(a.message || "") + '</p>' +
         attachmentHtml +
         (meta.length ? '<div class="announcement-meta">' + escapeHtml(meta.join(" · ")) + '</div>' : '') +
+        // Audience summary inline so admins can see at a glance who
+        // a given announcement targets.
+        renderAnnouncementAudienceSummary(a) +
+        // At-a-glance recipient status line (loaded async after render).
+        renderAnnouncementStatusSummary(a) +
         '<div class="announcement-actions">' +
           '<button class="row-btn" type="button" data-action="edit">Edit</button>' +
+          '<button class="row-btn" type="button" data-action="thread">View thread</button>' +
           '<button class="row-btn" type="button" data-action="archive">' + archiveLabel + '</button>' +
         '</div>' +
+        '<div class="announcement-thread-panel" data-thread-for="' + escapeHtml(a.id) + '" hidden></div>' +
       '</article>'
     );
+  }
+
+  /* ---- Tech name + avatar helpers --------------------------------- */
+
+  // Returns the photoURL on a cleaning_techs doc, walking the known
+  // field aliases. Empty string when none. Single source of truth — do
+  // not duplicate this lookup elsewhere.
+  function getTechAvatarUrl(t) {
+    if (!t) return "";
+    return String(
+      t.photoUrl       || t.photo_url       ||
+      t.avatarUrl      || t.avatar_url      ||
+      t.profilePhotoUrl|| ""
+    ).trim();
+  }
+  function getTechBySlug(slug) {
+    if (!slug) return null;
+    const s = String(slug).trim();
+    for (let i = 0; i < (techs || []).length; i++) {
+      const t = techs[i];
+      const candidate = t.tech_slug || t.id;
+      if (candidate === s) return t;
+    }
+    return null;
+  }
+  // Title-case a slug as a last-resort display name. "april-k" → "April K"
+  // so the UI never has to surface raw kebab-case.
+  function slugToTitleCase(slug) {
+    if (!slug) return "";
+    return String(slug).split("-").map(function (p) {
+      if (!p) return p;
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    }).join(" ");
+  }
+  // Resolve a recipient slug → { name, avatarUrl, initial } object.
+  // Always returns SOMETHING — never the raw slug.
+  function resolveTechByAnyRef(ref) {
+    let t = null;
+    if (typeof ref === "string") {
+      t = getTechBySlug(ref);
+      if (!t) {
+        // Try matching by email field on the techs cache.
+        const emailLc = ref.toLowerCase();
+        for (let i = 0; i < (techs || []).length; i++) {
+          if (String(techs[i].email || "").toLowerCase() === emailLc) { t = techs[i]; break; }
+        }
+      }
+    } else if (ref && typeof ref === "object") {
+      t = ref;
+    }
+    const name = (t && getTechName(t)) || slugToTitleCase(typeof ref === "string" ? ref : "") || "(unknown)";
+    const avatarUrl = getTechAvatarUrl(t);
+    const initial = (name.charAt(0) || "P").toUpperCase();
+    return { name: name, avatarUrl: avatarUrl, initial: initial, doc: t };
+  }
+  // Compact <img> or initial-circle. size: "sm" | "md" (default md).
+  function renderTechAvatarHtml(resolved, sizeCls) {
+    const cls = "ann-avatar" + (sizeCls === "sm" ? " ann-avatar-sm" : "");
+    if (resolved.avatarUrl) {
+      return '<span class="' + cls + '"><img src="' + escapeHtml(resolved.avatarUrl) +
+             '" alt="" loading="lazy" /></span>';
+    }
+    return '<span class="' + cls + ' ann-avatar-fallback">' + escapeHtml(resolved.initial) + '</span>';
+  }
+
+  function renderAnnouncementAudienceSummary(a) {
+    const type = String(a.audienceType || "all");
+    if (type === "all") {
+      return '<div class="announcement-audience-summary">📣 Sent to all active staff</div>';
+    }
+    const slugs = Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs : [];
+    if (slugs.length === 0) {
+      return '<div class="announcement-audience-summary announcement-audience-selected">👥 Sent to (no recipients)</div>';
+    }
+    const names = slugs.map(function (s) { return resolveTechByAnyRef(s).name; });
+    const titleAttr = ' title="' + escapeHtml(names.join(", ")) + '"';
+    let label;
+    if (names.length === 1)      label = "Sent to: " + names[0];
+    else if (names.length <= 4)  label = "Sent to: " + names.join(", ");
+    else                         label = "Sent to: " + names.length + " team members";
+    return '<div class="announcement-audience-summary announcement-audience-selected"' + titleAttr + '>' +
+             '👥 ' + escapeHtml(label) +
+           '</div>';
+  }
+
+  // At-a-glance recipient status line. Populated lazily after the card
+  // renders (see refreshAnnouncementStatusSummaries). For now, render a
+  // muted placeholder; the post-render loader updates it in place.
+  function renderAnnouncementStatusSummary(a) {
+    return '<div class="announcement-status-summary" data-status-for="' + escapeHtml(a.id) + '">' +
+             '<span class="ann-status-loading">Loading status…</span>' +
+           '</div>';
   }
 
   function renderAnnouncements(list) {
@@ -3028,6 +4622,66 @@
     root.innerHTML = list.map(announcementCardHtml).join("");
     if (list.length === 0 && announcements.length === 0) setStatus("announcements", "empty");
     else hideAllStatuses("announcements");
+    // Lazy-load recipient_status counts so the status line updates in
+    // place without blocking the initial render.
+    refreshAnnouncementStatusSummaries(list);
+  }
+
+  // For each rendered announcement, fetch its recipient_status counts
+  // and update the inline status line. Per-card reads run in parallel
+  // (small N — typically < 30 announcements visible at a time).
+  function refreshAnnouncementStatusSummaries(list) {
+    (list || []).forEach(function (a) {
+      const el = document.querySelector('[data-status-for="' + cssEsc(a.id) + '"]');
+      if (!el) return;
+      db.collection("announcements").doc(a.id).collection("recipient_status").get()
+        .then(function (snap) {
+          const docs = snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data()); });
+          el.outerHTML = renderAnnouncementStatusSummaryHtml(a, docs);
+        })
+        .catch(function (err) {
+          console.warn("[ann-status] subcollection read failed for " + a.id, err);
+          if (el) el.innerHTML = '<span class="ann-status-error">Couldn\'t load status</span>';
+        });
+    });
+  }
+
+  function renderAnnouncementStatusSummaryHtml(a, statusDocs) {
+    const type = String(a.audienceType || "all");
+    const expected = type === "selected"
+      ? (Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs.length : 0)
+      : (techs || []).filter(function (t) { return t.active !== false; }).length;
+
+    const counts = { unread: 0, viewed: 0, acknowledged: 0, replied: 0 };
+    statusDocs.forEach(function (s) {
+      const st = String(s.status || "unread");
+      if (counts[st] != null) counts[st] += 1;
+    });
+    const stillUnread = Math.max(0, expected - statusDocs.length) + counts.unread;
+
+    // Completeness badges. Only show "Awaiting reply" if requireReply
+    // is set AND not every recipient has replied; same for ack.
+    const ackReady   = !a.requireAcknowledgement || (counts.acknowledged + counts.replied >= expected);
+    const replyReady = !a.requireReply           || (counts.replied >= expected);
+    let badge = "";
+    if (!ackReady) {
+      badge = '<span class="ann-status-badge ann-status-badge-await">Awaiting acknowledgement</span>';
+    } else if (!replyReady) {
+      badge = '<span class="ann-status-badge ann-status-badge-await">Awaiting reply</span>';
+    } else if (a.requireAcknowledgement || a.requireReply) {
+      badge = '<span class="ann-status-badge ann-status-badge-done">All responses complete</span>';
+    }
+
+    return '<div class="announcement-status-summary" data-status-for="' + escapeHtml(a.id) + '">' +
+             '<span class="ann-status-counts">' +
+               'Status: ' +
+               '<strong>' + stillUnread + '</strong> unread &middot; ' +
+               '<strong>' + counts.viewed + '</strong> viewed &middot; ' +
+               '<strong>' + counts.acknowledged + '</strong> acknowledged &middot; ' +
+               '<strong>' + counts.replied + '</strong> replied' +
+             '</span>' +
+             badge +
+           '</div>';
   }
 
   function applyCurrentAnnouncementsFilter() {
@@ -3232,6 +4886,11 @@
     $("announcement-edit-priority").value            = "normal";
     $("announcement-edit-active").checked            = true;
     $("announcement-edit-mandatory").checked         = false;
+    $("announcement-edit-require-ack").checked       = false;
+    $("announcement-edit-require-reply").checked     = false;
+    $("announcement-audience-all").checked           = true;
+    $("announcement-audience-selected").checked      = false;
+    resetAnnouncementRecipientPicker();
     $("announcement-edit-starts-at").value           = "";
     $("announcement-edit-expires-at").value          = "";
     clearAttachmentFormFields();
@@ -3254,6 +4913,17 @@
     $("announcement-edit-priority").value            = a.priority || "normal";
     $("announcement-edit-active").checked            = a.active !== false;
     $("announcement-edit-mandatory").checked         = !!a.mandatory;
+    $("announcement-edit-require-ack").checked       = !!a.requireAcknowledgement;
+    $("announcement-edit-require-reply").checked     = !!a.requireReply;
+    const audienceType = String(a.audienceType || "all");
+    if (audienceType === "selected") {
+      $("announcement-audience-all").checked      = false;
+      $("announcement-audience-selected").checked = true;
+    } else {
+      $("announcement-audience-all").checked      = true;
+      $("announcement-audience-selected").checked = false;
+    }
+    resetAnnouncementRecipientPicker(Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs : []);
     $("announcement-edit-starts-at").value           = tsToLocalInputValue(a.starts_at);
     $("announcement-edit-expires-at").value          = tsToLocalInputValue(a.expires_at);
     $("announcement-edit-attachment-name").value         = a.attachment_name || "";
@@ -3284,6 +4954,20 @@
     const priority = $("announcement-edit-priority").value || "normal";
     const active   = $("announcement-edit-active").checked;
     const mandatory= $("announcement-edit-mandatory").checked;
+    const requireAck   = $("announcement-edit-require-ack").checked;
+    const requireReply = $("announcement-edit-require-reply").checked;
+    const audienceType = $("announcement-audience-selected").checked ? "selected" : "all";
+    const selectedTechSlugs = collectSelectedRecipientTechSlugs();
+    const recipientEmails   = audienceType === "selected"
+      ? selectedTechSlugs.map(function (s) {
+          const t = _annTechBySlug[s];
+          return t && t.email ? String(t.email).toLowerCase().trim() : "";
+        }).filter(Boolean)
+      : [];
+    if (audienceType === "selected" && selectedTechSlugs.length === 0) {
+      setModalError("announcement-edit-modal", "Pick at least one team member, or switch to All active staff.");
+      return;
+    }
     const startsAtRaw = $("announcement-edit-starts-at").value;
     const expiresAtRaw= $("announcement-edit-expires-at").value;
     const attachmentName = $("announcement-edit-attachment-name").value.trim();
@@ -3349,7 +5033,17 @@
           active:                  active,
           priority:                priority,
           mandatory:               mandatory,
+          // V2 targeting fields. Legacy `audience_type: "all_staff"` is
+          // kept for back-compat with the older modal code paths; the
+          // new `audienceType` is the canonical V2 source.
           audience_type:           "all_staff",
+          audienceType:            audienceType,
+          recipientTechSlugs:      audienceType === "selected" ? selectedTechSlugs : [],
+          recipientEmails:         audienceType === "selected" ? recipientEmails : [],
+          recipientUids:           [],
+          recipientRoles:          [],
+          requireAcknowledgement:  requireAck,
+          requireReply:            requireReply,
           starts_at:               startsAt,
           expires_at:              expiresAt,
           attachment_url:          attachmentUrl || "",
@@ -3377,6 +5071,11 @@
           active:                  active,
           priority:                priority,
           mandatory:               mandatory,
+          audienceType:            audienceType,
+          recipientTechSlugs:      audienceType === "selected" ? selectedTechSlugs : [],
+          recipientEmails:         audienceType === "selected" ? recipientEmails : [],
+          requireAcknowledgement:  requireAck,
+          requireReply:            requireReply,
           starts_at:               startsAt,
           expires_at:              expiresAt,
           attachment_url:          attachmentUrl || "",
@@ -3434,6 +5133,244 @@
     }
   }
 
+  /* --------------------------------------------------------------------
+   * Targeted-announcement helpers (recipient picker + thread panel)
+   * ------------------------------------------------------------------ */
+  let _annTechBySlug = Object.create(null);
+  let _annSelectedSlugs = new Set();
+
+  function resetAnnouncementRecipientPicker(initialSlugs) {
+    _annSelectedSlugs = new Set(Array.isArray(initialSlugs) ? initialSlugs : []);
+    // Refresh tech directory from the existing admin-page cache.
+    _annTechBySlug = Object.create(null);
+    (techs || []).forEach(function (t) {
+      if (t && (t.tech_slug || t.id)) {
+        const slug = t.tech_slug || t.id;
+        _annTechBySlug[slug] = t;
+      }
+    });
+    const search = $("announcement-recipient-search");
+    if (search) search.value = "";
+    const picker = $("announcement-recipient-picker");
+    if (picker) picker.hidden = $("announcement-audience-selected").checked ? false : true;
+    renderAnnouncementRecipientList("");
+  }
+
+  function renderAnnouncementRecipientList(query) {
+    const list = $("announcement-recipient-list");
+    if (!list) return;
+    const q = String(query || "").toLowerCase().trim();
+    const items = (techs || [])
+      .filter(function (t) {
+        if (t.active === false) return false;
+        if (!q) return true;
+        const blob = ((t.display_name || "") + " " + (t.email || "") + " " + (t.tech_slug || t.id || "")).toLowerCase();
+        return blob.indexOf(q) >= 0;
+      })
+      .sort(function (a, b) {
+        return String(a.display_name || a.tech_slug || a.id || "").localeCompare(
+          String(b.display_name || b.tech_slug || b.id || ""));
+      });
+    list.innerHTML = items.map(function (t) {
+      const slug = t.tech_slug || t.id;
+      const checked = _annSelectedSlugs.has(slug) ? " checked" : "";
+      const resolved = resolveTechByAnyRef(t);
+      const avatarHtml = renderTechAvatarHtml(resolved, "sm");
+      return '<label class="ann-recipient-row">' +
+               '<input type="checkbox" data-recipient-slug="' + escapeHtml(slug) + '"' + checked + ' />' +
+               avatarHtml +
+               '<span class="ann-recipient-text">' +
+                 '<span class="ann-recipient-name">' + escapeHtml(resolved.name) + '</span>' +
+                 '<span class="ann-recipient-email">' + escapeHtml(t.email || "") + '</span>' +
+               '</span>' +
+             '</label>';
+    }).join("");
+    list.querySelectorAll('input[data-recipient-slug]').forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        const slug = cb.getAttribute("data-recipient-slug");
+        if (cb.checked) _annSelectedSlugs.add(slug);
+        else            _annSelectedSlugs.delete(slug);
+        const counter = $("announcement-recipient-counter");
+        if (counter) counter.textContent = _annSelectedSlugs.size + " selected";
+      });
+    });
+    const counter = $("announcement-recipient-counter");
+    if (counter) counter.textContent = _annSelectedSlugs.size + " selected";
+  }
+
+  function collectSelectedRecipientTechSlugs() {
+    return Array.from(_annSelectedSlugs);
+  }
+
+  /* ---- Thread panel (recipient status + comments) ----------------- */
+
+  const _annThreadUnsubs = Object.create(null);
+  async function toggleAnnouncementThread(a, cardEl) {
+    const panel = cardEl.querySelector(".announcement-thread-panel");
+    if (!panel) return;
+    if (!panel.hidden) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      if (_annThreadUnsubs[a.id]) { try { _annThreadUnsubs[a.id](); } catch (_e) {} delete _annThreadUnsubs[a.id]; }
+      return;
+    }
+    panel.hidden = false;
+    panel.innerHTML =
+      '<div class="ann-thread-loading">Loading thread…</div>';
+    // Load recipient_status counts + comments thread in parallel.
+    const annRef = db.collection("announcements").doc(a.id);
+    let statusDocs = [];
+    try {
+      const snap = await annRef.collection("recipient_status").get();
+      statusDocs = snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data()); });
+    } catch (err) {
+      console.warn("[ann-thread] recipient_status read failed", err);
+    }
+    renderAnnouncementThreadHeader(panel, a, statusDocs);
+
+    const commentsRoot = document.createElement("div");
+    commentsRoot.className = "ann-thread-comments";
+    panel.appendChild(commentsRoot);
+    const replyForm = document.createElement("div");
+    replyForm.className = "ann-thread-replyform";
+    replyForm.innerHTML =
+      '<textarea class="ann-thread-replybox" rows="2" maxlength="800" placeholder="Reply as admin…"></textarea>' +
+      '<button type="button" class="panel-action ann-thread-replybtn">Send reply</button>';
+    panel.appendChild(replyForm);
+    replyForm.querySelector(".ann-thread-replybtn").addEventListener("click", function () {
+      submitAdminAnnouncementReply(a, replyForm);
+    });
+
+    // Subscribe to comments in real time.
+    _annThreadUnsubs[a.id] = annRef.collection("comments")
+      .orderBy("createdAt", "asc")
+      .onSnapshot(function (snap) {
+        renderAnnouncementComments(commentsRoot, snap.docs.map(function (d) {
+          return Object.assign({ _id: d.id }, d.data());
+        }));
+      }, function (err) {
+        commentsRoot.innerHTML = '<div class="ann-thread-error">Couldn\'t load comments: ' + escapeHtml(err.message || "") + '</div>';
+      });
+  }
+
+  function renderAnnouncementThreadHeader(panel, a, statusDocs) {
+    panel.querySelector(".ann-thread-loading") && panel.querySelector(".ann-thread-loading").remove();
+    const audienceType = String(a.audienceType || "all");
+    const targets = audienceType === "selected"
+      ? (Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs : [])
+      : (techs || []).filter(function (t) { return t.active !== false; }).map(function (t) { return t.tech_slug || t.id; });
+    const totals = { unread: 0, viewed: 0, acknowledged: 0, replied: 0 };
+    const byUid = Object.create(null);
+    statusDocs.forEach(function (s) { byUid[s.uid] = s; });
+    // The map keyed by uid isn't useful for "unread" until we know the
+    // expected uid set. We instead infer status counts from the recorded
+    // status docs and treat any expected recipient with no doc as "unread".
+    statusDocs.forEach(function (s) {
+      const st = String(s.status || "unread");
+      if (totals[st] != null) totals[st] += 1;
+    });
+    const totalExpected = targets.length || statusDocs.length;
+    const totalKnown    = statusDocs.length;
+    const stillUnread   = Math.max(0, totalExpected - totalKnown) + totals.unread;
+    const header = document.createElement("div");
+    header.className = "ann-thread-header";
+    header.innerHTML =
+      '<div class="ann-thread-counts">' +
+        '<span class="ann-thread-count">' + stillUnread + ' unread</span>' +
+        '<span class="ann-thread-count">' + totals.viewed + ' viewed</span>' +
+        '<span class="ann-thread-count ann-thread-count-ack">' + totals.acknowledged + ' acknowledged</span>' +
+        '<span class="ann-thread-count ann-thread-count-rep">' + totals.replied + ' replied</span>' +
+      '</div>';
+    // Per-recipient list (collapsible). Avatars + humanized name; no
+    // raw slug, never. Status pill stays at the right.
+    if (audienceType === "selected" && targets.length > 0) {
+      const ul = document.createElement("ul");
+      ul.className = "ann-thread-recipients";
+      targets.forEach(function (slug) {
+        const resolved = resolveTechByAnyRef(slug);
+        const sd = statusDocs.find(function (s) { return s.techSlug === slug; });
+        const st = sd ? String(sd.status || "unread") : "unread";
+        const cls = "ann-thread-recipient-status ann-thread-recipient-status-" + st;
+        const avatarHtml = renderTechAvatarHtml(resolved, "sm");
+        ul.innerHTML += '<li>' +
+                          avatarHtml +
+                          '<span class="ann-thread-recipient-name">' + escapeHtml(resolved.name) + '</span>' +
+                          '<span class="' + cls + '">' + escapeHtml(st.toUpperCase()) + '</span>' +
+                        '</li>';
+      });
+      header.appendChild(ul);
+    }
+    panel.appendChild(header);
+  }
+
+  function renderAnnouncementComments(root, comments) {
+    if (comments.length === 0) {
+      root.innerHTML = '<div class="ann-thread-empty">No replies yet.</div>';
+      return;
+    }
+    root.innerHTML = comments.map(function (c) {
+      const when = formatImprovementDate(c.createdAt);
+      const role = String(c.createdByRole || "").trim();
+      const isAdmin = role === "admin" || role === "manager" || role === "office_manager";
+      const roleChip = isAdmin
+        ? '<span class="ann-thread-role">' + escapeHtml(role) + '</span>'
+        : '';
+      // Resolve avatar: prefer matching cleaning_techs by email; admin
+      // commenters typically aren't in cleaning_techs so they get the
+      // initial-fallback chip.
+      let resolved;
+      if (isAdmin) {
+        resolved = {
+          name:      c.createdByName || c.createdByEmail || "Admin",
+          avatarUrl: "",
+          initial:   (c.createdByName || c.createdByEmail || "A").charAt(0).toUpperCase()
+        };
+      } else {
+        resolved = resolveTechByAnyRef(c.createdByEmail || c.createdByName);
+        // Fall back to the comment's own name when no tech doc matched.
+        if (!resolved.doc && c.createdByName) resolved.name = c.createdByName;
+      }
+      const avatarHtml = renderTechAvatarHtml(resolved, "sm");
+      return '<div class="ann-thread-comment ' + (isAdmin ? "is-admin" : "") + '">' +
+               avatarHtml +
+               '<div class="ann-thread-comment-text">' +
+                 '<div class="ann-thread-comment-head">' +
+                   '<strong>' + escapeHtml(resolved.name) + '</strong> ' +
+                   roleChip +
+                   '<span class="ann-thread-comment-when">' + escapeHtml(when) + '</span>' +
+                 '</div>' +
+                 '<p class="ann-thread-comment-body">' + escapeHtml(c.body || "").replace(/\n/g, "<br>") + '</p>' +
+               '</div>' +
+             '</div>';
+    }).join("");
+  }
+
+  async function submitAdminAnnouncementReply(a, form) {
+    const ta  = form.querySelector(".ann-thread-replybox");
+    const btn = form.querySelector(".ann-thread-replybtn");
+    const body = String(ta.value || "").trim();
+    if (!body) { ta.focus(); return; }
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const u = firebase.auth().currentUser;
+      await db.collection("announcements").doc(a.id).collection("comments").add({
+        body:            body,
+        createdAt:       firebase.firestore.FieldValue.serverTimestamp(),
+        createdByUid:    u.uid,
+        createdByEmail:  String(u.email || "").toLowerCase(),
+        createdByName:   u.displayName || u.email || "admin",
+        createdByRole:   "admin",
+        visibility:      "announcement_recipients",
+        source:          "admin"
+      });
+      ta.value = "";
+    } catch (err) {
+      alert("Couldn't send reply: " + (err && err.message));
+    } finally {
+      btn.disabled = false; btn.textContent = "Send reply";
+    }
+  }
+
   function wireAnnouncementsControls() {
     const list = $("announcements-list");
     if (list) {
@@ -3446,8 +5383,18 @@
         if (!a) return;
         if (btn.dataset.action === "edit")    openAnnouncementEditModal(a);
         if (btn.dataset.action === "archive") onAnnouncementArchive(a);
+        if (btn.dataset.action === "thread")  toggleAnnouncementThread(a, card);
       });
     }
+    // Audience radio toggles the recipient picker visibility.
+    document.querySelectorAll('input[name="announcement-audience"]').forEach(function (r) {
+      r.addEventListener("change", function () {
+        const picker = $("announcement-recipient-picker");
+        if (picker) picker.hidden = $("announcement-audience-selected").checked ? false : true;
+      });
+    });
+    const recipSearch = $("announcement-recipient-search");
+    if (recipSearch) recipSearch.addEventListener("input", function () { renderAnnouncementRecipientList(recipSearch.value); });
     const search = $("announcements-search");
     if (search) search.addEventListener("input", applyCurrentAnnouncementsFilter);
     const openBtn = $("announcements-create-open");
@@ -5615,16 +7562,100 @@
     }
   }
 
+  /* --------------------------------------------------------------------
+   * Archive-confirm DOM modal.
+   *
+   * window.confirm() is auto-cancelled by Chrome automation tooling
+   * (and accidentally easy to accept on iPad-style devices). This is
+   * a real in-page dialog that returns a Promise<boolean>. Resolved
+   * true on the destructive button, false on Cancel / backdrop / Esc.
+   *
+   * Injected once on first call; reused thereafter.
+   * ------------------------------------------------------------------ */
+  let _archiveModalEl       = null;
+  let _archiveModalResolver = null;
+  function ensureArchiveConfirmMarkup() {
+    if (_archiveModalEl) return _archiveModalEl;
+    const overlay = document.createElement("div");
+    overlay.id = "tech-archive-confirm";
+    overlay.className = "tech-archive-overlay";
+    overlay.hidden = true;
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "tech-archive-title");
+    overlay.innerHTML =
+      '<div class="tech-archive-backdrop" data-archive-close></div>' +
+      '<div class="tech-archive-sheet">' +
+        '<button type="button" class="tech-archive-close" data-archive-close aria-label="Cancel">×</button>' +
+        '<h2 class="tech-archive-title" id="tech-archive-title">Archive team member?</h2>' +
+        '<p class="tech-archive-lede">' +
+          'This will remove PioneerOps access for this team member.' +
+        '</p>' +
+        '<ul class="tech-archive-bullets">' +
+          '<li>They will be signed out of the app on next page load.</li>' +
+          '<li>They will not be able to start work, submit DCRs, send SOS alerts, or reply to announcements.</li>' +
+          '<li>Their historical records stay intact.</li>' +
+          '<li>You can reactivate them later.</li>' +
+        '</ul>' +
+        '<div class="tech-archive-actions">' +
+          '<button type="button" class="tech-archive-btn tech-archive-btn-cancel" data-archive-cancel>Cancel</button>' +
+          '<button type="button" class="tech-archive-btn tech-archive-btn-confirm" data-archive-confirm>Archive team member</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", function (ev) {
+      const t = ev.target;
+      if (!t) return;
+      if (t.closest("[data-archive-confirm]")) { resolveArchiveModal(true);  return; }
+      if (t.closest("[data-archive-cancel]"))  { resolveArchiveModal(false); return; }
+      if (t.closest("[data-archive-close]"))   { resolveArchiveModal(false); return; }
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && _archiveModalEl && !_archiveModalEl.hidden) resolveArchiveModal(false);
+    });
+    _archiveModalEl = overlay;
+    return overlay;
+  }
+  function resolveArchiveModal(result) {
+    if (_archiveModalEl) _archiveModalEl.hidden = true;
+    if (_archiveModalResolver) {
+      const r = _archiveModalResolver;
+      _archiveModalResolver = null;
+      r(!!result);
+    }
+  }
+  function openArchiveConfirmModal(name) {
+    const overlay = ensureArchiveConfirmMarkup();
+    const titleEl = document.getElementById("tech-archive-title");
+    if (titleEl) titleEl.textContent = "Archive " + (name || "this team member") + "?";
+    overlay.hidden = false;
+    // Focus the Cancel button so a quick Enter doesn't accidentally
+    // confirm a destructive action.
+    const cancel = overlay.querySelector("[data-archive-cancel]");
+    if (cancel) setTimeout(function () { try { cancel.focus(); } catch (_e) {} }, 30);
+    return new Promise(function (resolve) {
+      _archiveModalResolver = resolve;
+    });
+  }
+
   // ---- Cleaning tech: archive / reactivate ----
 
   async function onTechArchive(t) {
     const name        = getTechName(t) || t.id;
     const isArchiving = getActive(t);
-    const verb        = isArchiving ? "Archive" : "Reactivate";
-    const summary     = isArchiving
-      ? "They'll be hidden from the DCR form. No data is deleted — you can reactivate later."
-      : "They'll reappear in the DCR form (assuming dcr_enabled stays on).";
-    if (!window.confirm(verb + " " + name + "?\n\n" + summary)) return;
+    const email       = String(t.email || "").toLowerCase().trim();
+    if (isArchiving) {
+      // Real DOM modal — window.confirm is auto-dismissed by Chrome
+      // automation tooling and felt too easy to accept accidentally.
+      const confirmed = await openArchiveConfirmModal(name);
+      if (!confirmed) return;
+    } else {
+      // Reactivate is calmer; a single Continue prompt is enough.
+      if (!window.confirm(
+        "Reactivate " + name + "?\n\n" +
+        "They'll regain PioneerOps access (assuming dcr_enabled stays on)."
+      )) return;
+    }
 
     const adminEmail = getCurrentAdminEmail();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
@@ -5633,7 +7664,58 @@
       : { active: true,  archived_at: null, archived_by: null,       updated_at: sts, updated_by: adminEmail };
 
     try {
+      // 1. Flip the tech doc.
       await db.collection("cleaning_techs").doc(t.id).update(updates);
+
+      // 2. Update the active-staff index (this is the rule's gate). On
+      //    reactivate we re-write the doc; on archive we either flip
+      //    active=false on the existing index doc OR delete it. We
+      //    keep the doc for audit but set active=false so the rule
+      //    helper denies on `active == true`.
+      if (email) {
+        const idxRef = db.collection("active_techs_by_email").doc(email);
+        try {
+          if (isArchiving) {
+            await idxRef.set({
+              active:      false,
+              slug:        t.id,
+              email:       email,
+              archived_at: sts,
+              archived_by: adminEmail
+            }, { merge: true });
+          } else {
+            await idxRef.set({
+              active:        true,
+              slug:          t.id,
+              email:         email,
+              reactivated_at: sts,
+              reactivated_by: adminEmail
+            }, { merge: true });
+          }
+        } catch (idxErr) {
+          console.warn("[archive] active_techs_by_email update failed (non-fatal)", idxErr);
+        }
+      }
+
+      // 3. On archive, ask the Cloud Function to disable the auth user
+      //    + revoke refresh tokens. Non-fatal — even if this fails,
+      //    Firestore rules already deny field-tech writes.
+      let authRevoked = false;
+      if (isArchiving && email) {
+        try {
+          authRevoked = await callDisableAuthUserForTech(email);
+        } catch (revokeErr) {
+          console.warn("[archive] auth revoke failed (non-fatal — rules still deny)", revokeErr);
+        }
+      } else if (!isArchiving && email) {
+        // Reactivate path — re-enable the auth user if it was disabled.
+        try {
+          await callEnableAuthUserForTech(email);
+        } catch (revokeErr) {
+          console.warn("[reactivate] auth re-enable failed (non-fatal)", revokeErr);
+        }
+      }
+
       const idx = techs.findIndex(function (x) { return x.id === t.id; });
       if (idx >= 0) {
         techs[idx] = Object.assign({}, techs[idx], updates, {
@@ -5642,10 +7724,58 @@
         });
       }
       applyCurrentTechFilter();
-      showToast("ok", isArchiving ? "Tech archived." : "Tech reactivated.");
+      if (isArchiving) {
+        showToast("ok",
+          authRevoked
+            ? "Team member archived and PioneerOps access removed."
+            : "Team member archived. PioneerOps writes are now denied; their auth account is still enabled (configure SET_TECH_AUTH_DISABLED_URL to fully sign them out)."
+        );
+      } else {
+        showToast("ok", "Team member reactivated — PioneerOps access restored.");
+      }
     } catch (err) {
       handleAdminWriteError(err, { context: "tech archive" });
     }
+  }
+
+  // Calls the Cloud Function that disables the Firebase Auth user +
+  // revokes refresh tokens. Returns true on success, false otherwise.
+  async function callDisableAuthUserForTech(email) {
+    const url = window.SET_TECH_AUTH_DISABLED_URL;
+    if (!url) {
+      console.warn("[archive] SET_TECH_AUTH_DISABLED_URL not configured — skipping auth revoke");
+      return false;
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) return false;
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: {
+        "Authorization": "Bearer " + idToken,
+        "Content-Type":  "application/json"
+      },
+      body: JSON.stringify({ email: email, disabled: true })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    return !!(res.ok && body && body.ok);
+  }
+  async function callEnableAuthUserForTech(email) {
+    const url = window.SET_TECH_AUTH_DISABLED_URL;
+    if (!url) return false;
+    const u = firebase.auth().currentUser;
+    if (!u) return false;
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: {
+        "Authorization": "Bearer " + idToken,
+        "Content-Type":  "application/json"
+      },
+      body: JSON.stringify({ email: email, disabled: false })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    return !!(res.ok && body && body.ok);
   }
 
   /* ---------- HARD delete a cleaning tech ----------
@@ -8738,6 +10868,3176 @@
     });
   }
 
+  /* ====================================================================
+     Team Schedule — admin upload + current-schedule summary
+     ====================================================================
+     Single source of truth lives in `team_schedule/current` (Firestore)
+     and the blob in `team-schedules/{yyyymm}/{ts}-{filename}` (Storage).
+     Each upload OVERWRITES the doc; there is no per-upload history
+     collection yet (see Phase 2 TODO in admin.html and firestore.rules).
+
+     The Team Hub side (team-hub.js) reads the same doc and renders the
+     "View / Download" buttons for cleaning techs. */
+  const TEAM_SCHEDULE_DOC_ID         = "current";
+  const TEAM_SCHEDULE_MAX_BYTES      = 10 * 1024 * 1024;
+  const TEAM_SCHEDULE_ALLOWED_MIME   = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp"
+  ];
+  const TEAM_SCHEDULE_ALLOWED_EXT    = ["pdf", "png", "jpg", "jpeg", "webp"];
+
+  let teamScheduleLoaded = false;
+
+  function setScheduleStatus(state) {
+    const ids = ["schedule-loading", "schedule-error", "schedule-empty", "schedule-current"];
+    ids.forEach(function (id) {
+      const el = $(id);
+      if (el) el.hidden = true;
+    });
+    if (state) {
+      const target = $("schedule-" + state);
+      if (target) target.hidden = false;
+    }
+  }
+
+  function setScheduleError(message) {
+    const el = $("schedule-error");
+    if (!el) return;
+    el.textContent = message || "Couldn't load the current schedule.";
+    setScheduleStatus("error");
+  }
+
+  function setScheduleUploadError(message) {
+    const el = $("schedule-upload-error");
+    if (!el) return;
+    if (!message) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = message;
+    el.hidden = false;
+  }
+
+  function setScheduleUploadStatus(text) {
+    const el = $("schedule-upload-status");
+    if (el) el.textContent = text || "";
+  }
+
+  function formatScheduleUploadedAt(ts) {
+    if (!ts) return "Unknown upload time";
+    let ms = null;
+    if (typeof ts.toMillis === "function") ms = ts.toMillis();
+    else if (typeof ts.seconds === "number") ms = ts.seconds * 1000;
+    else if (typeof ts === "number") ms = ts;
+    else if (typeof ts === "string") { const t = Date.parse(ts); ms = isNaN(t) ? null : t; }
+    if (ms == null) return "Unknown upload time";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(new Date(ms));
+    } catch (_e) {
+      return new Date(ms).toLocaleString();
+    }
+  }
+
+  function renderTeamSchedule(doc) {
+    const data = (doc && doc.data && doc.data()) || null;
+    // Reflect the current-PDF state onto the Extract button. Clean
+    // disabled state with a hovertip beats a click that surfaces
+    // "No PDF backup uploaded yet" as a red error banner.
+    syncExtractButtonState(data);
+    if (!data || data.active === false || !data.downloadUrl) {
+      setScheduleStatus("empty");
+      return;
+    }
+    const filenameEl = $("schedule-current-filename");
+    const uploadedEl = $("schedule-current-uploaded");
+    const notesEl    = $("schedule-current-notes");
+    const viewBtn    = $("schedule-current-view");
+    const dlBtn      = $("schedule-current-download");
+    if (filenameEl) filenameEl.textContent = data.fileName || "Schedule file";
+    if (uploadedEl) {
+      const byName = (data.uploadedBy && (data.uploadedBy.displayName || data.uploadedBy.email)) || "an admin";
+      const effective = data.effectiveMonth ? " · Effective " + data.effectiveMonth : "";
+      uploadedEl.textContent =
+        "Uploaded " + formatScheduleUploadedAt(data.uploadedAt) +
+        " by " + byName + effective;
+    }
+    if (notesEl) {
+      if (data.notes) {
+        notesEl.textContent = data.notes;
+        notesEl.hidden = false;
+      } else {
+        notesEl.hidden = true;
+        notesEl.textContent = "";
+      }
+    }
+    if (viewBtn) {
+      viewBtn.href   = data.downloadUrl;
+      viewBtn.target = "_blank";
+      viewBtn.rel    = "noopener noreferrer";
+    }
+    if (dlBtn) {
+      // Append a download hint to nudge the browser to save rather than
+      // navigate. The query string is harmless to Firebase Storage.
+      dlBtn.href = data.downloadUrl;
+      dlBtn.setAttribute("download", data.fileName || "team-schedule.pdf");
+    }
+    setScheduleStatus("current");
+  }
+
+  async function loadTeamSchedule() {
+    if (!window.firebase || typeof firebase.firestore !== "function") {
+      setScheduleError("Firestore SDK isn't loaded. Hard-reload (Cmd+Shift+R).");
+      return;
+    }
+    setScheduleStatus("loading");
+    try {
+      const snap = await firebase.firestore()
+        .collection("team_schedule").doc(TEAM_SCHEDULE_DOC_ID).get();
+      teamScheduleLoaded = true;
+      if (!snap.exists) { setScheduleStatus("empty"); return; }
+      renderTeamSchedule(snap);
+    } catch (err) {
+      console.error("loadTeamSchedule failed", err);
+      const friendly = (err && err.code === "permission-denied")
+        ? "Permission denied. Confirm firestore.rules has the team_schedule block deployed."
+        : ("Couldn't load the schedule: " + (err && (err.message || err.code)) || "unknown error");
+      setScheduleError(friendly);
+    }
+  }
+
+  function validateScheduleFile(file) {
+    if (!file) return "Pick a schedule file first.";
+    if (file.size > TEAM_SCHEDULE_MAX_BYTES) {
+      return "File is too large (" +
+        Math.ceil(file.size / (1024 * 1024)) +
+        " MB). Max 10 MB.";
+    }
+    const ct = (file.type || "").toLowerCase();
+    if (ct && TEAM_SCHEDULE_ALLOWED_MIME.indexOf(ct) >= 0) return "";
+    const dot = file.name.lastIndexOf(".");
+    const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+    if (TEAM_SCHEDULE_ALLOWED_EXT.indexOf(ext) >= 0) return "";
+    return "Unsupported file type. Allowed: PDF, PNG, JPG, WEBP.";
+  }
+
+  function makeScheduleStoragePath(file) {
+    const now = new Date();
+    const ym  = now.getFullYear() + "-" +
+                String(now.getMonth() + 1).padStart(2, "0");
+    const safe = (file.name || "schedule")
+      .toLowerCase()
+      .replace(/[^a-z0-9.\-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    return "team-schedules/" + ym + "/" + Date.now() + "-" + (safe || "schedule");
+  }
+
+  async function onScheduleUploadSubmit(ev) {
+    if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+    setScheduleUploadError("");
+
+    const fileInput = $("schedule-upload-file");
+    const file      = (fileInput && fileInput.files && fileInput.files[0]) || null;
+    const validationErr = validateScheduleFile(file);
+    if (validationErr) {
+      setScheduleUploadError(validationErr);
+      return;
+    }
+
+    if (!window.firebase ||
+        typeof firebase.storage !== "function" ||
+        typeof firebase.firestore !== "function") {
+      setScheduleUploadError("Storage / Firestore SDK isn't loaded. Hard-reload (Cmd+Shift+R).");
+      return;
+    }
+
+    const submitBtn = $("schedule-upload-submit");
+    if (submitBtn) submitBtn.disabled = true;
+
+    const storagePath = makeScheduleStoragePath(file);
+    const ref         = firebase.storage().ref(storagePath);
+
+    try {
+      setScheduleUploadStatus("Uploading " + file.name + "…");
+      const snap        = await ref.put(file, { contentType: file.type || undefined });
+      const downloadUrl = await snap.ref.getDownloadURL();
+
+      const effectiveMonthEl = $("schedule-upload-effective-month");
+      const notesEl          = $("schedule-upload-notes");
+      const effectiveMonth   = (effectiveMonthEl && effectiveMonthEl.value) || "";
+      const notes            = (notesEl && notesEl.value || "").trim();
+
+      const u = firebase.auth().currentUser;
+      const uploadedBy = {
+        uid:         (u && u.uid)         || null,
+        email:       (u && u.email)       || null,
+        displayName: (u && u.displayName) || (u && u.email) || "admin"
+      };
+
+      setScheduleUploadStatus("Saving to Firestore…");
+      await firebase.firestore().collection("team_schedule").doc(TEAM_SCHEDULE_DOC_ID).set({
+        fileName:       file.name || "team-schedule",
+        storagePath:    storagePath,
+        downloadUrl:    downloadUrl,
+        contentType:    file.type || "application/octet-stream",
+        byteSize:       file.size || 0,
+        uploadedAt:     firebase.firestore.FieldValue.serverTimestamp(),
+        uploadedBy:     uploadedBy,
+        effectiveMonth: effectiveMonth || null,
+        notes:          notes || null,
+        active:         true
+      }, { merge: false });
+
+      // Reset the form and refresh the summary card.
+      if (fileInput)        fileInput.value = "";
+      if (notesEl)          notesEl.value   = "";
+      // Leave effectiveMonth as-is — admins often upload the same month twice.
+      setScheduleUploadStatus("Published. Team Hub will pick this up on next page load.");
+      await loadTeamSchedule();
+    } catch (err) {
+      console.error("schedule upload failed", err);
+      const friendly = (err && err.code === "storage/unauthorized")
+        ? "Upload denied by Storage rules. Confirm you're signed in as an admin and storage.rules has the team-schedules block deployed."
+        : (err && err.code === "permission-denied")
+        ? "Firestore write denied. Confirm firestore.rules has the team_schedule block deployed."
+        : ("Upload failed: " + (err && (err.message || err.code)) || "unknown error");
+      setScheduleUploadError(friendly);
+      setScheduleUploadStatus("");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  /* ====================================================================
+     Published Team Schedule (Deputy-powered)
+     ====================================================================
+     Snapshot model — admins publish on demand by reading the next 14
+     days from `deputy_shift_cache` and writing a normalized snapshot to
+     `published_team_schedule/current`. Team Hub reads that doc only;
+     it does NOT reflect live Deputy edits.
+
+     The Deputy scheduled sync only writes TODAY's shifts (every 10 min),
+     so future days only appear in cache after an admin runs
+     `refreshDeputyShiftsV1` for each future date — that loop is a
+     Phase 2 follow-up (auto-sync future days as part of publish).
+
+     Phase 2 TODOs (mirror admin.html + firestore.rules):
+       • monthly calendar view + printable export
+       • personal "my schedule" filtering on the tech side
+       • shift swaps / PTO overlays / open-shift coverage
+       • live vs deferred publish modes (currently always deferred)
+       • auto-sync future Deputy days as part of publish
+       • server-side publish (Cloud Function) so a scheduled job can
+         re-publish nightly without an admin browser open */
+  const PUBLISHED_SCHEDULE_DOC_ID    = "current";
+  const PUBLISHED_SCHEDULE_HORIZONS  = [7, 14, 21];  // allowed values
+  const PUBLISHED_SCHEDULE_DEFAULT   = 21;
+  const PUBLISHED_SCHEDULE_MAX_SHIFTS = 1200;        // safety cap (21d × ~50 shifts/day)
+
+  function pacificDateString(d) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Los_Angeles",
+      year:  "numeric", month: "2-digit", day:   "2-digit"
+    }).format(d);
+  }
+
+  /* --------------------------------------------------------------------
+   * getOpsDayWindow — Pioneer operational day boundaries.
+   *
+   * The "operational day" begins at 4 PM Pacific (office staff close
+   * out the previous workday) and ends at 4 PM the next day. Midnight-
+   * to-midnight stats are less useful because cleaning techs work
+   * overnight and the office wants their morning view to STILL reflect
+   * last night's work.
+   *
+   * Returns the current ops-day window + the previous one + a human
+   * label describing which physical hours the current window covers.
+   *
+   * Pure date math. No Firestore. No network.
+   * ------------------------------------------------------------------ */
+  function getOpsDayWindow(now, cutoffHour, timezone) {
+    now         = now         || new Date();
+    cutoffHour  = (cutoffHour  != null) ? cutoffHour  : 16;
+    timezone    = timezone     || "America/Los_Angeles";
+
+    // What's the Pacific wall-clock hour:minute:second right now?
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(now);
+    function partVal(name) {
+      const p = parts.find(function (x) { return x.type === name; });
+      return p ? parseInt(p.value, 10) : 0;
+    }
+    const h = partVal("hour");
+    const m = partVal("minute");
+    const s = partVal("second");
+
+    // How many ms have elapsed since the most recent 4 PM Pacific
+    // boundary? If we're past today's cutoff, that boundary was today
+    // at the cutoff hour; otherwise it was yesterday at the cutoff hour.
+    const isPastCutoff = (h >= cutoffHour);
+    const hoursSince = isPastCutoff
+      ? (h - cutoffHour)
+      : (h + (24 - cutoffHour));
+    const msSince = (hoursSince * 3600 + m * 60 + s) * 1000;
+
+    // Anchor to the boundary by subtracting the elapsed ms from `now`.
+    // This sidesteps DST gotchas: we're stepping back a wall-clock
+    // duration that's already in the Pacific frame.
+    const currentOpsStart  = new Date(now.getTime() - msSince);
+    const currentOpsEnd    = new Date(currentOpsStart.getTime() + 86400000);
+    const previousOpsStart = new Date(currentOpsStart.getTime() - 86400000);
+    const previousOpsEnd   = new Date(currentOpsStart.getTime());
+
+    const opsDayLabel = isPastCutoff
+      ? "Today 4 PM → Tomorrow 4 PM"
+      : "Yesterday 4 PM → Today 4 PM";
+
+    return {
+      currentOpsStart:  currentOpsStart,
+      currentOpsEnd:    currentOpsEnd,
+      previousOpsStart: previousOpsStart,
+      previousOpsEnd:   previousOpsEnd,
+      opsDayLabel:      opsDayLabel
+    };
+  }
+
+  function addDaysPacific(yyyymmdd, days) {
+    // Add `days` to a YYYY-MM-DD string, working in UTC to avoid DST
+    // drift, then re-format in Pacific. Sufficient for a 14-day window.
+    const base = new Date(yyyymmdd + "T12:00:00Z");
+    base.setUTCDate(base.getUTCDate() + days);
+    return pacificDateString(base);
+  }
+
+  function tsToMillis(ts) {
+    if (!ts) return null;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number")    return ts.seconds * 1000;
+    if (typeof ts.toDate   === "function") return ts.toDate().getTime();
+    return null;
+  }
+
+  function formatPacificTimeOfDay(ms) {
+    if (ms == null) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms)).replace(/\s+/g, "").toLowerCase();
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function weekdayLabelFromDate(yyyymmdd) {
+    if (!yyyymmdd) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  function setPublishedStatus(state) {
+    const ids = [
+      "schedule-published-loading",
+      "schedule-published-error",
+      "schedule-published-empty",
+      "schedule-published-summary"
+    ];
+    ids.forEach(function (id) { const el = $(id); if (el) el.hidden = true; });
+    if (state) {
+      const target = $("schedule-published-" + state);
+      if (target) target.hidden = false;
+    }
+  }
+
+  function setPublishedError(message) {
+    const el = $("schedule-published-error");
+    if (!el) return;
+    el.textContent = message || "Couldn't load the published snapshot.";
+    setPublishedStatus("error");
+  }
+
+  function setPublishStatus(text) {
+    const el = $("schedule-publish-status");
+    if (el) el.textContent = text || "";
+  }
+
+  function setPublishError(message) {
+    const el = $("schedule-publish-error");
+    if (!el) return;
+    if (!message) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = message;
+    el.hidden = false;
+  }
+
+  function formatPublishedAt(ts) {
+    if (!ts) return "Unknown";
+    const ms = tsToMillis(ts);
+    if (ms == null) return "Unknown";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(new Date(ms));
+    } catch (_e) {
+      return new Date(ms).toLocaleString();
+    }
+  }
+
+  function renderPublishedSnapshot(doc) {
+    const data = (doc && doc.data && doc.data()) || null;
+    const metaSub = $("schedule-published-meta");
+    if (!data || data.active === false) {
+      if (metaSub) metaSub.textContent = "Nothing published yet.";
+      setPublishedStatus("empty");
+      return;
+    }
+    const whenEl    = $("schedule-published-when");
+    const rangeEl   = $("schedule-published-range");
+    const countEl   = $("schedule-published-count");
+    const techsEl   = $("schedule-published-techs");
+    const notesEl   = $("schedule-published-notes");
+    if (whenEl)  whenEl.textContent  = formatPublishedAt(data.publishedAt) + " by " +
+      ((data.publishedBy && (data.publishedBy.displayName || data.publishedBy.email)) || "an admin");
+    if (rangeEl) rangeEl.textContent = (data.startDate || "—") + " → " + (data.endDate || "—");
+    if (countEl) countEl.textContent = String(data.shiftCount || (Array.isArray(data.shifts) ? data.shifts.length : 0));
+    if (techsEl) {
+      const techSet = new Set();
+      (data.shifts || []).forEach(function (s) {
+        const name = (s.techName || "").trim();
+        if (name) techSet.add(name);
+      });
+      techsEl.textContent = String(techSet.size);
+    }
+    if (notesEl) {
+      if (data.notes) { notesEl.textContent = data.notes; notesEl.hidden = false; }
+      else            { notesEl.hidden = true; notesEl.textContent = ""; }
+    }
+    if (metaSub) {
+      metaSub.textContent =
+        "Last published " + formatPublishedAt(data.publishedAt) +
+        " · " + (data.shiftCount || 0) + " shifts · range " +
+        (data.startDate || "—") + " → " + (data.endDate || "—");
+    }
+    setPublishedStatus("summary");
+  }
+
+  async function loadPublishedSnapshot() {
+    if (!window.firebase || typeof firebase.firestore !== "function") {
+      setPublishedError("Firestore SDK isn't loaded. Hard-reload (Cmd+Shift+R).");
+      return;
+    }
+    setPublishedStatus("loading");
+    try {
+      const snap = await firebase.firestore()
+        .collection("published_team_schedule").doc(PUBLISHED_SCHEDULE_DOC_ID).get();
+      if (!snap.exists) { setPublishedStatus("empty"); return; }
+      renderPublishedSnapshot(snap);
+    } catch (err) {
+      console.error("loadPublishedSnapshot failed", err);
+      const friendly = (err && err.code === "permission-denied")
+        ? "Permission denied. Confirm firestore.rules has the published_team_schedule block deployed."
+        : ("Couldn't load the published snapshot: " + (err && (err.message || err.code)) || "unknown error");
+      setPublishedError(friendly);
+    }
+  }
+
+  // Build a normalized shift record from a raw deputy_shift_cache doc.
+  // Drops shifts with no start_time or no employee match — those are
+  // not actionable on the published schedule.
+  // customer-by-slug lookup populated by buildCustomerLookupForPublish()
+  // before each publish run. Empty by default; normalizeDeputyShift only
+  // applies the canonical helper when this is populated.
+  let _publishCustomerBySlug = Object.create(null);
+
+  function buildCustomerLookupForPublish(customerDocs) {
+    const map = Object.create(null);
+    (customerDocs || []).forEach(function (c) {
+      const slug = String((c && (c.customer_slug || c.slug || c.id)) || "").trim();
+      if (slug) map[slug] = c;
+    });
+    _publishCustomerBySlug = map;
+  }
+
+  function normalizeDeputyShift(raw) {
+    const startMs = tsToMillis(raw.start_time);
+    const endMs   = tsToMillis(raw.end_time);
+    if (startMs == null) return null;
+    const techName     = String(raw.employee_display_name || "").trim() ||
+                         String(raw.employee_email || "").trim();
+    if (!techName) return null;
+    // Customer name precedence — match today-work.js conventions:
+    //   1. sync-resolved (deputy_company_id → customers.customer_slug)
+    //   2. high-confidence suggested alias
+    //   3. raw Deputy location/company name (unresolved, marked as such)
+    let customerName = String(raw.customer_name || "").trim();
+    let customerSlug = String(raw.customer_slug || "").trim();
+    if (!customerName) {
+      const sugg = String(raw.suggested_customer_name || "").trim();
+      if (sugg) { customerName = sugg; customerSlug = String(raw.suggested_customer_slug || "").trim(); }
+    }
+    if (!customerName) {
+      customerName = String(raw.company_name || raw.deputy_location_name || "Unassigned").trim();
+    }
+
+    // Canonical display via the helper — when the customer slug resolves
+    // to a doc we have, apply displayNameMode + customDisplayName so the
+    // published snapshot shows the same string Team Hub / Team Schedule
+    // and every other surface uses. Logs at [DisplayNamePublish] for
+    // each row so the office can confirm matching during a publish.
+    const rawCustomerName = customerName;
+    const matchedDoc = customerSlug ? _publishCustomerBySlug[customerSlug] : null;
+    if (matchedDoc && window.PioneerCustomerDisplay) {
+      const helperName = window.PioneerCustomerDisplay.getCustomerDisplayName(matchedDoc);
+      if (helperName) customerName = helperName;
+    }
+    try {
+      console.info("[DisplayNamePublish]", {
+        rawCustomerName:    rawCustomerName,
+        customerSlug:       customerSlug || "(none)",
+        matchedCustomerDoc: matchedDoc ? (matchedDoc.id || matchedDoc.customer_slug || "(no-id)") : null,
+        displayNameMode:    matchedDoc ? (matchedDoc.displayNameMode || matchedDoc.display_name_mode || "(unset)") : null,
+        customDisplayName:  matchedDoc ? (matchedDoc.customDisplayName || matchedDoc.custom_display_name || "(unset)") : null,
+        location_name:      matchedDoc ? (matchedDoc.location_name || "(unset)") : null,
+        finalDisplayName:   customerName
+      });
+    } catch (_e) {}
+
+    return {
+      date:           String(raw.sync_date || ""),
+      weekday:        weekdayLabelFromDate(raw.sync_date),
+      startTime:      formatPacificTimeOfDay(startMs),
+      endTime:        endMs == null ? "" : formatPacificTimeOfDay(endMs),
+      startMs:        startMs,
+      endMs:          endMs,
+      techName:       techName,
+      techSlug:       String(raw.employee_slug || "").trim(),
+      customerName:   customerName,
+      customerSlug:   customerSlug,
+      status:         String(raw.status || "scheduled"),
+      deputyShiftUrl: String(raw.deputy_shift_url || "")
+    };
+  }
+
+  function readPublishHorizon() {
+    const checked = document.querySelector("input[name='schedule-publish-horizon']:checked");
+    const raw = checked && Number(checked.value);
+    if (PUBLISHED_SCHEDULE_HORIZONS.indexOf(raw) >= 0) return raw;
+    return PUBLISHED_SCHEDULE_DEFAULT;
+  }
+
+  async function syncDeputyRangeBeforePublish(today, endDay) {
+    const url = (window.REFRESH_DEPUTY_SHIFTS_RANGE_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      throw new Error("REFRESH_DEPUTY_SHIFTS_RANGE_URL is not configured.");
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: {
+        "Authorization": "Bearer " + idToken,
+        "Content-Type":  "application/json"
+      },
+      body: JSON.stringify({ start_date: today, end_date: endDay })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    if (!res.ok || !body || !body.ok) {
+      throw new Error((body && body.error) || ("HTTP " + res.status));
+    }
+    return body;
+  }
+
+  // Render the per-day publish breakdown into the <details> panel
+  // below the form. Lists every date in the horizon with: Deputy
+  // fetch count (from the range-refresh result, if it ran) and
+  // cache-doc count (from the read we did to build the snapshot).
+  // Zero-shift dates get a "0 shifts" visual treatment so admins
+  // immediately see which days are thin in Deputy.
+  function renderPublishDebug(data) {
+    const root = $("schedule-publish-debug");
+    const body = $("schedule-publish-debug-body");
+    if (!root || !body) return;
+    if (!data) { root.hidden = true; body.innerHTML = ""; return; }
+
+    const dateList = data.dates || [];
+    const syncMap  = data.sync_per_day || {};   // date → {upserted, fetched, ok, error}
+    const cacheMap = data.cache_per_day || {};  // date → count (after filter)
+
+    const rows = dateList.map(function (d) {
+      const sync = syncMap[d] || null;
+      const c    = (typeof cacheMap[d] === "number") ? cacheMap[d] : 0;
+      const syncCell = sync
+        ? (sync.ok
+            ? ('Deputy: ' + (sync.upserted_count || 0) + ' upserted (' + (sync.fetched_count || 0) + ' fetched)')
+            : ('<span class="schedule-publish-debug-fail">Deputy sync failed: ' + escapeHtmlForDebug(sync.error || 'unknown') + '</span>'))
+        : '<span class="schedule-publish-debug-muted">Deputy sync skipped</span>';
+      const cacheCell = c === 0
+        ? '<span class="schedule-publish-debug-zero">0 shifts</span>'
+        : (c + ' shift' + (c === 1 ? '' : 's'));
+      return (
+        '<tr>' +
+          '<td>' + escapeHtmlForDebug(d) + '</td>' +
+          '<td>' + syncCell + '</td>' +
+          '<td>' + cacheCell + '</td>' +
+        '</tr>'
+      );
+    }).join("");
+
+    const zeroDates = dateList.filter(function (d) { return !cacheMap[d]; });
+    const zeroSummary = zeroDates.length
+      ? ('<p class="schedule-publish-debug-zero-summary"><strong>' +
+         zeroDates.length + ' of ' + dateList.length + ' day(s)</strong> ended with zero shifts in cache: ' +
+         zeroDates.map(escapeHtmlForDebug).join(', ') + '</p>')
+      : '<p class="schedule-publish-debug-zero-summary">Every day in the horizon has at least one cached shift.</p>';
+
+    body.innerHTML =
+      '<p class="schedule-publish-debug-range"><strong>Requested range:</strong> ' +
+        escapeHtmlForDebug(data.start_date) + ' → ' + escapeHtmlForDebug(data.end_date) +
+        ' (' + dateList.length + ' days)</p>' +
+      '<p><strong>Total shifts published:</strong> ' + (data.total_published || 0) + '</p>' +
+      zeroSummary +
+      '<table class="schedule-publish-debug-table">' +
+        '<thead><tr><th>Date</th><th>Deputy sync</th><th>Cache after sync</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    root.hidden = false;
+    // Auto-open the details so the admin sees the result without
+    // having to click the disclosure.
+    root.open = true;
+  }
+
+  function escapeHtmlForDebug(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  async function onPublishScheduleSubmit(ev) {
+    if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+    setPublishError("");
+    setPublishStatus("");
+    renderPublishDebug(null);
+
+    if (!window.firebase || typeof firebase.firestore !== "function") {
+      setPublishError("Firestore SDK isn't loaded. Hard-reload (Cmd+Shift+R).");
+      return;
+    }
+
+    const submitBtn = $("schedule-publish-submit");
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const horizon = readPublishHorizon();
+      const today   = pacificDateString(new Date());
+      const endDay  = addDaysPacific(today, horizon - 1);
+
+      // Build the full date list for the per-day debug output.
+      const allDates = [];
+      for (let i = 0; i < horizon; i++) allDates.push(addDaysPacific(today, i));
+      const syncPerDay = {};
+
+      // Step 1 (optional, default ON): server-side Deputy refresh for
+      // every day in the horizon. Without this, the published snapshot
+      // would reflect only today's shifts (the scheduled sync only
+      // covers today). See `refreshDeputyShiftsRangeV1` in functions/.
+      const syncFirstEl = $("schedule-publish-sync-first");
+      const syncFirst   = !syncFirstEl || syncFirstEl.checked !== false;
+      if (syncFirst) {
+        setPublishStatus(
+          "Syncing Deputy for " + today + " → " + endDay + " (" + horizon + " days) — this can take 20–60s…"
+        );
+        try {
+          const syncBody = await syncDeputyRangeBeforePublish(today, endDay);
+          const agg      = (syncBody && syncBody.aggregate) || {};
+          (syncBody && Array.isArray(syncBody.per_day) ? syncBody.per_day : []).forEach(function (d) {
+            if (d && d.sync_date) syncPerDay[d.sync_date] = d;
+          });
+          setPublishStatus(
+            "Deputy sync complete: " + (agg.upserted_count || 0) + " shifts upserted across " +
+            ((syncBody && syncBody.days) || horizon) + " day(s), " +
+            (agg.failed_days || 0) + " failed. Building snapshot…"
+          );
+        } catch (syncErr) {
+          // Surface but don't abort — admin can still publish whatever
+          // is currently in cache. Don't silently move on; record the
+          // failure so the debug panel makes it obvious.
+          allDates.forEach(function (d) {
+            syncPerDay[d] = { sync_date: d, ok: false, error: (syncErr && syncErr.message) || String(syncErr) };
+          });
+          setPublishStatus(
+            "Deputy sync failed (continuing with cached data): " +
+            (syncErr && syncErr.message || syncErr) + ". Building snapshot…"
+          );
+        }
+      } else {
+        setPublishStatus("Reading Deputy shifts " + today + " → " + endDay + "…");
+      }
+
+      // Single inequality on sync_date keeps us inside a single-field
+      // index. We filter the upper bound + status in memory.
+      const snap = await firebase.firestore()
+        .collection("deputy_shift_cache")
+        .where("sync_date", ">=", today)
+        .get();
+
+      const rawDocs = snap.docs.map(function (d) { return d.data() || {}; });
+      const horizonRaw = rawDocs.filter(function (raw) {
+        const sd = String(raw.sync_date || "");
+        if (!sd || sd > endDay) return false;
+        if ((raw.status || "scheduled") === "cancelled") return false;
+        return true;
+      });
+
+      // Build per-day cache counts for the debug panel.
+      const cachePerDay = {};
+      allDates.forEach(function (d) { cachePerDay[d] = 0; });
+      horizonRaw.forEach(function (raw) {
+        const d = String(raw.sync_date || "");
+        if (cachePerDay[d] == null) cachePerDay[d] = 0;
+        cachePerDay[d] += 1;
+      });
+
+      // Populate the customer-by-slug lookup so normalizeDeputyShift can
+      // apply the canonical display helper. One-shot read; cached in
+      // _publishCustomerBySlug for the duration of this publish call.
+      try {
+        const custSnap = await firebase.firestore().collection("customers").get();
+        const customerDocs = custSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        buildCustomerLookupForPublish(customerDocs);
+      } catch (_e) { buildCustomerLookupForPublish([]); }
+
+      let shifts = horizonRaw
+        .map(normalizeDeputyShift)
+        .filter(function (x) { return !!x; })
+        .sort(function (a, b) {
+          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          if (a.startMs !== b.startMs) return a.startMs - b.startMs;
+          return a.techName.localeCompare(b.techName);
+        });
+
+      if (shifts.length > PUBLISHED_SCHEDULE_MAX_SHIFTS) {
+        shifts = shifts.slice(0, PUBLISHED_SCHEDULE_MAX_SHIFTS);
+      }
+
+      const notesEl = $("schedule-publish-notes");
+      const notes   = (notesEl && notesEl.value || "").trim();
+      const u       = firebase.auth().currentUser;
+      const publishedBy = {
+        uid:         (u && u.uid)         || null,
+        email:       (u && u.email)       || null,
+        displayName: (u && u.displayName) || (u && u.email) || "admin"
+      };
+
+      setPublishStatus("Writing snapshot (" + shifts.length + " shifts)…");
+      await firebase.firestore().collection("published_team_schedule")
+        .doc(PUBLISHED_SCHEDULE_DOC_ID).set({
+          publishedAt:       firebase.firestore.FieldValue.serverTimestamp(),
+          publishedBy:       publishedBy,
+          startDate:         today,
+          endDate:           endDay,
+          viewRangeDays:     horizon,
+          deputySyncVersion: null,
+          shiftCount:        shifts.length,
+          shifts:            shifts,
+          notes:             notes || null,
+          active:            true
+        }, { merge: false });
+
+      // Clear notes; leave the form open so the admin sees the
+      // refreshed summary.
+      if (notesEl) notesEl.value = "";
+
+      if (shifts.length === 0) {
+        setPublishStatus(
+          "Published. 0 shifts in cache for " + today + " → " + endDay + " " +
+          "(" + horizon + " days). See the per-day breakdown below — if Deputy " +
+          "returned shifts but nothing landed in the cache, that's a sync issue. " +
+          "If both columns read 0, Deputy genuinely has no shifts in that range."
+        );
+      } else {
+        setPublishStatus(
+          "Published " + shifts.length + " shifts over " + horizon + " days " +
+          "(" + today + " → " + endDay + "). Team Hub will pick this up on next page load."
+        );
+      }
+
+      // Always render the debug breakdown — even on success — so
+      // admins can spot zero-shift dates and act on them.
+      renderPublishDebug({
+        start_date:      today,
+        end_date:        endDay,
+        dates:           allDates,
+        sync_per_day:    syncPerDay,
+        cache_per_day:   cachePerDay,
+        total_published: shifts.length
+      });
+      await loadPublishedSnapshot();
+    } catch (err) {
+      console.error("publishTeamSchedule failed", err);
+      const friendly = (err && err.code === "permission-denied")
+        ? "Permission denied. Confirm you're signed in as an admin and firestore.rules has the published_team_schedule + deputy_shift_cache blocks deployed."
+        : ("Publish failed: " + (err && (err.message || err.code)) || "unknown error");
+      setPublishError(friendly);
+      setPublishStatus("");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  /* ====================================================================
+     Primary "Sync next N days from Deputy" workflow.
+
+     Same pipeline as onPublishScheduleSubmit (Deputy range refresh →
+     read deputy_shift_cache → write published_team_schedule/current)
+     but driven by a single button with hardcoded sensible defaults
+     (21-day horizon, sync-first ON, no notes). The advanced publish
+     form below remains for fine-grained control.
+     ==================================================================== */
+  function setSyncStatus(text) {
+    const el = $("schedule-sync-status");
+    if (!el) return;
+    if (text) { el.textContent = text; el.hidden = false; }
+    else      { el.textContent = "";   el.hidden = true; }
+  }
+  function setSyncError(msg) {
+    const el = $("schedule-sync-error");
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.hidden = false; }
+    else     { el.textContent = "";  el.hidden = true; }
+  }
+  function setSyncSuccess(payload) {
+    const card = $("schedule-sync-success");
+    if (!card) return;
+    if (!payload) { card.hidden = true; return; }
+    const sh = $("schedule-sync-success-shifts");
+    const rn = $("schedule-sync-success-range");
+    const wh = $("schedule-sync-success-when");
+    if (sh) sh.textContent = String(payload.shiftCount) +
+                             (payload.shiftCount === 1 ? " shift" : " shifts");
+    if (rn) rn.textContent = formatRangeHuman(payload.startDate, payload.endDate);
+    if (wh) wh.textContent = formatSyncWhen(payload.publishedAtMs);
+    card.hidden = false;
+  }
+  function formatRangeHuman(startYmd, endYmd) {
+    function fmt(ymd) {
+      if (!ymd) return "";
+      try {
+        const d = new Date(ymd + "T12:00:00-07:00");
+        return new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles", month: "short", day: "numeric"
+        }).format(d);
+      } catch (_e) { return ymd; }
+    }
+    const s = fmt(startYmd);
+    const e = fmt(endYmd);
+    return s && e ? (s + " – " + e) : (s || e || "—");
+  }
+  function formatSyncWhen(ms) {
+    if (!ms) return "just now";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms));
+    } catch (_e) { return "just now"; }
+  }
+
+  async function onSyncFromDeputyClick() {
+    const SYNC_DAYS = 21;
+    const btn = $("schedule-sync-now-btn");
+    setSyncError("");
+    setSyncSuccess(null);
+
+    if (!window.firebase || typeof firebase.firestore !== "function") {
+      setSyncError("Firestore SDK isn't loaded. Hard-reload (Cmd+Shift+R).");
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.label = btn.textContent;
+      btn.textContent   = "Syncing…";
+    }
+    setSyncStatus("Pulling the next " + SYNC_DAYS + " days from Deputy — this can take 20–60 seconds.");
+
+    const today  = pacificDateString(new Date());
+    const endDay = addDaysPacific(today, SYNC_DAYS - 1);
+
+    // For the per-day breakdown panel (kept available under a disclosure
+    // for the office that wants to triage zero-shift days).
+    const allDates = [];
+    for (let i = 0; i < SYNC_DAYS; i++) allDates.push(addDaysPacific(today, i));
+    const syncPerDay = {};
+
+    try {
+      // 1. Refresh deputy_shift_cache for every day in the range.
+      let deputyOk = true;
+      try {
+        const syncBody = await syncDeputyRangeBeforePublish(today, endDay);
+        (syncBody && Array.isArray(syncBody.per_day) ? syncBody.per_day : []).forEach(function (d) {
+          if (d && d.sync_date) syncPerDay[d.sync_date] = d;
+        });
+      } catch (syncErr) {
+        deputyOk = false;
+        allDates.forEach(function (d) {
+          syncPerDay[d] = { sync_date: d, ok: false, error: (syncErr && syncErr.message) || String(syncErr) };
+        });
+        // Don't abort — we can still publish from whatever's already in
+        // the cache. Note it on the error banner so the office knows
+        // the data may not be fresh.
+        console.warn("[schedule-sync] Deputy refresh failed; publishing from cache", syncErr);
+      }
+
+      // 2. Read the post-refresh cache for the horizon.
+      setSyncStatus("Reading Deputy shifts and building snapshot…");
+      const snap = await firebase.firestore()
+        .collection("deputy_shift_cache")
+        .where("sync_date", ">=", today)
+        .get();
+      const rawDocs = snap.docs.map(function (d) { return d.data() || {}; });
+      const horizonRaw = rawDocs.filter(function (raw) {
+        const sd = String(raw.sync_date || "");
+        if (!sd || sd > endDay) return false;
+        if ((raw.status || "scheduled") === "cancelled") return false;
+        return true;
+      });
+      const cachePerDay = {};
+      allDates.forEach(function (d) { cachePerDay[d] = 0; });
+      horizonRaw.forEach(function (raw) {
+        const d = String(raw.sync_date || "");
+        if (cachePerDay[d] == null) cachePerDay[d] = 0;
+        cachePerDay[d] += 1;
+      });
+
+      // 3. Populate customer lookup so the helper applies inside
+      //    normalizeDeputyShift. One-shot per sync run.
+      try {
+        const custSnap = await firebase.firestore().collection("customers").get();
+        const customerDocs = custSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        buildCustomerLookupForPublish(customerDocs);
+      } catch (_e) { buildCustomerLookupForPublish([]); }
+
+      // 4. Normalize + sort.
+      let shifts = horizonRaw
+        .map(normalizeDeputyShift)
+        .filter(function (x) { return !!x; })
+        .sort(function (a, b) {
+          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          if (a.startMs !== b.startMs) return a.startMs - b.startMs;
+          return a.techName.localeCompare(b.techName);
+        });
+      if (shifts.length > PUBLISHED_SCHEDULE_MAX_SHIFTS) {
+        shifts = shifts.slice(0, PUBLISHED_SCHEDULE_MAX_SHIFTS);
+      }
+
+      // 4. Write the snapshot.
+      const u = firebase.auth().currentUser;
+      const publishedBy = {
+        uid:         (u && u.uid)         || null,
+        email:       (u && u.email)       || null,
+        displayName: (u && u.displayName) || (u && u.email) || "admin"
+      };
+      const nowMs = Date.now();
+      await firebase.firestore()
+        .collection("published_team_schedule")
+        .doc(PUBLISHED_SCHEDULE_DOC_ID)
+        .set({
+          publishedAt:       firebase.firestore.FieldValue.serverTimestamp(),
+          publishedBy:       publishedBy,
+          startDate:         today,
+          endDate:           endDay,
+          viewRangeDays:     SYNC_DAYS,
+          deputySyncVersion: null,
+          shiftCount:        shifts.length,
+          shifts:            shifts,
+          notes:             null,
+          source:            "deputy_sync",
+          active:            true
+        }, { merge: false });
+
+      // 5. Show success summary + render the per-day breakdown for
+      //    anyone who opens the disclosure.
+      setSyncStatus("");
+      setSyncSuccess({
+        shiftCount:    shifts.length,
+        startDate:     today,
+        endDate:       endDay,
+        publishedAtMs: nowMs
+      });
+      renderSyncDebug({
+        dates:           allDates,
+        sync_per_day:    syncPerDay,
+        cache_per_day:   cachePerDay,
+        total_published: shifts.length
+      });
+
+      // 6. Refresh the published-snapshot summary card so the existing
+      //    "current snapshot" panel reflects the new state too.
+      try { await loadPublishedSnapshot(); } catch (_e) {}
+
+      // 7. Tasteful celebration — schedule publish is a milestone moment.
+      try { if (window.PioneerCelebrate) window.PioneerCelebrate.fire({ intensity: "medium" }); } catch (_e) {}
+
+      // 8. Soft-warn if Deputy was unreachable but we published from cache.
+      if (!deputyOk) {
+        setSyncError(
+          "Deputy was unreachable, so we published the most recent cached shifts. " +
+          "Try Sync again in a few minutes if you suspect the schedule has changed."
+        );
+      }
+    } catch (err) {
+      console.error("[schedule-sync] failed", err);
+      // Friendly first; technical detail goes in the console for Nick.
+      const code    = err && err.code;
+      const message = err && err.message;
+      let friendly;
+      if (code === "permission-denied") {
+        friendly = "Access denied. You may need to sign out and back in as an admin.";
+      } else if (/Deputy|sync|429|HTTP/i.test(String(message || ""))) {
+        friendly = "We could not reach Deputy. Try again in a few minutes or ask Nick.";
+      } else {
+        friendly = "Schedule sync didn't complete. Try again in a few minutes or ask Nick.";
+      }
+      setSyncError(friendly);
+      setSyncStatus("");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.label || "Sync next 21 days from Deputy";
+      }
+    }
+  }
+
+  // Per-day breakdown rendered into the disclosure under the success card.
+  // Same shape as the advanced publish-form debug panel.
+  function renderSyncDebug(data) {
+    const root = $("schedule-sync-debug");
+    const body = $("schedule-sync-debug-body");
+    if (!root || !body) return;
+    if (!data) { root.hidden = true; body.innerHTML = ""; return; }
+    const dateList = data.dates || [];
+    const syncMap  = data.sync_per_day || {};
+    const cacheMap = data.cache_per_day || {};
+    const rows = dateList.map(function (d) {
+      const sync = syncMap[d] || null;
+      const c    = (typeof cacheMap[d] === "number") ? cacheMap[d] : 0;
+      const syncCell = sync
+        ? (sync.ok
+            ? ('Deputy: ' + (sync.upserted_count || 0) + ' upserted')
+            : ('<span class="schedule-publish-debug-fail">Deputy sync failed: ' + escapeHtmlForDebug(sync.error || 'unknown') + '</span>'))
+        : '<span class="schedule-publish-debug-muted">Deputy sync skipped</span>';
+      return '<tr><td>' + escapeHtmlForDebug(d) + '</td>' +
+             '<td>' + syncCell + '</td>' +
+             '<td>' + c + ' in cache</td></tr>';
+    }).join("");
+    body.innerHTML =
+      '<table class="schedule-publish-debug-table"><thead>' +
+        '<tr><th>Date</th><th>Deputy sync</th><th>Cache</th></tr>' +
+      '</thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="schedule-publish-debug-foot">Published ' + (data.total_published || 0) + ' shift(s) across ' + dateList.length + ' day(s).</p>';
+    root.hidden = false;
+  }
+
+  /* ====================================================================
+     Schedule Import V1 — paste/PDF → draft → publish
+     ====================================================================
+     Primary path while Deputy's future-day API is unreliable.
+     Pipeline:
+       1. Admin pastes text (or clicks "Extract from current PDF" — PDF.js
+          loaded lazily from CDN).
+       2. parseScheduleText() runs a line-based heuristic parser against
+          the cleaning_techs + customers caches. Each output shift gets
+          a `source: "pdf_import" | "manual"` stamp and a 0..1
+          confidence score.
+       3. Draft is rendered as an editable table; admin fixes
+          mismatches, adds/removes rows.
+       4. "Publish from draft" normalizes the rows into the same shape
+          `published_team_schedule/current` already uses (date, startMs,
+          endMs, techSlug, customerSlug, …) and overwrites the doc.
+          The existing Team Hub + /team-schedule renderers pick it up
+          without any further change.
+
+     Phase 2 TODO (mirror admin.html):
+       • improve parser heuristics with sample real-world PDFs
+       • sync direct from Deputy when range API is reliable
+       • detect changes week-to-week (diff vs previous draft)
+       • auto-highlight updated shifts in the editor
+       • OCR fallback for image-only PDFs
+       • per-tech color preview in the editor table */
+
+  const SCHEDULE_DRAFT_DOC_ID    = "draft";
+  const SCHEDULE_PARSER_VERSION  = "v1";
+  // Bumping the rev forces stale rendered rows to invalidate when the
+  // admin re-parses without leaving the page. The rev is used as the
+  // key prefix for row ids.
+  let scheduleDraftRev = 0;
+  let scheduleDraftRows = [];     // in-memory editable rows
+
+  function setImportStatus(text) {
+    const el = $("schedule-import-status");
+    if (el) el.textContent = text || "";
+  }
+  function setImportError(msg) {
+    const el = $("schedule-import-error");
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = msg; el.hidden = false;
+  }
+  function setDraftStatus(text) {
+    const el = $("schedule-draft-status");
+    if (el) el.textContent = text || "";
+  }
+  function setDraftError(msg) {
+    const el = $("schedule-draft-error");
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = msg; el.hidden = false;
+  }
+
+  /* ---------- PDF.js lazy loader ---------- */
+  let pdfJsLoading = null;
+  function loadPdfJsOnce() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfJsLoading) return pdfJsLoading;
+    pdfJsLoading = new Promise(function (resolve, reject) {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s.onload  = function () {
+        if (!window.pdfjsLib) { reject(new Error("PDF.js loaded but global missing")); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = function () { reject(new Error("PDF.js failed to load from CDN")); };
+      document.head.appendChild(s);
+    });
+    return pdfJsLoading;
+  }
+  async function extractPdfText(url) {
+    const pdfjs = await loadPdfJsOnce();
+    scheduleExtractLog("pdfjs loaded", { version: pdfjs && pdfjs.version });
+    const loadingTask = pdfjs.getDocument(url);
+    const pdf = await loadingTask.promise;
+    scheduleExtractLog("pdf opened", { numPages: pdf.numPages });
+    let lines = [];
+    let perPageCounts = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      // PDF.js gives us items with `str` + positional metadata. The
+      // positional data could be used to reconstruct columns, but the
+      // line-based parser works fine on a flat newline-joined dump
+      // for most Pioneer-style schedules.
+      const pageText = content.items.map(function (i) { return i.str; }).join("\n");
+      lines.push(pageText);
+      perPageCounts.push(pageText.length);
+    }
+    scheduleExtractLog("text extracted", { perPageCounts: perPageCounts });
+    return lines.join("\n\n");
+  }
+
+  // Always-on diagnostic prefix for the PDF extract flow. Pure client
+  // side — no Cloud Function involved — so the trace lives in the
+  // admin's own console. Failures bubble through here on every step.
+  function scheduleExtractLog(label, meta) {
+    try { console.info("[ScheduleExtract] " + label, meta || ""); }
+    catch (_e) {}
+  }
+  function scheduleExtractWarn(label, meta) {
+    try { console.warn("[ScheduleExtract] " + label, meta || ""); }
+    catch (_e) {}
+  }
+
+  // Pre-flight reachability check. Fired before PDF.js so we can give
+  // a specific error instead of the generic "Failed to fetch" the
+  // library throws when the URL can't be reached. Range: 0-1023 bytes
+  // is enough to confirm CORS + reachability without downloading the
+  // whole PDF; if the host doesn't support Range, that's also a clear
+  // signal we surface in the error path.
+  async function pdfUrlIsReachable(url) {
+    try {
+      const ctrl = (typeof AbortController === "function") ? new AbortController() : null;
+      const timeoutMs = 8000;
+      const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
+      const res = await fetch(url, {
+        method:  "GET",
+        mode:    "cors",
+        cache:   "no-store",
+        headers: { "Range": "bytes=0-1023" },
+        signal:  ctrl ? ctrl.signal : undefined
+      });
+      if (timer) clearTimeout(timer);
+      const ctype = res.headers.get("content-type") || "";
+      const status = res.status;
+      scheduleExtractLog("preflight result", {
+        status:        status,
+        ok:            res.ok,
+        content_type:  ctype || "(unset)",
+        accept_ranges: res.headers.get("accept-ranges") || "(unset)"
+      });
+      // 200 (full) or 206 (partial) both confirm reachability. Anything
+      // else is a hosting/storage problem we should report cleanly.
+      if (status !== 200 && status !== 206) {
+        return { ok: false, code: "bad_status", status: status, ctype: ctype };
+      }
+      return { ok: true, status: status, ctype: ctype };
+    } catch (err) {
+      const name = err && err.name;
+      const msg  = (err && err.message) || String(err);
+      scheduleExtractWarn("preflight failed", { name: name, message: msg });
+      if (name === "AbortError") {
+        return { ok: false, code: "timeout", message: msg };
+      }
+      return { ok: false, code: "network", message: msg };
+    }
+  }
+
+  /* ---------- Parser ---------- */
+  // Build lookup maps from the loaded admin caches. Used by the parser
+  // to match free-text "Bonnie" or "baker construction" to canonical
+  // cleaning_techs / customers docs.
+  function buildSchedulePeopleIndex() {
+    const techByKey = new Map();     // lowercased token → tech doc
+    const custByKey = new Map();     // lowercased token → customer doc
+    (techs || []).forEach(function (t) {
+      const name = String(t.display_name || t.name || "").trim();
+      if (!name) return;
+      techByKey.set(name.toLowerCase(), t);
+      // First-name key for casual schedule prose ("Bonnie", "April").
+      const first = name.split(/\s+/)[0];
+      if (first) techByKey.set(first.toLowerCase(), t);
+    });
+    (customers || []).forEach(function (c) {
+      const name = String(c.customer_name || c.name || c.display_name || "").trim();
+      if (!name) return;
+      custByKey.set(name.toLowerCase(), c);
+      // Each word ≥ 4 chars is a potential keyword match.
+      name.split(/\s+/).forEach(function (w) {
+        if (w.length >= 4) custByKey.set(w.toLowerCase(), c);
+      });
+    });
+    return { techByKey: techByKey, custByKey: custByKey };
+  }
+
+  function matchTechInLine(line, idx) {
+    const lower = line.toLowerCase();
+    let best = null;
+    let bestLen = 0;
+    idx.techByKey.forEach(function (tech, key) {
+      if (key.length < 2) return;
+      if (lower.indexOf(key) >= 0 && key.length > bestLen) {
+        best = tech;
+        bestLen = key.length;
+      }
+    });
+    return best;
+  }
+  function matchCustomerInLine(line, idx) {
+    const lower = line.toLowerCase();
+    let best = null;
+    let bestLen = 0;
+    idx.custByKey.forEach(function (cust, key) {
+      if (key.length < 4) return;
+      if (lower.indexOf(key) >= 0 && key.length > bestLen) {
+        best = cust;
+        bestLen = key.length;
+      }
+    });
+    return best;
+  }
+
+  // Parse a date-heading line, e.g. "Wednesday, May 20" / "5/20" /
+  // "5/20/2026" / "May 20, 2026". Returns YYYY-MM-DD or null.
+  const MONTH_MAP = {
+    jan: 1,  january: 1,
+    feb: 2,  february: 2,
+    mar: 3,  march: 3,
+    apr: 4,  april: 4,
+    may: 5,
+    jun: 6,  june: 6,
+    jul: 7,  july: 7,
+    aug: 8,  august: 8,
+    sep: 9,  september: 9, sept: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+  };
+  function tryParseDate(line, defaultYear) {
+    if (!line) return null;
+    const cleaned = line.replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
+    // "May 20" / "May 20 2026"
+    const mWord = cleaned.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?\b/);
+    if (mWord) {
+      const monthKey = mWord[1].toLowerCase();
+      const m = MONTH_MAP[monthKey];
+      if (m) {
+        const d = parseInt(mWord[2], 10);
+        let y = mWord[3] ? parseInt(mWord[3], 10) : defaultYear;
+        if (y < 100) y += 2000;
+        if (d >= 1 && d <= 31) {
+          return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+        }
+      }
+    }
+    // "5/20" or "5/20/2026" or "5/20/26"
+    const mSlash = cleaned.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+    if (mSlash) {
+      const m = parseInt(mSlash[1], 10);
+      const d = parseInt(mSlash[2], 10);
+      let y = mSlash[3] ? parseInt(mSlash[3], 10) : defaultYear;
+      if (y < 100) y += 2000;
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+      }
+    }
+    // ISO "2026-05-20"
+    const mIso = cleaned.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (mIso) return mIso[1] + "-" + mIso[2] + "-" + mIso[3];
+    return null;
+  }
+
+  // Returns { start24: "HH:MM", end24: "HH:MM" | null } or null.
+  function tryParseTimeRange(line) {
+    // Tolerant: 5, 5:00, 5am, 5:00am, with optional separator – - to ~
+    const re = /(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m?\.?)?\s*[-–—~to]+\s*(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m?\.?)?/i;
+    const m = line.match(re);
+    if (!m) {
+      // Try single-time fallback: "5:00am" with no range
+      const m1 = line.match(/(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m?\.?)/i);
+      if (!m1) return null;
+      const startStr = normalizeTime(m1[1], m1[2], m1[3], null);
+      return startStr ? { start24: startStr, end24: null } : null;
+    }
+    // Disambiguate: if only the END has am/pm, infer the start ampm
+    // from the end (common in schedules: "5-8:30am").
+    const startAm = m[3] || m[6] || null;
+    const endAm   = m[6] || m[3] || null;
+    const start24 = normalizeTime(m[1], m[2], startAm, "start");
+    const end24   = normalizeTime(m[4], m[5], endAm,   "end");
+    if (!start24) return null;
+    return { start24: start24, end24: end24 };
+  }
+  function normalizeTime(hh, mm, ampm, position) {
+    let h = parseInt(hh, 10);
+    if (isNaN(h) || h < 0 || h > 23) return null;
+    let m = mm ? parseInt(mm, 10) : 0;
+    if (isNaN(m) || m < 0 || m > 59) m = 0;
+    const ap = (ampm || "").toLowerCase().replace(/\./g, "")[0]; // "a"|"p"|""
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+    // No am/pm at all: leave as-is (assume 24h or admin will fix).
+    return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+  }
+
+  function buildLocalTimestamp(yyyymmdd, hhmm) {
+    if (!yyyymmdd || !hhmm) return null;
+    // Pacific time anchor — uses a fixed -07:00/-08:00 offset by way
+    // of `Date.UTC` plus offset calc. To keep this simple + correct
+    // across DST we anchor at the wall-clock representation in
+    // Pacific via Intl and then re-parse. For pilot precision, we
+    // accept that DST boundary days might land off by an hour; the
+    // admin can correct in the editor if needed.
+    const [h, m] = hhmm.split(":").map(function (s) { return parseInt(s, 10); });
+    const [yy, mm, dd] = yyyymmdd.split("-").map(function (s) { return parseInt(s, 10); });
+    // Build a "noon-of-day-in-UTC" anchor, then compute Pacific
+    // offset for that date, then subtract that offset.
+    const noonUTC = Date.UTC(yy, mm - 1, dd, 12, 0, 0);
+    const pacificParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles", timeZoneName: "shortOffset"
+    }).formatToParts(new Date(noonUTC));
+    const offsetPart = pacificParts.find(function (p) { return p.type === "timeZoneName"; });
+    // offsetPart.value like "GMT-7" or "GMT-8"
+    let offsetHours = -8;
+    if (offsetPart && offsetPart.value) {
+      const m2 = offsetPart.value.match(/GMT([+-]\d{1,2})/);
+      if (m2) offsetHours = parseInt(m2[1], 10);
+    }
+    return Date.UTC(yy, mm - 1, dd, h - offsetHours, m, 0);
+  }
+
+  function format12HourTime(hhmm) {
+    if (!hhmm) return "";
+    const [h, m] = hhmm.split(":").map(function (s) { return parseInt(s, 10); });
+    if (isNaN(h)) return "";
+    const ap = h >= 12 ? "pm" : "am";
+    const h12 = h % 12 || 12;
+    return h12 + ":" + String(m || 0).padStart(2, "0") + ap;
+  }
+  function weekdayLabel(yyyymmdd) {
+    if (!yyyymmdd) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", weekday: "long"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) { return ""; }
+  }
+
+  function parseScheduleText(text, opts) {
+    opts = opts || {};
+    const defaultYear = Number(opts.defaultYear) || new Date().getFullYear();
+    const idx = buildSchedulePeopleIndex();
+    const rawLines = String(text || "").split(/\r?\n/);
+    const lines = rawLines.map(function (l) { return l.replace(/\s+/g, " ").trim(); });
+
+    const out = [];
+    let currentDate = null;
+    lines.forEach(function (line) {
+      if (!line) return;
+
+      // 1. Is this a date heading? If the line has a date but NO time
+      //    range, treat it as a heading.
+      const dateGuess = tryParseDate(line, defaultYear);
+      const timeGuess = tryParseTimeRange(line);
+      if (dateGuess && !timeGuess) {
+        currentDate = dateGuess;
+        return;
+      }
+
+      // 2. Otherwise look for a shift row. Must have a time range.
+      if (!timeGuess) return;
+
+      // 3. Date precedence: inline date on this row wins; otherwise
+      //    use the current heading date.
+      const shiftDate = dateGuess || currentDate;
+      if (!shiftDate) return; // can't place this row in time
+
+      // 4. Match tech + customer.
+      const tech     = matchTechInLine(line, idx);
+      const customer = matchCustomerInLine(line, idx);
+
+      // 5. Extract leftover text as notes. Strip the matched tokens
+      //    + the time range + any date so the admin sees just the
+      //    "extra" parts.
+      let notes = line;
+      // Strip time range
+      notes = notes.replace(/(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m?\.?)?\s*[-–—~to]+\s*(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m?\.?)?/i, "");
+      if (dateGuess) {
+        notes = notes
+          .replace(/\b([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?\b/, "")
+          .replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/, "")
+          .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/, "");
+      }
+      if (tech) {
+        const techName = String(tech.display_name || tech.name || "").trim();
+        if (techName) {
+          notes = notes.replace(new RegExp(escapeRegex(techName), "ig"), "");
+          const first = techName.split(/\s+/)[0];
+          if (first) notes = notes.replace(new RegExp("\\b" + escapeRegex(first) + "\\b", "ig"), "");
+        }
+      }
+      if (customer) {
+        const custName = String(customer.customer_name || customer.name || "").trim();
+        if (custName) notes = notes.replace(new RegExp(escapeRegex(custName), "ig"), "");
+      }
+      notes = notes.replace(/[-–—|·,:]+/g, " ").replace(/\s+/g, " ").trim();
+      // Drop trivial residue
+      if (notes.length <= 1) notes = "";
+
+      // Confidence scoring — 0.2 per matched component.
+      let conf = 0.2;                  // base (we have a time)
+      if (shiftDate) conf += 0.2;
+      if (tech)      conf += 0.3;
+      if (customer)  conf += 0.2;
+      if (timeGuess.end24) conf += 0.1;
+      if (conf > 1) conf = 1;
+
+      out.push({
+        date:         shiftDate,
+        startTime24:  timeGuess.start24,
+        endTime24:    timeGuess.end24 || "",
+        techSlug:     tech     ? (tech.tech_slug || tech.id || "")     : "",
+        techName:     tech     ? (tech.display_name || tech.name || "") : "",
+        customerSlug: customer ? (customer.customer_slug || customer.id || "") : "",
+        customerName: customer ? (customer.customer_name || customer.name || "") : "",
+        notes:        notes,
+        source:       opts.source || "manual",
+        confidence:   conf
+      });
+    });
+
+    // Sort by date then time so the editor reads in calendar order.
+    out.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return (a.startTime24 || "").localeCompare(b.startTime24 || "");
+    });
+    return out;
+  }
+  function escapeRegex(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /* ---------- Draft editor ---------- */
+  function renderDraftEditor(rows, meta) {
+    scheduleDraftRev += 1;
+    scheduleDraftRows = (rows || []).slice();
+    const block = $("schedule-draft-block");
+    const body  = $("schedule-draft-rows");
+    const metaEl = $("schedule-draft-meta");
+    if (!block || !body) return;
+
+    if (!scheduleDraftRows.length) {
+      block.hidden = true;
+      body.innerHTML = "";
+      return;
+    }
+    block.hidden = false;
+    if (metaEl) {
+      const dates = scheduleDraftRows.map(function (r) { return r.date; }).filter(Boolean).sort();
+      const minD = dates[0] || "—";
+      const maxD = dates[dates.length - 1] || "—";
+      const techSet = new Set(scheduleDraftRows.map(function (r) { return r.techSlug || r.techName || ""; }).filter(Boolean));
+      const src = (meta && meta.source) || (scheduleDraftRows[0] && scheduleDraftRows[0].source) || "manual";
+      metaEl.textContent = scheduleDraftRows.length + " shifts · " + techSet.size + " techs · " +
+        minD + " → " + maxD + " · source: " + src;
+    }
+
+    const techOptions = (techs || [])
+      .filter(function (t) { return (t.display_name || t.name); })
+      .sort(function (a, b) {
+        return String(a.display_name || a.name).localeCompare(String(b.display_name || b.name));
+      })
+      .map(function (t) {
+        const slug = t.tech_slug || t.id;
+        const name = t.display_name || t.name;
+        return '<option value="' + escapeAttr(slug) + '">' + escapeHtmlForDebug(name) + '</option>';
+      }).join("");
+    const custOptions = (customers || [])
+      .filter(function (c) { return (c.customer_name || c.name); })
+      .sort(function (a, b) {
+        return String(a.customer_name || a.name).localeCompare(String(b.customer_name || b.name));
+      })
+      .map(function (c) {
+        const slug = c.customer_slug || c.id;
+        const name = c.customer_name || c.name;
+        return '<option value="' + escapeAttr(slug) + '">' + escapeHtmlForDebug(name) + '</option>';
+      }).join("");
+
+    body.innerHTML = scheduleDraftRows.map(function (r, idx) {
+      const conf  = typeof r.confidence === "number" ? r.confidence : 1;
+      const isLow = conf < 0.7;
+      const confText = Math.round(conf * 100) + "%";
+      return (
+        '<tr class="schedule-draft-row' + (isLow ? ' is-low-conf' : '') + '" data-idx="' + idx + '">' +
+          '<td><input type="date"  data-field="date"        value="' + escapeAttr(r.date || "") + '" /></td>' +
+          '<td>' +
+            '<select data-field="techSlug">' +
+              '<option value="">— pick tech —</option>' +
+              techOptions +
+            '</select>' +
+          '</td>' +
+          '<td>' +
+            '<select data-field="customerSlug">' +
+              '<option value="">— pick customer —</option>' +
+              custOptions +
+            '</select>' +
+          '</td>' +
+          '<td><input type="time"  data-field="startTime24" value="' + escapeAttr(r.startTime24 || "") + '" /></td>' +
+          '<td><input type="time"  data-field="endTime24"   value="' + escapeAttr(r.endTime24   || "") + '" /></td>' +
+          '<td><input type="text"  data-field="notes"       value="' + escapeAttr(r.notes || "") + '" placeholder="optional notes" /></td>' +
+          '<td><span class="schedule-draft-conf' + (isLow ? ' is-low' : '') + '">' + confText + '</span></td>' +
+          '<td><button type="button" class="schedule-draft-del" data-act="delete">✕</button></td>' +
+        '</tr>'
+      );
+    }).join("");
+
+    // Set initial select values (innerHTML doesn't apply selected for
+    // option matching by attribute alone after we built the option
+    // list dynamically — set programmatically for reliability).
+    Array.prototype.forEach.call(body.querySelectorAll("tr"), function (tr) {
+      const idx = parseInt(tr.dataset.idx, 10);
+      const r = scheduleDraftRows[idx];
+      const techSel = tr.querySelector("select[data-field='techSlug']");
+      const custSel = tr.querySelector("select[data-field='customerSlug']");
+      if (techSel) techSel.value = r.techSlug || "";
+      if (custSel) custSel.value = r.customerSlug || "";
+    });
+
+    setDraftStatus("");
+    setDraftError("");
+  }
+
+  function escapeAttr(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  }
+
+  // Read the table back into the in-memory rows array. Called before
+  // save + publish so any pending edits are captured.
+  function syncDraftRowsFromTable() {
+    const body = $("schedule-draft-rows");
+    if (!body) return;
+    Array.prototype.forEach.call(body.querySelectorAll("tr"), function (tr) {
+      const idx = parseInt(tr.dataset.idx, 10);
+      if (isNaN(idx)) return;
+      const row = scheduleDraftRows[idx];
+      if (!row) return;
+      Array.prototype.forEach.call(tr.querySelectorAll("[data-field]"), function (el) {
+        const field = el.dataset.field;
+        row[field] = el.value;
+      });
+      // Refresh derived fields from the picked slug.
+      if (row.techSlug) {
+        const t = (techs || []).find(function (x) { return (x.tech_slug || x.id) === row.techSlug; });
+        if (t) row.techName = t.display_name || t.name || row.techName || "";
+      } else {
+        row.techName = "";
+      }
+      if (row.customerSlug) {
+        const c = (customers || []).find(function (x) { return (x.customer_slug || x.id) === row.customerSlug; });
+        if (c) row.customerName = c.customer_name || c.name || row.customerName || "";
+      } else {
+        row.customerName = "";
+      }
+    });
+  }
+
+  function addEmptyDraftRow() {
+    syncDraftRowsFromTable();
+    const today = pacificDateString(new Date());
+    scheduleDraftRows.push({
+      date:         today,
+      startTime24:  "",
+      endTime24:    "",
+      techSlug:     "",
+      techName:     "",
+      customerSlug: "",
+      customerName: "",
+      notes:        "",
+      source:       "manual",
+      confidence:   1
+    });
+    renderDraftEditor(scheduleDraftRows);
+  }
+  function deleteDraftRow(idx) {
+    syncDraftRowsFromTable();
+    if (idx < 0 || idx >= scheduleDraftRows.length) return;
+    scheduleDraftRows.splice(idx, 1);
+    renderDraftEditor(scheduleDraftRows);
+  }
+
+  /* ---------- Firestore load/save ---------- */
+  async function loadScheduleDraft() {
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore()
+        .collection("published_team_schedule").doc(SCHEDULE_DRAFT_DOC_ID).get();
+      if (!snap.exists) {
+        // Hide the editor when no draft exists.
+        scheduleDraftRows = [];
+        renderDraftEditor([]);
+        return;
+      }
+      const data = snap.data() || {};
+      // Normalize loaded shifts into the editor shape. The doc stores
+      // canonical shift records (startMs/endMs); the editor uses
+      // startTime24/endTime24, which we derive from the canonical
+      // record when present, or fall back to the parser-shaped fields.
+      const rows = (data.shifts || []).map(function (s) {
+        return {
+          date:         s.date || "",
+          startTime24:  s.startTime24 || timeFromMs(s.startMs, s.date) || "",
+          endTime24:    s.endTime24   || timeFromMs(s.endMs,   s.date) || "",
+          techSlug:     s.techSlug     || "",
+          techName:     s.techName     || "",
+          customerSlug: s.customerSlug || "",
+          customerName: s.customerName || "",
+          notes:        s.notes        || "",
+          source:       s.source       || "manual",
+          confidence:   typeof s.confidence === "number" ? s.confidence : 1
+        };
+      });
+      renderDraftEditor(rows, { source: data.source });
+    } catch (err) {
+      console.error("loadScheduleDraft failed", err);
+    }
+  }
+  function timeFromMs(ms, yyyymmdd) {
+    if (!ms || !yyyymmdd) return "";
+    try {
+      // Format in Pacific
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Los_Angeles",
+        hour12: false, hour: "2-digit", minute: "2-digit"
+      }).formatToParts(new Date(ms));
+      const h = parts.find(function (p) { return p.type === "hour"; });
+      const m = parts.find(function (p) { return p.type === "minute"; });
+      if (!h || !m) return "";
+      return h.value + ":" + m.value;
+    } catch (_e) { return ""; }
+  }
+
+  async function saveScheduleDraft() {
+    syncDraftRowsFromTable();
+    setDraftError("");
+    if (!scheduleDraftRows.length) {
+      setDraftError("Nothing to save — the draft is empty.");
+      return;
+    }
+    const u = firebase.auth().currentUser;
+    try {
+      setDraftStatus("Saving draft…");
+      await firebase.firestore().collection("published_team_schedule")
+        .doc(SCHEDULE_DRAFT_DOC_ID).set({
+          parsedAt:      firebase.firestore.FieldValue.serverTimestamp(),
+          parsedBy: {
+            uid:         (u && u.uid) || null,
+            email:       (u && u.email) || null,
+            displayName: (u && u.displayName) || (u && u.email) || "admin"
+          },
+          parserVersion: SCHEDULE_PARSER_VERSION,
+          source:        "draft",
+          shiftCount:    scheduleDraftRows.length,
+          shifts:        scheduleDraftRows.slice(),
+          active:        false
+        }, { merge: false });
+      setDraftStatus("Draft saved. Reload won't lose your edits.");
+    } catch (err) {
+      console.error("saveScheduleDraft failed", err);
+      setDraftError("Save failed: " + (err && (err.message || err.code) || "unknown"));
+      setDraftStatus("");
+    }
+  }
+
+  async function discardScheduleDraft() {
+    if (!confirm("Discard the current draft? This cannot be undone.")) return;
+    setDraftError("");
+    try {
+      setDraftStatus("Discarding draft…");
+      // Overwrite with a tombstone (cheaper than delete since rules
+      // already allow update). active:false + empty shifts means "no
+      // draft" from the editor's perspective.
+      await firebase.firestore().collection("published_team_schedule")
+        .doc(SCHEDULE_DRAFT_DOC_ID).set({
+          discardedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+          shiftCount:   0,
+          shifts:       [],
+          active:       false,
+          source:       "discarded"
+        }, { merge: false });
+      scheduleDraftRows = [];
+      renderDraftEditor([]);
+      setDraftStatus("Draft discarded.");
+    } catch (err) {
+      console.error("discardScheduleDraft failed", err);
+      setDraftError("Discard failed: " + (err && (err.message || err.code) || "unknown"));
+      setDraftStatus("");
+    }
+  }
+
+  async function publishFromDraft() {
+    syncDraftRowsFromTable();
+    setDraftError("");
+    if (!scheduleDraftRows.length) {
+      setDraftError("Nothing to publish — the draft is empty.");
+      return;
+    }
+    // Build canonical shift records matching the schema Team Hub +
+    // /team-schedule already render.
+    const shifts = [];
+    const problems = [];
+    scheduleDraftRows.forEach(function (r, i) {
+      if (!r.date)        { problems.push("Row " + (i + 1) + ": missing date"); return; }
+      if (!r.startTime24) { problems.push("Row " + (i + 1) + ": missing start time"); return; }
+      const startMs = buildLocalTimestamp(r.date, r.startTime24);
+      const endMs   = r.endTime24 ? buildLocalTimestamp(r.date, r.endTime24) : null;
+      shifts.push({
+        date:           r.date,
+        weekday:        weekdayLabel(r.date),
+        startTime:      format12HourTime(r.startTime24),
+        endTime:        r.endTime24 ? format12HourTime(r.endTime24) : "",
+        startMs:        startMs,
+        endMs:          endMs,
+        techName:       r.techName     || "",
+        techSlug:       r.techSlug     || "",
+        customerName:   r.customerName || "",
+        customerSlug:   r.customerSlug || "",
+        status:         "scheduled",
+        deputyShiftUrl: "",
+        notes:          r.notes        || "",
+        source:         r.source       || "manual",
+        confidence:     typeof r.confidence === "number" ? r.confidence : 1
+      });
+    });
+    if (problems.length) {
+      setDraftError("Can't publish — " + problems.length + " row(s) need attention:\n" + problems.join("\n"));
+      return;
+    }
+    shifts.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return (a.startMs || 0) - (b.startMs || 0);
+    });
+
+    const dates    = shifts.map(function (s) { return s.date; }).sort();
+    const startDate = dates[0];
+    const endDate   = dates[dates.length - 1];
+    const days = Math.round((dateToMillisLocal(endDate) - dateToMillisLocal(startDate)) / 86400000) + 1;
+    const viewRangeDays = days <= 7 ? 7 : (days <= 14 ? 14 : 21);
+
+    const u = firebase.auth().currentUser;
+    try {
+      setDraftStatus("Publishing " + shifts.length + " shifts to Team Hub…");
+      await firebase.firestore().collection("published_team_schedule")
+        .doc(PUBLISHED_SCHEDULE_DOC_ID).set({
+          publishedAt:       firebase.firestore.FieldValue.serverTimestamp(),
+          publishedBy: {
+            uid:         (u && u.uid) || null,
+            email:       (u && u.email) || null,
+            displayName: (u && u.displayName) || (u && u.email) || "admin"
+          },
+          startDate:         startDate,
+          endDate:           endDate,
+          viewRangeDays:     viewRangeDays,
+          deputySyncVersion: null,
+          shiftCount:        shifts.length,
+          shifts:            shifts,
+          notes:             null,
+          source:            "import",
+          active:            true
+        }, { merge: false });
+      setDraftStatus("Published " + shifts.length + " shifts (" + startDate + " → " + endDate + "). Team Hub will pick this up on next page load.");
+      // Small celebration — schedule publish is a real milestone moment
+      // for the office. Confetti only, no sound (admin pages stay quiet).
+      try {
+        if (window.PioneerCelebrate) window.PioneerCelebrate.fire({ intensity: "medium" });
+      } catch (_e) {}
+      // Refresh the published-snapshot summary so the admin sees the
+      // up-to-date counts in the section below.
+      loadPublishedSnapshot();
+    } catch (err) {
+      console.error("publishFromDraft failed", err);
+      setDraftError("Publish failed: " + (err && (err.message || err.code) || "unknown"));
+      setDraftStatus("");
+    }
+  }
+  function dateToMillisLocal(yyyymmdd) {
+    return new Date(yyyymmdd + "T12:00:00Z").getTime();
+  }
+
+  // Reflect "is there a PDF I can extract from?" onto the button so
+  // admins see the actionability at a glance. Disabled state keeps the
+  // button visible (cheaper than hiding it entirely — admins know the
+  // feature exists) but unclickable, with a hovertip explaining why.
+  function syncExtractButtonState(scheduleDoc) {
+    const btn = document.getElementById("schedule-import-from-pdf");
+    if (!btn) return;
+    const hasPdf = !!(scheduleDoc && scheduleDoc.active !== false && scheduleDoc.downloadUrl);
+    btn.disabled = !hasPdf;
+    if (hasPdf) {
+      btn.title = "Pull the schedule out of the currently uploaded PDF";
+    } else {
+      btn.title = "Upload the Deputy schedule PDF below first.";
+    }
+  }
+
+  /* ---------- Import controls wiring ---------- */
+  async function onExtractFromPdfClick() {
+    setImportError("");
+    setImportStatus("Reading current PDF backup…");
+    scheduleExtractLog("click", { now: new Date().toISOString() });
+    if (!window.firebase || typeof firebase.firestore !== "function") {
+      setImportError("Firestore SDK isn't loaded.");
+      return;
+    }
+    let pdfDoc;
+    try {
+      pdfDoc = await firebase.firestore().collection("team_schedule").doc("current").get();
+    } catch (err) {
+      setImportError("Couldn't read team_schedule/current: " + (err && err.message || err));
+      setImportStatus("");
+      return;
+    }
+    const data = pdfDoc.exists ? pdfDoc.data() : null;
+    if (!data || !data.downloadUrl) {
+      setImportError("No schedule PDF uploaded yet. Upload the Deputy PDF in the section below, then click Extract again.");
+      setImportStatus("");
+      return;
+    }
+    // Pre-flight reachability — turns the generic "Failed to fetch"
+    // PDF.js throws into a specific, actionable error.
+    scheduleExtractLog("pdfUrl", { url: data.downloadUrl });
+    setImportStatus("Checking PDF reachability…");
+    const reach = await pdfUrlIsReachable(data.downloadUrl);
+    if (!reach.ok) {
+      let msg;
+      if (reach.code === "timeout") {
+        msg = "The schedule PDF didn't load in time. Try Extract again in a minute. " +
+              "If it keeps failing, ask Nick to help import this schedule manually.";
+      } else if (reach.code === "bad_status") {
+        msg = "The schedule PDF storage URL returned HTTP " + reach.status + ". " +
+              "The file may have been moved or replaced. Re-upload the PDF below, " +
+              "or ask Nick to help import this schedule manually.";
+      } else {
+        msg = "We couldn't reach the schedule PDF (" + (reach.message || "network error") + "). " +
+              "An ad blocker or browser extension may be blocking it. " +
+              "Try a different browser, or ask Nick to help import this schedule manually.";
+      }
+      setImportError(msg);
+      setImportStatus("");
+      return;
+    }
+
+    try {
+      setImportStatus("Reading the schedule from the PDF…");
+      scheduleExtractLog("extract start", { url: data.downloadUrl });
+      const text = await extractPdfText(data.downloadUrl);
+      const ta = $("schedule-import-text");
+      const len = (text || "").trim().length;
+      scheduleExtractLog("extract done", { length: len });
+      if (!len) {
+        // Reachability OK, library OK, but no text — almost always means
+        // the PDF is image-only (scanned/exported as raster). Be specific.
+        if (ta) ta.value = "";
+        setImportError(
+          "We couldn't read any text from that PDF — it looks image-only (scanned or rasterized). " +
+          "Re-export from Deputy as a text PDF and try again, or ask Nick to help import this schedule manually."
+        );
+        setImportStatus("");
+        return;
+      }
+      if (ta) ta.value = text;
+      // Auto-convert the extracted text into a draft so the office never
+      // has to know "Convert" exists. The Advanced panel still has the
+      // button for hand-edited imports.
+      setImportStatus("Building the schedule draft…");
+      try {
+        await onParseImportClick();
+        setImportStatus("Schedule draft ready below. Review it, then publish to Team Hub.");
+      } catch (parseErr) {
+        scheduleExtractWarn("auto-parse failed", { error: parseErr && parseErr.message });
+        // Surface the textarea + Advanced panel so the office can adjust.
+        const adv = document.getElementById("schedule-import-advanced");
+        if (adv) adv.open = true;
+        setImportError(
+          "We read the PDF but couldn't turn it into a schedule draft automatically. " +
+          "Open the Advanced panel below to review the text, or ask Nick to help import this schedule manually."
+        );
+        setImportStatus("");
+      }
+    } catch (err) {
+      const msg  = (err && err.message) || String(err);
+      const name = err && err.name;
+      scheduleExtractWarn("extract failed", { name: name, message: msg });
+      // Categorize the failure. All branches end with the "Nick can help"
+      // escape hatch so the admin never feels stranded.
+      let friendly;
+      if (/Failed to fetch|NetworkError|network/i.test(msg)) {
+        friendly = "The PDF download was interrupted (" + msg + "). " +
+                   "Try Extract again. If it keeps failing, ask Nick to help import this schedule manually.";
+      } else if (/Invalid PDF|UnknownErrorException|InvalidPDFException/i.test(msg)) {
+        friendly = "That PDF couldn't be opened — the file looks corrupt or isn't a valid PDF. " +
+                   "Re-upload the PDF below, or ask Nick to help import this schedule manually.";
+      } else if (/Password|encrypted/i.test(msg)) {
+        friendly = "That PDF is password-protected. Save an unprotected copy and re-upload, " +
+                   "or ask Nick to help import this schedule manually.";
+      } else if (/PDF\.js/i.test(msg)) {
+        friendly = "PDF extraction is temporarily unavailable. " +
+                   "Try again in a minute. If it keeps failing, ask Nick to help import this schedule manually.";
+      } else {
+        friendly = "PDF extraction didn't work (" + msg + "). " +
+                   "Nick can help import this schedule manually.";
+      }
+      setImportError(friendly);
+      setImportStatus("");
+    }
+  }
+
+  function onClearImportClick() {
+    const ta = $("schedule-import-text");
+    if (ta) ta.value = "";
+    setImportStatus("");
+    setImportError("");
+  }
+
+  async function onParseImportClick() {
+    setImportError("");
+    const ta = $("schedule-import-text");
+    const text = ta ? ta.value : "";
+    if (!text || text.trim().length < 8) {
+      setImportError("Paste some schedule text first (or extract from the current PDF).");
+      return;
+    }
+    const yearEl = $("schedule-import-year");
+    const defaultYear = (yearEl && Number(yearEl.value)) || new Date().getFullYear();
+    setImportStatus("Parsing…");
+    let rows;
+    try {
+      rows = parseScheduleText(text, { defaultYear: defaultYear, source: "pdf_import" });
+    } catch (err) {
+      setImportError("Parser threw an error: " + (err && err.message || err));
+      setImportStatus("");
+      return;
+    }
+    if (!rows.length) {
+      setImportError(
+        "No shifts found in the pasted text. Check: each row needs a recognizable time " +
+        "range (e.g., 5:00-8:30) and at least one tech / customer hint."
+      );
+      setImportStatus("");
+      return;
+    }
+    const lowConf = rows.filter(function (r) { return r.confidence < 0.7; }).length;
+    setImportStatus(
+      "Parsed " + rows.length + " shifts. " +
+      (lowConf ? lowConf + " row(s) low-confidence — review highlighted rows below." : "All rows look good — review below.")
+    );
+    renderDraftEditor(rows, { source: "pdf_import" });
+  }
+
+  function wireScheduleImportControls() {
+    const yearEl = $("schedule-import-year");
+    if (yearEl && !yearEl.value) yearEl.value = String(new Date().getFullYear());
+
+    const ext = $("schedule-import-from-pdf");
+    if (ext) ext.addEventListener("click", onExtractFromPdfClick);
+    const clr = $("schedule-import-clear");
+    if (clr) clr.addEventListener("click", onClearImportClick);
+    const parseBtn = $("schedule-import-parse");
+    if (parseBtn) parseBtn.addEventListener("click", onParseImportClick);
+
+    const addRow = $("schedule-draft-add-row");
+    if (addRow) addRow.addEventListener("click", addEmptyDraftRow);
+    const saveBtn = $("schedule-draft-save");
+    if (saveBtn) saveBtn.addEventListener("click", saveScheduleDraft);
+    const discardBtn = $("schedule-draft-discard");
+    if (discardBtn) discardBtn.addEventListener("click", discardScheduleDraft);
+    const publishBtn = $("schedule-draft-publish");
+    if (publishBtn) publishBtn.addEventListener("click", publishFromDraft);
+
+    // Delegated click for per-row delete buttons.
+    const body = $("schedule-draft-rows");
+    if (body) {
+      body.addEventListener("click", function (ev) {
+        const btn = ev.target.closest && ev.target.closest("[data-act='delete']");
+        if (!btn) return;
+        const tr = btn.closest("tr");
+        if (!tr) return;
+        const idx = parseInt(tr.dataset.idx, 10);
+        if (!isNaN(idx)) deleteDraftRow(idx);
+      });
+    }
+  }
+
+  function wireScheduleControls() {
+    const form = $("schedule-upload-form");
+    if (form) form.addEventListener("submit", onScheduleUploadSubmit);
+    const publishForm = $("schedule-publish-form");
+    if (publishForm) publishForm.addEventListener("submit", onPublishScheduleSubmit);
+    const syncNowBtn = $("schedule-sync-now-btn");
+    if (syncNowBtn) syncNowBtn.addEventListener("click", onSyncFromDeputyClick);
+    const refresh = $("schedule-refresh");
+    if (refresh) refresh.addEventListener("click", function () {
+      loadTeamSchedule();
+      loadPublishedSnapshot();
+    });
+    // Clear inline upload errors as soon as the user picks a new file.
+    const fileInput = $("schedule-upload-file");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        setScheduleUploadError("");
+        setScheduleUploadStatus("");
+      });
+    }
+  }
+
+  /* ====================================================================
+     Attendance — Time-Off + Call-Outs admin panel
+     ====================================================================
+     One panel, four sub-tabs (Pending TO / Approved TO / Call-Outs /
+     Calendar). Reads from `time_off_requests` + `call_outs`. Admin
+     can approve/deny/acknowledge/resolve inline.
+
+     Phase 2 TODO:
+       • Cloud Function on create → email Kirby (replaces the in-app
+         notification doc)
+       • Notify tech back when status flips
+       • Blackout windows + max-people-off-per-day rule
+       • Conflict overlay on the Team Schedule calendar */
+  let attendanceTimeOff   = [];   // array of {id, ...data}
+  let attendanceCallOuts  = [];
+  let attendanceActiveSub = "pending";
+
+  function setAttendanceState(state) {
+    const map = {
+      loading: "attendance-loading",
+      error:   "attendance-error"
+    };
+    Object.keys(map).forEach(function (k) {
+      const el = $(map[k]);
+      if (el) el.hidden = (k !== state);
+    });
+  }
+
+  function attendanceTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts === "number") return ts;
+    return 0;
+  }
+  function attendanceFmtTs(ts) {
+    const ms = attendanceTsToMs(ts);
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short"
+      }).format(new Date(ms));
+    } catch (_e) { return new Date(ms).toLocaleString(); }
+  }
+  function attendanceEscapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function attendanceTypeLabel(v) {
+    switch (v) {
+      case "vacation":     return "Vacation";
+      case "personal_day": return "Personal day";
+      case "appointment":  return "Appointment";
+      case "family_event": return "Family event";
+      case "other":        return "Other";
+      default:             return v || "—";
+    }
+  }
+  function attendanceReasonLabel(v) {
+    switch (v) {
+      case "sick":           return "Sick";
+      case "emergency":      return "Emergency";
+      case "transportation": return "Transportation issue";
+      case "family":         return "Family issue";
+      case "running_late":   return "Running late";
+      case "other":          return "Other";
+      default:               return v || "—";
+    }
+  }
+  function attendanceChip(s) {
+    const map = {
+      new: "New", acknowledged: "Acknowledged", resolved: "Resolved",
+      pending: "Pending", approved: "Approved", denied: "Denied"
+    };
+    const label = map[s] || s || "—";
+    return '<span class="attendance-chip attendance-chip--' + (s || "pending") + '">' + label + '</span>';
+  }
+  function attendanceRangeLabel(start, end) {
+    if (!start) return "—";
+    if (!end || end === start) return start;
+    return start + " → " + end;
+  }
+
+  async function loadAttendance() {
+    setAttendanceState("loading");
+    try {
+      const db = firebase.firestore();
+      const [toSnap, coSnap] = await Promise.all([
+        db.collection("time_off_requests").orderBy("submittedAt", "desc").limit(200).get(),
+        db.collection("call_outs").orderBy("submittedAt", "desc").limit(200).get()
+      ]);
+      attendanceTimeOff = toSnap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data() || {});
+      });
+      attendanceCallOuts = coSnap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data() || {});
+      });
+      setAttendanceState(null);
+      renderAttendance();
+      updateAttendanceBadges();
+    } catch (err) {
+      console.error("[attendance] load failed", err);
+      const el = $("attendance-error");
+      if (el) {
+        el.textContent =
+          err && err.code === "permission-denied"
+            ? "Permission denied. Confirm firestore.rules has the call_outs + time_off_requests blocks deployed."
+            : ("Couldn't load attendance: " + (err && (err.message || err.code)) || "unknown");
+      }
+      setAttendanceState("error");
+    }
+  }
+
+  function updateAttendanceBadges() {
+    const pending = attendanceTimeOff.filter(function (x) { return x.status === "pending"; }).length;
+    const newCallOuts = attendanceCallOuts.filter(function (x) { return x.status === "new"; }).length;
+    const total = pending + newCallOuts;
+
+    const tabBadge = $("attendance-tab-badge");
+    if (tabBadge) {
+      if (total > 0) {
+        tabBadge.textContent = total > 99 ? "99+" : String(total);
+        tabBadge.hidden = false;
+      } else {
+        tabBadge.hidden = true;
+      }
+    }
+    const pendingChip = $("attn-pending-count");
+    if (pendingChip) {
+      if (pending > 0) { pendingChip.textContent = String(pending); pendingChip.hidden = false; }
+      else             { pendingChip.hidden = true; }
+    }
+    const calloutsChip = $("attn-callouts-count");
+    if (calloutsChip) {
+      if (newCallOuts > 0) { calloutsChip.textContent = String(newCallOuts); calloutsChip.hidden = false; }
+      else                 { calloutsChip.hidden = true; }
+    }
+  }
+
+  function renderAttendance() {
+    renderAttendancePending();
+    renderAttendanceApproved();
+    renderAttendanceCallouts();
+    renderAttendanceCalendar();
+  }
+
+  function renderAttendancePending() {
+    const list  = $("attn-pending-list");
+    const empty = $("attn-pending-empty");
+    if (!list || !empty) return;
+    const items = attendanceTimeOff.filter(function (x) { return x.status === "pending"; });
+    if (!items.length) {
+      list.innerHTML = ""; empty.hidden = false; return;
+    }
+    empty.hidden = true;
+    list.innerHTML = items.map(function (x) {
+      return (
+        '<article class="attn-card" data-attn-id="' + attendanceEscapeHtml(x.id) + '" data-attn-kind="to">' +
+          '<header class="attn-card-head">' +
+            '<div class="attn-card-who">' +
+              '<div class="attn-card-name">' + attendanceEscapeHtml(x.techName || x.techEmail || "Tech") + '</div>' +
+              '<div class="attn-card-sub">' + attendanceEscapeHtml(attendanceTypeLabel(x.requestType)) +
+                ' · ' + attendanceEscapeHtml(attendanceRangeLabel(x.startDate, x.endDate)) + '</div>' +
+            '</div>' +
+            attendanceChip(x.status) +
+          '</header>' +
+          (x.note
+            ? '<p class="attn-card-note"><strong>Tech note:</strong> ' + attendanceEscapeHtml(x.note) + '</p>'
+            : '') +
+          '<div class="attn-card-meta">Submitted ' + attendanceFmtTs(x.submittedAt) + '</div>' +
+          '<div class="attn-card-actions">' +
+            '<input type="text" class="attn-mgr-note" placeholder="Manager note (optional)" maxlength="280" />' +
+            '<button type="button" class="attn-btn attn-btn-deny"    data-act="deny">Deny</button>' +
+            '<button type="button" class="attn-btn attn-btn-approve" data-act="approve">Approve</button>' +
+          '</div>' +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  function renderAttendanceApproved() {
+    const list  = $("attn-approved-list");
+    const empty = $("attn-approved-empty");
+    if (!list || !empty) return;
+    const items = attendanceTimeOff.filter(function (x) {
+      return x.status === "approved" || x.status === "denied";
+    });
+    if (!items.length) {
+      list.innerHTML = ""; empty.hidden = false; return;
+    }
+    empty.hidden = true;
+    list.innerHTML = items.map(function (x) {
+      return (
+        '<article class="attn-card attn-card--review" data-attn-id="' + attendanceEscapeHtml(x.id) + '" data-attn-kind="to">' +
+          '<header class="attn-card-head">' +
+            '<div class="attn-card-who">' +
+              '<div class="attn-card-name">' + attendanceEscapeHtml(x.techName || x.techEmail || "Tech") + '</div>' +
+              '<div class="attn-card-sub">' + attendanceEscapeHtml(attendanceTypeLabel(x.requestType)) +
+                ' · ' + attendanceEscapeHtml(attendanceRangeLabel(x.startDate, x.endDate)) + '</div>' +
+            '</div>' +
+            attendanceChip(x.status) +
+          '</header>' +
+          (x.managerNote
+            ? '<p class="attn-card-note"><strong>Manager:</strong> ' + attendanceEscapeHtml(x.managerNote) + '</p>'
+            : '') +
+          '<div class="attn-card-meta">Reviewed ' + attendanceFmtTs(x.reviewedAt) +
+            (x.reviewedBy ? ' by ' + attendanceEscapeHtml(x.reviewedBy.displayName || x.reviewedBy.email || "admin") : '') +
+          '</div>' +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  function renderAttendanceCallouts() {
+    const list  = $("attn-callouts-list");
+    const empty = $("attn-callouts-empty");
+    if (!list || !empty) return;
+    const items = attendanceCallOuts;
+    if (!items.length) {
+      list.innerHTML = ""; empty.hidden = false; return;
+    }
+    empty.hidden = true;
+    list.innerHTML = items.map(function (x) {
+      return (
+        '<article class="attn-card" data-attn-id="' + attendanceEscapeHtml(x.id) + '" data-attn-kind="co">' +
+          '<header class="attn-card-head">' +
+            '<div class="attn-card-who">' +
+              '<div class="attn-card-name">' + attendanceEscapeHtml(x.techName || x.techEmail || "Tech") + '</div>' +
+              '<div class="attn-card-sub">' + attendanceEscapeHtml(attendanceReasonLabel(x.reason)) +
+                ' · ' + attendanceEscapeHtml(x.date || "—") +
+                (x.shiftCustomer ? ' · ' + attendanceEscapeHtml(x.shiftCustomer) : '') + '</div>' +
+            '</div>' +
+            attendanceChip(x.status) +
+          '</header>' +
+          (x.note
+            ? '<p class="attn-card-note"><strong>Tech note:</strong> ' + attendanceEscapeHtml(x.note) + '</p>'
+            : '') +
+          (x.coverageNote
+            ? '<p class="attn-card-note"><strong>Coverage:</strong> ' + attendanceEscapeHtml(x.coverageNote) + '</p>'
+            : '') +
+          '<div class="attn-card-meta">Submitted ' + attendanceFmtTs(x.submittedAt) + '</div>' +
+          (x.status !== "resolved"
+            ? '<div class="attn-card-actions">' +
+                '<input type="text" class="attn-coverage-note" placeholder="Coverage note (optional)" maxlength="280" />' +
+                (x.status === "new"
+                  ? '<button type="button" class="attn-btn" data-act="ack">Acknowledge</button>'
+                  : '') +
+                '<button type="button" class="attn-btn attn-btn-approve" data-act="resolve">Mark resolved</button>' +
+              '</div>'
+            : '') +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  // Calendar heatmap — flat grid of upcoming dates (today to today+60),
+  // each cell colored by the count of (approved + pending) time-off
+  // requests covering it. Names listed inline so Kirby sees who.
+  function renderAttendanceCalendar() {
+    try { console.info("[AttendanceCalendar] rendering"); } catch (_e) {}
+    const root = $("attn-calendar");
+    if (!root) {
+      try { console.warn("[AttendanceCalendar] target #attn-calendar not found"); } catch (_e) {}
+      return;
+    }
+    try { console.info("[AttendanceCalendar] target found", { node: root.tagName }); } catch (_e) {}
+
+    let today, dates;
+    try {
+      today = pacificDateString(new Date());
+      const horizonDays = 60;
+      dates = [];
+      for (let i = 0; i < horizonDays; i++) dates.push(addDaysPacific(today, i));
+    } catch (err) {
+      try { console.error("[AttendanceCalendar] date helpers failed", err); } catch (_e) {}
+      // Fall back to a bare 60-day UTC range so the grid still renders.
+      const startMs = Date.now();
+      today = new Date(startMs).toISOString().slice(0, 10);
+      dates = [];
+      for (let i = 0; i < 60; i++) {
+        dates.push(new Date(startMs + i * 86400000).toISOString().slice(0, 10));
+      }
+    }
+
+    // Build date → list of { name, status }
+    const byDate = new Map();
+    dates.forEach(function (d) { byDate.set(d, []); });
+    try { console.info("[AttendanceCalendar] entries loaded", {
+      requests: attendanceTimeOff.length, dates: dates.length
+    }); } catch (_e) {}
+    attendanceTimeOff.forEach(function (x) {
+      if (x.status !== "approved" && x.status !== "pending") return;
+      if (!x.startDate) return;
+      const endDate = x.endDate || x.startDate;
+      // Walk every day in the request range that falls inside our horizon.
+      let cur = x.startDate;
+      let safety = 0;
+      while (cur <= endDate && safety < 120) {
+        if (byDate.has(cur)) {
+          byDate.get(cur).push({
+            name: x.techName || x.techEmail || "Tech",
+            status: x.status
+          });
+        }
+        try {
+          cur = addDaysPacific(cur, 1);
+        } catch (_e) {
+          // Defensive: a malformed startDate could throw. Bail this row.
+          break;
+        }
+        safety += 1;
+      }
+    });
+
+    const cellsHtml = dates.map(function (d) {
+      const entries = byDate.get(d) || [];
+      const count = entries.length;
+      let level = "none";
+      if      (count >= 3) level = "red";
+      else if (count === 2) level = "orange";
+      else if (count === 1) level = "yellow";
+
+      const isToday = (d === today);
+      const wkday = (function () {
+        try {
+          return new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/Los_Angeles", weekday: "short"
+          }).format(new Date(d + "T12:00:00Z"));
+        } catch (_e) { return ""; }
+      })();
+      const dayLabel = (function () {
+        try {
+          return new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/Los_Angeles", month: "short", day: "numeric"
+          }).format(new Date(d + "T12:00:00Z"));
+        } catch (_e) { return d; }
+      })();
+      const namesHtml = entries.length
+        ? '<ul class="attn-cal-names">' +
+            entries.map(function (e) {
+              return '<li class="attn-cal-name attn-cal-name--' + e.status + '">' +
+                attendanceEscapeHtml(e.name) +
+                (e.status === "pending" ? ' <em>(pending)</em>' : '') +
+                '</li>';
+            }).join("") +
+          '</ul>'
+        : '';
+      // Critical hint on red cells — operational visibility, not a
+      // hard block. Admins still approve/deny on their own judgment.
+      const criticalHint = (level === "red")
+        ? '<p class="attn-cal-critical">3+ people already off — additional requests may be difficult to approve.</p>'
+        : '';
+      const tooltipParts = [];
+      if (count > 0) {
+        tooltipParts.push(count + (count === 1 ? " person" : " people") + " requested off");
+        entries.forEach(function (e) {
+          tooltipParts.push("· " + e.name + (e.status === "pending" ? " (pending)" : ""));
+        });
+      } else {
+        tooltipParts.push("No requests off");
+      }
+      const tooltip = tooltipParts.join("\n");
+      return (
+        '<div class="attn-cal-cell attn-cal-cell--' + level +
+          (isToday ? ' is-today' : '') + '"' +
+          ' title="' + attendanceEscapeHtml(tooltip) + '">' +
+          '<div class="attn-cal-head">' +
+            '<span class="attn-cal-wkday">' + attendanceEscapeHtml(wkday) + '</span>' +
+            '<span class="attn-cal-date">' + attendanceEscapeHtml(dayLabel) + '</span>' +
+            (count > 0 ? '<span class="attn-cal-count">' + count + '</span>' : '') +
+          '</div>' +
+          namesHtml +
+          criticalHint +
+        '</div>'
+      );
+    }).join("");
+
+    // Atomic write — replace innerHTML in one operation so a half-
+    // rendered grid never flickers in. The renderer is idempotent;
+    // calling it on every sub-tab activation is fine.
+    root.innerHTML = cellsHtml;
+    try { console.info("[AttendanceCalendar] rendered cells count", {
+      cells: dates.length, requests_used: attendanceTimeOff.length
+    }); } catch (_e) {}
+  }
+
+  function setAttendanceSubTab(name) {
+    attendanceActiveSub = name;
+    document.querySelectorAll(".attendance-subtab").forEach(function (b) {
+      const active = (b.dataset.attnTab === name);
+      b.classList.toggle("is-active", active);
+      b.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    document.querySelectorAll(".attendance-subpanel").forEach(function (p) {
+      const active = (p.dataset.attnPanel === name);
+      p.hidden = !active;
+      p.classList.toggle("is-active", active);
+    });
+    // Re-render the activated panel so a stale grid (or one rendered
+    // while the panel was hidden) never persists.
+    try {
+      if (name === "calendar")        renderAttendanceCalendar();
+      else if (name === "pending")    renderAttendancePending();
+      else if (name === "approved")   renderAttendanceApproved();
+      else if (name === "callouts")   renderAttendanceCallouts();
+      else if (name === "openshifts") loadOpenShifts();
+    } catch (err) {
+      try { console.error("[AttendanceCalendar] sub-tab re-render failed", { name: name, error: err && err.message }); } catch (_e) {}
+    }
+  }
+
+  /* ====================================================================
+     Open Shifts (Rockstar Coverage) — admin CRUD
+     ====================================================================
+     Lives inside the Attendance panel as a 5th sub-tab. Admins create
+     open_shift_requests when a call-out leaves a shift uncovered;
+     techs accept via /open-shifts.html (rule-enforced atomic claim);
+     admin "Confirm coverage" flips status to "confirmed" AND creates
+     a rockstar_bonuses doc in a single Firestore batch.
+
+     Phase 2 TODO:
+       • Trigger function on confirm → email tech "$25 Rockstar bonus
+         confirmed"
+       • Auto-cancel + Kirby alert when an open shift remains
+         unclaimed past shiftDate */
+  let openShiftsState = [];
+
+  async function loadOpenShifts() {
+    const list  = $("attn-os-list");
+    const empty = $("attn-os-empty");
+    if (!list || !empty) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore()
+        .collection("open_shift_requests")
+        .where("status", "in", ["open", "accepted"])
+        .orderBy("shiftDate", "asc")
+        .limit(100).get();
+      openShiftsState = snap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data() || {});
+      });
+      const openCount = openShiftsState.filter(function (x) { return x.status === "open"; }).length;
+      const badge = $("attn-openshifts-count");
+      if (badge) {
+        if (openCount > 0) { badge.textContent = String(openCount); badge.hidden = false; }
+        else               { badge.hidden = true; }
+      }
+      renderOpenShifts();
+    } catch (err) {
+      console.error("[openshifts] load failed", err);
+      list.innerHTML =
+        '<div class="admin-status admin-error">Couldn\'t load open shifts: ' +
+        attendanceEscapeHtml((err && err.message) || "unknown") + '</div>';
+    }
+  }
+
+  function renderOpenShifts() {
+    const list  = $("attn-os-list");
+    const empty = $("attn-os-empty");
+    if (!list || !empty) return;
+    if (!openShiftsState.length) {
+      list.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    list.innerHTML = openShiftsState.map(function (x) {
+      const dateLabel = (function () {
+        if (!x.shiftDate) return "—";
+        try {
+          return new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/Los_Angeles",
+            weekday: "short", month: "short", day: "numeric"
+          }).format(new Date(x.shiftDate + "T12:00:00Z"));
+        } catch (_e) { return x.shiftDate; }
+      })();
+      const statusChip = x.status === "accepted"
+        ? '<span class="attn-os-chip is-accepted">Accepted</span>'
+        : '<span class="attn-os-chip is-open">Open</span>';
+
+      let actions = "";
+      if (x.status === "open") {
+        actions =
+          '<button type="button" class="attn-btn attn-btn-deny" data-act="cancel">Cancel</button>';
+      } else if (x.status === "accepted") {
+        actions =
+          '<button type="button" class="attn-btn attn-btn-deny"    data-act="cancel">Cancel</button>' +
+          '<button type="button" class="attn-btn attn-btn-approve" data-act="confirm">Confirm coverage</button>';
+      }
+
+      return (
+        '<article class="attn-os-card" data-os-id="' + attendanceEscapeHtml(x.id) + '">' +
+          '<header class="attn-os-card-head">' +
+            '<div>' +
+              '<div class="attn-os-card-title">' + attendanceEscapeHtml(x.customerName || "Customer") + '</div>' +
+              '<div class="attn-os-card-meta">' + attendanceEscapeHtml(dateLabel) +
+                (x.shiftTime ? ' · ' + attendanceEscapeHtml(x.shiftTime) : '') +
+                '</div>' +
+            '</div>' +
+            statusChip +
+          '</header>' +
+          (x.notes ? '<p class="attn-os-card-notes">' + attendanceEscapeHtml(x.notes) + '</p>' : '') +
+          (x.acceptedByTechName
+            ? '<p class="attn-os-card-accepted"><strong>Accepted by:</strong> ' +
+                attendanceEscapeHtml(x.acceptedByTechName) +
+                ' · <span class="attn-os-bonus-pill">$25 Rockstar bonus pending confirmation</span></p>'
+            : '') +
+          '<div class="attn-os-card-actions">' + actions + '</div>' +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  async function createOpenShift(payload) {
+    const u = firebase.auth().currentUser;
+    const openedBy = u
+      ? { uid: u.uid, email: u.email || null, displayName: u.displayName || u.email || "admin" }
+      : null;
+    await firebase.firestore().collection("open_shift_requests").add({
+      source:               "admin",
+      originalShiftId:      null,
+      customerName:         payload.customerName,
+      customerSlug:         payload.customerSlug || null,
+      shiftDate:            payload.shiftDate,
+      shiftTime:            payload.shiftTime || null,
+      notes:                payload.notes || null,
+      openedBy:             openedBy,
+      openedAt:             firebase.firestore.FieldValue.serverTimestamp(),
+      status:               "open",
+      acceptedByTechUid:    null,
+      acceptedByTechId:     null,
+      acceptedByTechName:   null,
+      acceptedAt:           null,
+      confirmedBy:          null,
+      confirmedAt:          null,
+      rockstarBonusAmount:  25,
+      rockstarBonusStatus:  "pending"
+    });
+  }
+
+  async function cancelOpenShift(id) {
+    const u = firebase.auth().currentUser;
+    const actor = u
+      ? { uid: u.uid, email: u.email || null, displayName: u.displayName || u.email || "admin" }
+      : null;
+    await firebase.firestore().collection("open_shift_requests").doc(id).update({
+      status:      "cancelled",
+      confirmedBy: actor,
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  // Confirm coverage = mark the open shift confirmed AND create the
+  // matching rockstar_bonuses doc. Wrapped in a Firestore batch so
+  // both writes succeed together (or neither does).
+  async function confirmOpenShiftCoverage(id) {
+    const item = openShiftsState.find(function (x) { return x.id === id; });
+    if (!item) throw new Error("Open shift not found in local state");
+    if (item.status !== "accepted") throw new Error("Shift must be accepted before confirming");
+
+    const u = firebase.auth().currentUser;
+    const actor = u
+      ? { uid: u.uid, email: u.email || null, displayName: u.displayName || u.email || "admin" }
+      : null;
+
+    const db    = firebase.firestore();
+    const batch = db.batch();
+    const osRef = db.collection("open_shift_requests").doc(id);
+    const rbRef = db.collection("rockstar_bonuses").doc();
+
+    const monthKey = (function () {
+      try {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit"
+        }).format(new Date()).slice(0, 7);
+      } catch (_e) { return new Date().toISOString().slice(0, 7); }
+    })();
+
+    batch.update(osRef, {
+      status:              "confirmed",
+      confirmedBy:         actor,
+      confirmedAt:         firebase.firestore.FieldValue.serverTimestamp(),
+      rockstarBonusStatus: "pending"
+    });
+    batch.set(rbRef, {
+      techId:             item.acceptedByTechId || "",
+      techName:           item.acceptedByTechName || "",
+      techUid:            item.acceptedByTechUid || "",
+      sourceOpenShiftId:  id,
+      amount:             25,
+      earnedAt:           firebase.firestore.FieldValue.serverTimestamp(),
+      monthKey:           monthKey,
+      status:             "pending",
+      confirmedBy:        actor
+    });
+    await batch.commit();
+  }
+
+  function wireOpenShiftsControls() {
+    const newBtn  = $("attn-os-new-btn");
+    const form    = $("attn-os-form");
+    const cancel  = $("attn-os-form-cancel");
+    if (newBtn && form) {
+      newBtn.addEventListener("click", function () {
+        form.hidden = false;
+        const dateEl = $("attn-os-shift-date");
+        if (dateEl && !dateEl.value) dateEl.value = pacificDateString(new Date());
+        const nameEl = $("attn-os-customer-name");
+        if (nameEl) nameEl.focus();
+      });
+    }
+    if (cancel && form) {
+      cancel.addEventListener("click", function () {
+        form.hidden = true;
+        const status = $("attn-os-form-status");
+        if (status) status.textContent = "";
+      });
+    }
+    if (form) {
+      form.addEventListener("submit", async function (ev) {
+        ev.preventDefault();
+        const status = $("attn-os-form-status");
+        const submitBtn = $("attn-os-form-submit");
+        if (submitBtn) submitBtn.disabled = true;
+        const payload = {
+          customerName: ($("attn-os-customer-name") && $("attn-os-customer-name").value || "").trim(),
+          customerSlug: ($("attn-os-customer-slug") && $("attn-os-customer-slug").value || "").trim(),
+          shiftDate:    ($("attn-os-shift-date")    && $("attn-os-shift-date").value    || "").trim(),
+          shiftTime:    ($("attn-os-shift-time")    && $("attn-os-shift-time").value    || "").trim(),
+          notes:        ($("attn-os-notes")         && $("attn-os-notes").value         || "").trim()
+        };
+        if (!payload.customerName || !payload.shiftDate) {
+          if (status) status.textContent = "Customer + shift date are required.";
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
+        try {
+          if (status) status.textContent = "Creating…";
+          await createOpenShift(payload);
+          if (status) status.textContent = "Open shift created.";
+          // Reset + hide form
+          form.reset();
+          form.hidden = true;
+          if ($("attn-os-shift-date")) $("attn-os-shift-date").value = pacificDateString(new Date());
+          loadOpenShifts();
+        } catch (err) {
+          console.error("[openshifts] create failed", err);
+          if (status) status.textContent =
+            "Create failed: " + ((err && (err.message || err.code)) || "unknown");
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    }
+    // Delegated action clicks on cards.
+    document.addEventListener("click", function (ev) {
+      const btn = ev.target.closest && ev.target.closest(".attn-os-card .attn-btn[data-act]");
+      if (!btn) return;
+      const card = btn.closest("[data-os-id]");
+      if (!card) return;
+      const id  = card.dataset.osId;
+      const act = btn.dataset.act;
+      btn.disabled = true;
+      const done = function () { btn.disabled = false; loadOpenShifts(); };
+      const fail = function (err) {
+        console.error("[openshifts] action failed", err);
+        alert((err && (err.message || err.code)) || "Action failed");
+        btn.disabled = false;
+      };
+      if      (act === "cancel")  cancelOpenShift(id).then(done).catch(fail);
+      else if (act === "confirm") confirmOpenShiftCoverage(id).then(done).catch(fail);
+    });
+  }
+
+  async function updateTimeOffStatus(id, newStatus, managerNote) {
+    const u = firebase.auth().currentUser;
+    const reviewedBy = u
+      ? { uid: u.uid, email: u.email || null, displayName: u.displayName || u.email || "admin" }
+      : null;
+    await firebase.firestore().collection("time_off_requests").doc(id).update({
+      status:      newStatus,
+      reviewedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+      reviewedBy:  reviewedBy,
+      managerNote: managerNote || null
+    });
+  }
+  async function updateCallOutStatus(id, newStatus, coverageNote) {
+    const u = firebase.auth().currentUser;
+    const actor = u
+      ? { uid: u.uid, email: u.email || null, displayName: u.displayName || u.email || "admin" }
+      : null;
+    const patch = { coverageNote: coverageNote || null };
+    if (newStatus === "acknowledged") {
+      patch.status         = "acknowledged";
+      patch.acknowledgedAt = firebase.firestore.FieldValue.serverTimestamp();
+      patch.acknowledgedBy = actor;
+    } else if (newStatus === "resolved") {
+      patch.status     = "resolved";
+      patch.resolvedAt = firebase.firestore.FieldValue.serverTimestamp();
+      patch.resolvedBy = actor;
+    }
+    await firebase.firestore().collection("call_outs").doc(id).update(patch);
+  }
+
+  function wireAttendanceControls() {
+    // Sub-tab switching.
+    document.querySelectorAll(".attendance-subtab").forEach(function (b) {
+      b.addEventListener("click", function () {
+        const n = b.dataset.attnTab;
+        if (n) setAttendanceSubTab(n);
+      });
+    });
+    // Refresh button.
+    const refresh = $("attendance-refresh");
+    if (refresh) refresh.addEventListener("click", function () { loadAttendance(); });
+
+    // Delegated action clicks on attn-card buttons.
+    document.addEventListener("click", function (ev) {
+      const btn = ev.target.closest && ev.target.closest(".attn-btn[data-act]");
+      if (!btn) return;
+      const card = btn.closest("[data-attn-id]");
+      if (!card) return;
+      const id   = card.dataset.attnId;
+      const kind = card.dataset.attnKind;
+      const act  = btn.dataset.act;
+      btn.disabled = true;
+
+      if (kind === "to") {
+        const noteEl = card.querySelector(".attn-mgr-note");
+        const note   = (noteEl && noteEl.value || "").trim();
+        const newStatus = (act === "approve") ? "approved" : "denied";
+        updateTimeOffStatus(id, newStatus, note)
+          .then(loadAttendance)
+          .catch(function (err) {
+            console.error("[attendance] time-off update failed", err);
+            alert("Update failed: " + (err && err.message || err));
+            btn.disabled = false;
+          });
+      } else if (kind === "co") {
+        const noteEl = card.querySelector(".attn-coverage-note");
+        const note   = (noteEl && noteEl.value || "").trim();
+        const newStatus = (act === "ack") ? "acknowledged"
+                        : (act === "resolve") ? "resolved" : null;
+        if (!newStatus) { btn.disabled = false; return; }
+        updateCallOutStatus(id, newStatus, note)
+          .then(loadAttendance)
+          .catch(function (err) {
+            console.error("[attendance] call-out update failed", err);
+            alert("Update failed: " + (err && err.message || err));
+            btn.disabled = false;
+          });
+      }
+    });
+  }
+
+  /* ====================================================================
+     Tech Health — operational support dashboard (admin-only)
+     ====================================================================
+     NOT surveillance. NOT a public ranking. The intent is to surface
+     early signals so admins can check in with a tech who might need
+     support — and to celebrate techs who are reliably showing up +
+     helping the team.
+
+     Last-30-day window over existing PioneerOps signals:
+       Positive: DCRs submitted, open-shift pickups, Rockstar bonuses,
+                 5-star inspections
+       Watch:    call-outs, over-budget DCRs, open inspection
+                 follow-ups
+
+     Status thresholds (documented inline so the rationale is visible
+     when an admin clicks "Why?"):
+       needs-support : ≥ 4 call-outs in last 30d
+       watch         : ≥ 2 call-outs OR ≥ 2 over-budget DCRs
+       stable        : default
+
+     Phase 2 TODO:
+       • midnight cron: incomplete shifts (Deputy ended, no DCR)
+       • complaint/compliment linkage via dcrId
+       • customer continuity score
+       • trend deltas vs prior 30 days
+       • "support check-in" workflow with manager notes */
+
+  const TECH_HEALTH_WINDOW_DAYS = 30;
+
+  let techHealthState  = [];      // computed per-tech metrics
+  let techHealthFilter = "all";
+
+  function techHealthMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds  === "number")   return ts.seconds * 1000;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? 0 : t; }
+    return 0;
+  }
+
+  function techHealthSetState(state, msg) {
+    const ids = { loading: "tech-health-loading", error: "tech-health-error", empty: "tech-health-empty" };
+    Object.keys(ids).forEach(function (k) {
+      const el = $(ids[k]);
+      if (el) el.hidden = (k !== state);
+    });
+    if (state === "error" && msg) {
+      const el = $("tech-health-error");
+      if (el) el.textContent = msg;
+    }
+  }
+
+  async function loadTechHealth() {
+    techHealthSetState("loading");
+    try {
+      const db = firebase.firestore();
+      const sinceMs = Date.now() - TECH_HEALTH_WINDOW_DAYS * 86400000;
+      const sinceTs = firebase.firestore.Timestamp.fromMillis(sinceMs);
+
+      // Parallel queries. Each is capped so a runaway collection
+      // can't blow up the dashboard.
+      const [coSnap, osSnap, rbSnap, inspSnap] = await Promise.all([
+        db.collection("call_outs")
+          .where("submittedAt", ">=", sinceTs)
+          .limit(500).get()
+          .catch(function (err) { console.warn("[tech-health] call_outs read failed", err); return { docs: [] }; }),
+        db.collection("open_shift_requests")
+          .where("status", "==", "confirmed")
+          .where("confirmedAt", ">=", sinceTs)
+          .limit(300).get()
+          .catch(function (err) { console.warn("[tech-health] open_shift_requests read failed", err); return { docs: [] }; }),
+        db.collection("rockstar_bonuses")
+          .where("earnedAt", ">=", sinceTs)
+          .limit(300).get()
+          .catch(function (err) { console.warn("[tech-health] rockstar_bonuses read failed", err); return { docs: [] }; }),
+        db.collection("inspections")
+          .where("inspected_at", ">=", sinceTs)
+          .limit(500).get()
+          .catch(function (err) { console.warn("[tech-health] inspections read failed", err); return { docs: [] }; })
+      ]);
+
+      // Bucket each signal by techSlug. Some signals expose techId
+      // (call_outs, rockstar_bonuses, open_shift_requests) — those
+      // all use the cleaning_techs slug as the ID. inspections use
+      // credited_cleaning_tech_slug. DCRs come from the in-memory
+      // `dcrs` cache.
+      function bucket(snap, getKey, cb) {
+        const m = new Map();
+        (snap.docs || []).forEach(function (d) {
+          const data = d.data ? (d.data() || {}) : {};
+          const key  = getKey(data);
+          if (!key) return;
+          if (!m.has(key)) m.set(key, { count: 0, fiveStar: 0 });
+          m.get(key).count += 1;
+          if (typeof cb === "function") cb(data, m.get(key));
+        });
+        return m;
+      }
+      const callOutsByTech    = bucket(coSnap,   function (d) { return d.techId; });
+      const pickupsByTech     = bucket(osSnap,   function (d) { return d.acceptedByTechId; });
+      const bonusesByTech     = bucket(rbSnap,   function (d) { return d.techId; });
+      const inspectionsByTech = bucket(inspSnap, function (d) { return d.credited_cleaning_tech_slug || d.credited_tech_slug; }, function (d, b) {
+        const score = Number(d.overall_score);
+        if (!isNaN(score) && score >= 4.8) b.fiveStar += 1;
+      });
+
+      // DCRs from cache. Production over-budget signal is
+      // `d.timeBudget.withinBudget === false` (set by app.js when the
+      // tech reports the shift went over budget). Legacy field
+      // variants are checked as fallbacks for any prior-schema docs.
+      const dcrsByTech = new Map();
+      (Array.isArray(dcrs) ? dcrs : []).forEach(function (d) {
+        const ts = techHealthMs(d.submittedAt || d.submitted_at || d.createdAt);
+        if (!ts || ts < sinceMs) return;
+        const slug = d.tech_slug || d.techSlug || "";
+        if (!slug) return;
+        if (!dcrsByTech.has(slug)) dcrsByTech.set(slug, { count: 0, overBudget: 0 });
+        const b = dcrsByTech.get(slug);
+        b.count += 1;
+        // Primary: the nested timeBudget shape app.js writes today.
+        // Secondary: legacy / mirror fields the form has used.
+        const overBudget =
+             (d.timeBudget && d.timeBudget.withinBudget === false)
+          || (d.time_budget && d.time_budget.within_budget === false)
+          || d.overtimeOrOverBudget === true
+          || d.overtime_or_over_budget === true
+          || !!(d.overBudgetReason || d.over_budget_reason)
+          || !!(d.overtimeOrOverBudgetReason || d.overtime_or_over_budget_reason);
+        if (overBudget) b.overBudget += 1;
+      });
+
+      // Stitch per-tech rows. Only active techs render — archived
+      // techs would otherwise add noise.
+      techHealthState = (techs || [])
+        .filter(function (t) { return t.active !== false; })
+        .map(function (t) {
+          const slug = t.tech_slug || t.slug || t.id || "";
+          const co   = callOutsByTech.get(slug)    || { count: 0 };
+          const pu   = pickupsByTech.get(slug)     || { count: 0 };
+          const rb   = bonusesByTech.get(slug)     || { count: 0 };
+          const insp = inspectionsByTech.get(slug) || { count: 0, fiveStar: 0 };
+          const dcr  = dcrsByTech.get(slug)        || { count: 0, overBudget: 0 };
+
+          let status   = "stable";
+          const reasons = [];
+          if (co.count >= 4) {
+            status = "needs-support";
+            reasons.push(co.count + " call-outs in last 30 days");
+          } else if (co.count >= 2) {
+            status = "watch";
+            reasons.push(co.count + " call-outs in last 30 days");
+          }
+          if (dcr.overBudget >= 2 && status === "stable") {
+            status = "watch";
+            reasons.push(dcr.overBudget + " over-budget DCRs in last 30 days");
+          } else if (dcr.overBudget >= 2 && status === "watch") {
+            reasons.push(dcr.overBudget + " over-budget DCRs in last 30 days");
+          }
+
+          return {
+            tech: t,
+            slug: slug,
+            display_name: t.display_name || t.name || slug,
+            status: status,
+            reasons: reasons,
+            metrics: {
+              dcrs:        dcr.count,
+              overBudget:  dcr.overBudget,
+              callOuts:    co.count,
+              pickups:     pu.count,
+              rockstars:   rb.count,
+              inspections: insp.count,
+              fiveStar:    insp.fiveStar
+            }
+          };
+        })
+        // Sort: needs-support first, then watch, then stable. Within
+        // each tier, alphabetical by display_name.
+        .sort(function (a, b) {
+          const order = { "needs-support": 0, "watch": 1, "stable": 2 };
+          const oa = order[a.status] == null ? 3 : order[a.status];
+          const ob = order[b.status] == null ? 3 : order[b.status];
+          if (oa !== ob) return oa - ob;
+          return String(a.display_name).localeCompare(String(b.display_name));
+        });
+
+      techHealthSetState(null);
+      renderTechHealth();
+    } catch (err) {
+      console.error("[tech-health] load failed", err);
+      techHealthSetState("error",
+        err && err.code === "permission-denied"
+          ? "Permission denied. Confirm you're signed in as an admin."
+          : "Couldn't load tech health: " + (err && (err.message || err.code) || "unknown"));
+    }
+  }
+
+  function techHealthEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function renderTechHealth() {
+    const listEl    = $("tech-health-list");
+    const emptyEl   = $("tech-health-empty");
+    const loadingEl = $("tech-health-loading");
+    const errorEl   = $("tech-health-error");
+    if (!listEl || !emptyEl) return;
+
+    // Always sync the tab badge with the current flagged count.
+    // Running it here (not just inside loadTechHealth) keeps the
+    // badge correct after filter clicks and any future re-render,
+    // and survives any stale-paint scenario from earlier turns.
+    try {
+      const flagged = techHealthState.filter(function (x) {
+        return x.status === "watch" || x.status === "needs-support";
+      }).length;
+      const badge = $("tech-health-tab-badge");
+      if (badge) {
+        if (flagged > 0) {
+          badge.textContent = String(flagged);
+          badge.hidden = false;
+          badge.removeAttribute("hidden");      // belt+suspenders for any older paint that left `hidden` attr stuck
+        } else {
+          badge.hidden = true;
+          badge.setAttribute("hidden", "");
+        }
+      }
+    } catch (_e) { /* badge is decorative; never fail render over it */ }
+
+    // Hard-reset transient state surfaces. Defensive — every render
+    // takes responsibility for hiding loading/error so a prior
+    // render's loading text can never stack with the card list.
+    if (loadingEl) loadingEl.hidden = true;
+    if (errorEl)   errorEl.hidden   = true;
+
+    const rows = techHealthState.filter(function (x) {
+      if (techHealthFilter === "all") return true;
+      return x.status === techHealthFilter;
+    });
+
+    if (!rows.length) {
+      listEl.innerHTML = "";
+      emptyEl.hidden = false;
+      emptyEl.textContent = techHealthFilter === "all"
+        ? "No active techs to display."
+        : "No techs in this status. Nice.";
+      return;
+    }
+    emptyEl.hidden = true;
+
+    listEl.innerHTML = rows.map(function (r) {
+      const statusLabel = r.status === "needs-support" ? "Needs Support"
+                        : r.status === "watch"         ? "Watch"
+                        :                                "Stable";
+      const statusChip =
+        '<span class="th-status-chip th-status-chip--' + r.status + '">' + statusLabel + '</span>';
+
+      // Tech avatar — photo if cleaning_techs has photoUrl, otherwise
+      // a colored initial. Reuse the existing colorForSeed pattern by
+      // computing here (admin.js doesn't expose colorForSeed; do a
+      // tiny inline HSL hash so we get the same per-tech identity
+      // color the schedule page uses).
+      function colorForSlug(s) {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
+        const hue = Math.abs(h) % 360;
+        return { bg: "hsl(" + hue + " 70% 92%)", ring: "hsl(" + hue + " 55% 60%)", fg: "hsl(" + hue + " 50% 28%)" };
+      }
+      const c = colorForSlug(r.slug || r.display_name);
+      const photoUrl = (r.tech && (r.tech.photoUrl || r.tech.profilePhotoUrl)) || "";
+      const initial  = (String(r.display_name).trim().charAt(0) || "?").toUpperCase();
+      const avatar = photoUrl
+        ? '<span class="th-avatar"><img src="' + techHealthEscape(photoUrl) + '" alt="" /></span>'
+        : '<span class="th-avatar th-avatar--initial"' +
+            ' style="background:' + c.bg + ';color:' + c.fg + ';border-color:' + c.ring + ';">' +
+            techHealthEscape(initial) +
+          '</span>';
+
+      // Positive-first metric row. Reasons (Watch/NeedsSupport) live
+      // below in a separate "what we're watching" block.
+      const metricsHtml =
+        '<dl class="th-metrics">' +
+          '<div><dt>DCRs</dt><dd>' + r.metrics.dcrs + '</dd></div>' +
+          '<div><dt>Pickups</dt><dd>' + r.metrics.pickups + '</dd></div>' +
+          '<div><dt>Rockstars</dt><dd>' + r.metrics.rockstars + '</dd></div>' +
+          '<div><dt>5★ insp.</dt><dd>' + r.metrics.fiveStar + '</dd></div>' +
+        '</dl>';
+
+      const watchHtml = r.reasons.length
+        ? '<div class="th-watch"><span class="th-watch-label">What we\'re watching:</span> ' +
+          r.reasons.map(techHealthEscape).join(" · ") +
+          ' <span class="th-watch-cta">A supportive check-in might help.</span></div>'
+        : '';
+
+      return (
+        '<article class="th-card th-card--' + r.status + '" role="listitem">' +
+          '<header class="th-head">' +
+            avatar +
+            '<h3 class="th-name">' + techHealthEscape(r.display_name) + '</h3>' +
+            statusChip +
+          '</header>' +
+          metricsHtml +
+          watchHtml +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  function wireTechHealthControls() {
+    document.querySelectorAll(".tech-health-pill[data-th-filter]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        techHealthFilter = btn.dataset.thFilter || "all";
+        document.querySelectorAll(".tech-health-pill").forEach(function (b) {
+          const active = b === btn;
+          b.classList.toggle("is-active", active);
+          b.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        renderTechHealth();
+      });
+    });
+    const refresh = $("tech-health-refresh");
+    if (refresh) refresh.addEventListener("click", function () { loadTechHealth(); });
+  }
+
   function wireSignIn() {
     const btn = $("signin-btn");
     if (!btn) return;
@@ -8808,6 +14108,11 @@
     wireSuggestionsControls();
     wireRecoveriesControls();
     wireDeputyMappingControls();
+    wireScheduleControls();
+    wireScheduleImportControls();
+    wireAttendanceControls();
+    wireOpenShiftsControls();
+    wireTechHealthControls();
     wireWriteControls();
     installOverflowMenuOutsideClose();
     wireSignIn();
