@@ -68,6 +68,9 @@
   if (!window.__pioneerAdmin.tabs.pilotReadiness) {
     throw new Error("admin.js: admin/tab-pilot-readiness.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.tabs.feed) {
+    throw new Error("admin.js: admin/tab-feed.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -3011,99 +3014,11 @@
      window.__pioneerAdmin.tabs.pilotReadiness.init. No auto-refresh —
      the report only runs on explicit Run / Refresh button clicks. */
 
-  // Idempotent mount: subsequent clicks on the Feed tab do nothing.
-  let opFeedMounted = false;
-  function mountOperationalFeedOnce() {
-    if (opFeedMounted) return;
-    if (!window.OpFeed || typeof window.OpFeed.mount !== "function") {
-      console.warn("[admin] OpFeed module not loaded — operational-feed.js missing?");
-      return;
-    }
-    const u = firebase.auth().currentUser;
-    if (!u) return;
-    window.OpFeed.mount({
-      containerId: "op-feed-list",
-      mode:        "admin",
-      user: {
-        uid:     u.uid,
-        email:   u.email || "",
-        name:    u.displayName || u.email || "admin",
-        isAdmin: true
-      },
-      filterStatus: ($("op-feed-list-filter") && $("op-feed-list-filter").value) || "open"
-    });
-    opFeedMounted = true;
-    wireOperationalFeedDemoButtons();
-  }
 
-  // Demo buttons — admin-only test docs that include the admin's own
-  // uid in audience_user_ids so the admin can exercise the ack +
-  // status flow end-to-end. Server-side wiring (supply request →
-  // feed item) is the production path.
-  function wireOperationalFeedDemoButtons() {
-    const disclosure = $("op-feed-demo-disclosure");
-    if (!disclosure || disclosure.dataset.wired) return;
-    disclosure.dataset.wired = "1";
-    const status = $("op-feed-demo-status");
-    function setStatus(msg) { if (status) status.textContent = msg; }
-
-    disclosure.addEventListener("click", async function (ev) {
-      const btn = ev.target.closest("button[data-feed-demo]");
-      if (!btn) return;
-      const u = firebase.auth().currentUser;
-      if (!u) { setStatus("Sign in first."); return; }
-      const kind = btn.dataset.feedDemo;
-      const adminName = u.displayName || u.email || "admin";
-      let payload = null;
-      if (kind === "recognition") {
-        payload = {
-          type:              "recognition",
-          title:              "Demo: Nice work on the Tuesday close",
-          body:               "Great attention to detail in the lobby — wanted to call it out.",
-          severity:           "info",
-          status:             "new",
-          requires_ack:       false,
-          audience_roles:     ["admin", "tech"],
-          audience_user_ids:  [u.uid],
-          created_by_uid:     u.uid,
-          created_by_name:    adminName
-        };
-      } else if (kind === "scheduler_notice") {
-        payload = {
-          type:              "scheduler_notice",
-          title:              "Demo: Schedule swap for tomorrow",
-          body:               "Heads up — Drew is covering Maks's Tuesday morning shift.",
-          severity:           "important",
-          status:             "new",
-          requires_ack:       false,
-          audience_roles:     ["admin", "scheduler", "tech"],
-          audience_user_ids:  [u.uid],
-          created_by_uid:     u.uid,
-          created_by_name:    adminName
-        };
-      } else if (kind === "safety_alert") {
-        payload = {
-          type:              "safety_alert",
-          title:              "Demo: Slip hazard at NOTL east wing",
-          body:               "Recent floor sealant means slow drying — wear non-slip and post the cone before entry.",
-          severity:           "urgent",
-          status:             "new",
-          requires_ack:       true,
-          audience_roles:     ["admin", "tech"],
-          audience_user_ids:  [u.uid],
-          created_by_uid:     u.uid,
-          created_by_name:    adminName
-        };
-      } else {
-        return;
-      }
-      btn.disabled = true;
-      setStatus("Creating…");
-      const id = await window.OpFeed.adminCreate(payload);
-      btn.disabled = false;
-      setStatus(id ? "Created. Look for it in the feed below." : "Failed — see console for details.");
-    });
-  }
+  /* Operational Feed mount + demo-button wiring moved to
+     public/admin/tab-feed.js (Phase 10). Boot wires the activator via
+     window.__pioneerAdmin.tabs.feed.init. Mount is idempotent; demo
+     buttons remain admin-only test docs. */
 
   /* ---------- search filters ---------- */
 
@@ -12274,7 +12189,7 @@
     // are idempotent re-reads on each open; pilot-readiness, yesterday,
     // improvements, and sos are once-only initializers gated by their
     // own wired flags.
-    registerTabActivator("feed",            mountOperationalFeedOnce);
+    registerTabActivator("feed",            window.__pioneerAdmin.tabs.feed.init);
     registerTabActivator("training",        window.__pioneerAdmin.tabs.training.refresh);
     registerTabActivator("schedule",        function () {
       loadTeamSchedule();
