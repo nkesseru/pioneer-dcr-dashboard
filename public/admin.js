@@ -71,6 +71,9 @@
   if (!window.__pioneerAdmin.tabs.feed) {
     throw new Error("admin.js: admin/tab-feed.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.tabs.recentDcrs) {
+    throw new Error("admin.js: admin/tab-recent-dcrs.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -193,7 +196,8 @@
 
   let customers = [];
   let techs     = [];
-  let dcrs      = [];
+  // dcrs moved to tab-recent-dcrs.js (Phase 11). Consumers read via
+  // window.__pioneerAdmin.deps.getDcrs().
 
   // DCR-derived issues (admin-only collection, see firestore.rules).
   // Populated by loadDcrIssues() once auth resolves. Status workflow:
@@ -246,6 +250,10 @@
     // Per-customer on-budget summary. Computed lazily here from the
     // in-memory dcrs cache — no extra Firestore reads. Returns "" when
     // we have no usable data for this customer.
+    // dcrs now lives in tab-recent-dcrs.js (Phase 11); read through the
+    // deps bridge once at the top of the card render so the rest of the
+    // body uses the local name unchanged.
+    const dcrs = window.__pioneerAdmin.deps.getDcrs();
     const budgetStats   = computeBudgetStats(dcrs, { kind: "customer", slug: slug });
     const budgetBadgeHtml = budgetRowBadge(budgetStats);
     const budgetTooltip   = budgetTooltipText(budgetStats);
@@ -469,6 +477,9 @@
     // Per-tech on-budget summary. Admin-only — never surfaced to techs
     // themselves (see techHubViewV1 / tech.js — they get customer-level
     // budget info, not their own scoreboard).
+    // dcrs now lives in tab-recent-dcrs.js (Phase 11) — same
+    // read-through-bridge pattern as customerCard above.
+    const dcrs = window.__pioneerAdmin.deps.getDcrs();
     const budgetStats     = computeBudgetStats(dcrs, { kind: "tech", slug: slug });
     const budgetBadgeHtml = budgetRowBadge(budgetStats);
     const budgetTooltip   = budgetTooltipText(budgetStats);
@@ -648,115 +659,20 @@
     }
   }
 
-  /* ---------- recent DCRs ---------- */
 
-  function dcrIssueCount(dcr) {
-    const sections = (dcr.form_data && dcr.form_data.checklist) || [];
-    let count = 0;
-    sections.forEach(function (sec) {
-      (sec.items || []).forEach(function (it) {
-        if (it && it.status === "issue") count += 1;
-      });
-    });
-    return count;
-  }
-
-  function dcrCard(d) {
-    const id        = d.submission_id || d.id;
-    const cleanDate = d.clean_date || "—";
-    const customer  = d.customer_name || "—";
-    const tech      = d.tech_display_name || "—";
-    const photoCount = Array.isArray(d.photo_urls) ? d.photo_urls.length :
-                       Array.isArray(d.photos)     ? d.photos.length     : 0;
-    const issues     = dcrIssueCount(d);
-    const hasProblem = !!(d.form_data && d.form_data.has_problem);
-    const zStatus    = (d.zapier && d.zapier.status) || "—";
-
-    let problemBadge = "";
-    if (hasProblem)      problemBadge = badge("is-err",  "Problem");
-    else if (issues > 0) problemBadge = badge("is-warn", issues + " issue" + (issues === 1 ? "" : "s"));
-    else                 problemBadge = badge("is-on",   "Clear");
-
-    let zapBadge;
-    if      (zStatus === "sent")           zapBadge = badge("is-on",   "Zapier: sent");
-    else if (zStatus === "failed")         zapBadge = badge("is-err",  "Zapier: failed");
-    else if (zStatus === "not_configured") zapBadge = badge("is-neutral", "Zapier: off");
-    else                                   zapBadge = badge("is-neutral", "Zapier: —");
-
-    const photoBadge = badge("is-photos", photoCount + ' photo' + (photoCount === 1 ? '' : 's'));
-
-    return (
-      '<div class="admin-row" role="listitem" data-id="' + escapeHtml(id) + '">' +
-        '<div class="row-primary">' +
-          '<span class="row-name">' + escapeHtml(customer) + '</span>' +
-          '<span class="row-sub">'  + escapeHtml(cleanDate) + ' · ' + escapeHtml(tech) + '</span>' +
-        '</div>' +
-        '<div class="row-cell">' +
-          '<span class="cell-label">Submission</span>' +
-          '<code style="font-size:11.5px;color:var(--pc-text-muted);">' + escapeHtml(id) + '</code>' +
-        '</div>' +
-        '<div class="row-cell">' +
-          '<span class="cell-label">Created</span>' +
-          escapeHtml(formatTimestamp(d.created_at)) +
-        '</div>' +
-        '<div class="row-actions">' +
-          '<div class="pill-badges">' +
-            photoBadge + problemBadge + zapBadge +
-          '</div>' +
-          // V6 — Review & Send opens the readiness modal for this DCR.
-          // The modal calls getDcrEmailReadinessV1, renders blockers/
-          // warnings, and only enables the actual Send button when
-          // the DCR is ready (or the operator confirms a resend).
-          '<button class="row-btn" type="button" data-action="review-send"' +
-            ' title="Run the DCR email readiness check and send to the customer">' +
-            'Review & Send' +
-          '</button>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  function renderDcrs(list) {
-    const root = $("dcr-list");
-    const cnt  = $("dcr-count");
-    if (!root) return;
-    if (cnt) {
-      const total = list.length;
-      cnt.textContent =
-        total + ' submission' + (total === 1 ? '' : 's') +
-        ' (most recent first, capped at ' + DCR_RECENT_LIMIT + ')';
-    }
-    root.innerHTML = list.map(dcrCard).join("");
-    if (list.length === 0 && dcrs.length === 0) setStatus("dcr", "empty");
-    else hideAllStatuses("dcr");
-  }
-
-  async function loadDcrs() {
-    setStatus("dcr", "loading");
-    try {
-      const snap = await db.collection("dcr_submissions")
-        .orderBy("created_at", "desc")
-        .limit(DCR_RECENT_LIMIT)
-        .get();
-      dcrs = snap.docs.map(function (d) {
-        return Object.assign({ id: d.id }, d.data());
-      });
-      renderDcrs(dcrs);
-      // Re-render the customer + tech lists now that the analytics cache
-      // (dcrs) is populated — those row renderers read budget stats from
-      // this array. Safe no-ops if the lists haven't loaded yet (the
-      // helpers check for the root element before painting).
-      if (typeof applyCurrentCustomerFilter === "function") applyCurrentCustomerFilter();
-      if (typeof applyCurrentTechFilter     === "function") applyCurrentTechFilter();
-      refreshAttentionStrip();
-    } catch (err) {
-      console.error("loadDcrs failed", err);
-      setStatus("dcr", "error",
-        "Couldn't load DCR submissions: " + (err.message || err) +
-        "\n\nIf this says 'permission-denied', verify firestore.rules allow read on /dcr_submissions." +
-        "\nIf it says 'failed-precondition' or mentions an index, click the URL in the browser console to create the suggested composite index."
-      );
-    }
+  /* Recent DCRs tab moved to public/admin/tab-recent-dcrs.js (Phase 11).
+     The dcrs array now lives there; admin-side modules read it via
+     window.__pioneerAdmin.deps.getDcrs(). The wrapper below preserves
+     the post-load side-effects that the original loadDcrs() had inline
+     (re-render Customers + Techs because their cards display per-doc
+     budget stats; refresh the attention strip). Boot, the refresh
+     button, and the DCR review modal success-path all call this
+     wrapper. */
+  async function loadDcrsAndRerenderDependents() {
+    await window.__pioneerAdmin.tabs.recentDcrs.refresh();
+    if (typeof applyCurrentCustomerFilter === "function") applyCurrentCustomerFilter();
+    if (typeof applyCurrentTechFilter     === "function") applyCurrentTechFilter();
+    if (typeof refreshAttentionStrip      === "function") refreshAttentionStrip();
   }
 
   /* ---------- supply requests ---------- */
@@ -3034,17 +2950,7 @@
     if (ts) ts.addEventListener("input", applyCurrentTechFilter);
 
     if (ds) ds.addEventListener("input", function () {
-      const q = ds.value.trim().toLowerCase();
-      if (!q) return renderDcrs(dcrs);
-      const filtered = dcrs.filter(function (d) {
-        return (
-          (d.customer_name      || "").toLowerCase().includes(q) ||
-          (d.tech_display_name  || "").toLowerCase().includes(q) ||
-          (d.submission_id      || "").toLowerCase().includes(q) ||
-          (d.id                 || "").toLowerCase().includes(q)
-        );
-      });
-      renderDcrs(filtered);
+      window.__pioneerAdmin.tabs.recentDcrs.renderFiltered(ds.value);
     });
   }
 
@@ -3057,7 +2963,7 @@
       btn.disabled = true;
       const original = btn.textContent;
       btn.textContent = "Refreshing…";
-      loadDcrs().finally(function () {
+      loadDcrsAndRerenderDependents().finally(function () {
         btn.disabled = false;
         btn.textContent = original;
         const ds = $("dcr-search");
@@ -3236,7 +3142,7 @@
       currentAuthEmail = email;
       loadCustomers();
       loadTechs();
-      loadDcrs();
+      loadDcrsAndRerenderDependents();
       loadSupplyRequests();
       loadDcrIssues();
       loadAnnouncements();
@@ -6096,7 +6002,7 @@
       setDcrReviewSendButton({ disabled: true, label: "Sent", visible: !confirmResend });
       setDcrReviewResendButton({ disabled: true, visible: !!confirmResend });
       // Refresh the DCRs list so the row reflects the new status.
-      loadDcrs().catch(function () { /* non-fatal */ });
+      loadDcrsAndRerenderDependents().catch(function () { /* non-fatal */ });
     } catch (e) {
       setDcrReviewSendButton({ disabled: false, label: "Send Customer DCR Email", visible: !confirmResend });
       setDcrReviewResendButton({ disabled: false, visible: !!confirmResend });
@@ -8794,6 +8700,8 @@
         if (!btn) return;
         const row = btn.closest("[data-id]");
         if (!row) return;
+        // dcrs lives in tab-recent-dcrs.js (Phase 11); read via deps bridge.
+        const dcrs = window.__pioneerAdmin.deps.getDcrs();
         const d = dcrs.find(function (x) {
           return (x.submission_id || x.id) === row.dataset.id;
         });
@@ -11908,6 +11816,8 @@
       // `d.timeBudget.withinBudget === false` (set by app.js when the
       // tech reports the shift went over budget). Legacy field
       // variants are checked as fallbacks for any prior-schema docs.
+      // dcrs lives in tab-recent-dcrs.js (Phase 11); read via deps bridge.
+      const dcrs = window.__pioneerAdmin.deps.getDcrs();
       const dcrsByTech = new Map();
       (Array.isArray(dcrs) ? dcrs : []).forEach(function (d) {
         const ts = techHealthMs(d.submittedAt || d.submitted_at || d.createdAt);
@@ -12217,6 +12127,7 @@
     window.__pioneerAdmin.deps = {
       getCustomers:          function () { return customers; },
       getTechs:              function () { return techs; },
+      getDcrs:               function () { return window.__pioneerAdmin.tabs.recentDcrs.getDcrs(); },
       getCurrentAdminEmail:  getCurrentAdminEmail,
       handleAdminWriteError: handleAdminWriteError,
       setModalError:         setModalError,
