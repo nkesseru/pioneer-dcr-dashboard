@@ -35,41 +35,31 @@
 (function () {
   "use strict";
 
-  // The DCR list cap doubles as our analytics window. 500 covers ~6 months
-  // for a typical 80-clean-per-week org and lets us compute Last 7d / MTD /
-  // "All-time" (defined as the loaded window) without any extra Firestore
-  // reads. Future: replace with a server-aggregated `dcr_metrics_cache`
-  // document once dataset growth makes 500-doc pulls expensive.
-  const DCR_RECENT_LIMIT = 500;
-
-  /* =====================================================================
-     ADMIN ACCESS CONTROL — single-source-of-truth allowlist
-     =====================================================================
-     Add or remove emails here. Comparison is case-insensitive — the values
-     below are normalised to lower-case on read. After editing, redeploy
-     hosting (no function/rules redeploy needed).
-
-     If you ever swap to a custom-claims auth model, this list becomes the
-     seed for whoever runs `setCustomUserClaims({admin: true})` server-side.
-     ===================================================================== */
-  const ALLOWED_ADMIN_EMAILS = [
-    "nick@pioneercomclean.com",
-    "april@pioneercomclean.com",
-    "kirby@pioneercomclean.com",
-    "mgies@pioneercomclean.com"
-  ];
-
-  // Synchronous "root admin" check — for callers that need a snap
-  // decision and are OK only matching the hardcoded list. Used as the
-  // optimistic first-pass during auth state changes; full check goes
-  // through resolveAdminStatus() below.
-  function isRootAdmin(email) {
-    if (!email) return false;
-    const normalized = email.toLowerCase().trim();
-    return ALLOWED_ADMIN_EMAILS.some(function (e) {
-      return e.toLowerCase().trim() === normalized;
-    });
+  /* ---------- Pure helpers (moved to admin/_utils.js) ----------
+   * See public/admin/_utils.js for definitions. Destructuring here so
+   * the rest of admin.js can reference them unchanged. If __pioneerAdmin
+   * is missing, _utils.js failed to load — fail loudly rather than
+   * silently degrade.
+   */
+  if (!window.__pioneerAdmin || !window.__pioneerAdmin.utils) {
+    throw new Error("admin.js: admin/_utils.js must load before admin.js");
   }
+  const {
+    DCR_RECENT_LIMIT,
+    ALLOWED_ADMIN_EMAILS,
+    isRootAdmin,
+    escapeHtml,
+    formatTimestamp,
+    getCustomerName,
+    getCustomerSlug,
+    getCustomerEmail,
+    getCustomerLocation,
+    getActive,
+    getDcrEnabled,
+    getDcrEmailEnabled,
+    getTechName,
+    getTechSlug
+  } = window.__pioneerAdmin.utils;
 
   // Two-tier admin check mirroring isPioneerAdmin() in firestore.rules
   // and verifyStaffOrReject() in functions/index.js:
@@ -99,40 +89,8 @@
   const $  = (id) => document.getElementById(id);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-
-  function formatTimestamp(ts) {
-    if (!ts) return "—";
-    try {
-      // Firestore Timestamp shape: { seconds, nanoseconds } OR a Timestamp obj.
-      if (typeof ts.toDate === "function") return ts.toDate().toLocaleString();
-      if (typeof ts === "object" && typeof ts.seconds === "number") {
-        return new Date(ts.seconds * 1000).toLocaleString();
-      }
-      if (typeof ts === "string") return new Date(ts).toLocaleString();
-    } catch (e) { /* fall through */ }
-    return String(ts);
-  }
-
-  /* ---------- defensive field accessors ---------- */
-
-  function getCustomerName(c)     { return c.customer_name  || c.name         || c.display_name || ""; }
-  function getCustomerSlug(c)     { return c.customer_slug  || c.slug         || c.id          || ""; }
-  function getCustomerEmail(c)    { return c.customer_email || c.email        || ""; }
-  function getCustomerLocation(c) { return c.location_name  || c.location     || ""; }
-  function getActive(c)           { return c.active !== false; }                  // default true
-  function getDcrEnabled(c)       { return c.dcr_enabled !== false; }             // default true
-  // Customer-only — controls customer-facing DCR EMAIL delivery downstream.
-  // Distinct from getDcrEnabled (form visibility). Both default true when
-  // the field is missing, preserving existing behaviour.
-  function getDcrEmailEnabled(c)  { return c.dcr_email_enabled !== false; }       // default true
-
-  function getTechName(t)         { return t.display_name || t.tech_display_name || t.name || ""; }
-  function getTechSlug(t)         { return t.tech_slug    || t.slug              || t.id   || ""; }
+  /* escapeHtml, formatTimestamp, getCustomer*, getTech* moved to
+     public/admin/_utils.js — imported via the top-of-IIFE destructure. */
 
   /* ---------- Firebase SDK presence check (granular) ----------
      Each compat module must be loaded BEFORE admin.js. The previous "is
