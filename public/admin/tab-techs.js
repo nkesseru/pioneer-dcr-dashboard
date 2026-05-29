@@ -1011,6 +1011,414 @@
     return techs[idx];
   }
 
+  /* ---------- Tech photo / signature manager (tech-media-modal) ----------
+   * Phase 16b extraction. Calls uploadTechMediaV1 with a Firebase admin
+   * ID token. The modal is wired once on first open; subsequent opens
+   * just repopulate state from the latest `techs` cache entry.
+   *
+   * Per the spec:
+   *   - Real photo is required for the customer-facing DCR trust
+   *     promise; the initials bubble is an emergency fallback only.
+   *   - Missing photo / signature is flagged in the modal and on the
+   *     tech row chip.
+   *
+   * On every successful upload/clear/active flip, patchTechCacheAndRepaint
+   * applies the patch to the local cache, repaints the modal, and asks
+   * admin.js (via the deps bridge) to refresh the attention strip.
+   */
+  let _techMediaWired = false;
+  let _techMediaCurrentId = null;
+
+  function openTechMediaModal(t) {
+    if (!t || !t.id) return;
+    _techMediaCurrentId = t.id;
+    const idInput = $("tech-media-id");
+    if (idInput) idInput.value = t.id;
+
+    wireTechMediaModalOnce();
+    paintTechMediaModal(t);
+    openModal("tech-media-modal");
+  }
+
+  function paintTechMediaModal(t) {
+    const photoUrl = (t.photoUrl || t.profilePhotoUrl || "").trim();
+    const sigUrl   = (t.signatureUrl || "").trim();
+    const name     = getTechName(t) || "Your Pioneer tech";
+    const initial  = (name || "P").charAt(0).toUpperCase();
+
+    // ---- Photo zone ----
+    const photoImg     = $("tech-media-photo-img");
+    const photoInitial = $("tech-media-photo-initial");
+    const photoMeta    = $("tech-media-photo-meta");
+    const photoClear   = $("tech-media-photo-clear");
+    if (photoImg && photoInitial) {
+      if (photoUrl) {
+        photoImg.src    = photoUrl;
+        photoImg.hidden = false;
+        photoInitial.hidden = true;
+      } else {
+        photoImg.removeAttribute("src");
+        photoImg.hidden = true;
+        photoInitial.textContent = initial;
+        photoInitial.hidden = false;
+      }
+    }
+    if (photoMeta) {
+      photoMeta.textContent = photoUrl
+        ? ("On file" + (t.photoSizeBytes ? (" · " + Math.round(t.photoSizeBytes / 1024) + " KB") : ""))
+        : "No photo on file";
+    }
+    if (photoClear) photoClear.hidden = !photoUrl;
+
+    // ---- Signature zone ----
+    const sigImg   = $("tech-media-sig-img");
+    const sigEmpty = $("tech-media-sig-empty");
+    const sigMeta  = $("tech-media-sig-meta");
+    const sigClear = $("tech-media-sig-clear");
+    if (sigImg && sigEmpty) {
+      if (sigUrl) {
+        sigImg.src    = sigUrl;
+        sigImg.hidden = false;
+        sigEmpty.hidden = true;
+      } else {
+        sigImg.removeAttribute("src");
+        sigImg.hidden = true;
+        sigEmpty.hidden = false;
+      }
+    }
+    if (sigMeta) {
+      sigMeta.textContent = sigUrl
+        ? ("On file" + (t.signatureSizeBytes ? (" · " + Math.round(t.signatureSizeBytes / 1024) + " KB") : ""))
+        : "No signature on file";
+    }
+    if (sigClear) sigClear.hidden = !sigUrl;
+
+    // ---- Active checkbox ----
+    const activeEl = $("tech-media-active");
+    if (activeEl) activeEl.checked = getActive(t);
+
+    // ---- Warning strip ----
+    const warnEl = $("tech-media-warnings");
+    if (warnEl) {
+      const missing = [];
+      if (!photoUrl) missing.push("photo");
+      if (!sigUrl)   missing.push("signature");
+      if (missing.length === 0) {
+        warnEl.hidden = true;
+        warnEl.innerHTML = "";
+      } else {
+        warnEl.hidden = false;
+        warnEl.innerHTML =
+          '<strong>Heads up:</strong> this tech is missing a ' +
+          missing.join(" and a ") +
+          '. The DCR email will fall back to ' +
+          (missing.indexOf("photo")     >= 0 ? 'an initials bubble' : '') +
+          (missing.length === 2         ?     ' and ' : '') +
+          (missing.indexOf("signature") >= 0 ? 'no signed-receipt area' : '') +
+          '.';
+      }
+    }
+
+    // ---- Customer-facing preview card ----
+    const cName = $("tech-media-cust-name");
+    if (cName) cName.textContent = name;
+    const cSub  = $("tech-media-cust-sub");
+    if (cSub) cSub.textContent = getActive(t)
+      ? "regular Pioneer tech"
+      : "tech is currently archived";
+
+    const cPhotoImg     = $("tech-media-cust-photo-img");
+    const cPhotoInitial = $("tech-media-cust-photo-initial");
+    if (cPhotoImg && cPhotoInitial) {
+      if (photoUrl) {
+        cPhotoImg.src = photoUrl;
+        cPhotoImg.hidden = false;
+        cPhotoInitial.hidden = true;
+      } else {
+        cPhotoImg.removeAttribute("src");
+        cPhotoImg.hidden = true;
+        cPhotoInitial.textContent = initial;
+        cPhotoInitial.hidden = false;
+      }
+    }
+    const cSigImg   = $("tech-media-cust-sig-img");
+    const cSigEmpty = $("tech-media-cust-sig-empty");
+    if (cSigImg && cSigEmpty) {
+      if (sigUrl) {
+        cSigImg.src = sigUrl;
+        cSigImg.hidden = false;
+        cSigEmpty.hidden = true;
+      } else {
+        cSigImg.removeAttribute("src");
+        cSigImg.hidden = true;
+        cSigEmpty.hidden = false;
+      }
+    }
+  }
+
+  function wireTechMediaModalOnce() {
+    if (_techMediaWired) return;
+    _techMediaWired = true;
+
+    // File inputs: read as base64, post to uploadTechMediaV1.
+    const photoFile = $("tech-media-photo-file");
+    if (photoFile) {
+      photoFile.addEventListener("change", function () {
+        const file = photoFile.files && photoFile.files[0];
+        photoFile.value = "";                              // allow re-picking same file
+        if (file) handleTechMediaUpload("photo", file);
+      });
+    }
+    const sigFile = $("tech-media-sig-file");
+    if (sigFile) {
+      sigFile.addEventListener("change", function () {
+        const file = sigFile.files && sigFile.files[0];
+        sigFile.value = "";
+        if (file) handleTechMediaUpload("signature", file);
+      });
+    }
+
+    // Clear buttons.
+    const photoClear = $("tech-media-photo-clear");
+    if (photoClear) photoClear.addEventListener("click", function () {
+      handleTechMediaClear("photo");
+    });
+    const sigClear = $("tech-media-sig-clear");
+    if (sigClear) sigClear.addEventListener("click", function () {
+      handleTechMediaClear("signature");
+    });
+
+    // Active toggle.
+    const activeEl = $("tech-media-active");
+    if (activeEl) activeEl.addEventListener("change", function () {
+      handleTechMediaActiveFlip(activeEl.checked);
+    });
+  }
+
+  // ---- Helpers shared by all media operations ----
+
+  async function getAdminIdToken() {
+    try {
+      const u = firebase.auth().currentUser;
+      if (u) return await u.getIdToken();
+    } catch (_e) { /* swallow */ }
+    return null;
+  }
+
+  function setTechMediaZoneError(kind, msg) {
+    const errEl = $(kind === "photo" ? "tech-media-photo-error" : "tech-media-sig-error");
+    if (!errEl) return;
+    if (msg) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    } else {
+      errEl.textContent = "";
+      errEl.hidden = true;
+    }
+  }
+  function setTechMediaZoneProgress(kind, on) {
+    const el = $(kind === "photo" ? "tech-media-photo-progress" : "tech-media-sig-progress");
+    if (el) el.hidden = !on;
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      const fr = new FileReader();
+      fr.onload = function () {
+        const dataUrl = String(fr.result || "");
+        const idx     = dataUrl.indexOf(",");
+        resolve({
+          base64:      idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl,
+          contentType: file.type || "image/jpeg",
+          filename:    file.name || "upload"
+        });
+      };
+      fr.onerror = function () { reject(fr.error || new Error("read failed")); };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // After every successful op, patch the local techs cache + repaint
+  // the modal + the techs list row (so the thumbnail and chips refresh
+  // without a full Firestore re-read). Internal — same-IIFE call to
+  // applyPatch.
+  function patchTechCacheAndRepaint(techId, patch) {
+    const updated = applyPatch(techId, patch);
+    if (!updated) return null;
+    paintTechMediaModal(updated);
+    // Refresh the admin attention strip — its needs-assign count + media
+    // chip totals can change. admin.js owns that helper.
+    try { refreshAttentionStrip(); } catch (_e) {}
+    return updated;
+  }
+
+  async function handleTechMediaUpload(kind, file) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    setTechMediaZoneError(kind, "");
+
+    if (!/^image\//i.test(file.type)) {
+      setTechMediaZoneError(kind, "Please pick an image file.");
+      return;
+    }
+    const maxBytes = kind === "photo" ? 5 * 1024 * 1024 : 1 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setTechMediaZoneError(kind, file.name + " is over " +
+        Math.round(maxBytes / 1024 / 1024) + "MB.");
+      return;
+    }
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    if (!url) {
+      setTechMediaZoneError(kind, "UPLOAD_TECH_MEDIA_URL not configured.");
+      return;
+    }
+    const idToken = await getAdminIdToken();
+    if (!idToken) {
+      setTechMediaZoneError(kind, "You appear to be signed out. Refresh and sign in again.");
+      return;
+    }
+
+    setTechMediaZoneProgress(kind, true);
+
+    let payload;
+    try {
+      payload = await readFileAsBase64(file);
+    } catch (e) {
+      setTechMediaZoneProgress(kind, false);
+      setTechMediaZoneError(kind, "Could not read the file.");
+      return;
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({
+          techId:      techId,
+          kind:        kind,
+          filename:    payload.filename,
+          contentType: payload.contentType,
+          base64:      payload.base64
+        })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        const err = (data && data.error) || ("HTTP " + res.status);
+        setTechMediaZoneError(kind, err);
+        return;
+      }
+      const patch = kind === "photo"
+        ? {
+            photoUrl:         data.url,
+            profilePhotoUrl:  data.url,
+            photoStoragePath: data.storagePath,
+            photoSizeBytes:   data.size
+          }
+        : {
+            signatureUrl:         data.url,
+            signatureStoragePath: data.storagePath,
+            signatureSizeBytes:   data.size
+          };
+      patchTechCacheAndRepaint(techId, patch);
+    } catch (e) {
+      setTechMediaZoneError(kind, String(e && e.message || e));
+    } finally {
+      setTechMediaZoneProgress(kind, false);
+    }
+  }
+
+  async function handleTechMediaClear(kind) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    setTechMediaZoneError(kind, "");
+
+    const label = kind === "photo" ? "profile photo" : "signature";
+    if (!window.confirm(
+      "Remove this tech's " + label + "?\n\n" +
+      (kind === "photo"
+        ? "The DCR email will fall back to an initials bubble until a new photo is uploaded."
+        : "The DCR email signed-receipt area will collapse until a new signature is uploaded.")
+    )) return;
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    if (!url) return setTechMediaZoneError(kind, "UPLOAD_TECH_MEDIA_URL not configured.");
+    const idToken = await getAdminIdToken();
+    if (!idToken) return setTechMediaZoneError(kind, "Signed out — refresh and sign in again.");
+
+    setTechMediaZoneProgress(kind, true);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ techId: techId, kind: kind, clear: true })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) {
+        setTechMediaZoneError(kind, (data && data.error) || ("HTTP " + res.status));
+        return;
+      }
+      const patch = kind === "photo"
+        ? { photoUrl: null, profilePhotoUrl: null, photoStoragePath: null, photoSizeBytes: null }
+        : { signatureUrl: null, signatureStoragePath: null, signatureSizeBytes: null };
+      patchTechCacheAndRepaint(techId, patch);
+    } catch (e) {
+      setTechMediaZoneError(kind, String(e && e.message || e));
+    } finally {
+      setTechMediaZoneProgress(kind, false);
+    }
+  }
+
+  async function handleTechMediaActiveFlip(nextActive) {
+    const techId = _techMediaCurrentId;
+    if (!techId) return;
+    const progressEl = $("tech-media-active-progress");
+    if (progressEl) progressEl.hidden = false;
+
+    const url = (window.UPLOAD_TECH_MEDIA_URL || "").trim();
+    const idToken = await getAdminIdToken();
+    if (!url || !idToken) {
+      if (progressEl) progressEl.hidden = true;
+      return;
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ techId: techId, action: "setActive", active: !!nextActive })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (res.ok && data.ok) {
+        patchTechCacheAndRepaint(techId, { active: !!nextActive });
+      } else {
+        // Revert the checkbox visually so it reflects reality.
+        const activeEl = $("tech-media-active");
+        if (activeEl) activeEl.checked = !nextActive;
+        const errEl = $("tech-media-err");
+        if (errEl) {
+          errEl.textContent = (data && data.error) || ("HTTP " + res.status);
+          errEl.hidden = false;
+        }
+      }
+    } catch (e) {
+      const activeEl = $("tech-media-active");
+      if (activeEl) activeEl.checked = !nextActive;
+      const errEl = $("tech-media-err");
+      if (errEl) { errEl.textContent = String(e && e.message || e); errEl.hidden = false; }
+    } finally {
+      if (progressEl) progressEl.hidden = true;
+    }
+  }
+
   /* ---------- init: wires the assignment checklists ---------- */
 
   function init() {
@@ -1044,6 +1452,7 @@
     onSaveEdit:      onTechEditSave,
     onArchive:       onTechArchive,
     onDelete:        onTechDelete,
+    openMediaModal:  openTechMediaModal,
     applyPatch:      applyPatch
   };
 }());
