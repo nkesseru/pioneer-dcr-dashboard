@@ -47,6 +47,9 @@
   if (!window.__pioneerAdmin.shell) {
     throw new Error("admin.js: admin/_shell.js must load before admin.js");
   }
+  if (!window.__pioneerAdmin.budget) {
+    throw new Error("admin.js: admin/_budget.js must load before admin.js");
+  }
   const {
     DCR_RECENT_LIMIT,
     ALLOWED_ADMIN_EMAILS,
@@ -75,6 +78,14 @@
     activateTab,
     registerTabActivator
   } = window.__pioneerAdmin.shell;
+  const {
+    getOnBudget,
+    dcrTsToMs,
+    emptyBucket,
+    computeBudgetStats,
+    budgetRowBadge,
+    budgetTooltipText
+  } = window.__pioneerAdmin.budget;
 
   // Two-tier admin check mirroring isPioneerAdmin() in firestore.rules
   // and verifyStaffOrReject() in functions/index.js:
@@ -190,168 +201,9 @@
      activateTab moved to public/admin/_shell.js — imported via the
      top-of-IIFE destructure. Tab activators are registered in boot. */
 
-  /* ---------- on-budget analytics (no extra Firestore reads) ----------
-   *
-   * Keep `getOnBudget()` in sync with the same-name helper in
-   * functions/index.js — admin metrics and tech-hub metrics must agree on
-   * which docs count as on/over/unknown. See server for the field-priority
-   * rationale.
-   *
-   * `computeBudgetStats(opts)` slices the in-memory `dcrs` cache (which is
-   * already loaded into module state by loadDcrs) and returns the 4-window
-   * breakdown. No async work, no extra reads. Cached per (slug, kind) tuple
-   * for the lifetime of the dcrs array — invalidated whenever loadDcrs
-   * repopulates it. Empty/insufficient windows return null fields so the
-   * UI renders "—" instead of a misleading 0%.
-   *
-   * Future: when dcrs.length consistently exceeds the 500-doc cap, replace
-   * this with a server-aggregated metrics doc + a single read at boot.
-   */
-  function getOnBudget(doc) {
-    if (!doc || typeof doc !== "object") return null;
-    if (doc.time_budget && typeof doc.time_budget.on_budget === "boolean") {
-      return doc.time_budget.on_budget;
-    }
-    const fd = doc.form_data || {};
-    if (fd.time_budget && typeof fd.time_budget.on_budget === "boolean") {
-      return fd.time_budget.on_budget;
-    }
-    if (typeof fd.on_time_budget === "boolean") return fd.on_time_budget;
-    if (typeof fd.on_time_budget === "string") {
-      const v = fd.on_time_budget.toLowerCase().trim();
-      if (v === "no"  || v === "false") return false;
-      if (v === "yes" || v === "true")  return true;
-    }
-    if (typeof doc.on_time_budget === "boolean") return doc.on_time_budget;
-    return null;
-  }
-
-  // tsToMs — tolerant Firestore-timestamp / ISO / number reader. Matches
-  // the server-side helper in functions/index.js.
-  function dcrTsToMs(ts) {
-    if (!ts) return null;
-    if (typeof ts === "number")                      return ts;
-    if (typeof ts === "string")                      { const t = Date.parse(ts); return isNaN(t) ? null : t; }
-    if (typeof ts.toMillis === "function")           return ts.toMillis();
-    if (typeof ts.seconds === "number")              return ts.seconds * 1000;
-    if (ts._seconds && typeof ts._seconds === "number") return ts._seconds * 1000;
-    return null;
-  }
-
-  function emptyBucket() { return { on: 0, over: 0, total: 0, unknown: 0 }; }
-
-  // Tally helper. Filter is one of:
-  //   { kind: "customer", slug: "xxx" }
-  //   { kind: "tech",     slug: "xxx" }
-  // Returns:
-  //   {
-  //     last_clean: "on"|"over"|"unknown"|null,
-  //     last_7d:    { on, over, total, pct } | null,
-  //     this_month: { on, over, total, pct } | null,
-  //     all_time:   { on, over, total, pct } | null  // = within loaded window
-  //   }
-  function computeBudgetStats(filter) {
-    const now = Date.now();
-    const sevenAgo  = now - 7 * 24 * 60 * 60 * 1000;
-    const monthStart = (function () {
-      const d = new Date(now);
-      // Local-month boundary so MTD lines up with how the office reads it.
-      return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    })();
-
-    const wantSlug = String(filter.slug || "").toLowerCase().trim();
-    if (!wantSlug) return { last_clean: null, last_7d: null, this_month: null, all_time: null };
-
-    let last7   = emptyBucket();
-    let mtd     = emptyBucket();
-    let allWin  = emptyBucket();
-    let newestMs = -1;
-    let newestVal = null;
-
-    for (let i = 0; i < dcrs.length; i++) {
-      const d = dcrs[i];
-      const docSlug = String(
-        (filter.kind === "customer" ? d.customer_slug : d.tech_slug) || ""
-      ).toLowerCase().trim();
-      if (docSlug !== wantSlug) continue;
-
-      const v = getOnBudget(d);
-      const ms = dcrTsToMs(d.created_at);
-
-      // "All time" within the loaded window — counts even when created_at
-      // is unreadable, since we still loaded the doc deliberately.
-      allWin.total += 1;
-      if (v === true)       allWin.on   += 1;
-      else if (v === false) allWin.over += 1;
-      else                  allWin.unknown += 1;
-
-      if (ms != null) {
-        if (ms >= sevenAgo) {
-          last7.total += 1;
-          if (v === true)       last7.on   += 1;
-          else if (v === false) last7.over += 1;
-          else                  last7.unknown += 1;
-        }
-        if (ms >= monthStart) {
-          mtd.total += 1;
-          if (v === true)       mtd.on   += 1;
-          else if (v === false) mtd.over += 1;
-          else                  mtd.unknown += 1;
-        }
-        if (ms > newestMs) { newestMs = ms; newestVal = v; }
-      }
-    }
-
-    function pack(b) {
-      // Need at least one known-on/known-over doc for the % to be meaningful.
-      const denom = b.on + b.over;
-      if (denom === 0) return null;
-      return { on: b.on, over: b.over, total: b.total, pct: Math.round((b.on / denom) * 100) };
-    }
-
-    return {
-      last_clean: newestVal === true ? "on" : newestVal === false ? "over" : (newestMs < 0 ? null : "unknown"),
-      last_7d:    pack(last7),
-      this_month: pack(mtd),
-      all_time:   pack(allWin)
-    };
-  }
-
-  // Compact one-line badge for the row. Returns "" when no data so the
-  // row doesn't shout empty values.
-  function budgetRowBadge(stats) {
-    if (!stats) return "";
-    const mtd = stats.this_month;
-    if (!mtd) {
-      // Show "Last clean: On/Over" if we have NOTHING else.
-      if (stats.last_clean === "on")   return badge("is-on",  "Last clean: On budget");
-      if (stats.last_clean === "over") return badge("is-warn","Last clean: Over budget");
-      return "";
-    }
-    // Color band: green ≥ 85, neutral 70–84, warn < 70.
-    const cls = mtd.pct >= 85 ? "is-on" : mtd.pct >= 70 ? "is-neutral" : "is-warn";
-    return badge(cls, "MTD " + mtd.pct + "% on budget");
-  }
-
-  // Tooltip text with all four windows. Plain text; lives in title="…".
-  function budgetTooltipText(stats) {
-    if (!stats) return "";
-    const parts = [];
-    parts.push("On-budget rate");
-    function row(label, b) {
-      if (!b) return "  " + label + ": —";
-      return "  " + label + ": " + b.pct + "% (" + b.on + " on / " + b.over + " over)";
-    }
-    const lc =
-      stats.last_clean === "on"   ? "On budget" :
-      stats.last_clean === "over" ? "Over budget" :
-      stats.last_clean === "unknown" ? "Unknown" : "—";
-    parts.push("  Last clean: " + lc);
-    parts.push(row("Last 7 days", stats.last_7d));
-    parts.push(row("This month",  stats.this_month));
-    parts.push(row("All-time (loaded window)", stats.all_time));
-    return parts.join("\n");
-  }
+  /* on-budget analytics moved to public/admin/_budget.js — imported via
+     the top-of-IIFE destructure. computeBudgetStats now takes the dcrs
+     array as its first parameter; callers below pass it explicitly. */
 
   /* ---------- customers ---------- */
 
@@ -367,7 +219,7 @@
     // Per-customer on-budget summary. Computed lazily here from the
     // in-memory dcrs cache — no extra Firestore reads. Returns "" when
     // we have no usable data for this customer.
-    const budgetStats   = computeBudgetStats({ kind: "customer", slug: slug });
+    const budgetStats   = computeBudgetStats(dcrs, { kind: "customer", slug: slug });
     const budgetBadgeHtml = budgetRowBadge(budgetStats);
     const budgetTooltip   = budgetTooltipText(budgetStats);
 
@@ -590,7 +442,7 @@
     // Per-tech on-budget summary. Admin-only — never surfaced to techs
     // themselves (see techHubViewV1 / tech.js — they get customer-level
     // budget info, not their own scoreboard).
-    const budgetStats     = computeBudgetStats({ kind: "tech", slug: slug });
+    const budgetStats     = computeBudgetStats(dcrs, { kind: "tech", slug: slug });
     const budgetBadgeHtml = budgetRowBadge(budgetStats);
     const budgetTooltip   = budgetTooltipText(budgetStats);
 
