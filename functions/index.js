@@ -15,6 +15,7 @@
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { logger } = require("firebase-functions");
@@ -197,6 +198,21 @@ async function createSupplyNotice(opts) {
 const TECHS_COLLECTION     = "cleaning_techs";
 const ISSUES_COLLECTION    = "dcr_issues";
 const ZAPIER_TIMEOUT_MS = 10000;
+
+// Where Firebase sends users AFTER they complete a password-reset
+// link. Without this `actionCodeSettings.url`, Firebase shows its
+// stock "password updated" page with a dead "Continue" button — the
+// exact dead-end Makaila hit during pilot prep. Pointing the
+// continueUrl at /login.html means: tech clicks reset link → sets
+// new password → Firebase redirects → /login.html → tech taps Sign
+// In → lands on Team Hub. Single canonical entry point. Must be
+// registered as an Authorized domain in Firebase Auth settings
+// (pioneer-dcr-hub.web.app already is).
+const INVITE_CONTINUE_URL = "https://pioneer-dcr-hub.web.app/login.html";
+const INVITE_ACTION_CODE_SETTINGS = {
+  url:               INVITE_CONTINUE_URL,
+  handleCodeInApp:   false   // browser-based reset; no app intent capture
+};
 
 // Mirror of the client-side ALLOWED_ADMIN_EMAILS in public/admin.js. Server-
 // side authoritative copy — used by verifyStaffOrReject() + whoAmIV1.
@@ -636,7 +652,13 @@ exports.createCleaningTechLoginV1 = onRequest({ cors: false, timeoutSeconds: 30 
   let resetLinkErrorCode = null;
   if (sendReset) {
     try {
-      resetLink = await admin.auth().generatePasswordResetLink(email);
+      // V2 invite flow: pass actionCodeSettings so Firebase returns
+      // the tech to /login.html after they set their password.
+      // Without this, the user lands on Firebase's stock success page
+      // with no path back into PioneerOps (the bug Makaila hit).
+      resetLink = await admin.auth().generatePasswordResetLink(
+        email, INVITE_ACTION_CODE_SETTINGS
+      );
     } catch (err) {
       // Non-fatal — the cleaning_techs doc still gets written, and the
       // admin client will also try sendPasswordResetEmail() so the tech
@@ -849,9 +871,13 @@ exports.createAdminLoginV1 = onRequest({ cors: false, timeoutSeconds: 30 }, asyn
 
   // Generate a backup reset link (server-side). Non-fatal — client
   // will also call sendPasswordResetEmail() from Firebase Web SDK.
+  // actionCodeSettings.url ensures Firebase sends the new admin back
+  // to /login.html after they set their password.
   let resetLink = null;
   try {
-    resetLink = await admin.auth().generatePasswordResetLink(email);
+    resetLink = await admin.auth().generatePasswordResetLink(
+      email, INVITE_ACTION_CODE_SETTINGS
+    );
   } catch (err) {
     logger.warn("createAdminLoginV1: generatePasswordResetLink failed (non-fatal)", {
       email: email, code: err && err.code, message: err && err.message
@@ -1056,10 +1082,15 @@ exports.sendPasswordResetV1 = onRequest({ cors: false, timeoutSeconds: 20 }, asy
     }
   }
 
-  // Generate a reset link.
+  // Generate a reset link. actionCodeSettings.url ensures Firebase
+  // sends the tech back to /login.html after they set their password
+  // — without it, they hit Firebase's stock success page with no
+  // path back into PioneerOps. (Pilot blocker fix.)
   let resetLink = null;
   try {
-    resetLink = await admin.auth().generatePasswordResetLink(email);
+    resetLink = await admin.auth().generatePasswordResetLink(
+      email, INVITE_ACTION_CODE_SETTINGS
+    );
   } catch (err) {
     logger.error("sendPasswordResetV1: generatePasswordResetLink failed", {
       email_prefix: email.slice(0, 3), code: err && err.code
@@ -4555,6 +4586,159 @@ exports.refreshDeputyShiftsV1 = onRequest({
   }
 });
 
+/* ----------------------------- refreshDeputyShiftsRangeV1 -----------------------------
+   Admin-only HTTPS endpoint. Loops `syncDeputyShiftsCore` once per
+   calendar day in an inclusive [start_date, end_date] Pacific range so
+   the publish-snapshot flow can populate the 7/14/21-day horizon
+   without an admin clicking through `refreshDeputyShiftsV1` per day.
+
+   Bounds (defensive):
+     • Range size capped at 31 days. Anything larger 400s — the
+       Deputy API is per-day, so unbounded ranges = unbounded fan-out.
+     • Each date must be within ±60 days of today (mirrors the
+       single-date guard in refreshDeputyShiftsV1).
+     • Per-day errors are caught and recorded in the response; one
+       bad day does NOT abort the rest. This matches the
+       fault-tolerance of the scheduled sync.
+
+   Phase 2 TODO:
+     • parallelize per-day calls with a small concurrency cap (3-4)
+       once we have evidence the Deputy API tolerates it. Today this
+       runs strictly sequentially to keep the rate predictable.
+     • move this loop into a callable Cloud Scheduler job that
+       re-runs nightly (auto-publish on a fixed schedule rather than
+       admin-triggered). */
+exports.refreshDeputyShiftsRangeV1 = onRequest({
+  cors:           false,
+  // 31 days × ~2s/day worst-case ≈ 62s headroom; bump to 300 for
+  // safety since Deputy occasionally serves slow.
+  timeoutSeconds: 300,
+  secrets:        [DEPUTY_CLIENT_ID, DEPUTY_CLIENT_SECRET, DEPUTY_INSTALL_URL, DEPUTY_ACCESS_TOKEN]
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshDeputyShiftsRangeV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const rawStart = String(body.start_date || "").trim();
+  const rawEnd   = String(body.end_date   || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawStart) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) {
+    res.status(400).json({
+      ok: false,
+      error: "start_date and end_date are required in YYYY-MM-DD format."
+    });
+    return;
+  }
+  const todayMs = new Date(deputyTodayLocalDate() + "T00:00:00Z").getTime();
+  const startMs = new Date(rawStart + "T00:00:00Z").getTime();
+  const endMs   = new Date(rawEnd   + "T00:00:00Z").getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+    res.status(400).json({ ok: false, error: "start_date/end_date are not real calendar dates." });
+    return;
+  }
+  if (endMs < startMs) {
+    res.status(400).json({ ok: false, error: "end_date must be on or after start_date." });
+    return;
+  }
+  const rangeDays = Math.round((endMs - startMs) / 86400000) + 1;
+  if (rangeDays > 31) {
+    res.status(400).json({
+      ok: false,
+      error: "Range too large (" + rangeDays + " days). Max 31."
+    });
+    return;
+  }
+  for (const ms of [startMs, endMs]) {
+    const diffDays = Math.abs(ms - todayMs) / 86400000;
+    if (diffDays > 60) {
+      res.status(400).json({
+        ok: false,
+        error: "start_date / end_date must each be within 60 days of today."
+      });
+      return;
+    }
+  }
+
+  const perDay = [];
+  let aggregateUpserted = 0;
+  let aggregateCancelled = 0;
+  let aggregateUnmappedE = 0;
+  let aggregateUnmappedC = 0;
+  let failuresCount = 0;
+
+  for (let cursor = startMs; cursor <= endMs; cursor += 86400000) {
+    const isoDay = new Date(cursor).toISOString().slice(0, 10);
+    try {
+      const result = await syncDeputyShiftsCore({
+        invokedBy: "admin:range:" + staff.email,
+        syncDate:  isoDay
+      });
+      aggregateUpserted  += (result.upserted_count   || 0);
+      aggregateCancelled += (result.cancelled_count  || 0);
+      aggregateUnmappedE += Array.isArray(result.unmapped_employees) ? result.unmapped_employees.length : 0;
+      aggregateUnmappedC += Array.isArray(result.unmapped_customers) ? result.unmapped_customers.length : 0;
+      perDay.push({
+        sync_date:       isoDay,
+        ok:              true,
+        upserted_count:  result.upserted_count   || 0,
+        cancelled_count: result.cancelled_count  || 0,
+        fetched_count:   result.fetched_count    || 0,
+        duration_ms:     result.duration_ms      || 0
+      });
+    } catch (err) {
+      failuresCount += 1;
+      perDay.push({
+        sync_date: isoDay,
+        ok:        false,
+        error:     (err && err.message) || String(err)
+      });
+      logger.warn("refreshDeputyShiftsRangeV1 day failed (continuing)", {
+        sync_date: isoDay, error: err && err.message
+      });
+    }
+  }
+
+  logger.info("refreshDeputyShiftsRangeV1 ok", {
+    start_date: rawStart, end_date: rawEnd, days: rangeDays,
+    upserted: aggregateUpserted, cancelled: aggregateCancelled,
+    failures: failuresCount, caller: staff.email
+  });
+
+  res.status(200).json({
+    ok:                true,
+    start_date:        rawStart,
+    end_date:          rawEnd,
+    days:              rangeDays,
+    aggregate: {
+      upserted_count:        aggregateUpserted,
+      cancelled_count:       aggregateCancelled,
+      unmapped_employees:    aggregateUnmappedE,
+      unmapped_customers:    aggregateUnmappedC,
+      failed_days:           failuresCount
+    },
+    per_day: perDay
+  });
+});
+
 /* ====================================================================
  * seedPilotCustomerAliasesV1 — one-shot admin endpoint that populates
  * /customer_aliases with the curated Pioneer pilot alias list. The
@@ -5313,3 +5497,533 @@ exports.uploadTechMediaV1 = onRequest(
     verifyStaffOrReject:  verifyStaffOrReject
   })
 );
+
+/* ============================================================================
+   Attendance email triggers
+   ============================================================================
+   Two trigger pairs:
+     • onCallOutCreated         → email Kirby + April (urgent)
+     • onTimeOffRequestCreated  → email Kirby + April (informational)
+     • onCallOutUpdated         → email tech on acknowledged / resolved
+     • onTimeOffRequestUpdated  → email tech on approved / denied
+   Update triggers ignore everything except `status` transitions to avoid
+   noisy resends when an admin adds a coverage note without flipping
+   state. Body of the email is built in functions/attendanceEmails.js.
+
+   Secrets reused (already declared above for DCR email + feedback):
+     GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY,
+     KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL
+   ========================================================================= */
+const attendanceEmails = require("./attendanceEmails");
+
+const ATTENDANCE_EMAIL_SECRETS = [
+  GMAIL_SENDER_EMAIL,
+  GMAIL_SERVICE_ACCOUNT_KEY,
+  KIRBY_ALERT_EMAIL,
+  APRIL_ALERT_EMAIL
+];
+
+exports.onCallOutCreatedV1 = onDocumentCreated(
+  { document: "call_outs/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleCallOutCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onCallOutCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onTimeOffRequestCreatedV1 = onDocumentCreated(
+  { document: "time_off_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleTimeOffRequestCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onTimeOffRequestCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onCallOutUpdatedV1 = onDocumentUpdated(
+  { document: "call_outs/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleCallOutUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onCallOutUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onTimeOffRequestUpdatedV1 = onDocumentUpdated(
+  { document: "time_off_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleTimeOffRequestUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onTimeOffRequestUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onOpenShiftCreatedV1 = onDocumentCreated(
+  { document: "open_shift_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleOpenShiftCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onOpenShiftCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onOpenShiftUpdatedV1 = onDocumentUpdated(
+  { document: "open_shift_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleOpenShiftUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onOpenShiftUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+/* ----------------------------- pilotReadinessCheckV1 ----------------------------- */
+
+// Admin-only readiness audit. Walks every active cleaning_tech and runs
+// structural checks (auth user · cleaning_techs record · Deputy mapping ·
+// permission preconditions · customer mapping · pending announcements).
+// No writes, no test docs — pure read pipeline. Returns the engine's
+// JSON envelope { generated_at, summary, techs }.
+//
+// Same engine powers `node scripts/pilot-readiness-check.js`, so the
+// admin panel and the terminal report stay in sync by construction.
+const pilotReadinessEngine = require("./pilotReadinessEngine");
+const dcrReportModule      = require("./dcrReport");
+
+exports.pilotReadinessCheckV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (!staff.isAdmin) {
+    res.status(403).json({ ok: false, error: "Admin-only endpoint." });
+    return;
+  }
+
+  // Optional query params (debug): ?tech_slug=foo or ?limit=N.
+  const techSlug = (req.query && req.query.tech_slug) ? String(req.query.tech_slug) : null;
+  const limitRaw = (req.query && req.query.limit) ? Number(req.query.limit) : 0;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
+
+  try {
+    const report = await pilotReadinessEngine.runReadinessForTechs(admin, {
+      techSlug: techSlug,
+      limit:    limit
+    });
+    res.status(200).json({ ok: true, report: report });
+  } catch (err) {
+    logger.error("pilotReadinessCheckV1 failed", {
+      caller: staff.email, code: err && err.code, message: err && err.message
+    });
+    res.status(500).json({
+      ok:    false,
+      error: "Readiness check failed. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});
+
+/* ----------------------------- getDcrReportByTokenV1 ----------------------------- */
+
+// PUBLIC endpoint — the customer-facing DCR report page calls this with
+// `?t=<rawToken>`. Token is hashed server-side and looked up in
+// dcr_report_tokens; no Firebase Auth required (the token IS the auth).
+//
+// Returns a customer-safe payload (no internal notes, no admin fields).
+// Bumps view counters on both the token doc and the source DCR.
+exports.getDcrReportByTokenV1 = onRequest({ cors: false, timeoutSeconds: 20 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Cache-Control",                 "no-store");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const rawToken = String((req.query && req.query.t) || "").trim();
+  if (!rawToken) {
+    res.status(400).json({ ok: false, code: "missing_token", error: "Token required." });
+    return;
+  }
+
+  try {
+    const out = await dcrReportModule.getDcrReportByToken({
+      admin: admin, db: db, rawToken: rawToken
+    });
+    if (!out.ok) {
+      // 404 for missing/invalid token; 500 for unexpected internal failure.
+      const status = (out.code === "token_not_found" || out.code === "dcr_not_found" || out.code === "token_orphan" || out.code === "bad_token") ? 404 : 500;
+      res.status(status).json(out);
+      return;
+    }
+    res.status(200).json(out);
+  } catch (err) {
+    logger.error("getDcrReportByTokenV1 failed", {
+      code: err && err.code, message: err && err.message
+    });
+    res.status(500).json({
+      ok: false,
+      error: "Report lookup failed. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});
+
+/* ----------------------------- Pioneer SOS dispatch -----------------------------
+
+  When the client writes a new emergency_events/{id} doc, this trigger
+  fans out SMS notifications to April, Kirby, and (optionally) Nick via
+  Twilio, then stamps `notified` + `notificationStatus` back onto the doc.
+
+  Honors the spec: "Do not fake SMS success." When TWILIO_* secrets are
+  missing, we write notificationStatus = "sms_provider_missing" and
+  leave each recipient as false so the UI surfaces the manual-call
+  fallback.
+
+  Phone numbers come from `pioneer_config/emergency_contacts`:
+    { april: "+1...", kirby: "+1...", nick: "+1..." }
+  The April number falls back to the spec default (+15098283335) when
+  the config doc is missing.
+
+  Severity-specific copy:
+    help_needed → "PIONEER HELP NEEDED"
+    critical    → "🚨 PIONEER SOS EMERGENCY"
+*/
+
+const TWILIO_ACCOUNT_SID = defineSecret("TWILIO_ACCOUNT_SID");
+const TWILIO_AUTH_TOKEN  = defineSecret("TWILIO_AUTH_TOKEN");
+const TWILIO_FROM_NUMBER = defineSecret("TWILIO_FROM_NUMBER");
+
+const APRIL_DEFAULT_PHONE = "+15098283335";
+
+function safeReadSecret(s) {
+  try { return s && s.value ? s.value() : ""; }
+  catch (_e) { return ""; }
+}
+
+function formatSosBody(severity, data) {
+  const techName  = data.techName || data.createdByEmail || "(unknown tech)";
+  const customer  = data.customerName || data.locationName || "(no shift in progress)";
+  const address   = data.address || "";
+  const details   = (data.details || "").trim();
+  const ts        = data.createdAt && data.createdAt.toDate
+                      ? data.createdAt.toDate().toISOString()
+                      : new Date().toISOString();
+  const geo       = data.geolocation;
+  const geoLine   = (geo && geo.lat != null && geo.lng != null)
+                      ? ("\nLoc: https://maps.google.com/?q=" + geo.lat + "," + geo.lng)
+                      : "";
+
+  if (severity === "critical") {
+    return [
+      "🚨 PIONEER SOS EMERGENCY",
+      techName,
+      customer,
+      address ? ("Address: " + address) : "",
+      "Triggered emergency alert.",
+      details ? ("Note: " + details) : "",
+      "Time: " + ts,
+      "Call/check immediately." + geoLine
+    ].filter(Boolean).join("\n");
+  }
+  // help_needed
+  return [
+    "PIONEER HELP NEEDED",
+    techName,
+    customer,
+    address ? ("Address: " + address) : "",
+    "Issue: " + (details || "(no details)"),
+    "Time: " + ts + geoLine
+  ].filter(Boolean).join("\n");
+}
+
+async function sendTwilioSms({ accountSid, authToken, fromNumber, toNumber, body, logger }) {
+  const url = "https://api.twilio.com/2010-04-01/Accounts/" + accountSid + "/Messages.json";
+  const credentials = Buffer.from(accountSid + ":" + authToken).toString("base64");
+  const params = new URLSearchParams();
+  params.set("From", fromNumber);
+  params.set("To",   toNumber);
+  params.set("Body", body);
+  let res, txt;
+  try {
+    res = await fetch(url, {
+      method:  "POST",
+      headers: {
+        "Authorization": "Basic " + credentials,
+        "Content-Type":  "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    txt = await res.text();
+  } catch (e) {
+    logger.warn("[sos] twilio fetch threw", { error: e && e.message });
+    return { ok: false, error: e && e.message };
+  }
+  if (!res.ok) {
+    logger.warn("[sos] twilio rejected", { status: res.status, body: txt.slice(0, 400) });
+    return { ok: false, error: "HTTP " + res.status, body: txt.slice(0, 400) };
+  }
+  return { ok: true };
+}
+
+exports.onEmergencyCreatedV1 = onDocumentCreated(
+  {
+    document:       "emergency_events/{id}",
+    timeoutSeconds: 60,
+    secrets:        [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER]
+  },
+  async (event) => {
+    const snap = event && event.data;
+    if (!snap || !snap.exists) return;
+    const data = snap.data() || {};
+    const docRef = snap.ref;
+
+    // ---- 1. Resolve recipient phone numbers ----
+    let contacts = {};
+    try {
+      const cfg = await db.collection("pioneer_config").doc("emergency_contacts").get();
+      if (cfg.exists) contacts = cfg.data() || {};
+    } catch (e) {
+      logger.warn("[sos] failed to read pioneer_config/emergency_contacts", { error: e && e.message });
+    }
+    const aprilPhone = String(contacts.april || APRIL_DEFAULT_PHONE).trim();
+    const kirbyPhone = String(contacts.kirby || "").trim();
+    const nickPhone  = String(contacts.nick  || "").trim();
+
+    // ---- 2. Check SMS provider readiness ----
+    const sid   = safeReadSecret(TWILIO_ACCOUNT_SID);
+    const tok   = safeReadSecret(TWILIO_AUTH_TOKEN);
+    const from  = safeReadSecret(TWILIO_FROM_NUMBER);
+    const providerReady = !!(sid && tok && from);
+
+    const notified = { april: false, kirby: false, nick: false };
+    let   anyFailure = false;
+    let   anySuccess = false;
+    const errors    = [];
+
+    if (!providerReady) {
+      logger.warn("[sos] TWILIO_* secrets not all set — leaving notificationStatus=sms_provider_missing", {
+        eventId:    snap.id,
+        severity:   data.severity,
+        techEmail:  data.createdByEmail,
+        hasSid:     !!sid,
+        hasToken:   !!tok,
+        hasFrom:    !!from
+      });
+      await docRef.set({
+        notified:           notified,
+        notificationStatus: "sms_provider_missing",
+        notificationError:  "TWILIO_* secrets not configured. Set via `firebase functions:secrets:set` to enable SMS dispatch.",
+        notificationAt:     admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      return;
+    }
+
+    // ---- 3. Build the SMS body + dispatch ----
+    const body = formatSosBody(data.severity, data);
+    logger.info("[sos] dispatching", {
+      eventId: snap.id, severity: data.severity, techEmail: data.createdByEmail,
+      recipients: [
+        aprilPhone ? "april" : null,
+        kirbyPhone ? "kirby" : null,
+        nickPhone  ? "nick"  : null
+      ].filter(Boolean)
+    });
+
+    const targets = [
+      { key: "april", to: aprilPhone },
+      { key: "kirby", to: kirbyPhone },
+      { key: "nick",  to: nickPhone  }
+    ];
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (!t.to) {
+        // No number configured for this recipient — neither success nor
+        // failure. Just leave notified[key] = false. The admin UI can
+        // surface "(no number configured)" if useful.
+        continue;
+      }
+      const result = await sendTwilioSms({
+        accountSid: sid,
+        authToken:  tok,
+        fromNumber: from,
+        toNumber:   t.to,
+        body:       body,
+        logger:     logger
+      });
+      if (result.ok) {
+        notified[t.key] = true;
+        anySuccess = true;
+      } else {
+        anyFailure = true;
+        errors.push(t.key + ": " + (result.error || "unknown"));
+      }
+    }
+
+    let status;
+    if (anySuccess && !anyFailure) status = "sent";
+    else if (anySuccess && anyFailure) status = "partial";
+    else status = "failed";
+
+    await docRef.set({
+      notified:           notified,
+      notificationStatus: status,
+      notificationError:  errors.length ? errors.join(" | ") : null,
+      notificationAt:     admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    logger.info("[sos] dispatch result", { eventId: snap.id, status: status, notified: notified });
+  }
+);
+
+/* ----------------------------- setTechAuthDisabledV1 -----------------------------
+   Admin-only. Disable / re-enable a tech's Firebase Auth user AND
+   revoke their refresh tokens so any active PWA / browser session is
+   forced to re-authenticate (and immediately fail) on next token
+   refresh. Used by the cleaning-tech archive flow.
+
+   Body: { email: string, disabled: boolean }
+   Auth: admin Bearer token.
+   Effects:
+     • admin.auth().updateUser(uid, { disabled })
+     • disabled === true → admin.auth().revokeRefreshTokens(uid)
+     • idempotent — already-disabled user updates harmlessly
+*/
+exports.setTechAuthDisabledV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (!staff.isAdmin) {
+    res.status(403).json({ ok: false, error: "Admin-only endpoint." });
+    return;
+  }
+  const body  = req.body || {};
+  const email = String(body.email || "").toLowerCase().trim();
+  const disabled = !!body.disabled;
+  if (!email) {
+    res.status(400).json({ ok: false, error: "email required" });
+    return;
+  }
+  try {
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().updateUser(user.uid, { disabled: disabled });
+    if (disabled) {
+      // Force-invalidate any active session. The client's next ID-token
+      // refresh (within ~1h) will fail; STAFF_AUTH then routes to denied.
+      await admin.auth().revokeRefreshTokens(user.uid);
+    }
+    logger.info("[archive] setTechAuthDisabled", {
+      caller: staff.email, target: email, uid: user.uid, disabled: disabled
+    });
+    res.status(200).json({ ok: true, uid: user.uid, disabled: disabled });
+  } catch (err) {
+    const notFound = err && err.code === "auth/user-not-found";
+    logger.warn("[archive] setTechAuthDisabled failed", {
+      caller: staff.email, target: email, code: err && err.code, error: err && err.message
+    });
+    if (notFound) {
+      // The tech has no auth user. Not a bug — treat as success because
+      // there's nothing to disable.
+      res.status(200).json({ ok: true, code: "user_not_found", note: "no auth user existed for this email" });
+      return;
+    }
+    res.status(500).json({
+      ok: false,
+      error: "Couldn't update auth user. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});

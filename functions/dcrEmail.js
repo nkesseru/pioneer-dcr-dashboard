@@ -33,6 +33,8 @@
  * ========================================================================== */
 
 const { google } = require("googleapis");
+const dcrReport       = require("./dcrReport");
+const customerDisplay = require("./customerDisplay");
 
 // ---- Pioneer brand strings used in the template ----
 const PIONEER_BRAND_NAME    = "Pioneer Commercial Cleaning";
@@ -206,12 +208,34 @@ function v2ExtractPhotoUrls(dcr) {
   return v2ExtractPhotoEntries(dcr).map(function (p) { return p.url; });
 }
 
+// Pilot v20260527-checklist-fallthrough — Pioneer's DCR submit pipeline
+// writes the live checklist to `dcr.form_data.checklist` and writes an
+// EMPTY array to top-level `dcr.checklist`. The naive ternary
+// `Array.isArray(dcr.checklist) ? dcr.checklist : form_data.checklist`
+// matches the empty array as "an array" and never falls through —
+// stranding three call sites (renderer, has-concerns detector,
+// readiness gate) on an empty list. This helper picks whichever
+// source actually has item-bearing sections, preferring the top-level
+// (for forward-compat) but falling back to form_data when top-level is
+// empty or items-less. Both inputs may be null/undefined.
+function pickChecklistWithItems(primary, fallback) {
+  function hasItems(arr) {
+    if (!Array.isArray(arr)) return false;
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      if (s && Array.isArray(s.items) && s.items.length > 0) return true;
+    }
+    return false;
+  }
+  if (hasItems(primary))   return primary;
+  if (hasItems(fallback))  return fallback;
+  return Array.isArray(primary) ? primary : (Array.isArray(fallback) ? fallback : []);
+}
+
 function normalizeDcrForEmail(dcr, customer, tech) {
   const formData    = (dcr && dcr.form_data) || {};
   const affirmation = (dcr && dcr.affirmation) || {};
-  const checklist   = Array.isArray(dcr.checklist)
-                        ? dcr.checklist
-                        : (Array.isArray(formData.checklist) ? formData.checklist : []);
+  const checklist   = pickChecklistWithItems(dcr.checklist, formData.checklist);
 
   // ---- Cleaning summary surface: only completed tasks (no "❌ not done") ----
   // The customer-facing email omits issue / N/A clutter per the spec
@@ -440,7 +464,12 @@ function normalizeDcrForEmail(dcr, customer, tech) {
   return {
     dcrId:           String(dcr.id || dcr.submission_id || ""),
     customerId:      String(customer && (customer.customer_slug || customer.id) || ""),
-    customerName:    String(customer && (customer.customer_name || customer.name) || dcr.customer_name || "Valued customer"),
+    customerName:    String(
+      (customer && customerDisplay.getCustomerDisplayName(customer)) ||
+      (customer && (customer.customer_name || customer.name)) ||
+      dcr.customer_name ||
+      "Valued customer"
+    ),
     // Primary single email (kept for back-compat with code paths that
     // expect a scalar). The renderer + sender prefer customerEmailRecipients.
     customerEmail:   String(
@@ -1839,13 +1868,22 @@ function v3HeaderStatusPill(status) {
   );
 }
 
-// Short inline tagline beside the tech name. Different from V2's full
-// sentence — V3 wants a compact subtitle.
-function v3VisitTagline(visitCount) {
-  if (visitCount == null) return "";
-  if (visitCount <= 3)  return "getting familiar with your location";
-  if (visitCount <= 15) return "regular Pioneer tech";
-  return visitCount + " visits at this location";
+// Short inline tagline beside the tech name. Pilot v20260527-tenure —
+// prefer the precomputed n.techTenureLabel (set by mintReportToken's
+// sibling buildTechTenureLabel call against the real DCR history). The
+// old visitCount-driven heuristic understated experienced techs
+// ("getting familiar" for techs who've been at a site for years). When
+// tenure data is available, that string wins; the visitCount fallback
+// only fires when no tenure label was attached.
+function v3VisitTagline(visitCount, n) {
+  if (n && typeof n.techTenureLabel === "string" && n.techTenureLabel.trim()) {
+    return n.techTenureLabel.trim().replace(/\.$/, "");
+  }
+  if (visitCount == null) return "Experienced Pioneer cleaning tech";
+  if (visitCount >= 25)   return "Regular Pioneer tech at this location";
+  if (visitCount >= 6)    return visitCount + " visits at this location";
+  if (visitCount >= 2)    return "Part of the regular Pioneer team for this location";
+  return "Experienced Pioneer cleaning tech";
 }
 
 // Build the trust strip tile list. Each tile is { label, value }. The
@@ -1998,7 +2036,7 @@ function renderDcrEmailHtmlV3(n, content) {
         safe(initial) +
       '</div>';
 
-  const tagline = v3VisitTagline(ts.cleanerVisitCount);
+  const tagline = v3VisitTagline(ts.cleanerVisitCount, n);
   const techRowHtml =
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' +
       '<tr>' +
@@ -2708,7 +2746,7 @@ function renderDcrEmailHtmlV4(n, content) {
         safe(initial) +
       '</div>';
 
-  const tagline = v3VisitTagline(ts.cleanerVisitCount);
+  const tagline = v3VisitTagline(ts.cleanerVisitCount, n);
 
   // Signature cell — small caption above an inline image. V6 phrasing:
   // "Signed off-site · 9:14 PM" when a submission timestamp resolves,
@@ -3023,7 +3061,7 @@ function renderDcrEmailHtmlV4(n, content) {
         ? ('<div style="font-size:12px;color:' + V2_MUTED + ';margin-top:10px;">' +
              'Report ' + safe(reportId) +
              '<span style="display:inline-block;width:12px;"></span>' +
-             '<a href="' + safe(FEEDBACK_BASE) + '" style="color:' + V2_INK + ';font-weight:700;text-decoration:underline;">View full report →</a>' +
+             '<a href="' + safe(n.reportUrl || FEEDBACK_BASE) + '" style="color:' + V2_INK + ';font-weight:700;text-decoration:underline;">View full report →</a>' +
            '</div>')
         : '') +
       '<div style="font-size:11px;color:' + V2_MUTED + ';margin-top:10px;">' +
@@ -3336,12 +3374,17 @@ async function computeCleanerTrustSignals(db, n, dcr, logger) {
     out.cleanerVisitCount = totalCount;
 
     const firstName = (n.techName || "").trim().split(/\s+/)[0] || "Your tech";
-    if (totalCount <= 3) {
-      out.cleanerVisitMessage = firstName + " is getting familiar with your location and service preferences.";
-    } else if (totalCount <= 15) {
-      out.cleanerVisitMessage = firstName + " has completed several visits at your location.";
-    } else {
+    // Seasoned-default copy. We never say "getting familiar" unless this
+    // is genuinely the tech's first visit at the customer — and even
+    // then we phrase it as experienced-cleaning-tech, just new-to-site.
+    if (totalCount <= 1) {
+      out.cleanerVisitMessage = firstName + " is an experienced Pioneer cleaning tech, completing this visit at your location.";
+    } else if (totalCount <= 5) {
+      out.cleanerVisitMessage = firstName + " is part of the regular Pioneer team for your location.";
+    } else if (totalCount < 25) {
       out.cleanerVisitMessage = firstName + " has completed " + totalCount + " visits at your location.";
+    } else {
+      out.cleanerVisitMessage = firstName + " is your regular Pioneer tech at this location.";
     }
 
     // No-concern streak: walk most-recent-first from the current
@@ -3432,9 +3475,7 @@ function visitHadConcerns(dcrData) {
   if (!dcrData) return false;
   const fd = dcrData.form_data || {};
   if (fd.has_problem === true || dcrData.has_problem === true) return true;
-  const checklist = Array.isArray(dcrData.checklist) ? dcrData.checklist
-                   : Array.isArray(fd.checklist)     ? fd.checklist
-                   : [];
+  const checklist = pickChecklistWithItems(dcrData.checklist, fd.checklist);
   for (let i = 0; i < checklist.length; i++) {
     const section = checklist[i];
     if (!section || !Array.isArray(section.items)) continue;
@@ -3755,6 +3796,37 @@ async function sendDcrEmailCore(opts) {
       ok: false, code: "no_email",
       error: "customer has no email recipient on file (and no testRecipientEmail provided)"
     };
+  }
+
+  // ---- 3c. Tokenized customer report URL + tech tenure label ----
+  // Mint a fresh per-send token so the email's "View full report" link
+  // lands on /dcr-report.html?t=<token>. Hash stored in dcr_report_tokens;
+  // raw token only appears in the email link. Failure is non-fatal —
+  // the email still sends, the link just falls back to the brand homepage.
+  try {
+    const minted = await dcrReport.mintReportToken({
+      admin: admin, db: db, dcrId: dcrId,
+      customerId: customerId, emailTo: recipientEmail || null
+    });
+    n.reportUrl       = minted.reportUrl;
+    n.reportTokenHash = minted.tokenHash;
+  } catch (mintErr) {
+    logger.warn("[dcr-email] report token mint failed (non-fatal)", {
+      dcrId: dcrId, error: mintErr && mintErr.message
+    });
+    n.reportUrl = FEEDBACK_BASE;
+  }
+  // Tenure phrasing (count + earliest date by tech+customer).
+  try {
+    n.techTenureLabel = await dcrReport.buildTechTenureLabel({
+      db: db,
+      techSlug:     n.techSlug || dcr.tech_slug,
+      customerSlug: n.customerId || dcr.customer_slug,
+      techName:     n.techName  || dcr.tech_display_name,
+      currentDcrId: dcrId
+    });
+  } catch (_e) {
+    n.techTenureLabel = "Experienced Pioneer cleaning tech.";
   }
 
   // ---- 4. Generate structured content JSON (V2). ----
@@ -4183,7 +4255,7 @@ async function getDcrEmailReadiness(opts) {
   };
   const n = normalizeDcrForEmail(dcr, stubCustomer, tech);
 
-  resolved.customerName    = (customer && (customer.customer_name || customer.locationDisplayName)) || n.customerName;
+  resolved.customerName    = (customer && customerDisplay.getCustomerDisplayName(customer)) || n.customerName;
   resolved.emailRecipients = n.customerEmailRecipients || [];
   resolved.emailEnabled    = !!n.customerEmailEnabled;
   resolved.hasTechPhoto    = !!n.techPhotoUrl;
@@ -4217,9 +4289,10 @@ async function getDcrEmailReadiness(opts) {
   }
 
   // ---- Checklist blocker ----
-  const checklist = Array.isArray(dcr.checklist)
-    ? dcr.checklist
-    : (dcr.form_data && Array.isArray(dcr.form_data.checklist)) ? dcr.form_data.checklist : [];
+  const checklist = pickChecklistWithItems(
+    dcr.checklist,
+    dcr.form_data && dcr.form_data.checklist
+  );
   const hasChecklist = checklist.some(function (s) {
     return s && Array.isArray(s.items) && s.items.length > 0;
   });

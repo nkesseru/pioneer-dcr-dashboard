@@ -7,6 +7,30 @@
         { "fieldPath": "customer_slug", "order": "ASCENDING" },
         { "fieldPath": "created_at",    "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "confirmedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "shiftDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "acceptedByTechUid", "order": "ASCENDING" },
+        { "fieldPath": "acceptedAt",        "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -95,6 +95,73 @@ service firebase.storage {
         ];
     }
 
+    // Team Schedule — admin uploads the current team schedule PDF
+    // (image fallback allowed). Path convention bucketed by month so
+    // future archive / cleanup jobs can iterate by `team-schedules/<ym>/`:
+    //   team-schedules/{yyyymm}/{timestamp}-{filename}
+    //
+    // Auth model:
+    //   • Read: any signed-in user (admins + cleaning techs view it on
+    //     Team Hub).
+    //   • Write/delete: admin allowlist only — same four emails as
+    //     firestore.rules → isPioneerAdmin(). Keep in sync.
+    //   • Size: hard cap 10 MB.
+    //   • Content-type: PDF + common image formats (jpeg/png/webp).
+    match /team-schedules/{ym}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create, update:
+        if request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com",
+          "kirby@pioneercomclean.com",
+          "mgies@pioneercomclean.com"
+        ]
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches(
+          "application/pdf|image/png|image/jpeg|image/webp"
+        );
+
+      allow delete:
+        if request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com",
+          "kirby@pioneercomclean.com",
+          "mgies@pioneercomclean.com"
+        ];
+    }
+
+    // Help Improve Pioneer screenshots — staff-authenticated uploads
+    // attached to a pioneer_improvements/{submissionId} doc. Read
+    // restricted to admin allowlist so screenshots can't be enumerated.
+    // 5 MB per image, image/* only.
+    match /pioneer-improvements/{submissionId}/{fileName} {
+      allow read:
+        if request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com",
+          "kirby@pioneercomclean.com",
+          "mgies@pioneercomclean.com"
+        ];
+
+      allow create:
+        if request.auth != null
+        && request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('image/.*');
+
+      allow update, delete: if false;
+    }
+
     // Default-deny everything else.
     match /{allPaths=**} {
       allow read, write: if false;

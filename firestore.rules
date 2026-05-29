@@ -66,6 +66,28 @@ service cloud.firestore {
         );
     }
 
+    // Active-staff gate for FIELD-TECH writes. The auth token carries
+    // the email; we look up the matching cleaning_techs/{slug} doc by
+    // walking the index doc at active_techs_by_email/{email_lc} which
+    // stores { active: bool, slug: string, email: string }. Pure
+    // existence check — no extra Firestore reads when this gate fires.
+    //
+    // An admin always passes regardless of the index.
+    //
+    // Adding/removing this index is handled automatically by the
+    // archive flow in admin.js: on archive, the index doc gets
+    // `active: false`; on reactivate, `active: true`. The Firestore
+    // rule treats absent doc OR active != true as denied.
+    function isActiveCleaningTech() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/active_techs_by_email/$(request.auth.token.email.lower()))
+        && get(/databases/$(database)/documents/active_techs_by_email/$(request.auth.token.email.lower())).data.active == true;
+    }
+    function isActiveStaff() {
+      return isPioneerAdmin() || isActiveCleaningTech();
+    }
+
     // Customers + cleaning techs are read-open (public form dropdowns query them
     // anonymously). Writes are gated to the admin allowlist via isPioneerAdmin()
     // so the new edit/archive controls in /admin work, but no anonymous client
@@ -139,6 +161,101 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Help Improve Pioneer — operational improvement channel + separate
+    // protected concerns channel.
+    //
+    //   submission_type == "improvement"  — visible to admins; the
+    //     submitter can read their own doc. Identity is required (the
+    //     team's culture is ownership, not anonymous venting).
+    //
+    //   submission_type == "protected"   — harassment / discrimination /
+    //     retaliation / ethics-safety. Visible ONLY to the named admin
+    //     allowlist (Nick + April + Kirby + Mara). Anonymity is at the
+    //     submitter's discretion via the `is_anonymous` flag; uid/email
+    //     are still server-stamped for serious-followup audit, but the
+    //     admin UI hides them when is_anonymous=true.
+    //
+    // Create gate (both types):
+    //   • request.auth must be set
+    //   • submitted_by_uid / email must match the auth token
+    //   • status must be "submitted" on create
+    //   • doc_id must equal submission_id
+    //
+    // Updates: admins only (status workflow + admin_notes).
+    // Deletes: denied — protected concerns must remain auditable; standard
+    //   improvements close via status, not delete.
+    function canReadImprovement() {
+      return request.auth != null
+        && (
+          isPioneerAdmin()
+          || (
+            resource.data.submission_type == "improvement"
+            && resource.data.submitted_by_uid == request.auth.uid
+          )
+        );
+    }
+    match /pioneer_improvements/{id} {
+      allow read:   if canReadImprovement();
+      // Pilot v20260528-archived-revoke — Help Improve Pioneer requires
+      // an active cleaning_techs/admin row.
+      allow create: if isActiveStaff()
+                    && request.auth.token.email is string
+                    && request.resource.data.submission_id == id
+                    && request.resource.data.submitted_by_uid == request.auth.uid
+                    && request.resource.data.submitted_by_email == request.auth.token.email.lower()
+                    && request.resource.data.status == "submitted"
+                    && request.resource.data.submission_type in ["improvement", "protected"]
+                    && (request.resource.data.submission_type == "improvement"
+                          ? request.resource.data.is_protected == false
+                          : request.resource.data.is_protected == true);
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Pioneer SOS — Phase 1 lone-worker protection.
+    //
+    // Create: any signed-in staff can write a new event. We require
+    //   createdByUid + createdByEmail to match the auth token (so a
+    //   spoofed payload can't mis-attribute the alert), status="open",
+    //   and severity in {"help_needed", "critical"}. Initial notified
+    //   map is enforced to zeros — only the Cloud Function (Admin SDK)
+    //   bypasses these rules to stamp the real notification result.
+    //
+    // Read / update: admin-only — SOS events carry geolocation + tech
+    //   identity + free-text details and must NOT be readable by other
+    //   field techs.
+    //
+    // Delete: denied — emergency records must remain auditable.
+    match /emergency_events/{id} {
+      allow read:   if isPioneerAdmin();
+      // Pilot v20260528-archived-revoke — only active staff can fire SOS.
+      // Archived/deleted techs are routed to the access-denied UI before
+      // reaching the SOS surface, but the rule is the source of truth.
+      allow create: if isActiveStaff()
+                    && request.auth.token.email is string
+                    && request.resource.data.createdByUid == request.auth.uid
+                    && request.resource.data.createdByEmail == request.auth.token.email.lower()
+                    && request.resource.data.status == "open"
+                    && request.resource.data.severity in ["help_needed", "critical"]
+                    && request.resource.data.notified.april == false
+                    && request.resource.data.notified.kirby == false
+                    && request.resource.data.notified.nick  == false
+                    && request.resource.data.notificationStatus == "pending";
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Pioneer config — read-only customer-facing values like emergency
+    // contact phone numbers. Admin writes via Firestore console; field
+    // techs never read this directly (the SOS function reads it server
+    // side via Admin SDK).
+    match /pioneer_config/{key} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+
     // DCR-derived issues — auto-created by submitDcrV1 (Admin SDK) when
     // a submission contains checklist items in `issue` state or a
     // problem-section report. Backlog for office triage with status
@@ -195,10 +312,73 @@ service cloud.firestore {
     // own create/update; deletes are denied because the workflow is
     // "archive" (set archived_at + active=false) rather than "delete".
     match /announcements/{id} {
-      allow read:   if request.auth != null;
+      // V2: targeted announcements. Pre-targeting docs (no audienceType)
+      // are treated as "all" for back-compat — the existing all-team
+      // announcements stay readable to every signed-in user.
+      function canReadAnnouncement() {
+        return request.auth != null && (
+          isPioneerAdmin()
+          || !("audienceType" in resource.data)
+          || resource.data.audienceType == "all"
+          || (resource.data.audienceType == "selected" && (
+                (resource.data.recipientUids is list
+                  && request.auth.uid in resource.data.recipientUids)
+                || (resource.data.recipientEmails is list
+                    && request.auth.token.email is string
+                    && request.auth.token.email.lower() in resource.data.recipientEmails)
+             ))
+        );
+      }
+      allow read:   if canReadAnnouncement();
       allow create: if isPioneerAdmin();
       allow update: if isPioneerAdmin();
       allow delete: if false;
+
+      // Per-user recipient_status subcollection. The doc id is the
+      // user's uid. Each staff user can read + write ONLY their own
+      // doc (with a uid match check on payload); admins can read all
+      // (for the admin recipient-status panel).
+      match /recipient_status/{uid} {
+        allow read:   if isPioneerAdmin()
+                      || (request.auth != null && request.auth.uid == uid);
+        // Acknowledge / viewed / replied requires active-staff status.
+        // Archived techs can't update their own ack timeline.
+        allow create, update:
+                      if isActiveStaff()
+                      && request.auth.uid == uid
+                      && request.resource.data.uid == request.auth.uid;
+        allow delete: if false;
+      }
+
+      // Comments subcollection. Read gated to anyone who can read the
+      // parent announcement; create only when the writer matches the
+      // auth token. Admin can update/delete for moderation if a thread
+      // ever gets out of hand. Field techs can never delete (audit).
+      match /comments/{commentId} {
+        function canReadParent() {
+          return request.auth != null && (
+            isPioneerAdmin()
+            || !("audienceType" in get(/databases/$(database)/documents/announcements/$(id)).data)
+            || get(/databases/$(database)/documents/announcements/$(id)).data.audienceType == "all"
+            || (get(/databases/$(database)/documents/announcements/$(id)).data.audienceType == "selected" && (
+                  (get(/databases/$(database)/documents/announcements/$(id)).data.recipientUids is list
+                    && request.auth.uid in get(/databases/$(database)/documents/announcements/$(id)).data.recipientUids)
+                  || (get(/databases/$(database)/documents/announcements/$(id)).data.recipientEmails is list
+                      && request.auth.token.email is string
+                      && request.auth.token.email.lower() in get(/databases/$(database)/documents/announcements/$(id)).data.recipientEmails)
+               ))
+          );
+        }
+        allow read:   if canReadParent();
+        // Reply requires active-staff status — archived techs can't post.
+        allow create: if isActiveStaff()
+                      && canReadParent()
+                      && request.resource.data.createdByUid == request.auth.uid
+                      && request.auth.token.email is string
+                      && request.resource.data.createdByEmail == request.auth.token.email.lower();
+        allow update: if isPioneerAdmin();
+        allow delete: if isPioneerAdmin();
+      }
     }
 
     // Announcement reads — one doc per (announcement, user) pair so we
@@ -223,6 +403,190 @@ service cloud.firestore {
                   if request.auth != null
                   && request.resource.data.uid == request.auth.uid
                   && readId == request.resource.data.announcement_id + "_" + request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Team Schedule — single-doc (team_schedule/current) holding a
+    // pointer to the latest team-schedule PDF/image in Storage. Admins
+    // upload via the Admin → Schedule panel; every signed-in staff
+    // member (admin + cleaning_tech) can read it on Team Hub.
+    //
+    // The Storage rules block at `team-schedules/**` is the matching
+    // bytes-level gate. Schema (lightweight, pilot-ready):
+    //   fileName, storagePath, downloadUrl, contentType, byteSize,
+    //   uploadedAt, uploadedBy { uid, email, displayName },
+    //   effectiveMonth (optional, "YYYY-MM"), notes (optional),
+    //   active (bool, default true).
+    //
+    // Phase 2 TODO (intentionally out of scope here):
+    //   • native Deputy monthly schedule sync (overwrite this doc from
+    //     a scheduled function)
+    //   • team_schedule history collection (one doc per upload) for
+    //     auditing + a "previous schedules" archive
+    //   • per-tech / per-customer filtered calendar views
+    match /team_schedule/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Attendance — call_outs + time_off_requests
+    // ====================================================================
+    // Two separate collections so the urgent "I can't come in tonight"
+    // path stays distinct from the planned "I want July 4 off" path.
+    // Office manager (Kirby et al.) reviews both via Admin → Attendance.
+    //
+    // Schema lives in the matching public/call-out.js + public/time-off.js
+    // submit handlers. Key field: `techUid` (Firebase Auth uid) — used
+    // by the own-read rule below so techs can see their own status
+    // without leaking other techs' attendance data.
+    //
+    // Phase 2 TODO:
+    //   • Cloud Function trigger on create → email Kirby
+    //   • notification doc on approve/deny → tech sees status update
+    //   • blackout windows (e.g., end-of-quarter freeze)
+    match /call_outs/{id} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.techUid is string
+                        && resource.data.techUid == request.auth.uid);
+      // Techs create their own call-out: must be an ACTIVE cleaning_tech,
+      // uid must match payload, status must start at "new". Admins can
+      // also create (e.g., logging a phoned-in call-out).
+      allow create: if (isActiveCleaningTech()
+                        && request.resource.data.techUid == request.auth.uid
+                        && request.resource.data.status == "new")
+                    || isPioneerAdmin();
+      // Only admins move call-outs through acknowledged → resolved.
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /time_off_requests/{id} {
+      // Read access is intentionally open to any signed-in staff so
+      // techs can see the "Scheduled Time Off" coverage heatmap on
+      // /team-schedule before submitting their own request. Names +
+      // dates are operationally needed for coverage planning; we
+      // treat this as scheduling-sibling visibility, not privacy
+      // data. Call-outs stay admin+own (different sensitivity).
+      allow read:   if request.auth != null;
+      // Techs request their own time off: must be an ACTIVE cleaning_tech,
+      // uid must match payload, status must start at "pending". Admins
+      // can also create (e.g., logging an in-person request).
+      allow create: if (isActiveCleaningTech()
+                        && request.resource.data.techUid == request.auth.uid
+                        && request.resource.data.status == "pending")
+                    || isPioneerAdmin();
+      // Only admins approve/deny + add manager note.
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    // Open shift coverage requests + Rockstar bonus ledger.
+    // ====================================================================
+    // open_shift_requests/{id}
+    //   Admin (or a call-out conversion flow) creates an "open shift"
+    //   doc with status="open". Techs accept by flipping to
+    //   "accepted" + stamping their own uid. The rule below is the
+    //   atomic-claim gate: a second tech's accept request fails
+    //   because the doc's prior status is no longer "open".
+    //
+    //   Admins confirm coverage (status="confirmed") which kicks off
+    //   a Rockstar bonus write — done client-side as a Firestore
+    //   batch in admin.js so the two writes succeed or fail together.
+    //
+    //   Phase 2 TODO:
+    //     • Cloud Function trigger on create → write an
+    //       `announcements/{id}` doc so the Team Hub Announcements
+    //       feed surfaces open shifts natively (currently the Team
+    //       Hub card just shows a badge with open count)
+    //     • Auto-cancel + Kirby alert when an open shift remains
+    //       unclaimed past its shiftDate
+    //     • Per-tech decline / waitlist
+    match /open_shift_requests/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      // Two update paths:
+      //   1. Admin can flip the doc to any state (cancel / confirm /
+      //      edit) and stamp their own identity.
+      //   2. Tech can claim an open shift by flipping
+      //      status:"open" → "accepted" AND stamping their own uid in
+      //      acceptedByTechUid. Rules-enforced atomic claim — the
+      //      second concurrent attempt fails because resource.data
+      //      (the PRE-write state) no longer reads "open".
+      allow update: if isPioneerAdmin()
+                    || (isActiveCleaningTech()
+                        && resource.data.status == "open"
+                        && request.resource.data.status == "accepted"
+                        && request.resource.data.acceptedByTechUid is string
+                        && request.resource.data.acceptedByTechUid == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // rockstar_bonuses/{id}
+    //   Created when an admin confirms an open shift. Read-open so
+    //   the Team Hub "Rockstar Team Players this month" recognition
+    //   can render counts to all signed-in staff. The amount field
+    //   is $25 for everyone — public knowledge per the pilot — so
+    //   we don't gate that behind admin-only reads. Bonus status
+    //   (pending/approved/paid) stays admin-managed.
+    match /rockstar_bonuses/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Simple notification surface — for now just a badge on Admin.
+    // Each doc represents an event the office team should see. Read
+    // is admin-only; create happens client-side at the same time
+    // as the call-out / time-off doc (best-effort; rules just gate it).
+    // Phase 2: replace with a Cloud Function fan-out + email.
+    match /notifications/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.auth != null
+                    && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+
+    // Published Team Schedule (Deputy-powered) — single-doc
+    // (published_team_schedule/current) holding a normalized snapshot of
+    // the next 14 days of Deputy shifts. Admins click "Publish" in the
+    // admin Schedule tab; that builds the snapshot from
+    // deputy_shift_cache and overwrites this doc. Team Hub reads the
+    // doc to render an "Upcoming Team Schedule" grouped-by-day view.
+    //
+    // Deliberate snapshot model: Team Hub does NOT reflect every live
+    // Deputy edit. Admins publish when ready. Each publish overwrites
+    // the doc; there is no per-publish history collection yet.
+    //
+    // Schema (mirrors public/admin.js publishTeamSchedule):
+    //   publishedAt           (serverTimestamp)
+    //   publishedBy           ({uid, email, displayName})
+    //   startDate, endDate    (YYYY-MM-DD Pacific)
+    //   deputySyncVersion     (string|null, future use)
+    //   shiftCount            (number)
+    //   shifts                (array of normalized shift objects:
+    //                          {date, weekday, startTime, endTime,
+    //                          startMs, endMs, techName, techSlug,
+    //                          customerName, customerSlug, status,
+    //                          deputyShiftUrl})
+    //   notes                 (string|null)
+    //   active                (bool, default true)
+    //
+    // Phase 2 TODO (intentionally out of scope here):
+    //   • monthly calendar view + printable export
+    //   • personal "my schedule" filtering for cleaning techs
+    //   • shift swaps + PTO overlays + open-shift coverage flags
+    //   • live vs deferred publish modes (currently always deferred)
+    //   • per-publish history subcollection for audit + rollback
+    //   • server-side publish (Cloud Function) so the snapshot can be
+    //     built even when no admin browser is open
+    match /published_team_schedule/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
       allow delete: if false;
     }
 
@@ -590,23 +954,69 @@ service cloud.firestore {
     //            update everything for ops triage.
     //   delete — denied. Sessions are append-only audit trail.
     match /pioneer_work_sessions/{shiftId} {
-      allow read: if isPioneerAdmin()
-                  || (request.auth != null
-                      && request.auth.token.email is string
-                      && request.auth.token.email.lower() == resource.data.tech_email);
-      allow create: if request.auth != null
+      // V7 pilot fix — single ownership source.
+      //
+      // The previous rule referenced `resource.data.tech_email` in the
+      // read gate, which silently denied reads of NON-EXISTENT session
+      // docs (because `resource` is null pre-create). startWork() runs
+      // a transaction that calls `tx.get(ref)` before the set — that
+      // read was being denied, producing a "permission-denied" with
+      // no diagnostic. Pilot blocker: Makaila on Lydig shift 5796.
+      //
+      // The new rule treats `deputy_shift_cache/{shiftId}.employee_email`
+      // as the canonical "who owns this shift" record. Reads + writes
+      // both gate on the same predicate, so existing session docs and
+      // first-time-create flows work identically. The fallback to the
+      // session doc's own tech_email is kept for the rare case where
+      // a session pre-dates a cache rebuild and the deputy cache no
+      // longer holds the original row.
+      function shiftBelongsToCaller() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && exists(/databases/$(database)/documents/deputy_shift_cache/$(shiftId))
+          && get(/databases/$(database)/documents/deputy_shift_cache/$(shiftId)).data.employee_email == request.auth.token.email.lower();
+      }
+      function sessionBelongsToCaller() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource != null
+          && resource.data.tech_email is string
+          && request.auth.token.email.lower() == resource.data.tech_email;
+      }
+      allow read:   if isPioneerAdmin()
+                    || shiftBelongsToCaller()
+                    || sessionBelongsToCaller();
+      // Pilot v20260528-archived-revoke — Start Work / Finish Work both
+      // require the caller's cleaning_techs row to still be active.
+      // Archived techs hit the rule denial and the page surfaces the
+      // friendly access-removed message via STAFF_AUTH's whoAmI cycle.
+      allow create: if isActiveStaff()
                     && request.auth.token.email is string
                     && request.auth.token.email.lower() == request.resource.data.tech_email
                     && request.resource.data.deputy_shift_id == shiftId
-                    && exists(/databases/$(database)/documents/deputy_shift_cache/$(shiftId))
-                    && get(/databases/$(database)/documents/deputy_shift_cache/$(shiftId)).data.employee_email == request.auth.token.email.lower();
+                    && shiftBelongsToCaller();
       allow update: if isPioneerAdmin()
-                    || (request.auth != null
-                        && request.auth.token.email is string
-                        && request.auth.token.email.lower() == resource.data.tech_email
+                    || (isActiveCleaningTech()
+                        && sessionBelongsToCaller()
                         && request.resource.data.tech_email == resource.data.tech_email
                         && request.resource.data.deputy_shift_id == resource.data.deputy_shift_id);
       allow delete: if false;
+    }
+
+    // Active-staff index. Tiny shadow doc per active cleaning tech +
+    // admin, keyed by lowercase email. The isActiveCleaningTech() rule
+    // checks for the doc's existence + active flag, so an archived
+    // tech (active flipped to false) loses every field-write gate
+    // without scanning cleaning_techs.
+    //
+    // Writes happen ONLY through the admin tech archive/reactivate flow
+    // and the createCleaningTechLoginV1 Cloud Function. No client-side
+    // writes are allowed.
+    match /active_techs_by_email/{email} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
     }
 
     // Deputy OAuth state — holds access/refresh tokens and the brief

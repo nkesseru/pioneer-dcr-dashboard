@@ -25,12 +25,28 @@
       },
       {
         "// pilot fix": "cleanUrls strips .html, so /admin /tech /work /supply-station /team-hub /inspections /training were inheriting the CDN default (max-age=3600) instead of the no-cache rule above. This second block matches the clean-URL paths explicitly so HTML changes ship without a 1-hour cache lag.",
-        "source": "/+(admin|tech|work|supply-station|team-hub|inspections|training|feedback-compliment|feedback-issue)",
+        "source": "/+(admin|tech|work|supply-station|team-hub|team-schedule|inspections|training|feedback-compliment|feedback-issue|call-out|time-off|open-shifts|login|improve|dcr-report)",
         "headers": [
           {
             "key": "Cache-Control",
             "value": "no-cache"
           }
+        ]
+      },
+      {
+        "// pwa sw": "Service worker MUST be fresh on every navigation. Browsers normally do this automatically but we enforce no-cache to be defensive.",
+        "source": "/sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" },
+          { "key": "Service-Worker-Allowed", "value": "/" }
+        ]
+      },
+      {
+        "// pwa manifest": "Manifest needs the correct MIME so Android/Chrome install heuristics accept it. Firebase usually infers from extension; we set it explicitly for safety.",
+        "source": "/manifest.webmanifest",
+        "headers": [
+          { "key": "Content-Type",  "value": "application/manifest+json" },
+          { "key": "Cache-Control", "value": "no-cache" }
         ]
       }
     ]
