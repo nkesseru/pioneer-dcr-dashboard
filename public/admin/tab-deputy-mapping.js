@@ -81,7 +81,16 @@
   const handleAdminWriteError = (err, opts) => depOrThrow("handleAdminWriteError")(err, opts);
 
   function $(id) { return document.getElementById(id); }
-  const db = firebase.firestore();
+
+  // Lazy Firestore handle. We intentionally do NOT call
+  // firebase.firestore() at module-load time — the compat SDK's
+  // initialization can race the script tag order under certain
+  // browser / network conditions, throwing here and preventing
+  // window.__pioneerAdmin.tabs.deputyMapping from ever being
+  // registered (which then trips admin.js's downstream load guard).
+  // Every other tab module already lazy-initializes inside function
+  // bodies; this getter brings tab-deputy-mapping.js in line.
+  function db() { return firebase.firestore(); }
 
   /* ---------- module state ---------- */
 
@@ -364,10 +373,10 @@
         year: "numeric", month: "2-digit", day: "2-digit"
       }).format(cutoff);
       const [shiftsSnap, aliasesSnap] = await Promise.all([
-        db.collection("deputy_shift_cache")
+        db().collection("deputy_shift_cache")
           .where("sync_date", ">=", cutoffDate)
           .get(),
-        db.collection("customer_aliases").get()
+        db().collection("customer_aliases").get()
       ]);
       deputyMappingShifts = shiftsSnap.docs.map(function (d) {
         return Object.assign({ id: d.id }, d.data());
@@ -917,7 +926,7 @@
       return;
     }
     try {
-      await db.collection("customers").doc(slug).update({
+      await db().collection("customers").doc(slug).update({
         deputy_company_id:    Number(cid) || cid,
         deputy_company_name:  name,
         updated_at:           firebase.firestore.FieldValue.serverTimestamp(),
@@ -946,7 +955,7 @@
                 "Aliases and all other settings are preserved.";
     if (!window.confirm(msg)) return;
     try {
-      await db.collection("customers").doc(slug).update({
+      await db().collection("customers").doc(slug).update({
         deputy_company_id:    firebase.firestore.FieldValue.delete(),
         deputy_company_name:  firebase.firestore.FieldValue.delete(),
         updated_at:           firebase.firestore.FieldValue.serverTimestamp(),
@@ -995,9 +1004,9 @@
                 toRemove.map(function (c) { return "  • " + getCustomerName(c); }).join("\n");
     if (!window.confirm(msg)) return;
     try {
-      const batch = db.batch();
+      const batch = db().batch();
       toRemove.forEach(function (c) {
-        const ref = db.collection("customers").doc(getCustomerSlug(c));
+        const ref = db().collection("customers").doc(getCustomerSlug(c));
         batch.update(ref, {
           deputy_company_id:    firebase.firestore.FieldValue.delete(),
           deputy_company_name:  firebase.firestore.FieldValue.delete(),
@@ -1198,9 +1207,9 @@
     try {
       // Batched commits — stay under the 500-write limit per batch.
       for (let i = 0; i < targets.length; i += 400) {
-        const batch = db.batch();
+        const batch = db().batch();
         targets.slice(i, i + 400).forEach(function (f) {
-          const ref = db.collection("customer_aliases").doc(f.doc.id);
+          const ref = db().collection("customer_aliases").doc(f.doc.id);
           batch.set(ref, {
             customer_slug:    f.doc.customer_slug || "",
             customer_name:    f.doc.customer_name || "",
@@ -1453,7 +1462,7 @@
       updated_at:             firebase.firestore.FieldValue.serverTimestamp()
     };
     try {
-      await db.collection("customer_aliases").doc(docId).set(payload, { merge: true });
+      await db().collection("customer_aliases").doc(docId).set(payload, { merge: true });
       showToast("ok", "Alias saved. Future shifts auto-suggest this customer.");
       await reloadAliases();
     } catch (err) {
@@ -1469,7 +1478,7 @@
     try {
       // The firestore rule requires customer_slug + customer_name + active
       // to stay on the doc, so use merge:true + the fields we already have.
-      await db.collection("customer_aliases").doc(docId).set({
+      await db().collection("customer_aliases").doc(docId).set({
         customer_slug: current.customer_slug || "",
         customer_name: current.customer_name || "",
         active:        nextActive,
@@ -1486,7 +1495,7 @@
     if (!docId) return;
     if (!confirm("Delete this alias? Future shifts carrying it will stop auto-suggesting a customer.")) return;
     try {
-      await db.collection("customer_aliases").doc(docId).delete();
+      await db().collection("customer_aliases").doc(docId).delete();
       showToast("ok", "Alias deleted.");
       await reloadAliases();
     } catch (err) {
@@ -1495,7 +1504,7 @@
   }
 
   async function reloadAliases() {
-    const snap = await db.collection("customer_aliases").get();
+    const snap = await db().collection("customer_aliases").get();
     customerAliases = snap.docs.map(function (d) {
       return Object.assign({ id: d.id }, d.data());
     });
@@ -1677,9 +1686,9 @@
     try {
       // Write in batches of 400 to stay under the 500-write batch limit.
       for (let i = 0; i < writes.length; i += 400) {
-        const batch = db.batch();
+        const batch = db().batch();
         writes.slice(i, i + 400).forEach(function (w) {
-          batch.set(db.collection("customer_aliases").doc(w.id), w.payload, { merge: false });
+          batch.set(db().collection("customer_aliases").doc(w.id), w.payload, { merge: false });
         });
         await batch.commit();
       }
@@ -1706,7 +1715,7 @@
     if (opts.deputy_id)    update.deputy_employee_id    = Number(opts.deputy_id) || opts.deputy_id;
     if (opts.deputy_email) update.deputy_employee_email = String(opts.deputy_email).toLowerCase().trim();
     try {
-      await db.collection("cleaning_techs").doc(slug).update(update);
+      await db().collection("cleaning_techs").doc(slug).update(update);
       showToast("ok", "Tech mapping saved. Applies to all future shifts.");
       await window.__pioneerAdmin.tabs.techs.refresh();
       renderDeputyMappingEmployees();

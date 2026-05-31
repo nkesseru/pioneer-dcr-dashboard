@@ -105,7 +105,13 @@
     throw new Error("admin.js: admin/tab-dcr-review.js must load before admin.js");
   }
   if (!window.__pioneerAdmin.tabs.deputyMapping) {
-    throw new Error("admin.js: admin/tab-deputy-mapping.js must load before admin.js");
+    throw new Error(
+      "admin.js: window.__pioneerAdmin.tabs.deputyMapping is not registered. " +
+      "Either the tab-deputy-mapping.js <script> tag is missing/misordered in admin.html, " +
+      "or that file threw a runtime error during its IIFE (look earlier in the DevTools " +
+      "console for the original error — common causes: Firebase SDK not initialized, " +
+      "missing utils export, network failure on the script fetch)."
+    );
   }
   if (!window.__pioneerAdmin.tabs.schedule) {
     throw new Error("admin.js: admin/tab-schedule.js must load before admin.js");
