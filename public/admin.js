@@ -154,7 +154,14 @@
     dcrEnabledBadge,
     dcrEmailBadge,
     activateTab,
-    registerTabActivator
+    registerTabActivator,
+    // Phase 25a — moved from admin.js into _shell.js.
+    setModalSaving,
+    setModalError,
+    handleAdminWriteError,
+    getCurrentAdminEmail,
+    copyInputValue,
+    installModalCloseAffordances
   } = window.__pioneerAdmin.shell;
   const {
     getOnBudget,
@@ -590,52 +597,10 @@
      Archives are soft — active=false + archived_at + archived_by; rules
      deny delete entirely. */
 
-  function getCurrentAdminEmail() {
-    const u = firebase.auth().currentUser;
-    return (u && u.email) || "unknown";
-  }
-
-  // ---- Admin-write error handling ----
-  //
-  // Centralized so the four catch blocks (customer save, customer archive,
-  // tech save, tech archive) all produce:
-  //   • a console.error with the full err + the code + the message broken
-  //     out so devs can read it without expanding the object,
-  //   • an actionable user-facing message — `permission-denied` specifically
-  //     calls out the most common cause (rules not redeployed since the
-  //     admin-write block was added),
-  //   • a modal error string (when an editing modal is open),
-  //   • a toast on top of everything else so the failure is unmissable.
-  function handleAdminWriteError(err, opts) {
-    opts = opts || {};
-    const code    = (err && err.code)    || "";
-    const message = (err && err.message) || (err && String(err)) || "Unknown error";
-
-    // Log every shape of the error so DevTools shows them at a glance.
-    console.error("[admin write failed]", opts.context || "", err);
-    if (code)    console.error("  • Firebase code:   ", code);
-    if (message) console.error("  • Firebase message:", message);
-
-    let friendly = message;
-    if (code === "permission-denied") {
-      friendly =
-        "Permission denied. Two common causes:\n" +
-        "  1. firestore.rules wasn't redeployed since the admin-write rules " +
-        "were added. Run `firebase deploy --only firestore:rules`.\n" +
-        "  2. Your signed-in email isn't on the allowlist in " +
-        "isPioneerAdmin() inside firestore.rules.";
-    } else if (code === "not-found") {
-      friendly = "Doc not found — refresh the page and try again.";
-    } else if (code === "unauthenticated") {
-      friendly = "Sign-in expired — sign out and back in.";
-    } else if (code === "failed-precondition") {
-      friendly = "Save rejected: " + message + " (Firestore: " + code + ").";
-    }
-
-    if (opts.modalId) setModalError(opts.modalId, friendly);
-    showToast("err", "Save failed" + (code ? " — " + code : "") + ". See console for details.");
-    return friendly;
-  }
+  /* getCurrentAdminEmail + handleAdminWriteError moved to admin/_shell.js
+     (Phase 25a) — imported via the top-of-IIFE shell destructure. The
+     six tab modules that consume them via the deps bridge now read
+     from window.__pioneerAdmin.shell directly. */
 
   // ---- Toast ----
   /* openModal, closeModal, showToast moved to public/admin/_shell.js
@@ -680,7 +645,6 @@
     });
   }
 
-  // Per-modal save button + error element IDs. Keyed by the modal's
   /* Announcements module relocated to public/admin/tab-announcements.js
      (Phase 20). Public surface: window.__pioneerAdmin.tabs.announcements.
 
@@ -691,36 +655,12 @@
   /* Admins module relocated to public/admin/tab-admins.js (Phase 17).
      Public surface: window.__pioneerAdmin.tabs.admins. */
 
-  // outer element ID. Adding a new modal? Add an entry here and the
-  // generic helpers below work without further branching.
-  const MODAL_REGISTRY = {
-    "customer-edit-modal":      { saveBtnId: "customer-edit-save",      errId: "customer-edit-err",      savingLabel: "Saving…",   defaultLabel: "Save" },
-    "tech-edit-modal":          { saveBtnId: "tech-edit-save",          errId: "tech-edit-err",          savingLabel: "Saving…",   defaultLabel: "Save" },
-    "tech-create-modal":        { saveBtnId: "tech-create-save",        errId: "tech-create-err",        savingLabel: "Creating…", defaultLabel: "Create login" },
-    "announcement-edit-modal":  { saveBtnId: "announcement-edit-save",  errId: "announcement-edit-err",  savingLabel: "Saving…",   defaultLabel: "Save" },
-    "admin-create-modal":       { saveBtnId: "admin-create-save",       errId: "admin-create-err",       savingLabel: "Creating…", defaultLabel: "Create admin login" },
-    "admin-edit-modal":         { saveBtnId: "admin-edit-save",         errId: "admin-edit-err",         savingLabel: "Saving…",   defaultLabel: "Save changes" },
-    "note-edit-modal":          { saveBtnId: "note-edit-save",          errId: "note-edit-err",          savingLabel: "Saving…",   defaultLabel: "Save" },
-    "suggestion-review-modal":  { saveBtnId: "suggestion-approve",      errId: "suggestion-review-err",  savingLabel: "Saving…",   defaultLabel: "Approve" },
-    "recovery-edit-modal":      { saveBtnId: "recovery-edit-save",      errId: "recovery-edit-err",      savingLabel: "Saving…",   defaultLabel: "Save" }
-  };
-
-  function setModalSaving(modalId, saving) {
-    const reg = MODAL_REGISTRY[modalId];
-    if (!reg) return;
-    const btn = $(reg.saveBtnId);
-    if (!btn) return;
-    btn.disabled = saving;
-    btn.textContent = saving ? reg.savingLabel : reg.defaultLabel;
-  }
-  function setModalError(modalId, msg) {
-    const reg = MODAL_REGISTRY[modalId];
-    if (!reg) return;
-    const errEl = $(reg.errId);
-    if (!errEl) return;
-    if (msg) { errEl.textContent = msg; errEl.hidden = false; }
-    else     { errEl.hidden = true; errEl.textContent = ""; }
-  }
+  /* MODAL_REGISTRY + setModalSaving + setModalError moved to
+     admin/_shell.js (Phase 25a) — imported via the top-of-IIFE shell
+     destructure. Tab modules read them from
+     window.__pioneerAdmin.shell directly; the four deps-bridge entries
+     (handleAdminWriteError, setModalError, setModalSaving,
+     getCurrentAdminEmail) were retired in the same phase. */
 
   // ---- Customer: edit ----
 
@@ -764,30 +704,6 @@
      to public/admin/tab-techs.js (Phase 16a). Callers use
      window.__pioneerAdmin.tabs.techs.openCreateModal /
      onSaveCreate. */
-  // input if the Clipboard API isn't available (e.g. older Safari).
-  async function copyInputValue(inputId, btnId) {
-    const input = $(inputId);
-    const btn   = $(btnId);
-    if (!input) return;
-    const val = input.value;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(val);
-      } else {
-        input.focus();
-        input.select();
-        document.execCommand && document.execCommand("copy");
-      }
-      if (btn) {
-        const orig = btn.textContent;
-        btn.textContent = "Copied!";
-        setTimeout(function () { btn.textContent = orig; }, 1500);
-      }
-    } catch (e) {
-      console.warn("clipboard write failed", e);
-      input.focus(); input.select();
-    }
-  }
 
   /* DCR email Review & Send modal relocated to public/admin/tab-dcr-review.js
      (Phase 21). Public surface: window.__pioneerAdmin.tabs.dcrReview.
@@ -989,22 +905,10 @@
       copyInputValue("tech-create-temp-password", "tech-create-copy-temp");
     });
 
-    // Modal Close affordances — backdrop, X button, Cancel button. Anything
-    // with [data-modal-close] inside a .admin-modal closes its modal.
-    $$("[data-modal-close]").forEach(function (el) {
-      el.addEventListener("click", function () {
-        const modal = el.closest(".admin-modal");
-        if (modal) closeModal(modal.id);
-      });
-    });
-
-    // Esc to close whichever modal is open.
-    document.addEventListener("keydown", function (e) {
-      if (e.key !== "Escape") return;
-      if (!$("customer-edit-modal").hidden) closeModal("customer-edit-modal");
-      if (!$("tech-edit-modal").hidden)     closeModal("tech-edit-modal");
-      if (!$("tech-create-modal").hidden)   closeModal("tech-create-modal");
-    });
+    // Modal close affordances ([data-modal-close] backdrop/X/Cancel + Esc
+    // for the three core editor modals) moved to admin/_shell.js as
+    // installModalCloseAffordances (Phase 25a).
+    installModalCloseAffordances();
   }
 
   /* Schedule subsystem (Team Schedule legacy upload + Published Team Schedule
@@ -1126,10 +1030,9 @@
       refreshAttentionStrip: function () { return window.__pioneerAdmin.tabs.dayHealth.refresh(); },
       getOpsDayWindow:       function (now, cutoffHour, timezone) { return getOpsDayWindow(now, cutoffHour, timezone); },
       loadDcrsAndRerenderDependents: function () { return loadDcrsAndRerenderDependents(); },
-      getCurrentAdminEmail:  getCurrentAdminEmail,
-      handleAdminWriteError: handleAdminWriteError,
-      setModalError:         setModalError,
-      setModalSaving:        setModalSaving,
+      // Phase 25a retired: getCurrentAdminEmail, handleAdminWriteError,
+      // setModalError, setModalSaving. Tab modules now destructure
+      // those four from window.__pioneerAdmin.shell directly.
       populateCustomerDeputyIntegration: function (c) { return window.__pioneerAdmin.tabs.deputyMapping.populateCustomerIntegration(c); }
     };
     // DCR Issues tab fires onChange after every load + save so admin.js

@@ -51,8 +51,8 @@
     }
     return deps[name];
   }
-  const getCurrentAdminEmail  = () => depOrThrow("getCurrentAdminEmail")();
-  const handleAdminWriteError = (err, opts) => depOrThrow("handleAdminWriteError")(err, opts);
+  const getCurrentAdminEmail  = window.__pioneerAdmin.shell.getCurrentAdminEmail;
+  const handleAdminWriteError = window.__pioneerAdmin.shell.handleAdminWriteError;
 
   function $(id) { return document.getElementById(id); }
 

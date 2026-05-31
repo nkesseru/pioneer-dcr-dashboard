@@ -123,6 +123,133 @@
     }, 3500);
   }
 
+  /* ---------- write helpers + per-modal save state ----------
+   * MODAL_REGISTRY: per-modal save-button + error-element IDs.
+   * setModalSaving / setModalError: generic helpers that read the
+   *   registry and flip the matching DOM. Used by every tab that
+   *   owns an admin-modal save flow.
+   * handleAdminWriteError: centralized error formatter for Firestore
+   *   writes — logs full error + friendly message + toast.
+   * getCurrentAdminEmail: identity helper for updated_by stamps.
+   * Moved here in Phase 25a so tab modules can read them from
+   * window.__pioneerAdmin.shell directly instead of via the deps
+   * bridge. Adding a modal? Add an entry below and the helpers work
+   * without further branching.
+   */
+  const MODAL_REGISTRY = {
+    "customer-edit-modal":      { saveBtnId: "customer-edit-save",      errId: "customer-edit-err",      savingLabel: "Saving…",   defaultLabel: "Save" },
+    "tech-edit-modal":          { saveBtnId: "tech-edit-save",          errId: "tech-edit-err",          savingLabel: "Saving…",   defaultLabel: "Save" },
+    "tech-create-modal":        { saveBtnId: "tech-create-save",        errId: "tech-create-err",        savingLabel: "Creating…", defaultLabel: "Create login" },
+    "announcement-edit-modal":  { saveBtnId: "announcement-edit-save",  errId: "announcement-edit-err",  savingLabel: "Saving…",   defaultLabel: "Save" },
+    "admin-create-modal":       { saveBtnId: "admin-create-save",       errId: "admin-create-err",       savingLabel: "Creating…", defaultLabel: "Create admin login" },
+    "admin-edit-modal":         { saveBtnId: "admin-edit-save",         errId: "admin-edit-err",         savingLabel: "Saving…",   defaultLabel: "Save changes" },
+    "note-edit-modal":          { saveBtnId: "note-edit-save",          errId: "note-edit-err",          savingLabel: "Saving…",   defaultLabel: "Save" },
+    "suggestion-review-modal":  { saveBtnId: "suggestion-approve",      errId: "suggestion-review-err",  savingLabel: "Saving…",   defaultLabel: "Approve" },
+    "recovery-edit-modal":      { saveBtnId: "recovery-edit-save",      errId: "recovery-edit-err",      savingLabel: "Saving…",   defaultLabel: "Save" }
+  };
+
+  function setModalSaving(modalId, saving) {
+    const reg = MODAL_REGISTRY[modalId];
+    if (!reg) return;
+    const btn = document.getElementById(reg.saveBtnId);
+    if (!btn) return;
+    btn.disabled = saving;
+    btn.textContent = saving ? reg.savingLabel : reg.defaultLabel;
+  }
+
+  function setModalError(modalId, msg) {
+    const reg = MODAL_REGISTRY[modalId];
+    if (!reg) return;
+    const errEl = document.getElementById(reg.errId);
+    if (!errEl) return;
+    if (msg) { errEl.textContent = msg; errEl.hidden = false; }
+    else     { errEl.hidden = true; errEl.textContent = ""; }
+  }
+
+  function handleAdminWriteError(err, opts) {
+    opts = opts || {};
+    const code    = (err && err.code)    || "";
+    const message = (err && err.message) || (err && String(err)) || "Unknown error";
+
+    console.error("[admin write failed]", opts.context || "", err);
+    if (code)    console.error("  • Firebase code:   ", code);
+    if (message) console.error("  • Firebase message:", message);
+
+    let friendly = message;
+    if (code === "permission-denied") {
+      friendly =
+        "Permission denied. Two common causes:\n" +
+        "  1. firestore.rules wasn't redeployed since the admin-write rules " +
+        "were added. Run `firebase deploy --only firestore:rules`.\n" +
+        "  2. Your signed-in email isn't on the allowlist in " +
+        "isPioneerAdmin() inside firestore.rules.";
+    } else if (code === "not-found") {
+      friendly = "Doc not found — refresh the page and try again.";
+    } else if (code === "unauthenticated") {
+      friendly = "Sign-in expired — sign out and back in.";
+    } else if (code === "failed-precondition") {
+      friendly = "Save rejected: " + message + " (Firestore: " + code + ").";
+    }
+
+    if (opts.modalId) setModalError(opts.modalId, friendly);
+    showToast("err", "Save failed" + (code ? " — " + code : "") + ". See console for details.");
+    return friendly;
+  }
+
+  function getCurrentAdminEmail() {
+    if (!window.firebase || typeof firebase.auth !== "function") return "unknown";
+    const u = firebase.auth().currentUser;
+    return (u && u.email) || "unknown";
+  }
+
+  /* copyInputValue — write the value of an <input> to the clipboard,
+   * with a "Copied!" label flash on the trigger button. Falls back to
+   * input.select + execCommand("copy") for browsers without the
+   * Clipboard API. */
+  async function copyInputValue(inputId, btnId) {
+    const input = document.getElementById(inputId);
+    const btn   = document.getElementById(btnId);
+    if (!input) return;
+    const val = input.value;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(val);
+      } else {
+        input.focus();
+        input.select();
+        document.execCommand && document.execCommand("copy");
+      }
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(function () { btn.textContent = orig; }, 1500);
+      }
+    } catch (e) {
+      console.warn("clipboard write failed", e);
+      input.focus(); input.select();
+    }
+  }
+
+  /* installModalCloseAffordances — wire backdrop / X / Cancel close
+   * buttons (anything [data-modal-close] inside .admin-modal) plus an
+   * Escape-to-close handler for the three core editor modals (customer
+   * edit, tech edit, tech create). Other modals close via [data-modal-close]
+   * exclusively — matches the original admin.js Esc behavior exactly. */
+  function installModalCloseAffordances() {
+    Array.from(document.querySelectorAll("[data-modal-close]")).forEach(function (el) {
+      el.addEventListener("click", function () {
+        const modal = el.closest(".admin-modal");
+        if (modal) closeModal(modal.id);
+      });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (!document.getElementById("customer-edit-modal").hidden) closeModal("customer-edit-modal");
+      if (!document.getElementById("tech-edit-modal").hidden)     closeModal("tech-edit-modal");
+      if (!document.getElementById("tech-create-modal").hidden)   closeModal("tech-create-modal");
+    });
+  }
+
   /* ---------- badge helpers ---------- */
 
   function badge(cls, label) {
@@ -184,6 +311,12 @@
     dcrEnabledBadge: dcrEnabledBadge,
     dcrEmailBadge: dcrEmailBadge,
     activateTab: activateTab,
-    registerTabActivator: registerTabActivator
+    registerTabActivator: registerTabActivator,
+    setModalSaving: setModalSaving,
+    setModalError: setModalError,
+    handleAdminWriteError: handleAdminWriteError,
+    getCurrentAdminEmail: getCurrentAdminEmail,
+    copyInputValue: copyInputValue,
+    installModalCloseAffordances: installModalCloseAffordances
   };
 }());

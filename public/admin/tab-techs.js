@@ -96,10 +96,10 @@
   const getAdmins              = () => depOrThrow("getAdmins")();
   const loadAdmins             = () => depOrThrow("loadAdmins")();
   const refreshAttentionStrip  = () => depOrThrow("refreshAttentionStrip")();
-  const getCurrentAdminEmail   = () => depOrThrow("getCurrentAdminEmail")();
-  const handleAdminWriteError  = (err, opts) => depOrThrow("handleAdminWriteError")(err, opts);
-  const setModalError          = (modalId, msg) => depOrThrow("setModalError")(modalId, msg);
-  const setModalSaving         = (modalId, on) => depOrThrow("setModalSaving")(modalId, on);
+  const getCurrentAdminEmail   = window.__pioneerAdmin.shell.getCurrentAdminEmail;
+  const handleAdminWriteError  = window.__pioneerAdmin.shell.handleAdminWriteError;
+  const setModalError          = window.__pioneerAdmin.shell.setModalError;
+  const setModalSaving         = window.__pioneerAdmin.shell.setModalSaving;
 
   function $(id) { return document.getElementById(id); }
 

@@ -69,10 +69,10 @@
     return deps[name];
   }
   const getCustomers          = () => depOrThrow("getCustomers")();
-  const getCurrentAdminEmail  = () => depOrThrow("getCurrentAdminEmail")();
-  const handleAdminWriteError = (err, opts) => depOrThrow("handleAdminWriteError")(err, opts);
-  const setModalError         = (modalId, msg) => depOrThrow("setModalError")(modalId, msg);
-  const setModalSaving        = (modalId, saving) => depOrThrow("setModalSaving")(modalId, saving);
+  const getCurrentAdminEmail  = window.__pioneerAdmin.shell.getCurrentAdminEmail;
+  const handleAdminWriteError = window.__pioneerAdmin.shell.handleAdminWriteError;
+  const setModalError         = window.__pioneerAdmin.shell.setModalError;
+  const setModalSaving        = window.__pioneerAdmin.shell.setModalSaving;
 
   // DOM shorthand — same alias used elsewhere in admin.js, kept local
   // here so we don't pollute the global namespace.
