@@ -359,14 +359,13 @@
   /* ---------- search filters ---------- */
 
   function wireSearch() {
-    const cs = $("customer-search");
+    // Customer search moved to tabs.customers.init() in Phase 25c.
     const ts = $("tech-search");
     const ds = $("dcr-search");
 
-    // Delegated to applyCurrentCustomerFilter / applyCurrentTechFilter so that
-    // both the search-input handler AND the post-save row refresh use the same
-    // filter logic (avoids "save → re-render → search query forgotten").
-    if (cs) cs.addEventListener("input", function () { window.__pioneerAdmin.tabs.customers.applyFilter(); });
+    // Delegated to applyCurrentTechFilter so that both the search-input
+    // handler AND the post-save row refresh use the same filter logic
+    // (avoids "save → re-render → search query forgotten").
     if (ts) ts.addEventListener("input", function () { window.__pioneerAdmin.tabs.techs.applyFilter(); });
 
     if (ds) ds.addEventListener("input", function () {
@@ -713,22 +712,9 @@
   // ---- One-time wiring: event delegation + modal close/save buttons + Esc ----
 
   function wireWriteControls() {
-    // Customer list — event-delegated Edit / Archive clicks.
-    // customers array now lives in tab-customers.js (Phase 15); read via bridge.
-    const custRoot = $("customer-list");
-    if (custRoot) {
-      custRoot.addEventListener("click", function (ev) {
-        const btn = ev.target.closest("[data-action]");
-        if (!btn) return;
-        const row = btn.closest("[data-id]");
-        if (!row) return;
-        const customers = window.__pioneerAdmin.deps.getCustomers();
-        const c = customers.find(function (x) { return x.id === row.dataset.id; });
-        if (!c) return;
-        if (btn.dataset.action === "edit")    window.__pioneerAdmin.tabs.customers.openEditModal(c);
-        if (btn.dataset.action === "archive") window.__pioneerAdmin.tabs.customers.onArchive(c);
-      });
-    }
+    // Customer list event delegation moved to tabs.customers.init()
+    // in Phase 25c.
+
     // Tech list — same pattern, plus overflow-menu toggling.
     //
     // The row markup contains a [data-action="more"] trigger and a
@@ -798,48 +784,14 @@
     // DCR review modal Send + Resend buttons are wired by
     // tabs.dcrReview.init() (Phase 21).
 
-    // Modal Save buttons.
-    //
-    // The customer save button serves BOTH edit and create modes — we
-    // dispatch on the modal's data-mode attribute. Tech edit/create
-    // remain on separate buttons since they live in two different
-    // modals (tech-edit-modal vs tech-create-modal).
-    const custSave = $("customer-edit-save");
-    if (custSave) custSave.addEventListener("click", function () {
-      window.__pioneerAdmin.tabs.customers.onSave();
-    });
+    // Tech Modal Save buttons. Customer save button + "+ Add customer"
+    // + auto-slug moved to tabs.customers.init() in Phase 25c. Tech
+    // edit/create remain on separate buttons since they live in two
+    // different modals (tech-edit-modal vs tech-create-modal).
     const techSave = $("tech-edit-save");
     if (techSave) techSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveEdit(); });
     const techCreateSave = $("tech-create-save");
     if (techCreateSave) techCreateSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveCreate(); });
-
-    // "+ Add customer" button → opens the customer modal in create mode.
-    const custCreateOpen = $("customer-create-open");
-    if (custCreateOpen) custCreateOpen.addEventListener("click", function () {
-      window.__pioneerAdmin.tabs.customers.openCreateModal();
-    });
-
-    // Auto-slug on the customer-create modal — derive from location_name
-    // (preferred) or customer_name as the admin types, until the admin
-    // touches the slug field themselves. Same pattern as the tech-create
-    // modal's slug auto-fill.
-    const custNameEl     = $("cust-edit-name");
-    const custLocationEl = $("cust-edit-location");
-    const custSlugEl     = $("cust-create-slug");
-    function refreshAutoCustSlug() {
-      const modal = $("customer-edit-modal");
-      if (!modal || modal.dataset.mode !== "create") return;
-      if (!custSlugEl) return;
-      if (custSlugEl.dataset.touched === "1") return;
-      const src = (custLocationEl && custLocationEl.value.trim()) ||
-                  (custNameEl     && custNameEl.value.trim())     || "";
-      custSlugEl.value = slugifyForTech(src);
-    }
-    if (custSlugEl) {
-      custSlugEl.addEventListener("input", function () { custSlugEl.dataset.touched = "1"; });
-    }
-    if (custNameEl)     custNameEl.addEventListener("input",     refreshAutoCustSlug);
-    if (custLocationEl) custLocationEl.addEventListener("input", refreshAutoCustSlug);
 
     // "+ Add tech / Login setup" button — opens the create modal.
     const techCreateOpen = $("tech-create-open");
@@ -1017,6 +969,7 @@
     window.__pioneerAdmin.tabs.noteSuggestions.init();
     window.__pioneerAdmin.tabs.serviceRecoveries.init();
     window.__pioneerAdmin.tabs.training.init();
+    window.__pioneerAdmin.tabs.customers.init();
     window.__pioneerAdmin.tabs.techs.init();
     window.__pioneerAdmin.tabs.deputyMapping.init();
     window.__pioneerAdmin.tabs.schedule.init();

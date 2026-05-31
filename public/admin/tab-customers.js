@@ -564,11 +564,74 @@
     }
   }
 
+  /* ---------- one-time wiring ----------
+   * Phase 25c: search input + list event delegation + modal save button +
+   * "+ Add customer" trigger + auto-slug listeners moved from admin.js
+   * (wireSearch + wireWriteControls) into this module. The customers
+   * array lives here, so the list-delegation reads it directly instead of
+   * via the deps bridge. slugifyCustomerCandidate (already local) replaces
+   * the slugifyForTech call admin.js used for the auto-slug — same body,
+   * same output, behavior identical. Boot calls tabs.customers.init().
+   */
+  function wireCustomerControls() {
+    // Search input — calls applyCurrentCustomerFilter directly. Same
+    // post-save-friendly re-filter behavior as before.
+    const cs = $("customer-search");
+    if (cs) cs.addEventListener("input", function () { applyCurrentCustomerFilter(); });
+
+    // List event delegation — Edit / Archive clicks. The customers array
+    // is owned by this module; no deps bridge lookup needed.
+    const custRoot = $("customer-list");
+    if (custRoot) {
+      custRoot.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-action]");
+        if (!btn) return;
+        const row = btn.closest("[data-id]");
+        if (!row) return;
+        const c = customers.find(function (x) { return x.id === row.dataset.id; });
+        if (!c) return;
+        if (btn.dataset.action === "edit")    openCustomerEditModal(c);
+        if (btn.dataset.action === "archive") onCustomerArchive(c);
+      });
+    }
+
+    // Customer save button — dispatches edit vs create on modal data-mode.
+    const custSave = $("customer-edit-save");
+    if (custSave) custSave.addEventListener("click", function () { onSave(); });
+
+    // "+ Add customer" — opens the modal in create mode.
+    const custCreateOpen = $("customer-create-open");
+    if (custCreateOpen) custCreateOpen.addEventListener("click", function () {
+      openCustomerCreateModal();
+    });
+
+    // Auto-slug on the customer-create modal — derive from location_name
+    // (preferred) or customer_name as the admin types, until the admin
+    // touches the slug field themselves. Mode-gated on data-mode="create".
+    const custNameEl     = $("cust-edit-name");
+    const custLocationEl = $("cust-edit-location");
+    const custSlugEl     = $("cust-create-slug");
+    function refreshAutoCustSlug() {
+      const modal = $("customer-edit-modal");
+      if (!modal || modal.dataset.mode !== "create") return;
+      if (!custSlugEl) return;
+      if (custSlugEl.dataset.touched === "1") return;
+      const src = (custLocationEl && custLocationEl.value.trim()) ||
+                  (custNameEl     && custNameEl.value.trim())     || "";
+      custSlugEl.value = slugifyCustomerCandidate(src);
+    }
+    if (custSlugEl) {
+      custSlugEl.addEventListener("input", function () { custSlugEl.dataset.touched = "1"; });
+    }
+    if (custNameEl)     custNameEl.addEventListener("input",     refreshAutoCustSlug);
+    if (custLocationEl) custLocationEl.addEventListener("input", refreshAutoCustSlug);
+  }
+
   /* ---------- export surface ---------- */
 
   window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
   window.__pioneerAdmin.tabs.customers = {
-    init:            function () { /* no-op — controls wired in admin.js */ },
+    init:            wireCustomerControls,
     refresh:         loadCustomers,
     getCustomers:    function () { return customers; },
     applyFilter:     applyCurrentCustomerFilter,
