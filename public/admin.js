@@ -161,7 +161,11 @@
     handleAdminWriteError,
     getCurrentAdminEmail,
     copyInputValue,
-    installModalCloseAffordances
+    installModalCloseAffordances,
+    // Phase 25b — row overflow menu trio moved from admin.js into _shell.js.
+    closeAllRowOverflowMenus,
+    toggleRowOverflow,
+    installOverflowMenuOutsideClose
   } = window.__pioneerAdmin.shell;
   const {
     getOnBudget,
@@ -606,44 +610,11 @@
   /* openModal, closeModal, showToast moved to public/admin/_shell.js
      (Phase 6a) — imported via the top-of-IIFE shell destructure. */
 
-  /* ---------- Row overflow menu (action-rail popover) ----------
-     Used by cleaning_tech rows to collapse Promote / Archive / Delete
-     into a single [More ▾] trigger. State lives entirely in the DOM —
-     `aria-expanded` on the trigger + `hidden` on the menu — so the
-     toggle is idempotent regardless of which row repainted last. */
-  function closeAllRowOverflowMenus(exceptTrigger) {
-    document.querySelectorAll(".row-overflow").forEach(function (wrap) {
-      const trigger = wrap.querySelector(".row-btn-more");
-      const menu    = wrap.querySelector(".row-overflow-menu");
-      if (!trigger || !menu) return;
-      if (exceptTrigger && trigger === exceptTrigger) return;
-      trigger.setAttribute("aria-expanded", "false");
-      menu.hidden = true;
-    });
-  }
-  function toggleRowOverflow(triggerBtn) {
-    const wrap = triggerBtn.closest(".row-overflow");
-    if (!wrap) return;
-    const menu = wrap.querySelector(".row-overflow-menu");
-    if (!menu) return;
-    const open = triggerBtn.getAttribute("aria-expanded") === "true";
-    // Close any others first so only one popover is open at a time.
-    closeAllRowOverflowMenus(triggerBtn);
-    triggerBtn.setAttribute("aria-expanded", open ? "false" : "true");
-    menu.hidden = open;
-  }
-  // Install once at boot. Captures outside-clicks AND the Escape key.
-  function installOverflowMenuOutsideClose() {
-    document.addEventListener("click", function (ev) {
-      // If the click landed inside a .row-overflow, leave it alone —
-      // the row-list delegator handles toggling/closing.
-      if (ev.target.closest && ev.target.closest(".row-overflow")) return;
-      closeAllRowOverflowMenus();
-    });
-    document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") closeAllRowOverflowMenus();
-    });
-  }
+  /* Row overflow menu trio (closeAllRowOverflowMenus, toggleRowOverflow,
+     installOverflowMenuOutsideClose) moved to admin/_shell.js
+     (Phase 25b) — imported via the top-of-IIFE shell destructure.
+     Tech-list dispatch in wireWriteControls still owns the click that
+     calls toggleRowOverflow; boot still calls installOverflowMenuOutsideClose. */
 
   /* Announcements module relocated to public/admin/tab-announcements.js
      (Phase 20). Public surface: window.__pioneerAdmin.tabs.announcements.
