@@ -56,6 +56,12 @@
   let attendanceCallOuts  = [];
   let attendanceActiveSub = "pending";
   void attendanceActiveSub;  // tracked for parity with original; UI reads from DOM state
+  // False until the first loadAttendance() fetch resolves. While false,
+  // the per-sub-tab renderers skip the empty-state path so the global
+  // #attendance-loading banner is the single "loading" signal. Without
+  // this guard, clicking Approved/Call-Outs during the initial fetch
+  // surfaced "No …" alongside the banner (Phase 24 QA).
+  let attendanceLoaded    = false;
 
   function setAttendanceState(state) {
     const map = {
@@ -137,6 +143,7 @@
       attendanceCallOuts = coSnap.docs.map(function (d) {
         return Object.assign({ id: d.id }, d.data() || {});
       });
+      attendanceLoaded = true;
       setAttendanceState(null);
       renderAttendance();
       updateAttendanceBadges();
@@ -190,6 +197,7 @@
     const list  = $("attn-pending-list");
     const empty = $("attn-pending-empty");
     if (!list || !empty) return;
+    if (!attendanceLoaded) { list.innerHTML = ""; empty.hidden = true; return; }
     const items = attendanceTimeOff.filter(function (x) { return x.status === "pending"; });
     if (!items.length) {
       list.innerHTML = ""; empty.hidden = false; return;
@@ -224,6 +232,7 @@
     const list  = $("attn-approved-list");
     const empty = $("attn-approved-empty");
     if (!list || !empty) return;
+    if (!attendanceLoaded) { list.innerHTML = ""; empty.hidden = true; return; }
     const items = attendanceTimeOff.filter(function (x) {
       return x.status === "approved" || x.status === "denied";
     });
@@ -257,6 +266,7 @@
     const list  = $("attn-callouts-list");
     const empty = $("attn-callouts-empty");
     if (!list || !empty) return;
+    if (!attendanceLoaded) { list.innerHTML = ""; empty.hidden = true; return; }
     const items = attendanceCallOuts;
     if (!items.length) {
       list.innerHTML = ""; empty.hidden = false; return;
