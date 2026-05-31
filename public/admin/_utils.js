@@ -135,6 +135,91 @@
   function getTechName(t)         { return t.display_name || t.tech_display_name || t.name || ""; }
   function getTechSlug(t)         { return t.tech_slug    || t.slug              || t.id   || ""; }
 
+  /* ---------- pure date helpers ----------
+   *
+   * pacificDateString + addDaysPacific + getOpsDayWindow promoted to
+   * utils in Phase 23 because they're consumed by multiple tab
+   * modules (Schedule, Attendance, Day Health). No closures, no
+   * Firestore, no network — safe to share at the utils layer.
+   */
+
+  function pacificDateString(d) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Los_Angeles",
+      year:  "numeric", month: "2-digit", day:   "2-digit"
+    }).format(d);
+  }
+
+  function addDaysPacific(yyyymmdd, days) {
+    // Add `days` to a YYYY-MM-DD string, working in UTC to avoid DST
+    // drift, then re-format in Pacific. Sufficient for short windows
+    // (14-21 days).
+    const base = new Date(yyyymmdd + "T12:00:00Z");
+    base.setUTCDate(base.getUTCDate() + days);
+    return pacificDateString(base);
+  }
+
+  /* getOpsDayWindow — Pioneer operational day boundaries.
+   *
+   * The "operational day" begins at 4 PM Pacific (office staff close
+   * out the previous workday) and ends at 4 PM the next day. Midnight-
+   * to-midnight stats are less useful because cleaning techs work
+   * overnight and the office wants their morning view to STILL reflect
+   * last night's work.
+   *
+   * Returns the current ops-day window + the previous one + a human
+   * label describing which physical hours the current window covers.
+   *
+   * Pure date math. No Firestore. No network. */
+  function getOpsDayWindow(now, cutoffHour, timezone) {
+    now         = now         || new Date();
+    cutoffHour  = (cutoffHour  != null) ? cutoffHour  : 16;
+    timezone    = timezone     || "America/Los_Angeles";
+
+    // What's the Pacific wall-clock hour:minute:second right now?
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(now);
+    function partVal(name) {
+      const p = parts.find(function (x) { return x.type === name; });
+      return p ? parseInt(p.value, 10) : 0;
+    }
+    const h = partVal("hour");
+    const m = partVal("minute");
+    const s = partVal("second");
+
+    // How many ms have elapsed since the most recent 4 PM Pacific
+    // boundary? If we're past today's cutoff, that boundary was today
+    // at the cutoff hour; otherwise it was yesterday at the cutoff hour.
+    const isPastCutoff = (h >= cutoffHour);
+    const hoursSince = isPastCutoff
+      ? (h - cutoffHour)
+      : (h + (24 - cutoffHour));
+    const msSince = (hoursSince * 3600 + m * 60 + s) * 1000;
+
+    // Anchor to the boundary by subtracting the elapsed ms from `now`.
+    // This sidesteps DST gotchas: we're stepping back a wall-clock
+    // duration that's already in the Pacific frame.
+    const currentOpsStart  = new Date(now.getTime() - msSince);
+    const currentOpsEnd    = new Date(currentOpsStart.getTime() + 86400000);
+    const previousOpsStart = new Date(currentOpsStart.getTime() - 86400000);
+    const previousOpsEnd   = new Date(currentOpsStart.getTime());
+
+    const opsDayLabel = isPastCutoff
+      ? "Today 4 PM → Tomorrow 4 PM"
+      : "Yesterday 4 PM → Today 4 PM";
+
+    return {
+      currentOpsStart:  currentOpsStart,
+      currentOpsEnd:    currentOpsEnd,
+      previousOpsStart: previousOpsStart,
+      previousOpsEnd:   previousOpsEnd,
+      opsDayLabel:      opsDayLabel
+    };
+  }
+
   /* ---------- export surface ---------- */
 
   window.__pioneerAdmin = window.__pioneerAdmin || {};
@@ -155,6 +240,9 @@
     getDcrEnabled: getDcrEnabled,
     getDcrEmailEnabled: getDcrEmailEnabled,
     getTechName: getTechName,
-    getTechSlug: getTechSlug
+    getTechSlug: getTechSlug,
+    pacificDateString: pacificDateString,
+    addDaysPacific: addDaysPacific,
+    getOpsDayWindow: getOpsDayWindow
   };
 }());
