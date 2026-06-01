@@ -33,6 +33,11 @@
 (function () {
   "use strict";
 
+  // Module-load breadcrumb so future debug doesn't have to guess whether
+  // the script tag fired. Visible in DevTools console immediately on
+  // page parse, before any auth resolution.
+  try { console.info("[service-clock] script loaded — waiting for firebase.auth onAuthStateChanged"); } catch (_e) {}
+
   /* ---------- helpers (local; no shared-module deps) ---------- */
 
   function $(id) { return document.getElementById(id); }
@@ -119,30 +124,37 @@
   /* ---------- auth resolution + first load ---------- */
 
   function bootWhenAuthReady() {
-    // Poll for STAFF_AUTH to publish a signed-in tech. The existing work.html
-    // pattern: staff-auth.js resolves auth, then today-work.js polls for
-    // getCachedStaff. We use the same approach — no need to subscribe to
-    // a new event.
-    let attempts = 0;
-    const interval = setInterval(function () {
-      attempts += 1;
-      const staff = window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
-        ? window.STAFF_AUTH.getCachedStaff() : null;
-      if (staff && staff.uid) {
-        clearInterval(interval);
-        currentStaff = staff;
-        logSC("staff resolved", { uid: staff.uid, email: staff.email });
-        initialLoad().catch(function (err) {
-          warnSC("initial load failed", err && err.message);
-          renderFatalError(err);
-        });
+    // Subscribe to Firebase Auth directly. STAFF_AUTH.getCachedStaff()
+    // intentionally returns a localStorage "lite" version of the staff
+    // object that does NOT include uid (see staff-auth.js:writeCachedStaff).
+    // Polling for cached.uid never resolves — the prior implementation
+    // hit a 60s timeout and silently kept the section hidden.
+    //
+    // firebase.auth().currentUser is the canonical uid source. Multiple
+    // subscribers are supported, so this doesn't conflict with
+    // staff-auth.js's own onAuthStateChanged handler.
+    if (!window.firebase || typeof firebase.auth !== "function") {
+      warnSC("Firebase Auth SDK not available; service clock stays hidden");
+      return;
+    }
+    firebase.auth().onAuthStateChanged(function (user) {
+      if (!user) {
+        logSC("no signed-in user; service clock stays hidden");
         return;
       }
-      if (attempts > 240) {  // ~60s @ 250ms — give up if no sign-in
-        clearInterval(interval);
-        logSC("no signed-in staff after 60s — service clock stays hidden");
-      }
-    }, 250);
+      const cached = window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
+        ? window.STAFF_AUTH.getCachedStaff() : null;
+      currentStaff = {
+        uid:         user.uid,
+        email:       user.email || (cached && cached.email) || "",
+        displayName: user.displayName || (cached && cached.display_name) || ""
+      };
+      logSC("staff resolved via firebase.auth", { uid: currentStaff.uid, email: currentStaff.email });
+      initialLoad().catch(function (err) {
+        warnSC("initial load failed", err && err.message);
+        renderFatalError(err);
+      });
+    });
   }
 
   async function initialLoad() {
