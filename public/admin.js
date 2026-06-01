@@ -41,69 +41,35 @@
    * is missing, _utils.js failed to load — fail loudly rather than
    * silently degrade.
    */
-  if (!window.__pioneerAdmin || !window.__pioneerAdmin.utils) {
+  // Adding a new tab module? Add its path here and the loop below
+  // gives you a consistent "must load before admin.js" diagnostic.
+  // Format: "utils" / "shell" / "tabs.X" — kept short so the list
+  // stays scannable. Path-to-filename mapping in the error message
+  // strips the "tabs." prefix and prepends "tab-".
+  const REQUIRED_PATHS = [
+    "utils", "shell", "budget",
+    "tabs.sos", "tabs.improvements", "tabs.customerNotes", "tabs.noteSuggestions",
+    "tabs.serviceRecoveries", "tabs.training", "tabs.pilotReadiness",
+    "tabs.feed", "tabs.recentDcrs", "tabs.dcrIssues", "tabs.techHealth",
+    "tabs.yesterdaysWork", "tabs.customers", "tabs.techs", "tabs.admins",
+    "tabs.supplyRequests", "tabs.dayHealth", "tabs.announcements",
+    "tabs.dcrReview", "tabs.schedule", "tabs.attendance"
+    // tabs.deputyMapping has its own granular diagnostic — see below
+  ];
+  if (!window.__pioneerAdmin) {
     throw new Error("admin.js: admin/_utils.js must load before admin.js");
   }
-  if (!window.__pioneerAdmin.shell) {
-    throw new Error("admin.js: admin/_shell.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.budget) {
-    throw new Error("admin.js: admin/_budget.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs || !window.__pioneerAdmin.tabs.sos) {
-    throw new Error("admin.js: admin/tab-sos.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.improvements) {
-    throw new Error("admin.js: admin/tab-improvements.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.customerNotes || !window.__pioneerAdmin.tabs.noteSuggestions) {
-    throw new Error("admin.js: admin/tab-customer-notes.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.serviceRecoveries) {
-    throw new Error("admin.js: admin/tab-service-recoveries.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.training) {
-    throw new Error("admin.js: admin/tab-training.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.pilotReadiness) {
-    throw new Error("admin.js: admin/tab-pilot-readiness.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.feed) {
-    throw new Error("admin.js: admin/tab-feed.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.recentDcrs) {
-    throw new Error("admin.js: admin/tab-recent-dcrs.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.dcrIssues) {
-    throw new Error("admin.js: admin/tab-dcr-issues.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.techHealth) {
-    throw new Error("admin.js: admin/tab-tech-health.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.yesterdaysWork) {
-    throw new Error("admin.js: admin/tab-yesterdays-work.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.customers) {
-    throw new Error("admin.js: admin/tab-customers.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.techs) {
-    throw new Error("admin.js: admin/tab-techs.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.admins) {
-    throw new Error("admin.js: admin/tab-admins.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.supplyRequests) {
-    throw new Error("admin.js: admin/tab-supply-requests.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.dayHealth) {
-    throw new Error("admin.js: admin/tab-day-health.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.announcements) {
-    throw new Error("admin.js: admin/tab-announcements.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.dcrReview) {
-    throw new Error("admin.js: admin/tab-dcr-review.js must load before admin.js");
-  }
+  REQUIRED_PATHS.forEach(function (path) {
+    const found = path.split(".").reduce(function (o, k) { return o && o[k]; }, window.__pioneerAdmin);
+    if (found) return;
+    const file = path.indexOf("tabs.") === 0
+      ? "tab-" + path.slice(5).replace(/[A-Z]/g, function (c) { return "-" + c.toLowerCase(); })
+      : "_" + path;
+    throw new Error("admin.js: admin/" + file + ".js must load before admin.js");
+  });
+  // Deputy Mapping kept as a one-off after the loop — its error
+  // message lists the four most-common failure modes and is
+  // genuinely useful debugging text (Phase 22 incident postmortem).
   if (!window.__pioneerAdmin.tabs.deputyMapping) {
     throw new Error(
       "admin.js: window.__pioneerAdmin.tabs.deputyMapping is not registered. " +
@@ -112,12 +78,6 @@
       "console for the original error — common causes: Firebase SDK not initialized, " +
       "missing utils export, network failure on the script fetch)."
     );
-  }
-  if (!window.__pioneerAdmin.tabs.schedule) {
-    throw new Error("admin.js: admin/tab-schedule.js must load before admin.js");
-  }
-  if (!window.__pioneerAdmin.tabs.attendance) {
-    throw new Error("admin.js: admin/tab-attendance.js must load before admin.js");
   }
   const {
     DCR_RECENT_LIMIT,
@@ -274,87 +234,19 @@
   // pendingTechAssigned + pendingTechCreateAssigned moved to
   // tab-techs.js (Phase 16a). Both staging sets are owned by the tab.
 
-  /* wireTabs, setStatus, hideAllStatuses, showFatal, badge family, and
-     activateTab moved to public/admin/_shell.js — imported via the
-     top-of-IIFE destructure. Tab activators are registered in boot. */
-
-  /* on-budget analytics moved to public/admin/_budget.js — imported via
-     the top-of-IIFE destructure. computeBudgetStats now takes the dcrs
-     array as its first parameter; callers below pass it explicitly. */
-
-
-  /* Customers tab moved to public/admin/tab-customers.js (Phase 15).
-     Owns the customers array; admin-side modules read it via
-     window.__pioneerAdmin.deps.getCustomers(). The tab also exposes
-     applyFilter / openCreateModal / openEditModal / onArchive /
-     onSave methods that admin.js wire helpers (wireSearch +
-     wireWriteControls) call through the namespace. */
-
-
-  /* Cleaning Techs core (techThumb + techCard + renderTechs + loadTechs)
-     moved to public/admin/tab-techs.js (Phase 16a). Boot rewires
-     auth-state-change loadTechs() → tabs.techs.refresh(). Other modules
-     read techs via window.__pioneerAdmin.deps.getTechs(). */
-
-
-  /* Recent DCRs tab moved to public/admin/tab-recent-dcrs.js (Phase 11).
-     The dcrs array now lives there; admin-side modules read it via
-     window.__pioneerAdmin.deps.getDcrs(). The wrapper below preserves
-     the post-load side-effects that the original loadDcrs() had inline
-     (re-render Customers + Techs because their cards display per-doc
-     budget stats; refresh the attention strip). Boot, the refresh
-     button, and the DCR review modal success-path all call this
-     wrapper. */
+  /* Cross-tab fan-out — wraps the Recent DCRs refresh with the three
+     downstream repaints (customer rows + tech rows display per-doc
+     budget stats derived from dcrs; day-health attention strip rolls
+     up DCR-derived signals). admin.js owns this because no single tab
+     module sits at the center of the fan-out. Boot, the DCR refresh
+     button (tab-recent-dcrs), and the DCR review modal (tab-dcr-review)
+     all call it via the deps bridge. */
   async function loadDcrsAndRerenderDependents() {
     await window.__pioneerAdmin.tabs.recentDcrs.refresh();
     window.__pioneerAdmin.tabs.customers.applyFilter();
     window.__pioneerAdmin.tabs.techs.applyFilter();
     window.__pioneerAdmin.tabs.dayHealth.refresh();
   }
-
-  /* Supply Requests module relocated to public/admin/tab-supply-requests.js
-     (Phase 18). Public surface: window.__pioneerAdmin.tabs.supplyRequests. */
-
-
-  /* DCR Issues tab moved to public/admin/tab-dcr-issues.js (Phase 12).
-     The dcrIssues array now lives there; admin-side modules read via
-     window.__pioneerAdmin.deps.getDcrIssues(). Post-load and post-save
-     side-effects (refreshAttentionStrip + applyCurrentCustomerFilter)
-     are wired via tabs.dcrIssues.onChange() in boot. */
-
-  /* Day Health / Attention Strip / Today's Ops module relocated to
-     public/admin/tab-day-health.js (Phase 19).
-     Public surface: window.__pioneerAdmin.tabs.dayHealth. */
-
-  /* activateTab moved to public/admin/_shell.js. Tab-specific lazy-load
-     callbacks are registered with registerTabActivator() in boot below
-     so the shell remains decoupled from tab implementations. */
-
-  /* SOS Events tab moved to public/admin/tab-sos.js (Phase 4b) —
-     boot registers it via window.__pioneerAdmin.tabs.sos.init below. */
-
-  /* Help Improve Pioneer tab moved to public/admin/tab-improvements.js
-     (Phase 5) — boot registers it via
-     window.__pioneerAdmin.tabs.improvements.init below. */
-
-
-  /* Yesterday's Work / Nightly Recap tab moved to
-     public/admin/tab-yesterdays-work.js (Phase 14). Read-only module —
-     fetches its own data each tab activation; no caches read or written
-     through the deps bridge. Boot wires the activator via
-     window.__pioneerAdmin.tabs.yesterdaysWork.init. */
-
-
-  /* Pilot Readiness tab moved to public/admin/tab-pilot-readiness.js
-     (Phase 9). Boot wires the activator via
-     window.__pioneerAdmin.tabs.pilotReadiness.init. No auto-refresh —
-     the report only runs on explicit Run / Refresh button clicks. */
-
-
-  /* Operational Feed mount + demo-button wiring moved to
-     public/admin/tab-feed.js (Phase 10). Boot wires the activator via
-     window.__pioneerAdmin.tabs.feed.init. Mount is idempotent; demo
-     buttons remain admin-only test docs. */
 
   /* Search filters + DCR refresh button: all per-tab wiring moved to
      each owning module's init() (Customers: Phase 25c, Techs: Phase 25d,
@@ -575,146 +467,16 @@
      six tab modules that consume them via the deps bridge now read
      from window.__pioneerAdmin.shell directly. */
 
-  // ---- Toast ----
-  /* openModal, closeModal, showToast moved to public/admin/_shell.js
-     (Phase 6a) — imported via the top-of-IIFE shell destructure. */
-
-  /* Row overflow menu trio (closeAllRowOverflowMenus, toggleRowOverflow,
-     installOverflowMenuOutsideClose) moved to admin/_shell.js
-     (Phase 25b) — imported via the top-of-IIFE shell destructure.
-     Tech-list dispatch in wireWriteControls still owns the click that
-     calls toggleRowOverflow; boot still calls installOverflowMenuOutsideClose. */
-
-  /* Announcements module relocated to public/admin/tab-announcements.js
-     (Phase 20). Public surface: window.__pioneerAdmin.tabs.announcements.
-
-     Phase 20 also retired the temporary supplyTsToMs that lived above —
-     it was only ever called by Announcements's tsToLocalInputValue, which
-     moved with this extraction. */
-
-  /* Admins module relocated to public/admin/tab-admins.js (Phase 17).
-     Public surface: window.__pioneerAdmin.tabs.admins. */
-
-  /* MODAL_REGISTRY + setModalSaving + setModalError moved to
-     admin/_shell.js (Phase 25a) — imported via the top-of-IIFE shell
-     destructure. Tab modules read them from
-     window.__pioneerAdmin.shell directly; the four deps-bridge entries
-     (handleAdminWriteError, setModalError, setModalSaving,
-     getCurrentAdminEmail) were retired in the same phase. */
-
-  // ---- Customer: edit ----
-
-  /* populateCustomerDeputyIntegration relocated to public/admin/tab-deputy-mapping.js
-     (Phase 22). tab-customers.js still reaches it via the existing deps bridge
-     entry, which now points at the deputy namespace. */
-
-  /* Customer CREATE / EDIT / ARCHIVE modal functions moved to
-     public/admin/tab-customers.js (Phase 15). admin.js boot wires
-     the customer-edit-save / customer-create-open buttons to the
-     tab namespace methods via wireWriteControls. */
-
-  // ---- Cleaning tech: edit ----
-
-  // Renders a customer checklist into the given list/search/count elements.
-  // Reads selection state from the supplied `staging` Set; toggling a row
-  // updates the set, and a later re-render (e.g. on search input) preserves
-  // selections. Defensive null-checks so a missing element is a no-op
-  // rather than a throw that would block the modal from opening.
-  //
-  // Shared by the tech-EDIT modal (state = pendingTechAssigned) and the
-  // tech-CREATE modal (state = pendingTechCreateAssigned).
-  /* renderAssignmentChecklist + renderTechAssignments + openTechEditModal
-     + onTechEditSave + renderTechCreateAssignments moved to
-     public/admin/tab-techs.js (Phase 16a). The tab init() wires the
-     assignment checklist listeners; admin.js wireWriteControls calls
-     window.__pioneerAdmin.tabs.techs.{openEditModal, onSaveEdit}. */
-
-  /* slugifyForTech moved to tab-techs.js (Phase 25d) as the local
-     slugifyTechCandidate (already present there). The tab-customers.js
-     auto-slug uses its own local slugifyCustomerCandidate copy (Phase 25c). */
-
-  /* resetTechCreateModal + openTechCreateModal + onTechCreateSave moved
-     to public/admin/tab-techs.js (Phase 16a). Callers use
-     window.__pioneerAdmin.tabs.techs.openCreateModal /
-     onSaveCreate. */
-
-  /* DCR email Review & Send modal relocated to public/admin/tab-dcr-review.js
-     (Phase 21). Public surface: window.__pioneerAdmin.tabs.dcrReview.
-     Reaches loadDcrsAndRerenderDependents (this file) via deps bridge
-     so the post-send DCR list / customer / tech / day-health repaint
-     keeps working. */
-
-  /* Tech photo/signature manager (tech-media-modal) moved to
-     public/admin/tab-techs.js (Phase 16b). Boot wires nothing here —
-     the tab module wires the modal on first open via its own
-     wireTechMediaModalOnce. wireWriteControls dispatches the "media"
-     tech-row action to window.__pioneerAdmin.tabs.techs.openMediaModal. */
-
-
-  /* Tech archive-confirm modal + onTechArchive + auth-disable/enable
-     helpers + onTechDelete + applyCurrentTechFilter moved to
-     public/admin/tab-techs.js (Phase 16a). Callers in admin.js use
-     window.__pioneerAdmin.tabs.techs.{onArchive, onDelete, applyFilter}
-     and the deps bridge for cross-tab reads. */
-
-
-  /* Customer Notes + Note Suggestions tabs moved to
-     public/admin/tab-customer-notes.js (Phase 6).
-     Service Recoveries tab moved to
-     public/admin/tab-service-recoveries.js (Phase 7).
-     Boot wires each via window.__pioneerAdmin.tabs.{customerNotes,
-     noteSuggestions, serviceRecoveries}.init(). The auth-state
-     change handler calls .refresh() on each. customerLabelForSlug
-     now lives inside tab-service-recoveries.js (its sole caller). */
-
-  /* Deputy Mapping module relocated to public/admin/tab-deputy-mapping.js
-     (Phase 22). Public surface: window.__pioneerAdmin.tabs.deputyMapping.
-     populateCustomerDeputyIntegration moved with it — customer edit modal
-     reaches it via deps.populateCustomerDeputyIntegration → namespace. */
-
-  // ---- One-time wiring: event delegation + modal close/save buttons + Esc ----
-
-  function wireWriteControls() {
-    // Customer list event delegation moved to tabs.customers.init()
-    // in Phase 25c.
-
-    // Tech list event delegation (edit / media / archive / delete /
-    // resend / promote / more) moved to tabs.techs.init() in Phase 25d.
-
-    // DCR list event delegation (review-send) moved to
-    // tabs.recentDcrs.init() in Phase 25e. DCR review modal Send +
-    // Resend buttons are still wired by tabs.dcrReview.init() (Phase 21).
-
-    // Tech edit/create save buttons + "+ Add tech" + auto-slug + copy
-    // buttons moved to tabs.techs.init() in Phase 25d. Assignment
-    // checklists were already wired by tabs.techs.init() (Phase 16a).
-
-    // Modal close affordances ([data-modal-close] backdrop/X/Cancel + Esc
-    // for the three core editor modals) moved to admin/_shell.js as
-    // installModalCloseAffordances (Phase 25a).
-    installModalCloseAffordances();
-  }
-
-  /* Schedule subsystem (Team Schedule legacy upload + Published Team Schedule
-     Deputy snapshot + Sync From Deputy + Schedule Import V1) relocated to
-     public/admin/tab-schedule.js (Phase 23). Public surface:
-     window.__pioneerAdmin.tabs.schedule. The date helpers
-     pacificDateString, addDaysPacific, and getOpsDayWindow moved to
-     admin/_utils.js so Attendance + Day Health can keep reading them. */
-
-  /* Attendance + Open Shifts module relocated to public/admin/tab-attendance.js
-     (Phase 24). Public surface: window.__pioneerAdmin.tabs.attendance.
-     Reads its own three Firestore collections (time_off_requests,
-     call_outs, open_shift_requests); does not touch customers/techs.
-     refresh() preserves original lazy-load behavior — Open Shifts loads
-     when the user clicks that sub-tab, not on attendance refresh. */
-
-
-  /* Tech Health tab moved to public/admin/tab-tech-health.js (Phase 13).
-     Reads techs + dcrs via the existing __pioneerAdmin.deps bridge
-     (no new bridge entries needed). Boot wires the activator via
-     window.__pioneerAdmin.tabs.techHealth.refresh and the init via
-     tabs.techHealth.init(). */
+  /* Phases 4b-25e extracted every per-tab subsystem out of this file —
+     SOS, Improvements, Customer Notes, Service Recoveries, Customer
+     Notes Suggestions, Training, Pilot Readiness, Feed, Recent DCRs,
+     DCR Issues, Tech Health, Yesterday's Work, Customers, Techs,
+     Tech Media, Admins, Supply Requests, Day Health, Announcements,
+     DCR Review, Deputy Mapping, Schedule, Attendance/Open Shifts.
+     Shell helpers (modals, toast, write-error, row overflow, modal
+     close, copy clipboard) live in admin/_shell.js. Pure helpers live
+     in admin/_utils.js. See git log for per-tab extraction history;
+     this file is now the foundation layer only. */
 
   function wireSignIn() {
     const btn = $("signin-btn");
@@ -835,7 +597,7 @@
     window.__pioneerAdmin.tabs.schedule.init();
     window.__pioneerAdmin.tabs.attendance.init();
     window.__pioneerAdmin.tabs.techHealth.init();
-    wireWriteControls();
+    installModalCloseAffordances();
     installOverflowMenuOutsideClose();
     wireSignIn();
     wireSignOut();
