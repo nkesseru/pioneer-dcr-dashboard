@@ -168,10 +168,69 @@
     }
   }
 
+  /* ---------- one-time wiring ----------
+   * Phase 25e: search input + refresh button + list event delegation
+   * moved from admin.js (wireSearch + wireRefresh + wireWriteControls)
+   * into this module. The dcrs array lives here, so the list-delegation
+   * reads it directly. The Refresh button reaches the cross-tab
+   * orchestrator (loadDcrsAndRerenderDependents) through the deps bridge
+   * because admin.js still owns it — it fans out to customers + techs +
+   * day-health repaints, which is shell-level orchestration. Boot calls
+   * tabs.recentDcrs.init().
+   */
+  function wireRecentDcrsControls() {
+    // Search input — filter the local dcrs array.
+    const ds = $("dcr-search");
+    if (ds) ds.addEventListener("input", function () { renderFiltered(ds.value); });
+
+    // Refresh button — disables itself + flips label while reloading,
+    // clears the search input after. Same behavior as the original
+    // wireRefresh in admin.js.
+    const btn = $("dcr-refresh");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = "Refreshing…";
+        window.__pioneerAdmin.deps.loadDcrsAndRerenderDependents().finally(function () {
+          btn.disabled = false;
+          btn.textContent = original;
+          const search = $("dcr-search");
+          if (search) search.value = "";
+        });
+      });
+    }
+
+    // List event delegation — V6 review/send dispatcher. Each DCR row
+    // has a [data-action="review-send"] button; clicking opens the
+    // readiness modal pre-loaded against that DCR.
+    const dcrRoot = $("dcr-list");
+    if (dcrRoot) {
+      dcrRoot.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-action]");
+        if (!btn) return;
+        const row = btn.closest("[data-id]");
+        if (!row) return;
+        const d = dcrs.find(function (x) {
+          return (x.submission_id || x.id) === row.dataset.id;
+        });
+        if (!d) return;
+        if (btn.dataset.action === "review-send") {
+          window.__pioneerAdmin.tabs.dcrReview.openModal(d);
+        }
+      });
+    }
+  }
+
+  function init() {
+    wireRecentDcrsControls();
+  }
+
   /* ---------- export surface ---------- */
 
   window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
   window.__pioneerAdmin.tabs.recentDcrs = {
+    init:           init,
     refresh:        loadDcrs,
     getDcrs:        function () { return dcrs; },
     renderFiltered: renderFiltered

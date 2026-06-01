@@ -356,35 +356,10 @@
      window.__pioneerAdmin.tabs.feed.init. Mount is idempotent; demo
      buttons remain admin-only test docs. */
 
-  /* ---------- search filters ---------- */
-
-  function wireSearch() {
-    // Customer search moved to tabs.customers.init() in Phase 25c.
-    // Tech search moved to tabs.techs.init() in Phase 25d.
-    const ds = $("dcr-search");
-
-    if (ds) ds.addEventListener("input", function () {
-      window.__pioneerAdmin.tabs.recentDcrs.renderFiltered(ds.value);
-    });
-  }
-
-  /* ---------- refresh button (DCRs only — customers/techs change rarely) ---------- */
-
-  function wireRefresh() {
-    const btn = $("dcr-refresh");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      btn.disabled = true;
-      const original = btn.textContent;
-      btn.textContent = "Refreshing…";
-      loadDcrsAndRerenderDependents().finally(function () {
-        btn.disabled = false;
-        btn.textContent = original;
-        const ds = $("dcr-search");
-        if (ds) ds.value = "";
-      });
-    });
-  }
+  /* Search filters + DCR refresh button: all per-tab wiring moved to
+     each owning module's init() (Customers: Phase 25c, Techs: Phase 25d,
+     Recent DCRs: Phase 25e). admin.js no longer owns any search input
+     or list refresh button. */
 
   /* ===================================================================
      Auth state controller
@@ -706,28 +681,9 @@
     // Tech list event delegation (edit / media / archive / delete /
     // resend / promote / more) moved to tabs.techs.init() in Phase 25d.
 
-    // DCR list — V6 review/send dispatcher. Each DCR row has a
-    // [data-action="review-send"] button; clicking opens the readiness
-    // modal pre-loaded against that DCR. No other actions today.
-    const dcrRoot = $("dcr-list");
-    if (dcrRoot) {
-      dcrRoot.addEventListener("click", function (ev) {
-        const btn = ev.target.closest("[data-action]");
-        if (!btn) return;
-        const row = btn.closest("[data-id]");
-        if (!row) return;
-        // dcrs lives in tab-recent-dcrs.js (Phase 11); read via deps bridge.
-        const dcrs = window.__pioneerAdmin.deps.getDcrs();
-        const d = dcrs.find(function (x) {
-          return (x.submission_id || x.id) === row.dataset.id;
-        });
-        if (!d) return;
-        if (btn.dataset.action === "review-send") window.__pioneerAdmin.tabs.dcrReview.openModal(d);
-      });
-    }
-
-    // DCR review modal Send + Resend buttons are wired by
-    // tabs.dcrReview.init() (Phase 21).
+    // DCR list event delegation (review-send) moved to
+    // tabs.recentDcrs.init() in Phase 25e. DCR review modal Send +
+    // Resend buttons are still wired by tabs.dcrReview.init() (Phase 21).
 
     // Tech edit/create save buttons + "+ Add tech" + auto-slug + copy
     // buttons moved to tabs.techs.init() in Phase 25d. Assignment
@@ -834,8 +790,7 @@
     registerTabActivator("yesterday",       window.__pioneerAdmin.tabs.yesterdaysWork.init);
     registerTabActivator("improvements",    window.__pioneerAdmin.tabs.improvements.init);
     registerTabActivator("sos",             window.__pioneerAdmin.tabs.sos.init);
-    wireSearch();
-    wireRefresh();
+    window.__pioneerAdmin.tabs.recentDcrs.init();
     window.__pioneerAdmin.tabs.supplyRequests.init();
     window.__pioneerAdmin.tabs.dcrIssues.init();
     window.__pioneerAdmin.tabs.dayHealth.init();
