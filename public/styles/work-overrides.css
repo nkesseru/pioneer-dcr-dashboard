@@ -254,14 +254,16 @@
 .ptc-hero-progress-bar {
   height: 6px;
   width: 100%;
-  background: var(--border-soft, #e2e6ee);
+  background: linear-gradient(90deg, #eef3fb 0%, #e6f4f1 100%);
   border-radius: 999px;
   overflow: hidden;
   margin-bottom: 14px;
 }
 .ptc-hero-progress-fill {
   height: 100%;
-  background: var(--accent, #2f6dd6);
+  /* Phase 1c polish — gradient + soft glow for a calm "alive" feel. */
+  background: linear-gradient(90deg, #2f6dd6 0%, #0d9488 100%);
+  box-shadow: 0 0 10px rgba(47, 109, 214, 0.22);
   border-radius: 999px;
   transition: width 240ms ease-out;
 }
@@ -300,7 +302,22 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
+  position: relative;
+  overflow: hidden;
 }
+/* Phase 1c polish — 3px top accent strip + very subtle gradient wash
+   per stat card. Apple/Uber: color carries meaning without overpowering. */
+.ptc-stat-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--stat-accent, var(--accent, #2f6dd6));
+}
+.ptc-stat-card--today  { --stat-accent: #0d9488; background: linear-gradient(180deg, rgba(13,148,136,0.04) 0%, #fff 60%); }
+.ptc-stat-card--period { --stat-accent: #4f46e5; background: linear-gradient(180deg, rgba(79,70,229,0.04) 0%, #fff 60%); }
+.ptc-stat-card--sick   { --stat-accent: #7c3aed; background: linear-gradient(180deg, rgba(124,58,237,0.04) 0%, #fff 60%); }
+.ptc-stat-card--payday { --stat-accent: #b8862e; background: linear-gradient(180deg, rgba(184,134,46,0.05) 0%, #fff 60%); }
+.ptc-stat-card .ptc-stat-label { color: var(--stat-accent, var(--text-muted, #555)); opacity: 0.85; }
 .ptc-stat-value {
   margin: 0;
   font-size: 22px;
@@ -365,13 +382,31 @@
   background: var(--surface-card, #fff);
   border: 1px solid var(--border-soft, #e2e6ee);
   border-radius: var(--radius-lg, 12px);
-  padding: 18px 18px 16px;
+  padding: 18px 18px 16px 22px;
   transition: border-color 200ms ease, box-shadow 200ms ease;
+  position: relative;
+  overflow: hidden;
 }
-.ptc-card[data-state="working"] {
-  border-color: var(--accent, #2f6dd6);
-  box-shadow: 0 0 0 1px var(--accent, #2f6dd6);
+/* Phase 1c polish — left state strip (4px) carries the card's mood.
+   The working-state card also gets the existing accent border + soft
+   glow as the primary focus indicator. */
+.ptc-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 4px;
+  background: var(--card-accent, var(--border-soft, #e2e6ee));
 }
+.ptc-card[data-state="ready"]       { --card-accent: #14b8a6; }   /* teal */
+.ptc-card[data-state="working"]     {
+  --card-accent: #0d9488;
+  border-color: #0d9488;
+  box-shadow: 0 0 0 1px #0d9488, 0 4px 16px rgba(13, 148, 136, 0.12);
+}
+.ptc-card[data-state="paused"]      { --card-accent: #64748b; }   /* slate */
+.ptc-card[data-state="dcr_pending"] { --card-accent: #d8a23d; }   /* gold */
+.ptc-card[data-state="complete"]    { --card-accent: #10b981; }   /* green */
+.ptc-card[data-state="missed"],
+.ptc-card[data-state="canceled"]    { --card-accent: #dc2626; }   /* red */
 .ptc-card-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin-bottom: 6px;
@@ -411,6 +446,17 @@
 }
 .ptc-card-meta-tag.is-early { background: #e4eefc; color: #1f4488; }
 .ptc-card-meta-tag.is-late  { background: #f6e0e0; color: #8a2a2a; }
+
+/* Phase 1d Lite — small location chip alongside other meta tags. */
+.ptc-geo-chip {
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+.ptc-geo-chip.is-onsite  { background: #d1fae5; color: #065f46; }
+.ptc-geo-chip.is-nearby  { background: #fef3c7; color: #78350f; }
+.ptc-geo-chip.is-offsite { background: #fee2e2; color: #991b1b; }
+.ptc-geo-chip.is-unknown { background: #e2e8f0; color: #475569; }
 
 /* Scorecard — Worked / Budget / Remaining. Big values, small labels. */
 .ptc-scorecard {
@@ -487,22 +533,51 @@
   padding: 14px 18px; font-size: 16px; font-weight: 700;
   cursor: pointer; text-align: center; text-decoration: none;
   min-height: 48px;
-  transition: background 180ms ease;
+  /* Phase 1c polish — soft elevation + inset highlight for a premium
+     "physical" feel. Not glossy, just dimensional. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: background 180ms ease, box-shadow 180ms ease, transform 90ms ease;
 }
+.ptc-btn:active { transform: translateY(1px); }
 .ptc-btn:disabled, .ptc-btn.ptc-btn-disabled {
   cursor: not-allowed; opacity: 0.65;
+  box-shadow: none;
 }
-.ptc-btn-primary { background: var(--accent, #2f6dd6); color: #fff; }
-.ptc-btn-primary:hover { background: #275bb3; }
-.ptc-btn-start   { background: var(--accent, #2f6dd6); color: #fff; }
-.ptc-btn-stop    { background: #a83232; color: #fff; }
-.ptc-btn-stop:hover { background: #8e2828; }
-.ptc-btn-dcr     { background: #d8a23d; color: #1a1a1a; }
-.ptc-btn-dcr:hover { background: #c38f2c; }
+.ptc-btn-primary {
+  background: linear-gradient(180deg, #3b7be0 0%, #2f6dd6 100%);
+  color: #fff;
+}
+.ptc-btn-primary:hover {
+  background: linear-gradient(180deg, #2f6dd6 0%, #275bb3 100%);
+  box-shadow: 0 2px 6px rgba(47,109,214,0.22), inset 0 1px 0 rgba(255,255,255,0.16);
+}
+.ptc-btn-start {
+  background: linear-gradient(180deg, #3b7be0 0%, #2f6dd6 100%);
+  color: #fff;
+}
+.ptc-btn-stop {
+  background: linear-gradient(180deg, #c14747 0%, #a83232 100%);
+  color: #fff;
+}
+.ptc-btn-stop:hover {
+  background: linear-gradient(180deg, #a83232 0%, #8e2828 100%);
+  box-shadow: 0 2px 6px rgba(168,50,50,0.22), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.ptc-btn-dcr {
+  background: linear-gradient(180deg, #e6b04e 0%, #d8a23d 100%);
+  color: #3b2c00;
+}
+.ptc-btn-dcr:hover {
+  background: linear-gradient(180deg, #d8a23d 0%, #c38f2c 100%);
+  box-shadow: 0 2px 6px rgba(216,162,61,0.28), inset 0 1px 0 rgba(255,255,255,0.18);
+}
 .ptc-btn-secondary {
   background: var(--surface-card-soft, #f4f6fb);
   color: var(--text-strong, #1a1a1a);
   border: 1px solid var(--border-soft, #e2e6ee);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .ptc-btn-secondary:hover { background: #eaeef5; }
 .ptc-btn-disabled {
@@ -517,13 +592,15 @@
   padding: 4px 12px; border-radius: var(--radius-pill, 999px);
   border: 1px solid transparent;
 }
-.ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
-.ptc-status-chip.is-working  { background: #d6e8ff; color: #18406b; }
-.ptc-status-chip.is-paused   { background: #e6eaf2; color: #3a4762; }
-.ptc-status-chip.is-dcr      { background: #fff1d3; color: #6b4a00; }
-.ptc-status-chip.is-complete { background: #e2f3e6; color: #2a6b3a; }
+/* Phase 1c polish — palette refreshed toward teal/indigo/gold so the
+   command center feels colorful but quiet. */
+.ptc-status-chip.is-ready    { background: #e0f2fe; color: #075985; }   /* sky/teal blue */
+.ptc-status-chip.is-working  { background: #ccfbf1; color: #115e59; }   /* teal */
+.ptc-status-chip.is-paused   { background: #e2e8f0; color: #334155; }   /* slate */
+.ptc-status-chip.is-dcr      { background: #fef3c7; color: #78350f; }   /* gold */
+.ptc-status-chip.is-complete { background: #d1fae5; color: #065f46; }   /* green */
 .ptc-status-chip.is-missed,
-.ptc-status-chip.is-canceled { background: #f6e0e0; color: #8a2a2a; }
+.ptc-status-chip.is-canceled { background: #fee2e2; color: #991b1b; }   /* red */
 
 /* "Next Step: Complete DCR" banner above the assignment list. */
 .ptc-next-step {

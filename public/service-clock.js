@@ -571,11 +571,13 @@
     const payday       = (currentPeriodDoc && currentPeriodDoc.payday) || null;
     const todayActive  = !!activeSession;
 
-    function card(value, label, caption) {
+    // Phase 1c.2.1 polish — `kind` class drives a small accent strip
+    // + tinted gradient per card type. Pure visual; no behavior change.
+    function card(kind, value, label, caption) {
       const captionHtml = caption
         ? '<p class="ptc-stat-caption">' + escapeHtml(caption) + '</p>'
         : '';
-      return '<div class="ptc-stat-card">' +
+      return '<div class="ptc-stat-card ptc-stat-card--' + kind + '">' +
                '<p class="ptc-stat-value">' + escapeHtml(value) + '</p>' +
                '<p class="ptc-stat-label">' + escapeHtml(label) + '</p>' +
                captionHtml +
@@ -583,22 +585,22 @@
     }
 
     root.innerHTML =
-      card(
+      card("today",
         todayMin > 0 ? formatMinutesAsHm(todayMin) : "0h 0m",
         "Today",
         todayActive ? "currently working" : ""
       ) +
-      card(
+      card("period",
         formatMinutesAsHm(periodMin),
         "Period",
         periodMin === 0 ? "updates after period close" : ""
       ) +
-      card(
+      card("sick",
         sickMin == null ? "—" : formatMinutesAsHm(sickMin),
         "Sick Leave",
         sickMin == null ? "ask manager" : ""
       ) +
-      card(
+      card("payday",
         payday ? formatPaydayShort(payday) : "—",
         "Payday",
         ""
@@ -736,12 +738,29 @@
     if (a.service_date && a.service_date !== todayPT) {
       availabilityNote = (a.service_date > todayPT) ? "Available Early" : "Late Completion";
     }
+    // Phase 1d Lite — small geo chip showing the worst geo_status
+    // across this assignment's sessions. Falls back to nothing when
+    // no session has recorded a geo status yet (Ready state).
+    const geoStatus = worstGeoStatusForAssignment(a._id);
+    let geoChipHtml = "";
+    if (geoStatus === "onsite") {
+      geoChipHtml = '<span class="ptc-geo-chip is-onsite">Onsite</span>';
+    } else if (geoStatus === "nearby") {
+      geoChipHtml = '<span class="ptc-geo-chip is-nearby">Nearby</span>';
+    } else if (geoStatus === "offsite") {
+      geoChipHtml = '<span class="ptc-geo-chip is-offsite">Offsite — review</span>';
+    } else if (geoStatus && /^unknown/.test(geoStatus)) {
+      geoChipHtml = '<span class="ptc-geo-chip is-unknown" title="' +
+        escapeHtml(geoStatus.replace(/_/g, " ")) + '">Location unavailable</span>';
+    }
+
     const metaParts = [];
     if (dateLabel)       metaParts.push(escapeHtml(dateLabel));
     if (availabilityNote) metaParts.push('<span class="ptc-card-meta-tag is-' +
       (a.service_date > todayPT ? 'early' : 'late') + '">' + escapeHtml(availabilityNote) + '</span>');
     if (windowStart)     metaParts.push("from " + escapeHtml(windowStart));
     if (deadline)        metaParts.push("by "   + escapeHtml(deadline));
+    if (geoChipHtml)     metaParts.push(geoChipHtml);
     const metaStripHtml = metaParts.length
       ? '<p class="ptc-card-meta-strip">' + metaParts.join(' <span class="ptc-card-meta-sep">·</span> ') + '</p>'
       : '';
@@ -878,6 +897,63 @@
     );
   }
 
+  /* ---------- Phase 1d Lite — geofence / distance helpers ----------
+   * Pure math + status enums. No Firestore, no GPS calls. */
+
+  // Haversine — distance in meters between two lat/lng points.
+  function haversineMeters(lat1, lon1, lat2, lon2) {
+    if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+    const R = 6371000;  // Earth radius in meters
+    const toRad = function (deg) { return deg * Math.PI / 180; };
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+  }
+
+  // Compute geo_status enum + distance from the captured GPS + the
+  // assignment's site coordinates. Implements the user's banded
+  // tiers (<=200m onsite, 200-500m nearby, >500m offsite).
+  function computeGeoStatus(geo, siteLat, siteLng) {
+    if (!geo || geo.status === "denied") {
+      return { geo_status: "unknown_permission_denied", distance_m: null };
+    }
+    if (geo.lat == null || geo.lon == null) {
+      return { geo_status: "unknown_gps_unavailable", distance_m: null };
+    }
+    if (siteLat == null || siteLng == null) {
+      return { geo_status: "unknown_no_site_coordinates", distance_m: null };
+    }
+    const d = haversineMeters(geo.lat, geo.lon, siteLat, siteLng);
+    if (d == null) return { geo_status: "unknown_gps_unavailable", distance_m: null };
+    if (d <= 200)  return { geo_status: "onsite",  distance_m: d };
+    if (d <= 500)  return { geo_status: "nearby",  distance_m: d };
+    return         { geo_status: "offsite", distance_m: d };
+  }
+
+  // Worst geo_status across an assignment's sessions — used for the
+  // card chip when paused or complete. Rank: offsite > nearby > onsite
+  // > unknown_*. Returns null when no session yet recorded one.
+  function worstGeoStatusForAssignment(assignmentId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    if (!list.length) return null;
+    const rank = { offsite: 4, nearby: 3, onsite: 2 };
+    let worst = null;
+    list.forEach(function (s) {
+      [s.clock_in_geo_status, s.clock_out_geo_status].forEach(function (g) {
+        if (!g) return;
+        if (worst == null) { worst = g; return; }
+        const r1 = rank[g] || 1;          // unknown_* → 1
+        const r2 = rank[worst] || 1;
+        if (r1 > r2) worst = g;
+      });
+    });
+    return worst;
+  }
+
   /* ---------- GPS capture (best-effort, non-blocking) ---------- */
 
   function captureGeo() {
@@ -941,6 +1017,15 @@
         throw new Error("This assignment is " + a.status + " and cannot be clocked into.");
       }
 
+      // Phase 1d Lite — compute geo_status against the assignment's
+      // stored coordinates. Falls back to unknown_no_site_coordinates
+      // when the assignment has no lat/lng (every assignment today —
+      // see Phase 1d Lite report). Never blocks clock-in regardless.
+      const siteLat   = (typeof a.location_lat === "number") ? a.location_lat : null;
+      const siteLng   = (typeof a.location_lon === "number") ? a.location_lon : null;
+      const geoEval   = computeGeoStatus(geo, siteLat, siteLng);
+      const offsite   = (geoEval.geo_status === "offsite");
+
       tx.set(sessionRef, {
         assignment_id:                 assignmentId,
         staff_uid:                     currentStaff.uid,
@@ -951,12 +1036,10 @@
         location_id:                   a.location_id  || null,
 
         clock_in_at:                   sts,
-        clock_in_lat:                  geo.lat,
-        clock_in_lon:                  geo.lon,
-        clock_in_accuracy_m:           geo.accuracy_m,
-        clock_in_geofence:             "unknown",      // Phase 1b — not computed
         clock_in_gps_status:           geo.status,
-        clock_in_source:               "work_html_phase_1b",
+        clock_in_geo_status:           geoEval.geo_status,
+        clock_in_distance_from_site_meters: geoEval.distance_m,
+        clock_in_source:               "work_html_phase_1d_lite",
 
         clock_out_at:                  null,
         status:                        "active",
@@ -965,7 +1048,8 @@
         paid_minutes:                  0,
         paid_drive_minutes:            0,
         sick_accrual_eligible_minutes: 0,
-        needs_review:                  false,
+        needs_review:                  offsite,
+        max_distance_from_site_meters: geoEval.distance_m,
         accrued_in_period_id:          null,
         dcr_submission_id:             null,
 
@@ -994,13 +1078,20 @@
 
         punch_at:      sts,
         client_ts:     Date.now(),
-        lat:           geo.lat,
-        lon:           geo.lon,
-        accuracy_m:    geo.accuracy_m,
-        geofence_status: "unknown",
+        gps: {
+          lat:              geo.lat,
+          lng:              geo.lon,
+          accuracy_meters:  geo.accuracy_m
+        },
+        site: {
+          lat: siteLat,
+          lng: siteLng
+        },
+        distance_from_site_meters: geoEval.distance_m,
         gps_status:    geo.status,
+        geo_status:    geoEval.geo_status,
 
-        source:        "work_html_phase_1b",
+        source:        "work_html_phase_1d_lite",
         user_agent:    (typeof navigator !== "undefined" && navigator.userAgent) || ""
       });
     });
@@ -1047,21 +1138,41 @@
       const paidMinutes = workMinutes;  // no drive in Phase 1b
       const accrualMinutes = paidMinutes;  // no exclusions in Phase 1b
 
+      // Phase 1d Lite — geo_status for clock-out + roll up
+      // max_distance_from_site_meters across both punches of this
+      // session. needs_review fires if either punch is offsite OR if
+      // work_minutes calc was implausible.
+      // Site coords are re-read from the assignment (cached on the
+      // session at clock-in time is also possible but we want the
+      // current admin-edited value if any).
+      const a            = assignments.find(function (x) { return x._id === s.assignment_id; }) || {};
+      const siteLat      = (typeof a.location_lat === "number") ? a.location_lat
+                            : ((typeof s.site_lat === "number") ? s.site_lat : null);
+      const siteLng      = (typeof a.location_lon === "number") ? a.location_lon
+                            : ((typeof s.site_lng === "number") ? s.site_lng : null);
+      const geoOutEval   = computeGeoStatus(geo, siteLat, siteLng);
+      const inDist       = (typeof s.clock_in_distance_from_site_meters === "number")
+                              ? s.clock_in_distance_from_site_meters : null;
+      const outDist      = geoOutEval.distance_m;
+      const maxDist      = [inDist, outDist].filter(function (n) { return typeof n === "number"; })
+                              .reduce(function (m, v) { return v > m ? v : m; }, 0) || null;
+      const offsiteFlag  = (s.clock_in_geo_status === "offsite") ||
+                           (geoOutEval.geo_status === "offsite");
+
       tx.update(sessionRef, {
         status:                        "completed",
         clock_out_at:                  sts,
-        clock_out_lat:                 geo.lat,
-        clock_out_lon:                 geo.lon,
-        clock_out_accuracy_m:          geo.accuracy_m,
-        clock_out_geofence:            "unknown",
         clock_out_gps_status:          geo.status,
-        clock_out_source:              "work_html_phase_1b",
+        clock_out_geo_status:          geoOutEval.geo_status,
+        clock_out_distance_from_site_meters: geoOutEval.distance_m,
+        clock_out_source:              "work_html_phase_1d_lite",
+        max_distance_from_site_meters: maxDist,
         work_minutes:                  workMinutes,
         paid_minutes:                  paidMinutes,
         paid_drive_minutes:            0,
         break_minutes:                 0,
         sick_accrual_eligible_minutes: accrualMinutes,
-        needs_review:                  needsReview,
+        needs_review:                  needsReview || offsiteFlag,
         updated_at:                    sts
       });
 
@@ -1079,13 +1190,20 @@
 
         punch_at:      sts,
         client_ts:     Date.now(),
-        lat:           geo.lat,
-        lon:           geo.lon,
-        accuracy_m:    geo.accuracy_m,
-        geofence_status: "unknown",
+        gps: {
+          lat:              geo.lat,
+          lng:              geo.lon,
+          accuracy_meters:  geo.accuracy_m
+        },
+        site: {
+          lat: siteLat,
+          lng: siteLng
+        },
+        distance_from_site_meters: geoOutEval.distance_m,
         gps_status:    geo.status,
+        geo_status:    geoOutEval.geo_status,
 
-        source:        "work_html_phase_1b",
+        source:        "work_html_phase_1d_lite",
         user_agent:    (typeof navigator !== "undefined" && navigator.userAgent) || ""
       });
     });
