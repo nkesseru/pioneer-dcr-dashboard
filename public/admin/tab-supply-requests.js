@@ -51,7 +51,7 @@
   }
   const getCurrentAdminEmail  = window.__pioneerAdmin.shell.getCurrentAdminEmail;
   const handleAdminWriteError = window.__pioneerAdmin.shell.handleAdminWriteError;
-  const refreshAttentionStrip = () => depOrThrow("refreshAttentionStrip")();
+  const refreshAttentionStrip = function () { return window.__pioneerAdmin.tabs.dayHealth.refresh(); };
 
   function $(id) { return document.getElementById(id); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }

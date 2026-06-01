@@ -93,9 +93,9 @@
   }
   const getCustomers           = () => depOrThrow("getCustomers")();
   const getDcrs                = () => depOrThrow("getDcrs")();
-  const getAdmins              = () => depOrThrow("getAdmins")();
-  const loadAdmins             = () => depOrThrow("loadAdmins")();
-  const refreshAttentionStrip  = () => depOrThrow("refreshAttentionStrip")();
+  const getAdmins              = function () { return window.__pioneerAdmin.tabs.admins.getAdmins(); };
+  const loadAdmins             = function () { return window.__pioneerAdmin.tabs.admins.refresh(); };
+  const refreshAttentionStrip  = function () { return window.__pioneerAdmin.tabs.dayHealth.refresh(); };
   const getCurrentAdminEmail   = window.__pioneerAdmin.shell.getCurrentAdminEmail;
   const handleAdminWriteError  = window.__pioneerAdmin.shell.handleAdminWriteError;
   const setModalError          = window.__pioneerAdmin.shell.setModalError;

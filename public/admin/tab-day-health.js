@@ -78,7 +78,7 @@
   const getDcrs            = () => depOrThrow("getDcrs")();
   const getDcrIssues       = () => depOrThrow("getDcrIssues")();
   const getSupplyRequests  = () => depOrThrow("getSupplyRequests")();
-  const getOpsDayWindow    = (now, cutoff, tz) => depOrThrow("getOpsDayWindow")(now, cutoff, tz);
+  const getOpsDayWindow    = window.__pioneerAdmin.utils.getOpsDayWindow;
 
   function $(id) { return document.getElementById(id); }
 

@@ -564,21 +564,22 @@
     // closure-local helpers from admin.js (customers array, modal
     // infra, admin-email, write-error handler). Goes away when those
     // are extracted in later phases.
+    // Cross-tab data-read bridge — five live array getters consumed by
+    // sibling tab modules, plus the cross-tab fan-out orchestrator owned
+    // by admin.js. Phase 25a retired four shell-side helpers
+    // (getCurrentAdminEmail, handleAdminWriteError, setModalError,
+    // setModalSaving — tab modules now destructure those from
+    // window.__pioneerAdmin.shell). Phase 25f retired five
+    // module-aliases (loadAdmins, getAdmins, refreshAttentionStrip,
+    // getOpsDayWindow, populateCustomerDeputyIntegration — consumers
+    // now call the owning namespace or utils export directly).
     window.__pioneerAdmin.deps = {
-      getCustomers:          function () { return window.__pioneerAdmin.tabs.customers.getCustomers(); },
-      getTechs:              function () { return window.__pioneerAdmin.tabs.techs.getTechs(); },
-      getDcrs:               function () { return window.__pioneerAdmin.tabs.recentDcrs.getDcrs(); },
-      getDcrIssues:          function () { return window.__pioneerAdmin.tabs.dcrIssues.getDcrIssues(); },
-      getSupplyRequests:     function () { return window.__pioneerAdmin.tabs.supplyRequests.getSupplyRequests(); },
-      getAdmins:             function () { return window.__pioneerAdmin.tabs.admins.getAdmins(); },
-      loadAdmins:            function () { return window.__pioneerAdmin.tabs.admins.refresh(); },
-      refreshAttentionStrip: function () { return window.__pioneerAdmin.tabs.dayHealth.refresh(); },
-      getOpsDayWindow:       function (now, cutoffHour, timezone) { return getOpsDayWindow(now, cutoffHour, timezone); },
-      loadDcrsAndRerenderDependents: function () { return loadDcrsAndRerenderDependents(); },
-      // Phase 25a retired: getCurrentAdminEmail, handleAdminWriteError,
-      // setModalError, setModalSaving. Tab modules now destructure
-      // those four from window.__pioneerAdmin.shell directly.
-      populateCustomerDeputyIntegration: function (c) { return window.__pioneerAdmin.tabs.deputyMapping.populateCustomerIntegration(c); }
+      getCustomers:                  function () { return window.__pioneerAdmin.tabs.customers.getCustomers(); },
+      getTechs:                      function () { return window.__pioneerAdmin.tabs.techs.getTechs(); },
+      getDcrs:                       function () { return window.__pioneerAdmin.tabs.recentDcrs.getDcrs(); },
+      getDcrIssues:                  function () { return window.__pioneerAdmin.tabs.dcrIssues.getDcrIssues(); },
+      getSupplyRequests:             function () { return window.__pioneerAdmin.tabs.supplyRequests.getSupplyRequests(); },
+      loadDcrsAndRerenderDependents: function () { return loadDcrsAndRerenderDependents(); }
     };
     // DCR Issues tab fires onChange after every load + save so admin.js
     // can refresh the attention strip + customer rows (which display

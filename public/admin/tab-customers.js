@@ -86,7 +86,7 @@
   const handleAdminWriteError            = window.__pioneerAdmin.shell.handleAdminWriteError;
   const setModalError                    = window.__pioneerAdmin.shell.setModalError;
   const setModalSaving                   = window.__pioneerAdmin.shell.setModalSaving;
-  const populateCustomerDeputyIntegration = c => depOrThrow("populateCustomerDeputyIntegration")(c);
+  const populateCustomerDeputyIntegration = function (c) { return window.__pioneerAdmin.tabs.deputyMapping.populateCustomerIntegration(c); };
 
   function $(id) { return document.getElementById(id); }
 
