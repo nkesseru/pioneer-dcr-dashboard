@@ -124,19 +124,41 @@
   /* ---------- auth resolution + first load ---------- */
 
   function bootWhenAuthReady() {
-    // Subscribe to Firebase Auth directly. STAFF_AUTH.getCachedStaff()
-    // intentionally returns a localStorage "lite" version of the staff
-    // object that does NOT include uid (see staff-auth.js:writeCachedStaff).
-    // Polling for cached.uid never resolves — the prior implementation
-    // hit a 60s timeout and silently kept the section hidden.
-    //
-    // firebase.auth().currentUser is the canonical uid source. Multiple
-    // subscribers are supported, so this doesn't conflict with
-    // staff-auth.js's own onAuthStateChanged handler.
+    // BOOT-ORDER RACE: work.js registers a DOMContentLoaded handler that
+    // calls STAFF_AUTH.init() → firebase.initializeApp(). That handler
+    // is registered AFTER ours (work.js loads after service-clock.js),
+    // so DOMContentLoaded fires our listener FIRST, at which point
+    // firebase.apps.length === 0 and calling firebase.auth() throws
+    // "No Firebase App '[DEFAULT]' has been created". The earlier
+    // implementation hit that throw and silently kept the section
+    // hidden. Poll for initialization, then subscribe.
     if (!window.firebase || typeof firebase.auth !== "function") {
-      warnSC("Firebase Auth SDK not available; service clock stays hidden");
+      warnSC("Firebase SDK not loaded; service clock stays hidden");
       return;
     }
+    logSC("waiting for firebase.initializeApp (work.js's DOMContentLoaded handler runs after ours)");
+    let attempts = 0;
+    const interval = setInterval(function () {
+      attempts += 1;
+      if (firebase.apps && firebase.apps.length > 0) {
+        clearInterval(interval);
+        logSC("firebase initialized — subscribing to auth state");
+        attachAuthListener();
+        return;
+      }
+      if (attempts > 120) {  // ~30s @ 250ms — generous; in practice <1 tick
+        clearInterval(interval);
+        warnSC("firebase.initializeApp never ran; service clock stays hidden");
+      }
+    }, 250);
+  }
+
+  function attachAuthListener() {
+    // STAFF_AUTH.getCachedStaff() intentionally returns a localStorage
+    // "lite" version of staff WITHOUT uid (see staff-auth.js
+    // writeCachedStaff). firebase.auth().currentUser is the canonical
+    // uid source. Multiple subscribers are supported — this doesn't
+    // conflict with staff-auth.js's own onAuthStateChanged handler.
     firebase.auth().onAuthStateChanged(function (user) {
       if (!user) {
         logSC("no signed-in user; service clock stays hidden");
