@@ -209,3 +209,113 @@
 @media (max-width: 520px) {
   .assign-card-tech-chip { max-width: 140px; }
 }
+
+/* ====================================================================
+   Pioneer Time Clock (Phase 1b)
+   Service-assignment clock-in/out surface. Visually distinct from the
+   Deputy ".assign-card" cards so techs see this as the new Pioneer-
+   native flow during the beta. Scoped under .pioneer-time-clock so it
+   doesn't bleed into the Deputy section below.
+   ==================================================================== */
+
+.pioneer-time-clock {
+  margin-bottom: var(--space-4, 16px);
+  border-left: 4px solid var(--accent, #2f6dd6);
+}
+
+.pioneer-time-clock .ptc-balance-card {
+  background: var(--surface-card-soft, #f4f6fb);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 10px);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.ptc-balance-empty p { margin: 4px 0 0; color: var(--text-muted, #555); }
+.ptc-balance-head .ptc-balance-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--text-muted, #555);
+}
+.ptc-balance-list { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 8px 0 0; }
+@media (min-width: 520px) {
+  .ptc-balance-list { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+}
+.ptc-balance-row { display: flex; flex-direction: column; gap: 2px; }
+.ptc-balance-row dt {
+  font-size: 11.5px; color: var(--text-muted, #555);
+  text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700;
+}
+.ptc-balance-row dd {
+  font-size: 18px; font-weight: 800; color: var(--text-strong, #1a1a1a); margin: 0;
+}
+.ptc-balance-row--preliminary dd { color: var(--text-muted, #555); font-weight: 700; }
+.ptc-balance-row em { font-style: italic; font-weight: 500; opacity: 0.7; }
+
+.pioneer-time-clock .ptc-assignments { display: flex; flex-direction: column; gap: 12px; }
+
+.ptc-card {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 10px);
+  padding: 14px 16px;
+}
+.ptc-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px;
+}
+.ptc-card-eyebrow {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--accent, #2f6dd6);
+}
+.ptc-card-title { margin: 0; font-size: 17px; font-weight: 800; }
+.ptc-card-loc   { margin: 2px 0 6px; color: var(--text-muted, #555); font-size: 13px; }
+.ptc-card-meta {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 16px; margin: 8px 0 12px;
+}
+.ptc-card-meta div { display: flex; flex-direction: column; gap: 2px; }
+.ptc-card-meta dt {
+  font-size: 11px; font-weight: 700; color: var(--text-muted, #555);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.ptc-card-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
+.ptc-card-actions { display: flex; justify-content: flex-end; }
+
+.ptc-status-chip {
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 3px 10px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+.ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
+.ptc-status-chip.is-active   { background: #fff4d6; color: #8a5a00; }
+.ptc-status-chip.is-done     { background: #e2f3e6; color: #2a6b3a; }
+.ptc-status-chip.is-missed,
+.ptc-status-chip.is-canceled { background: #f6e0e0; color: #8a2a2a; }
+
+.ptc-btn {
+  appearance: none; -webkit-appearance: none;
+  border: none; border-radius: var(--radius-md, 8px);
+  padding: 10px 18px; font-size: 14.5px; font-weight: 700; cursor: pointer;
+  background: var(--accent, #2f6dd6); color: #fff;
+}
+.ptc-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.ptc-btn-start { background: var(--accent, #2f6dd6); }
+.ptc-btn-stop  { background: #a83232; }
+.ptc-btn-done  { background: #d3d6dc; color: #555; }
+.ptc-btn-blocked { background: #f0e6e6; color: #8a2a2a; }
+
+.ptc-fallback-note {
+  margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted, #555);
+  border-top: 1px dashed var(--border-soft, #e2e6ee); padding-top: 10px;
+}
+
+.ptc-empty,
+.ptc-status {
+  padding: 14px 16px; border-radius: var(--radius-lg, 10px);
+  background: var(--surface-card-soft, #f4f6fb);
+  border: 1px dashed var(--border-soft, #c8cdd6);
+  color: var(--text-muted, #555);
+}
+.ptc-empty p { margin: 4px 0; }
+.ptc-status-loading { background: transparent; border: none; padding: 8px 0; }
+.ptc-status-warn  { background: #fff7e0; border-color: #d8b85d; color: #5a4400; }
+.ptc-status-error { background: #faebeb; border-color: #c98080; color: #6b1a1a; }

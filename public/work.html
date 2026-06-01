@@ -146,6 +146,28 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" hidden>
 
+      <!-- ============ Pioneer Time Clock (Phase 1b) ============
+           Native service-assignment clock-in/out, sitting ABOVE the
+           legacy Deputy "Today's Work" section so techs see the
+           Pioneer surface first. Hidden until service-clock.js has
+           resolved the signed-in tech + loaded today's assignments.
+           Deputy stays available beneath this as a fallback during
+           beta. The whole section is mounted by service-clock.js. -->
+      <section class="card pioneer-time-clock work-page-section"
+               id="pioneer-time-clock-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">⏱ Pioneer Time Clock</h2>
+          <p class="team-hub-section-sub">
+            Beta — Deputy still available below as a fallback while we roll this out.
+          </p>
+        </header>
+        <div class="ptc-balance-card" id="ptc-balance-card" hidden></div>
+        <div class="ptc-assignments"  id="ptc-assignments"></div>
+        <p class="ptc-fallback-note">
+          ⤵ Deputy fallback during beta — keep clocking there too until the office tells you to stop.
+        </p>
+      </section>
+
       <!-- Today's Work workflow section.
            Mounted by today-work.js (window.PIONEER_TODAY_WORK.init).
            Same DOM ids the old Team Hub embedding used — keep so the
@@ -345,6 +367,7 @@
   <script src="celebrate.js?v=20260528-celebrate"></script>
   <script src="customer-display.js?v=20260528-displayname"></script>
   <script src="today-work.js?v=20260528-displayname"></script>
+  <script src="service-clock.js?v=20260601-phase1b"></script>
   <script src="work.js?v=20260528-displayname"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
