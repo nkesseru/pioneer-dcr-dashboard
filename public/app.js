@@ -371,6 +371,40 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // Phase A Deputy launcher — fire-and-forget click log for the DCR
+  // success page's "Open Deputy App" button. Soft-fails on every error
+  // so a failed write never blocks the anchor navigation. Twin of the
+  // logDeputyOpenClick helper in today-work.js; rules in firestore.rules
+  // require staff.uid == request.auth.uid.
+  function logDeputyOpenClick(source, extras) {
+    try {
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+      const staff = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
+        ? window.STAFF_AUTH.getCachedStaff() : null) || {};
+      const authU = (firebase.auth && firebase.auth().currentUser) || null;
+      const uid   = staff.uid || (authU && authU.uid) || null;
+      if (!uid) return;
+      const payload = Object.assign({
+        action:     "open_deputy",
+        source:     String(source || "unknown"),
+        staff: {
+          uid:         uid,
+          email:       String(staff.email || (authU && authU.email) || ""),
+          displayName: String(staff.displayName || (authU && authU.displayName) || "")
+        },
+        page_url:   (typeof location !== "undefined" && location.pathname) || "",
+        user_agent: (typeof navigator !== "undefined" && navigator.userAgent) || "",
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      }, extras || {});
+      firebase.firestore().collection("employee_action_events").add(payload)
+        .catch(function (err) {
+          try { console.warn("[app] deputy click log failed (non-fatal)", err && err.code); } catch (_e) {}
+        });
+    } catch (e) {
+      try { console.warn("[app] deputy click log threw (non-fatal)", e); } catch (_e) {}
+    }
+  }
+
   function applyDeputyShiftFromUrl(staffArg) {
     const banner = document.getElementById("deputy-shift-banner");
     const metaEl = document.getElementById("deputy-shift-banner-meta");
@@ -2525,6 +2559,20 @@
           // duplicated logic between DCR and Today's Work surfaces.
           window.location.href = "/work.html?finishSession=" + encodeURIComponent(sessionId);
         };
+      }
+      // Phase A Deputy launcher — log the "Open Deputy App" tap from
+      // the success page. No preventDefault: the anchor must navigate
+      // so the OS can route to the Deputy app.
+      const deputyBtn = document.getElementById("success-open-deputy");
+      if (deputyBtn && !deputyBtn.dataset.deputyClickWired) {
+        deputyBtn.dataset.deputyClickWired = "1";
+        deputyBtn.addEventListener("click", function () {
+          logDeputyOpenClick("dcr_success", {
+            shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
+            sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
+            pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+          });
+        });
       }
     } else {
       if (finalStep) finalStep.hidden = true;

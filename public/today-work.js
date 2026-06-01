@@ -72,6 +72,40 @@
     catch (_e) {}
   }
 
+  // Phase A Deputy launcher — fire-and-forget click log.
+  // Writes one doc to employee_action_events per Open-Deputy tap so ops
+  // can correlate "I tapped Open Deputy but didn't get to the app" reports
+  // against device + surface + shift context. Soft-fails on every error
+  // path so a failed write never blocks the anchor navigation. Rules in
+  // firestore.rules require staff.uid == request.auth.uid.
+  function logDeputyOpenClick(source, extras) {
+    try {
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+      const staff = workCurrentStaff || {};
+      const authU = (firebase.auth && firebase.auth().currentUser) || null;
+      const uid   = staff.uid || (authU && authU.uid) || null;
+      if (!uid) return;
+      const payload = Object.assign({
+        action:     "open_deputy",
+        source:     String(source || "unknown"),
+        staff: {
+          uid:         uid,
+          email:       String(staff.email || (authU && authU.email) || ""),
+          displayName: String(staff.displayName || (authU && authU.displayName) || "")
+        },
+        page_url:   (typeof location !== "undefined" && location.pathname) || "",
+        user_agent: (typeof navigator !== "undefined" && navigator.userAgent) || "",
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      }, extras || {});
+      firebase.firestore().collection("employee_action_events").add(payload)
+        .catch(function (err) {
+          try { console.warn("[todays-work] deputy click log failed (non-fatal)", err && err.code); } catch (_e) {}
+        });
+    } catch (e) {
+      try { console.warn("[todays-work] deputy click log threw (non-fatal)", e); } catch (_e) {}
+    }
+  }
+
   const DEPUTY_TIMEZONE = "America/Los_Angeles";
 
   // Pilot v20260526-mobileunlock — once.deputy.com/my is Deputy's stable
@@ -238,7 +272,11 @@
             ' target="_blank" rel="noopener noreferrer"' +
             ' data-action="open-deputy">Open Deputy App</a>' +
           dismissButton +
-        '</div>';
+        '</div>' +
+        '<p class="pioneer-clock-reminder-helper">' +
+          'Use the Deputy mobile app — sign in once and future taps should open the app automatically. ' +
+          'Don’t have it? Install the Deputy app first, then return here.' +
+        '</p>';
 
       function dismiss() {
         if (!card.parentNode) return;
@@ -253,6 +291,7 @@
         // The Deputy anchor opens in a new tab; we ALSO dismiss the card
         // a beat later so the user sees the tap registered.
         if (action === "open-deputy") {
+          logDeputyOpenClick("clock_in_reminder");
           setTimeout(dismiss, 200);
           return;
         }
@@ -623,10 +662,18 @@
         // routes to the Deputy app via universal links when installed,
         // else falls back to once.deputy.com/my. Deputy remains the
         // official timeclock — PioneerOps never claims to clock the tech.
+        // data-action="open-deputy" lets the list-level delegated handler
+        // fire-and-forget a click log (Phase A) without preventDefault.
         '<a class="assign-card-deputy-link" href="' + DEPUTY_HOME_URL + '"' +
-          ' target="_blank" rel="noopener noreferrer">' +
+          ' target="_blank" rel="noopener noreferrer"' +
+          ' data-action="open-deputy"' +
+          ' data-shift-id="' + escapeHtml(String(shift.shift_id || "")) + '">' +
           'Open Deputy App ↗' +
         '</a>' +
+        '<p class="assign-card-deputy-helper">' +
+          'Use the Deputy mobile app — sign in once and future taps should open the app automatically. ' +
+          'Don’t have it? Install the Deputy app first, then return here.' +
+        '</p>' +
         footerHtml +
         ownerLine +
       '</article>'
@@ -1605,6 +1652,13 @@
       } else if (action === "complete-dcr") {
         // anchor's default href navigates; stamp the open time first.
         stampDcrOpenedAt(shift);
+      } else if (action === "open-deputy") {
+        // Phase A — fire-and-forget click log. Do NOT preventDefault:
+        // the anchor must navigate so the OS can route to the Deputy app.
+        logDeputyOpenClick("today_work_card", {
+          shift_id:  String(shift.shift_id || ""),
+          sync_date: String(shift.sync_date || "")
+        });
       }
     });
     wired = true;

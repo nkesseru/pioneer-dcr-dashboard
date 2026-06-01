@@ -1064,6 +1064,36 @@ service cloud.firestore {
       allow read: if isPioneerAdmin();
     }
 
+    // ====================================================================
+    // Employee action events — lightweight client-side click log.
+    // ====================================================================
+    // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"
+    // tap on the staff surfaces (Today's Work assignment card, clock-in
+    // reminder banner, DCR-submit success page) writes one doc here so
+    // ops can troubleshoot "I tapped Open Deputy but didn't get to the
+    // app" reports.
+    //
+    // Schema (validated by rules):
+    //   action      string                — "open_deputy" today; namespaced for future use
+    //   source      string                — surface identifier (today_work_card / clock_in_reminder / dcr_success)
+    //   staff       map { uid, email, displayName? }
+    //   staff.uid   string                — must equal request.auth.uid
+    //   created_at  serverTimestamp       — set client-side via FieldValue
+    //   Optional:   shift_id, sync_date, user_agent, page_url
+    //
+    // Read: admin-only. Update / delete: forbidden — this is an append-only
+    // audit log; mistakes get superseded by new events, never edited.
+    match /employee_action_events/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isActiveStaff()
+                    && request.resource.data.action is string
+                    && request.resource.data.source is string
+                    && request.resource.data.staff is map
+                    && request.resource.data.staff.uid is string
+                    && request.resource.data.staff.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // Default-deny everything else.
     match /{document=**} {
       allow read, write: if false;
