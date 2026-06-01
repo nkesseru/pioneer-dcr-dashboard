@@ -138,6 +138,140 @@
     return a.service_date === todayPT;  // legacy doc
   }
 
+  // Phase 1c.1 — hero greeting card helpers.
+  //
+  // First-name extraction: take the first word of the display name and
+  // strip a trailing period ("Nick K." → "Nick"). Falls back to the
+  // email local-part if no display name is set.
+  function firstName(staff) {
+    const raw = String((staff && staff.displayName) || "").trim();
+    if (raw) {
+      const first = raw.split(/\s+/)[0] || "";
+      const cleaned = first.replace(/\.+$/, "");
+      if (cleaned) return cleaned;
+    }
+    const email = String((staff && staff.email) || "");
+    const local = email.split("@")[0] || "";
+    if (!local) return "";
+    return local.charAt(0).toUpperCase() + local.slice(1);
+  }
+
+  // Time-of-day greeting in Pacific. Four buckets per Phase 1c plan.
+  // Apple-style title case ("Good Morning", not "Good morning").
+  function timeOfDayGreeting() {
+    let hour;
+    try {
+      hour = parseInt(new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hour: "numeric",
+        hourCycle: "h23"
+      }).format(new Date()), 10);
+    } catch (_e) { hour = new Date().getHours(); }
+    if (hour >= 5  && hour < 12) return "Good Morning";
+    if (hour >= 12 && hour < 17) return "Good Afternoon";
+    if (hour >= 17 && hour < 22) return "Good Evening";
+    return "Working Late";
+  }
+
+  // Long-format Pacific date ("Monday, June 1").
+  function formatHeroDate() {
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long",
+        month: "long",
+        day: "numeric"
+      }).format(new Date());
+    } catch (_e) { return ""; }
+  }
+
+  // "Jun 20" from "2026-06-20" — for Next Payday stat card.
+  function formatPaydayShort(yyyyMmDd) {
+    if (!yyyyMmDd) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short",
+        day:   "numeric"
+      }).format(new Date(yyyyMmDd + "T12:00:00Z"));
+    } catch (_e) { return yyyyMmDd; }
+  }
+
+  // Count of today's assignments that count as "completed" — DCR
+  // submitted OR admin set status=completed. Matches the user's
+  // mental model of "done."
+  function completedStopsCount() {
+    return assignments.filter(function (a) {
+      if (a.status === "completed") return true;
+      return dcrStatusForAssignment(a._id) === "submitted";
+    }).length;
+  }
+
+  // Apple-restraint motivational line — confident statements that
+  // describe the day, not pep talks. Eight deterministic branches.
+  function motivationalLine() {
+    const total     = assignments.length;
+    const done      = completedStopsCount();
+    const isActive  = !!activeSession;
+    if (total === 0) return "No stops today.";
+    if (done === total) {
+      // Check whether all completed stops have DCRs in.
+      const allDcrIn = assignments.every(function (a) {
+        return dcrStatusForAssignment(a._id) === "submitted";
+      });
+      return allDcrIn ? "Day complete." : "Complete the DCRs.";
+    }
+    if (isActive) {
+      // On-pace logic — based on the current stop's worked vs. budget.
+      const a = assignments.find(function (x) {
+        return activeSession.assignment_id === x._id;
+      });
+      if (a && a.budget_minutes) {
+        const worked = cumulativeWorkedMinutes(a._id);
+        if (worked > a.budget_minutes) return "Over budget — keep going.";
+        if (worked < a.budget_minutes * 0.5) return "Ahead of schedule.";
+      }
+      return "On pace.";
+    }
+    if (done === 0) {
+      let hour;
+      try {
+        hour = parseInt(new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles",
+          hour: "numeric", hourCycle: "h23"
+        }).format(new Date()), 10);
+      } catch (_e) { hour = new Date().getHours(); }
+      if (hour < 12) return "Ready to start.";
+      return "Ready when you are.";
+    }
+    return "Keep moving.";
+  }
+
+  // Sum of paid_minutes across all sessions for today, PLUS live
+  // elapsed for the active session if it belongs to today's
+  // service_date. Used by the Hours Today stat card.
+  function hoursTodayMinutes() {
+    const todayPT = pacificDateString();
+    let total = 0;
+    Object.keys(sessionsByAssignment).forEach(function (aid) {
+      const list = sessionsByAssignment[aid] || [];
+      list.forEach(function (s) {
+        if (s.service_date !== todayPT) return;
+        if (s.status === "completed" && typeof s.paid_minutes === "number") {
+          total += s.paid_minutes;
+        }
+      });
+    });
+    if (activeSession &&
+        activeSession.service_date === todayPT &&
+        activeSession.clock_in_at &&
+        typeof activeSession.clock_in_at.toMillis === "function") {
+      const liveMs = Date.now() - activeSession.clock_in_at.toMillis();
+      if (liveMs > 0) total += Math.floor(liveMs / 60000);
+    }
+    return total;
+  }
+
   // Phase 1b.4 — derive DCR status for an assignment from its sessions.
   // "submitted" — at least one session has dcr_submission_id set
   //               (the Cloud Function back-stamps this on DCR submit).
@@ -373,7 +507,11 @@
       return;
     }
 
-    renderBalanceCard();
+    // Phase 1c.1 — Hero greeting card + 4 stat cards above the
+    // assignment list. The hero takes over the section's identity
+    // (the old "⏱ Pioneer Time Clock" header was removed in 1c.1).
+    renderHero();
+    renderStats();
     renderAssignments();
     // Phase 1b.3 — keep the "currently working" timer text fresh while
     // a session is active. Cheap re-render every 30s; stops on
@@ -392,7 +530,83 @@
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   }
 
-  /* ---------- render: balance card ---------- */
+  /* ---------- Phase 1c.1: hero + stat cards ---------- */
+
+  function renderHero() {
+    const root = $("ptc-hero");
+    if (!root) return;
+    const name        = firstName(currentStaff);
+    const greetingLine= timeOfDayGreeting() + (name ? ", " + name : "");
+    const dateLine    = formatHeroDate();
+    const total       = assignments.length;
+    const done        = completedStopsCount();
+    const pct         = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+    const progressLine = total
+      ? (done + " of " + total + " stops completed")
+      : "No stops scheduled today";
+    const status      = motivationalLine();
+
+    root.innerHTML =
+      '<h1 class="ptc-hero-greeting">' + escapeHtml(greetingLine) + '</h1>' +
+      '<p class="ptc-hero-date">'      + escapeHtml(dateLine)     + '</p>' +
+      (total
+        ? '<p class="ptc-hero-progress-line">' + escapeHtml(progressLine) + '</p>' +
+          '<div class="ptc-hero-progress-bar" role="progressbar" ' +
+              'aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '">' +
+            '<div class="ptc-hero-progress-fill" style="width:' + pct + '%"></div>' +
+          '</div>'
+        : '<p class="ptc-hero-progress-line">' + escapeHtml(progressLine) + '</p>') +
+      '<p class="ptc-hero-status">' + escapeHtml(status) + '</p>';
+    root.hidden = false;
+  }
+
+  function renderStats() {
+    const root = $("ptc-stats");
+    if (!root) return;
+    const todayMin     = hoursTodayMinutes();
+    const periodMin    = (balanceDoc && balanceDoc.current_period_paid_minutes) || 0;
+    const sickMin      = (balanceDoc && typeof balanceDoc.sick_leave_balance_minutes === "number")
+                           ? balanceDoc.sick_leave_balance_minutes
+                           : null;
+    const payday       = (currentPeriodDoc && currentPeriodDoc.payday) || null;
+    const todayActive  = !!activeSession;
+
+    function card(value, label, caption) {
+      const captionHtml = caption
+        ? '<p class="ptc-stat-caption">' + escapeHtml(caption) + '</p>'
+        : '';
+      return '<div class="ptc-stat-card">' +
+               '<p class="ptc-stat-value">' + escapeHtml(value) + '</p>' +
+               '<p class="ptc-stat-label">' + escapeHtml(label) + '</p>' +
+               captionHtml +
+             '</div>';
+    }
+
+    root.innerHTML =
+      card(
+        todayMin > 0 ? formatMinutesAsHm(todayMin) : "0h 0m",
+        "Today",
+        todayActive ? "currently working" : ""
+      ) +
+      card(
+        formatMinutesAsHm(periodMin),
+        "Period",
+        periodMin === 0 ? "updates after period close" : ""
+      ) +
+      card(
+        sickMin == null ? "—" : formatMinutesAsHm(sickMin),
+        "Sick Leave",
+        sickMin == null ? "ask manager" : ""
+      ) +
+      card(
+        payday ? formatPaydayShort(payday) : "—",
+        "Payday",
+        ""
+      );
+    root.hidden = false;
+  }
+
+  /* ---------- render: balance card (Phase 1b — superseded by stat cards in 1c.1) ---------- */
 
   function renderBalanceCard() {
     const root = $("ptc-balance-card");

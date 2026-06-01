@@ -211,7 +211,7 @@
 }
 
 /* ====================================================================
-   Pioneer Time Clock (Phase 1b)
+   Pioneer Time Clock (Phase 1b → 1c.1 Employee Command Center)
    Service-assignment clock-in/out surface. Visually distinct from the
    Deputy ".assign-card" cards so techs see this as the new Pioneer-
    native flow during the beta. Scoped under .pioneer-time-clock so it
@@ -221,6 +221,112 @@
 .pioneer-time-clock {
   margin-bottom: var(--space-4, 16px);
   border-left: 4px solid var(--accent, #2f6dd6);
+}
+
+/* Phase 1c.1 — Hero greeting card.
+   The hero takes over the section's identity (no eyebrow / "Pioneer
+   Time Clock" header above it). Apple-style: confident typography,
+   restrained color, no border or shadow. The hero IS the page header. */
+.pioneer-time-clock .ptc-hero {
+  padding: 4px 4px 8px;
+  margin-bottom: 18px;
+}
+.ptc-hero-greeting {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
+  line-height: 1.15;
+}
+.ptc-hero-date {
+  margin: 4px 0 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted, #555);
+}
+.ptc-hero-progress-line {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong, #1a1a1a);
+}
+.ptc-hero-progress-bar {
+  height: 6px;
+  width: 100%;
+  background: var(--border-soft, #e2e6ee);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.ptc-hero-progress-fill {
+  height: 100%;
+  background: var(--accent, #2f6dd6);
+  border-radius: 999px;
+  transition: width 240ms ease-out;
+}
+.ptc-hero-status {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted, #555);
+}
+@media (min-width: 960px) {
+  .ptc-hero-greeting { font-size: 32px; }
+  .ptc-hero-date     { margin-bottom: 22px; }
+}
+
+/* Phase 1c.1 — Four-up stat cards: Today, Period, Sick Leave, Payday.
+   2×2 on mobile, 1×4 on desktop. Apple aesthetic: big value, small
+   muted label, optional caption underneath when state warrants. */
+.pioneer-time-clock .ptc-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+@media (min-width: 600px) {
+  .pioneer-time-clock .ptc-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+.ptc-stat-card {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 10px);
+  padding: 14px 14px 12px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.ptc-stat-value {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.ptc-stat-label {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #555);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ptc-stat-caption {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted, #777);
+  font-style: italic;
+}
+@media (min-width: 600px) {
+  .ptc-stat-value { font-size: 24px; }
 }
 
 .pioneer-time-clock .ptc-balance-card {

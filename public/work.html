@@ -155,14 +155,12 @@
            beta. The whole section is mounted by service-clock.js. -->
       <section class="card pioneer-time-clock work-page-section"
                id="pioneer-time-clock-section" hidden>
-        <header class="team-hub-section-head">
-          <h2 class="team-hub-section-title">⏱ Pioneer Time Clock</h2>
-          <p class="team-hub-section-sub">
-            Beta — Deputy still available below as a fallback while we roll this out.
-          </p>
-        </header>
-        <div class="ptc-balance-card" id="ptc-balance-card" hidden></div>
-        <div class="ptc-assignments"  id="ptc-assignments"></div>
+        <!-- Phase 1c.1 — the prior section header ("⏱ Pioneer Time Clock"
+             eyebrow + subtitle) was removed; the hero card IS the
+             section identity now. Centered around MY WORK per spec. -->
+        <div class="ptc-hero"  id="ptc-hero"  hidden></div>
+        <div class="ptc-stats" id="ptc-stats" hidden></div>
+        <div class="ptc-assignments" id="ptc-assignments"></div>
         <p class="ptc-fallback-note">
           During beta, continue clocking in/out in Deputy too until the office tells you Pioneer Time Clock is official.
         </p>
@@ -367,7 +365,7 @@
   <script src="celebrate.js?v=20260528-celebrate"></script>
   <script src="customer-display.js?v=20260528-displayname"></script>
   <script src="today-work.js?v=20260601-phase1b3-badge"></script>
-  <script src="service-clock.js?v=20260601-phase1b4-dcr"></script>
+  <script src="service-clock.js?v=20260601-phase1c1-hero"></script>
   <script src="work.js?v=20260528-displayname"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
