@@ -356,84 +356,176 @@
 .ptc-balance-row--preliminary dd { color: var(--text-muted, #555); font-weight: 700; }
 .ptc-balance-row em { font-style: italic; font-weight: 500; opacity: 0.7; }
 
-.pioneer-time-clock .ptc-assignments { display: flex; flex-direction: column; gap: 12px; }
+.pioneer-time-clock .ptc-assignments { display: flex; flex-direction: column; gap: 16px; }
 
+/* Phase 1c.2 — Current Stop card refresh.
+   Premium, calm, proud-to-use. Bigger title, scorecard pattern,
+   prominent progress bar, single primary CTA per state. */
 .ptc-card {
   background: var(--surface-card, #fff);
   border: 1px solid var(--border-soft, #e2e6ee);
-  border-radius: var(--radius-lg, 10px);
-  padding: 14px 16px;
+  border-radius: var(--radius-lg, 12px);
+  padding: 18px 18px 16px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.ptc-card[data-state="working"] {
+  border-color: var(--accent, #2f6dd6);
+  box-shadow: 0 0 0 1px var(--accent, #2f6dd6);
 }
 .ptc-card-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .ptc-card-eyebrow {
   font-size: 10.5px; font-weight: 800; letter-spacing: 0.8px;
   text-transform: uppercase; color: var(--accent, #2f6dd6);
 }
-.ptc-card-title { margin: 0; font-size: 17px; font-weight: 800; }
-.ptc-card-loc   { margin: 2px 0 6px; color: var(--text-muted, #555); font-size: 13px; }
-.ptc-card-meta {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px 16px; margin: 8px 0 12px;
+.ptc-card-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
 }
-.ptc-card-meta div { display: flex; flex-direction: column; gap: 2px; }
-.ptc-card-meta dt {
-  font-size: 11px; font-weight: 700; color: var(--text-muted, #555);
-  text-transform: uppercase; letter-spacing: 0.4px;
+.ptc-card-loc {
+  margin: 4px 0 8px;
+  color: var(--text-muted, #555);
+  font-size: 14px; font-weight: 500;
 }
-.ptc-card-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
-.ptc-card-actions { display: flex; justify-content: flex-end; }
 
-.ptc-status-chip {
-  font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px;
-  padding: 3px 10px; border-radius: var(--radius-pill, 999px);
+/* Meta strip — service date + window + deadline, separated by bullets.
+   Calm single line. */
+.ptc-card-meta-strip {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--text-muted, #555);
+  font-weight: 500;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.ptc-card-meta-sep { color: #c8cdd6; }
+.ptc-card-meta-tag {
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--radius-pill, 999px);
   border: 1px solid transparent;
 }
+.ptc-card-meta-tag.is-early { background: #e4eefc; color: #1f4488; }
+.ptc-card-meta-tag.is-late  { background: #f6e0e0; color: #8a2a2a; }
 
-/* Phase 1b.2 availability chip — shown when service_date != today. */
-.ptc-availability-row { margin: 6px 0 8px; }
-.ptc-availability-chip {
-  display: inline-block;
-  font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
-  padding: 3px 10px; border-radius: var(--radius-pill, 999px);
-  border: 1px solid transparent;
+/* Scorecard — Worked / Budget / Remaining. Big values, small labels. */
+.ptc-scorecard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
 }
-.ptc-availability-chip.is-early { background: #e4eefc; color: #1f4488; }
-.ptc-availability-chip.is-late  { background: #f6e0e0; color: #8a2a2a; }
+.ptc-scorecard:has(.ptc-score-cell:nth-child(2):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ptc-score-cell {
+  background: var(--surface-card-soft, #f4f6fb);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 12px 9px;
+}
+.ptc-score-cell.is-active {
+  background: #d6e8ff;
+}
+.ptc-score-cell.is-over .ptc-score-value { color: #8a2a2a; }
+.ptc-score-value {
+  margin: 0;
+  font-size: 20px; font-weight: 800; line-height: 1.1;
+  color: var(--text-strong, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+}
+.ptc-score-label {
+  margin: 3px 0 0;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-muted, #555);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
 
-/* Phase 1b.3 — paused state + live timer text + over-budget row. */
-.ptc-status-chip.is-paused { background: #e6eaf2; color: #3a4762; }
-.ptc-worked-live {
-  display: inline-block;
-  font-size: 12px; font-weight: 500; color: var(--text-muted, #555);
+/* Progress bar — color tiers shift as worked vs. budget grows. */
+.ptc-progress {
+  position: relative;
+  height: 8px;
+  background: var(--border-soft, #e2e6ee);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 4px 0 14px;
+}
+.ptc-progress-fill {
+  height: 100%; border-radius: 999px;
+  background: var(--accent, #2f6dd6);
+  transition: width 240ms ease-out, background 240ms ease;
+}
+.ptc-progress.is-cool .ptc-progress-fill { background: var(--accent, #2f6dd6); }
+.ptc-progress.is-warn .ptc-progress-fill { background: #d8a23d; }
+.ptc-progress.is-hot  .ptc-progress-fill { background: #a83232; }
+.ptc-progress.is-done .ptc-progress-fill { background: #2a6b3a; }
+.ptc-progress-label {
+  position: absolute; right: 0; top: 12px;
+  font-size: 12px; font-weight: 700;
+  color: #8a2a2a;
+}
+
+.ptc-live-line {
+  margin: 0 0 14px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-muted, #555);
   font-style: italic;
 }
-.ptc-card-meta .ptc-overbudget dt { color: #8a2a2a; }
-.ptc-card-meta .ptc-overbudget dd { color: #8a2a2a; font-weight: 800; }
 
-/* Phase 1b.4 — DCR status chip + Complete DCR action + Next-step banner. */
-.ptc-dcr-chip {
-  display: inline-block;
-  font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
-  padding: 3px 10px; border-radius: var(--radius-pill, 999px);
+/* Buttons — single primary, optional secondary stacked beneath.
+   Full-width, 48px minimum tap target (Apple HIG). */
+.ptc-card-actions {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ptc-btn {
+  appearance: none; -webkit-appearance: none;
+  display: block; width: 100%;
+  border: none; border-radius: var(--radius-md, 10px);
+  padding: 14px 18px; font-size: 16px; font-weight: 700;
+  cursor: pointer; text-align: center; text-decoration: none;
+  min-height: 48px;
+  transition: background 180ms ease;
+}
+.ptc-btn:disabled, .ptc-btn.ptc-btn-disabled {
+  cursor: not-allowed; opacity: 0.65;
+}
+.ptc-btn-primary { background: var(--accent, #2f6dd6); color: #fff; }
+.ptc-btn-primary:hover { background: #275bb3; }
+.ptc-btn-start   { background: var(--accent, #2f6dd6); color: #fff; }
+.ptc-btn-stop    { background: #a83232; color: #fff; }
+.ptc-btn-stop:hover { background: #8e2828; }
+.ptc-btn-dcr     { background: #d8a23d; color: #1a1a1a; }
+.ptc-btn-dcr:hover { background: #c38f2c; }
+.ptc-btn-secondary {
+  background: var(--surface-card-soft, #f4f6fb);
+  color: var(--text-strong, #1a1a1a);
+  border: 1px solid var(--border-soft, #e2e6ee);
+}
+.ptc-btn-secondary:hover { background: #eaeef5; }
+.ptc-btn-disabled {
+  background: var(--surface-card-soft, #f4f6fb);
+  color: var(--text-muted, #555);
+}
+
+/* State chip palette — five live (ready/working/paused/dcr/complete)
+   + two terminal (missed/canceled). */
+.ptc-status-chip {
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 4px 12px; border-radius: var(--radius-pill, 999px);
   border: 1px solid transparent;
-  margin-left: 6px;
 }
-.ptc-dcr-chip.is-pending   { background: #fff4d6; color: #8a5a00; }
-.ptc-dcr-chip.is-submitted { background: #e2f3e6; color: #2a6b3a; }
+.ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
+.ptc-status-chip.is-working  { background: #d6e8ff; color: #18406b; }
+.ptc-status-chip.is-paused   { background: #e6eaf2; color: #3a4762; }
+.ptc-status-chip.is-dcr      { background: #fff1d3; color: #6b4a00; }
+.ptc-status-chip.is-complete { background: #e2f3e6; color: #2a6b3a; }
+.ptc-status-chip.is-missed,
+.ptc-status-chip.is-canceled { background: #f6e0e0; color: #8a2a2a; }
 
-.ptc-btn-dcr {
-  display: inline-block;
-  text-decoration: none;
-  background: #5a4400; color: #fff;
-  border: none; border-radius: var(--radius-md, 8px);
-  padding: 10px 18px; font-size: 14.5px; font-weight: 700;
-  margin-left: 8px;
-}
-.ptc-btn-dcr:hover { background: #3a2c00; }
-
+/* "Next Step: Complete DCR" banner above the assignment list. */
 .ptc-next-step {
   background: #fff7e0;
   border: 1px solid #d8b85d;
@@ -444,11 +536,8 @@
   font-size: 13.5px;
 }
 
-/* Phase 1b.3 — cross-link badge on the legacy Deputy "Today's Work"
-   card when the same customer + date is currently active in the
-   Pioneer Time Clock. Sits at the very top of the card so it's the
-   first thing a tech sees. Display-only — Deputy continues to be the
-   official time clock during beta. */
+/* Phase 1b.3 — cross-link badge on the legacy Deputy card when the
+   same customer + date is currently active in the Pioneer Time Clock. */
 .assign-card-pioneer-badge {
   background: #fff7e0;
   color: #5a4400;
@@ -458,24 +547,6 @@
   padding: 6px 12px;
   font-size: 12.5px; font-weight: 700; letter-spacing: 0.2px;
 }
-
-.ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
-.ptc-status-chip.is-active   { background: #fff4d6; color: #8a5a00; }
-.ptc-status-chip.is-done     { background: #e2f3e6; color: #2a6b3a; }
-.ptc-status-chip.is-missed,
-.ptc-status-chip.is-canceled { background: #f6e0e0; color: #8a2a2a; }
-
-.ptc-btn {
-  appearance: none; -webkit-appearance: none;
-  border: none; border-radius: var(--radius-md, 8px);
-  padding: 10px 18px; font-size: 14.5px; font-weight: 700; cursor: pointer;
-  background: var(--accent, #2f6dd6); color: #fff;
-}
-.ptc-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-.ptc-btn-start { background: var(--accent, #2f6dd6); }
-.ptc-btn-stop  { background: #a83232; }
-.ptc-btn-done  { background: #d3d6dc; color: #555; }
-.ptc-btn-blocked { background: #f0e6e6; color: #8a2a2a; }
 
 .ptc-fallback-note {
   margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted, #555);

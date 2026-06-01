@@ -689,132 +689,174 @@
     root.innerHTML = nextStepHtml + assignments.map(assignmentCard).join("");
   }
 
-  // Compute live UI state from the active-session lookup (NOT from
-  // assignment.status — that field is admin-managed and may lag).
-  // Phase 1b.3: "paused" = at least one completed session exists for
-  // this assignment but no active session right now (Resume Work flow).
+  // Compute live UI state from sessions + DCR status (NOT from
+  // assignment.status — admin-managed and may lag).
+  // Phase 1c.2 — five clean states: ready / working / paused /
+  // dcr_pending / complete (+ missed / canceled terminals).
+  // Paused = work done AND DCR submitted (waiting on admin or another cycle).
+  // DCR Pending = work done AND no DCR yet (next action is Complete DCR).
   function deriveDisplayState(a) {
-    if (activeSession && activeSession.assignment_id === a._id) return "in_progress";
-    if (a.status === "completed") return "completed";
+    if (activeSession && activeSession.assignment_id === a._id) return "working";
+    if (a.status === "completed") return "complete";
     if (a.status === "missed" || a.status === "canceled") return a.status;
     const prior = sessionsByAssignment[a._id] || [];
     const hasCompleted = prior.some(function (s) { return s.status === "completed"; });
-    if (hasCompleted) return "paused";
+    if (hasCompleted) {
+      const dcr = dcrStatusForAssignment(a._id);
+      return (dcr === "submitted") ? "paused" : "dcr_pending";
+    }
     return "ready";
   }
 
   function statusChip(state) {
     const map = {
-      "ready":       { cls: "is-ready",     label: "Ready" },
-      "in_progress": { cls: "is-active",    label: "Clocked in" },
-      "paused":      { cls: "is-paused",    label: "Paused" },
-      "completed":   { cls: "is-done",      label: "Completed" },
-      "missed":      { cls: "is-missed",    label: "Missed" },
-      "canceled":    { cls: "is-canceled",  label: "Canceled" }
+      "ready":       { cls: "is-ready",    label: "Ready" },
+      "working":     { cls: "is-working",  label: "Working" },
+      "paused":      { cls: "is-paused",   label: "Paused" },
+      "dcr_pending": { cls: "is-dcr",      label: "DCR Pending" },
+      "complete":    { cls: "is-complete", label: "Complete" },
+      "missed":      { cls: "is-missed",   label: "Missed" },
+      "canceled":    { cls: "is-canceled", label: "Canceled" }
     };
     const m = map[state] || map.ready;
     return '<span class="ptc-status-chip ' + m.cls + '">' + m.label + '</span>';
   }
 
   function assignmentCard(a) {
-    const state = deriveDisplayState(a);
+    const state    = deriveDisplayState(a);
     const blockedByOther = !!(activeSession && activeSession.assignment_id !== a._id);
+    const id       = escapeHtml(a._id);
+    const todayPT  = pacificDateString();
 
-    let ctaHtml;
-    if (state === "in_progress") {
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-stop" ' +
-                'data-action="clock-out" data-assignment-id="' + escapeHtml(a._id) + '">Clock Out</button>';
-    } else if (state === "paused") {
-      // Phase 1b.3 — Resume Work after clock-out. Same dispatch as
-      // Clock In; the transaction creates a NEW session doc, so
-      // cumulative work_minutes accrues across multiple sessions.
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-start" ' +
-                'data-action="clock-in" data-assignment-id="' + escapeHtml(a._id) + '">Resume Work</button>';
-    } else if (state === "completed") {
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-done" disabled>Completed</button>';
-    } else if (state === "missed" || state === "canceled") {
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-done" disabled>' +
-                (state === "missed" ? "Missed" : "Canceled") + '</button>';
-    } else if (blockedByOther) {
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-blocked" disabled ' +
-                'title="You are already clocked into another stop">Clocked into another stop</button>';
-    } else {
-      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-start" ' +
-                'data-action="clock-in" data-assignment-id="' + escapeHtml(a._id) + '">Clock In</button>';
-    }
-
-    const deadline = a.service_deadline ? formatTimeShort(a.service_deadline) : "";
-    const windowStart = a.service_window_start ? formatTimeShort(a.service_window_start) : "";
-
-    // Phase 1b.2 — Pioneer Sunday-Thursday workweek allows Sunday
-    // assignments to be performed Friday/Saturday. The service_date
-    // stays Pioneer-canonical (Sunday). The card always shows the
-    // service date for clarity, plus a chip when today differs from
-    // the service date.
-    const todayPT = pacificDateString();
-    let availabilityChipHtml = "";
+    // ---- Metadata strip (service date + optional deadline / window) ----
+    const dateLabel    = a.service_date ? formatServiceDateLong(a.service_date) : "";
+    const deadline     = a.service_deadline ? formatTimeShort(a.service_deadline) : "";
+    const windowStart  = a.service_window_start ? formatTimeShort(a.service_window_start) : "";
+    let availabilityNote = "";
     if (a.service_date && a.service_date !== todayPT) {
-      const isEarly = a.service_date > todayPT;
-      availabilityChipHtml = isEarly
-        ? '<span class="ptc-availability-chip is-early">Available Early</span>'
-        : '<span class="ptc-availability-chip is-late">Late Completion</span>';
+      availabilityNote = (a.service_date > todayPT) ? "Available Early" : "Late Completion";
     }
-
-    // Phase 1b.3 — Worked / Budget / Remaining (or Over-budget) rows.
-    const workedMin = cumulativeWorkedMinutes(a._id);
-    const isActiveHere = state === "in_progress";
-    const workedSuffix = isActiveHere
-      ? ' <span class="ptc-worked-live" title="Includes current active session">(currently working — started ' +
-          escapeHtml(formatTimeShort(activeSession.clock_in_at)) + ')</span>'
+    const metaParts = [];
+    if (dateLabel)       metaParts.push(escapeHtml(dateLabel));
+    if (availabilityNote) metaParts.push('<span class="ptc-card-meta-tag is-' +
+      (a.service_date > todayPT ? 'early' : 'late') + '">' + escapeHtml(availabilityNote) + '</span>');
+    if (windowStart)     metaParts.push("from " + escapeHtml(windowStart));
+    if (deadline)        metaParts.push("by "   + escapeHtml(deadline));
+    const metaStripHtml = metaParts.length
+      ? '<p class="ptc-card-meta-strip">' + metaParts.join(' <span class="ptc-card-meta-sep">·</span> ') + '</p>'
       : '';
-    let budgetRowsHtml = '<div><dt>Worked</dt><dd>' +
-        escapeHtml(formatMinutesAsHm(workedMin)) + workedSuffix +
-      '</dd></div>';
-    if (a.budget_minutes) {
-      budgetRowsHtml +=
-        '<div><dt>Budget</dt><dd>' + escapeHtml(formatMinutesAsHm(a.budget_minutes)) + '</dd></div>';
-      const remaining = a.budget_minutes - workedMin;
-      if (remaining >= 0) {
-        budgetRowsHtml +=
-          '<div><dt>Remaining</dt><dd>' + escapeHtml(formatMinutesAsHm(remaining)) + '</dd></div>';
-      } else {
-        budgetRowsHtml +=
-          '<div class="ptc-overbudget"><dt>Over budget by</dt><dd>' +
-            escapeHtml(formatMinutesAsHm(Math.abs(remaining))) +
-          '</dd></div>';
+
+    // ---- Scorecard (Worked / Budget / Remaining) ----
+    const workedMin = cumulativeWorkedMinutes(a._id);
+    const budgetMin = (typeof a.budget_minutes === "number") ? a.budget_minutes : null;
+    const isActiveHere = (state === "working");
+
+    let remainingHtml = '';
+    let progressPct   = 0;
+    let progressTier  = "is-cool";   // 0-79%
+    let progressLabel = "";
+    if (budgetMin && budgetMin > 0) {
+      const remaining = budgetMin - workedMin;
+      progressPct = Math.min(120, Math.round((workedMin / budgetMin) * 100));
+      if (workedMin >= budgetMin) {
+        progressTier  = "is-hot";
+        progressLabel = "Over budget by " + formatMinutesAsHm(Math.abs(remaining));
+      } else if (progressPct >= 80) {
+        progressTier  = "is-warn";
       }
+      remainingHtml = (remaining >= 0)
+        ? '<div class="ptc-score-cell"><p class="ptc-score-value">' + escapeHtml(formatMinutesAsHm(remaining)) +
+            '</p><p class="ptc-score-label">Remaining</p></div>'
+        : '<div class="ptc-score-cell is-over"><p class="ptc-score-value">' + escapeHtml(formatMinutesAsHm(Math.abs(remaining))) +
+            '</p><p class="ptc-score-label">Over</p></div>';
+    }
+    // "Complete" state — collapse Remaining; just show Worked + Budget.
+    if (state === "complete") {
+      remainingHtml = '';
+      progressTier  = "is-done";
+      progressPct   = 100;
+      progressLabel = "Done";
+    }
+    const scoreHtml =
+      '<div class="ptc-scorecard">' +
+        '<div class="ptc-score-cell' + (isActiveHere ? ' is-active' : '') + '">' +
+          '<p class="ptc-score-value">' + escapeHtml(formatMinutesAsHm(workedMin)) + '</p>' +
+          '<p class="ptc-score-label">Worked</p>' +
+        '</div>' +
+        (budgetMin
+          ? '<div class="ptc-score-cell"><p class="ptc-score-value">' +
+              escapeHtml(formatMinutesAsHm(budgetMin)) +
+            '</p><p class="ptc-score-label">Budget</p></div>'
+          : '') +
+        remainingHtml +
+      '</div>';
+
+    // ---- Progress bar (under scorecard) ----
+    let progressHtml = '';
+    if (budgetMin || state === "complete") {
+      progressHtml =
+        '<div class="ptc-progress ' + progressTier + '" role="progressbar" ' +
+            'aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + progressPct + '">' +
+          '<div class="ptc-progress-fill" style="width:' + Math.min(100, progressPct) + '%"></div>' +
+          (progressLabel
+            ? '<span class="ptc-progress-label">' + escapeHtml(progressLabel) + '</span>'
+            : '') +
+        '</div>';
     }
 
-    // Phase 1b.4 — DCR status chip + Complete DCR action.
-    const dcrStatus = dcrStatusForAssignment(a._id);
-    let dcrChipHtml = "";
-    if (dcrStatus === "submitted") {
-      dcrChipHtml = '<span class="ptc-dcr-chip is-submitted">DCR Submitted</span>';
-    } else if (dcrStatus === "pending") {
-      dcrChipHtml = '<span class="ptc-dcr-chip is-pending">DCR Pending</span>';
+    // ---- Live "currently working" caption under the bar ----
+    let liveHtml = '';
+    if (isActiveHere && activeSession && activeSession.clock_in_at) {
+      liveHtml = '<p class="ptc-live-line">Currently working — started ' +
+        escapeHtml(formatTimeShort(activeSession.clock_in_at)) + '</p>';
     }
-    // Append "Complete DCR" CTA when at least one completed session
-    // exists and DCR not yet submitted. Builds /index.html URL with
-    // the latest session id so the Cloud Function back-stamp lands on
-    // the right session doc. Re-tap-safe: tech can open the form,
-    // back out, and re-open without dedup (per Phase 1b.4 spec).
-    let completeDcrHtml = "";
-    if (dcrStatus === "pending") {
-      const latestSession = latestSessionIdForAssignment(a._id);
+
+    // ---- Buttons. One primary CTA per state; Complete DCR escalates
+    // to primary in dcr_pending. Secondary actions stack below. ----
+    const latestSession = latestSessionIdForAssignment(a._id);
+    function dcrHref() {
       const params = new URLSearchParams();
       params.set("pioneer_assignment_id", a._id);
-      if (latestSession) params.set("pioneer_service_session_id", latestSession);
-      if (a.customer_id) params.set("customer_slug", a.customer_id);
+      if (latestSession)   params.set("pioneer_service_session_id", latestSession);
+      if (a.customer_id)   params.set("customer_slug", a.customer_id);
       if (a.customer_name) params.set("customer_name", a.customer_name);
       if (a.service_date)  params.set("sync_date", a.service_date);
-      const href = "/?" + params.toString();
-      completeDcrHtml =
-        '<a class="ptc-btn ptc-btn-dcr" href="' + escapeHtml(href) + '" ' +
-        'data-action="complete-dcr">Complete DCR</a>';
+      return "/?" + params.toString();
+    }
+
+    let buttonsHtml = '';
+    if (state === "working") {
+      buttonsHtml =
+        '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-stop" ' +
+          'data-action="clock-out" data-assignment-id="' + id + '">Clock Out</button>';
+    } else if (state === "dcr_pending") {
+      buttonsHtml =
+        '<a class="ptc-btn ptc-btn-primary ptc-btn-dcr" href="' + escapeHtml(dcrHref()) + '" ' +
+          'data-action="complete-dcr">Complete DCR</a>' +
+        '<button type="button" class="ptc-btn ptc-btn-secondary" ' +
+          'data-action="clock-in" data-assignment-id="' + id + '">Resume Work</button>';
+    } else if (state === "paused") {
+      buttonsHtml =
+        '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-start" ' +
+          'data-action="clock-in" data-assignment-id="' + id + '">Resume Work</button>';
+    } else if (state === "complete") {
+      // No button — the state chip says it all. Apple-restraint.
+      buttonsHtml = '';
+    } else if (state === "missed" || state === "canceled") {
+      buttonsHtml = '';
+    } else if (blockedByOther) {
+      buttonsHtml =
+        '<button type="button" class="ptc-btn ptc-btn-disabled" disabled ' +
+          'title="You are already clocked into another stop">Clocked into another stop</button>';
+    } else {
+      // ready
+      buttonsHtml =
+        '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-start" ' +
+          'data-action="clock-in" data-assignment-id="' + id + '">Clock In</button>';
     }
 
     return (
-      '<article class="ptc-card" data-assignment-id="' + escapeHtml(a._id) + '">' +
+      '<article class="ptc-card" data-assignment-id="' + id + '" data-state="' + state + '">' +
         '<header class="ptc-card-head">' +
           '<span class="ptc-card-eyebrow">PIONEER</span>' +
           statusChip(state) +
@@ -825,18 +867,13 @@
         (a.location_name
           ? '<p class="ptc-card-loc">' + escapeHtml(a.location_name) + '</p>'
           : "") +
-        (availabilityChipHtml || dcrChipHtml
-          ? '<div class="ptc-availability-row">' +
-              (availabilityChipHtml || '') + (dcrChipHtml || '') +
-            '</div>'
+        metaStripHtml +
+        scoreHtml +
+        progressHtml +
+        liveHtml +
+        (buttonsHtml
+          ? '<div class="ptc-card-actions">' + buttonsHtml + '</div>'
           : '') +
-        '<dl class="ptc-card-meta">' +
-          '<div><dt>Service date</dt><dd>' + escapeHtml(formatServiceDateLong(a.service_date)) + '</dd></div>' +
-          (windowStart ? '<div><dt>Window starts</dt><dd>' + escapeHtml(windowStart) + '</dd></div>' : '') +
-          (deadline    ? '<div><dt>Deadline</dt><dd>'      + escapeHtml(deadline)       + '</dd></div>' : '') +
-          budgetRowsHtml +
-        '</dl>' +
-        '<div class="ptc-card-actions">' + ctaHtml + completeDcrHtml + '</div>' +
       '</article>'
     );
   }
