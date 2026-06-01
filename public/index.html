@@ -447,38 +447,29 @@
         </div>
       </section>
 
-      <!-- 12. Time budget -->
-      <section class="card">
+      <!-- 12. Time (Phase 1e.2) — conditional scope-change tracker.
+           Hidden by default. app.js reveals this card when the linked
+           Pioneer Time Clock session (id from ?pioneer_service_session_id
+           in the URL) shows work_minutes > budget_minutes + 15.
+           Spirit: collaborative scope-change tracking, not a budget
+           gotcha. Nothing here is required; submission never gates on
+           this section. The picker is rendered from
+           DCR_FORM_CONFIG.over_budget_context_options. -->
+      <section class="card" id="time-budget-card" hidden>
         <h2 class="card-title">Time</h2>
-        <p class="question">Were you able to stick to your time budget?</p>
-        <div class="seg" data-name="on_time_budget" role="radiogroup" aria-label="On time budget?">
-          <button type="button" class="seg-btn" data-value="yes">Yes</button>
-          <button type="button" class="seg-btn" data-value="no">No</button>
-        </div>
+        <p class="question">Quick check — this stop needed a little extra time tonight. Did anything change with the building or scope?</p>
+        <p class="hint" style="margin-top: 6px; line-height: 1.5;">
+          We're tracking scope and building changes here, not budget overages —
+          this helps us explain extras to the customer clearly.
+        </p>
+        <div id="time-budget-reasons" style="margin-top: 10px;"></div>
 
-        <div class="conditional" data-show-when="on_time_budget=no">
-          <!-- V6 pilot — supportive framing. Going over budget is data,
-               not a strike. The note here is operational so the office
-               can react to scope creep / heavier cleans / staffing
-               pressure before techs burn out. -->
-          <p class="hint" style="margin-top: 12px; line-height: 1.5;">
-            Going over budget happens. This helps us spot scope creep,
-            heavier-than-normal cleans, or anything that may need
-            office support.
-          </p>
-          <p class="hint" style="margin-top: 14px;">What threw the timing off? (Tap all that apply.)</p>
-          <div id="time-budget-reasons"></div>
-
-          <!-- Optional "Other — leave a note" textarea. Hidden until
-               the "other" reason is checked; populated by app.js. The
-               note is optional — submission is not gated on it. -->
-          <div id="over-budget-other-wrap" class="field" hidden style="margin-top: 12px;">
-            <label for="over-budget-other-note" class="hint" style="display:block;margin-bottom:6px;font-weight:700;color:var(--pc-text);">
-              Tell us what happened.
-            </label>
-            <textarea id="over-budget-other-note" rows="3"
-              placeholder="Example: I was moving slower today, extra trash, more people in the building, heavier restroom use, customer had an event, etc."></textarea>
-          </div>
+        <div class="field" style="margin-top: 14px;">
+          <label for="over-budget-other-note" class="hint" style="display:block;margin-bottom:6px;font-weight:700;color:var(--pc-text);">
+            Anything else that would help us explain the extra time?
+          </label>
+          <textarea id="over-budget-other-note" rows="3"
+            placeholder="Optional. e.g. moved furniture for a renovation, customer asked for a back room deep-clean, etc."></textarea>
         </div>
       </section>
 
@@ -672,7 +663,7 @@
   <script src="submit-dcr-v1.js"></script>
   <script src="mandatory-modal.js"></script>
   <script src="customer-display.js?v=20260528-displayname"></script>
-  <script src="app.js?v=20260601-phase1b4-dcr"></script>
+  <script src="app.js?v=20260601-phase1e2-overbudget"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
 </body>

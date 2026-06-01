@@ -76,6 +76,12 @@
   // and camelCase (overBudgetNote, overBudgetReason) mirrors so any
   // downstream reader picks it up.
   let overBudgetOtherNote = "";
+  // Phase 1e.2 — populated by loadLinkedPioneerSession() when the URL
+  // carries a pioneer_service_session_id AND that session shows
+  // work_minutes > budget_minutes + 15. Null otherwise. Drives both
+  // the Time card's visibility and the time_over_budget_context block
+  // on the submitted DCR payload.
+  let timeOverBudgetSnapshot = null;
   let signaturePad       = null;
   let firebaseCtx        = null;
   let isSubmitting       = false;
@@ -368,6 +374,55 @@
     } catch (e) { return null; }
   }
   const pioneerAssignmentParams = parsePioneerAssignmentFromUrl();
+
+  /* ---------- Phase 1e.2: linked Pioneer session over-budget check ----------
+   *
+   * When the URL carries a pioneer_service_session_id (set by service-clock.js
+   * when the tech taps "Complete DCR" from Time Clock), read that session and
+   * decide whether to reveal the optional scope-change Time card.
+   *
+   * Reveal rule: work_minutes > budget_minutes + 15  (strict greater-than)
+   * Everything else (no id, no session, no budget, under-budget, error) leaves
+   * the card hidden — the question is purely opt-in collaborative context.
+   *
+   * Reads pioneer_service_sessions/{id} once. The session's read rule is
+   * `isPioneerAdmin() || own staff_uid` — the tech who submitted the clock-in
+   * is also the one filling the DCR, so this is allowed. Any failure is
+   * swallowed and the card just stays hidden (zero impact on submission).
+   */
+  function revealTimeBudgetCard() {
+    const card = document.getElementById("time-budget-card");
+    if (card) card.hidden = false;
+  }
+
+  async function loadLinkedPioneerSession() {
+    try {
+      if (!pioneerAssignmentParams ||
+          !pioneerAssignmentParams.pioneer_service_session_id) return;
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+      const sid  = pioneerAssignmentParams.pioneer_service_session_id;
+      const snap = await firebase.firestore()
+        .collection("pioneer_service_sessions").doc(sid).get();
+      if (!snap.exists) return;
+      const s      = snap.data() || {};
+      const work   = (typeof s.work_minutes   === "number") ? s.work_minutes   : null;
+      const budget = (typeof s.budget_minutes === "number") ? s.budget_minutes : null;
+      if (work == null || budget == null || budget <= 0) return;
+      const overBy = work - budget;
+      if (overBy <= 15) return;
+      timeOverBudgetSnapshot = {
+        pioneer_service_session_id: sid,
+        work_minutes:    work,
+        budget_minutes:  budget,
+        over_by_minutes: overBy
+      };
+      revealTimeBudgetCard();
+    } catch (e) {
+      // Permission, network, or any other failure → stay hidden.
+      // Never blocks submission; the question is optional.
+      try { console.warn("[dcr] linked pioneer session check failed", e && (e.message || e.code)); } catch (_) {}
+    }
+  }
 
   function formatScheduledRange(startIso, endIso) {
     function fmt(iso) {
@@ -1211,9 +1266,17 @@
     return bottom;
   }
 
-  // Centralized scroll helper. Always uses block:start with a sticky
-  // offset adjustment so the next section's header lands just below the
-  // sticky strip — never one section past it.
+  // Centralized scroll helper. Uses native scrollIntoView({block:"start"})
+  // with a dynamically-set scroll-margin-top so the browser handles all
+  // positioning math from fresh post-collapse measurements. The margin =
+  // current sticky-strip bottom + 24px of comfortable breathing room so the
+  // next section header lands clearly below the sticky bar, not glued under
+  // it and not scrolled past it.
+  //
+  // Phase 1e.2 — replaced the prior manual window.scrollTo(beforeY + rect.top
+  // - offset - 8) math, which overshot the target after a collapse shrank the
+  // document above the viewport (stale beforeY vs fresh rect.top led to a
+  // landing well past the next section).
   function scrollToSectionHeader(sectionId, ctx) {
     ctx = ctx || {};
     let target = null;
@@ -1229,19 +1292,23 @@
                document.querySelector(".submit-bar") ||
                null;
     }
-    debugDcrScroll("nextIncompleteSection", { sectionId: sectionId, target: target ? (target.id || target.dataset.sectionId || "(fallback)") : "(none)" });
+    debugDcrScroll("nextIncompleteSection", {
+      sectionId: sectionId,
+      target: target ? (target.id || target.dataset.sectionId || "(fallback)") : "(none)"
+    });
     if (!target) return;
+
     const offset = stickyOffsetTop();
-    const rect   = target.getBoundingClientRect();
-    const beforeY = window.scrollY || window.pageYOffset || 0;
-    const desiredY = beforeY + rect.top - offset - 8;   // 8px breathing room
-    const finalY   = Math.max(0, desiredY);
+    const margin = offset + 24;   // 24px comfortable padding below the sticky strip
+    // scroll-margin-top is honored by scrollIntoView in all modern engines
+    // (Chrome, Safari, Firefox). Setting it per-call keeps the value in sync
+    // with whichever sticky strips are currently pinned.
+    try { target.style.scrollMarginTop = margin + "px"; } catch (_) {}
     debugDcrScroll("scrollTarget", {
-      sectionId: sectionId, offset: offset,
-      rectTop: rect.top, beforeY: beforeY, desiredY: desiredY, finalY: finalY,
+      sectionId: sectionId, offset: offset, scrollMarginTop: margin,
       completedSectionId: ctx.completedSectionId
     });
-    window.scrollTo({ top: finalY, behavior: "smooth" });
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
     // Log the resolved scroll position on the next frame for debug
     // verification — useful when tuning the offset on a real device.
     if (typeof window.requestAnimationFrame === "function") {
@@ -1312,64 +1379,54 @@
     const root = $("time-budget-reasons");
     if (!root) return;
     root.innerHTML = "";
-    const groups = cfg.budget_reason_groups || {};
-    Object.keys(groups).forEach(function (groupKey) {
-      const groupTitle =
-        groupKey === "over_budget_due_to"
-          ? "Over budget — what slowed you down?"
-          : groupKey === "under_budget_due_to"
-            ? "Under budget — why?"
-            : groupKey;
+    // Phase 1e.2 — render the canonical scope-change option set. The
+    // "Anything else…" note textarea below is always visible when the
+    // card is shown (no per-reason reveal), so no "other"-gated logic.
+    const opts = Array.isArray(cfg.over_budget_context_options)
+      ? cfg.over_budget_context_options
+      : [];
+    if (!opts.length) return;
 
-      const block = document.createElement("div");
-      block.className = "reason-group";
+    const block = document.createElement("div");
+    block.className = "reason-group";
 
-      const t = document.createElement("div");
-      t.className = "reason-group-title";
-      t.textContent = groupTitle;
-      block.appendChild(t);
+    opts.forEach(function (reason) {
+      const label = document.createElement("label");
+      label.className = "check-row";
 
-      groups[groupKey].forEach(function (reason) {
-        const label = document.createElement("label");
-        label.className = "check-row";
-
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.value = reason.id;
-        cb.dataset.group = groupKey;
-        cb.addEventListener("change", function () {
-          if (cb.checked) timeBudgetReasons.add(reason.id);
-          else            timeBudgetReasons.delete(reason.id);
-          // V6 pilot — when the "other" reason toggles, show/hide
-          // the optional note textarea right below the reason list.
-          // Reveal on check; collapse on uncheck (clearing the
-          // textarea so a stale note doesn't sneak into the payload).
-          if (reason.id === "other") toggleOverBudgetOtherNoteVisibility(cb.checked);
-          scheduleSaveDraft();
-        });
-
-        const span = document.createElement("span");
-        span.textContent = reason.label;
-
-        label.appendChild(cb);
-        label.appendChild(span);
-        block.appendChild(label);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = reason.id;
+      cb.dataset.group = "over_budget_context";
+      cb.addEventListener("change", function () {
+        if (cb.checked) timeBudgetReasons.add(reason.id);
+        else            timeBudgetReasons.delete(reason.id);
+        scheduleSaveDraft();
       });
 
-      root.appendChild(block);
+      const span = document.createElement("span");
+      span.textContent = reason.label;
+
+      label.appendChild(cb);
+      label.appendChild(span);
+      block.appendChild(label);
     });
+
+    root.appendChild(block);
   }
 
-  // V6 pilot — toggle visibility of #over-budget-other-wrap. Clearing
-  // the note on hide keeps the persisted payload tight; a re-checked
-  // "other" starts blank again rather than silently re-attaching a
-  // stale note.
-  function toggleOverBudgetOtherNoteVisibility(visible) {
-    const wrap = $("over-budget-other-wrap");
-    const ta   = $("over-budget-other-note");
-    if (!wrap || !ta) return;
-    wrap.hidden = !visible;
-    if (!visible) {
+  // Phase 1e.2 retired the "other"-gated note reveal. The textarea is
+  // now always visible when the Time card is shown ("Anything else
+  // that would help us explain the extra time?"). This helper remains
+  // as a no-op so older draft-restore / reset callers don't blow up;
+  // a follow-up cleanup can delete it once those callers are pruned.
+  function toggleOverBudgetOtherNoteVisibility(_visible) {
+    const ta = $("over-budget-other-note");
+    if (!ta) return;
+    if (_visible === false) {
+      // Reset path — clear the textarea + module state so a fresh DCR
+      // starts blank. (Truthy calls used to reveal #over-budget-other-wrap,
+      // which no longer exists; left intentionally noop.)
       ta.value = "";
       overBudgetOtherNote = "";
       scheduleSaveDraft();
@@ -1711,7 +1768,13 @@
     const anyoneIn       = segState.anyone_in_building === "yes";
     const occupancyLevel = anyoneIn ? (els.occupancyLevel.value || "") : "empty";
 
-    const onTimeBudget = segState.on_time_budget !== "no";
+    // Phase 1e.1 — the yes/no on_time_budget control was retired (Pioneer
+    // Time Clock now captures worked vs budget directly). We still emit
+    // the same on_time_budget / timeBudget fields so downstream readers
+    // (admin DCR review, email render, dashboards) don't break, but we
+    // synthesize them from the "what slowed you down" picks: any reason
+    // checked → off budget; no reasons checked → on budget.
+    const onTimeBudget = timeBudgetReasons.size === 0;
 
     return {
       checklist:            checklist,
@@ -1746,7 +1809,21 @@
         reasons:       onTimeBudget ? [] : Array.from(timeBudgetReasons),
         reasonsOther:  (!onTimeBudget && timeBudgetReasons.has("other"))
           ? overBudgetOtherNote : ""
-      }
+      },
+      // Phase 1e.2 — structured snapshot of the scope-change question. Only
+      // present when the Time card was actually shown (linked Pioneer session
+      // exceeded budget by >15m). Absence signals "no over-budget check
+      // happened" — downstream readers can treat that as "no signal."
+      time_over_budget_context: timeOverBudgetSnapshot
+        ? {
+            pioneer_service_session_id: timeOverBudgetSnapshot.pioneer_service_session_id,
+            work_minutes:    timeOverBudgetSnapshot.work_minutes,
+            budget_minutes:  timeOverBudgetSnapshot.budget_minutes,
+            over_by_minutes: timeOverBudgetSnapshot.over_by_minutes,
+            reasons:         Array.from(timeBudgetReasons),
+            note:            overBudgetOtherNote || ""
+          }
+        : null
     };
   }
 
@@ -1812,7 +1889,8 @@
     gates.push({ id: "rating",     done: !!ratingState });
     gates.push({ id: "problems",   done: !!segState.has_problem });
     gates.push({ id: "occupancy",  done: !!segState.anyone_in_building });
-    gates.push({ id: "time",       done: !!segState.on_time_budget });
+    // Phase 1e.1 — "time" gate removed. The time-budget question is now
+    // an optional what-slowed-you-down picker, not a required yes/no.
     gates.push({ id: "submit",     done: !!(els.affirm && els.affirm.checked &&
                                             signaturePad && signaturePad.hasInk()) });
 
@@ -1998,16 +2076,13 @@
         if (cb) cb.checked = true;
       });
 
-      // V6 pilot — restore the optional "other" note + reveal the
-      // textarea when the prior draft had "other" selected. The note
-      // only renders when both conditions hold so a stale note from
-      // a prior draft can't accidentally re-attach.
+      // Phase 1e.2 — the "Anything else…" note textarea is always visible
+      // when the Time card is shown (no "other"-gated reveal anymore).
+      // Always hydrate the saved note + the textarea so the tech sees their
+      // prior input. Card visibility is reasserted by loadLinkedPioneerSession.
       overBudgetOtherNote = String(draft.overBudgetOtherNote || "").trim();
       const overOtherEl = $("over-budget-other-note");
-      if (timeBudgetReasons.has("other") && overOtherEl) {
-        overOtherEl.value = overBudgetOtherNote;
-        toggleOverBudgetOtherNoteVisibility(true);
-      }
+      if (overOtherEl) overOtherEl.value = overBudgetOtherNote;
 
       return true;
     } finally {
@@ -2121,12 +2196,10 @@
       errors.push({ msg: "Choose how busy the building was",    scrollTo: "#occupancy_level" });
     }
 
-    // ---- 10: time budget (yes/no, plus reasons if no) ----
-    if (!segState.on_time_budget) {
-      errors.push({ msg: "Answer: did you stick to your time budget?", scrollTo: '.seg[data-name="on_time_budget"]' });
-    } else if (segState.on_time_budget === "no" && timeBudgetReasons.size === 0) {
-      errors.push({ msg: "Pick a reason for being off budget",         scrollTo: "#time-budget-reasons" });
-    }
+    // ---- 10: time budget — Phase 1e.1 retired the required yes/no.
+    //          The "what slowed you down" picker is OPTIONAL and never
+    //          gates submission. Pioneer Time Clock now captures
+    //          worked time vs budget directly.
 
     // ---- 11: affirmation checkbox ----
     if (!els.affirm.checked) {
@@ -3235,6 +3308,10 @@
       renderChecklists(cfg);
       renderRating(cfg);
       renderTimeBudgetReasons(cfg);
+      // Phase 1e.2 — fire-and-forget: kick off the linked-session read.
+      // Reveals the Time card if the session shows worked > budget + 15.
+      // Hidden by default; failure modes leave it hidden (no UX impact).
+      loadLinkedPioneerSession();
       wireSegments();
       updateSignatureAttribution();
 
