@@ -285,6 +285,18 @@
   padding: 3px 10px; border-radius: var(--radius-pill, 999px);
   border: 1px solid transparent;
 }
+
+/* Phase 1b.2 availability chip — shown when service_date != today. */
+.ptc-availability-row { margin: 6px 0 8px; }
+.ptc-availability-chip {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
+  padding: 3px 10px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+.ptc-availability-chip.is-early { background: #e4eefc; color: #1f4488; }
+.ptc-availability-chip.is-late  { background: #f6e0e0; color: #8a2a2a; }
+
 .ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
 .ptc-status-chip.is-active   { background: #fff4d6; color: #8a5a00; }
 .ptc-status-chip.is-done     { background: #e2f3e6; color: #2a6b3a; }

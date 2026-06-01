@@ -34,6 +34,18 @@ const TECH_SLUG     = process.env.TECH_SLUG     || "dcr-test-cleaning-tech";
 const CUSTOMER_SLUG = process.env.CUSTOMER_SLUG || null;  // resolved below
 const DAYS          = parseInt(process.env.DAYS || "2", 10);
 
+// Phase 1b.2 — optional availability window for testing the Sunday
+// early-work scenario. When SERVICE_DATE is set, DAYS is ignored and
+// a SINGLE assignment is created at that exact service_date. The
+// availability window timestamps are written verbatim if supplied; if
+// either bound is missing the doc falls back to legacy "today only"
+// behavior in the client filter. SCHEDULE_POLICY is informational —
+// stored but not acted on in Phase 1b.2.
+const SERVICE_DATE_OVERRIDE = process.env.SERVICE_DATE     || null;  // "YYYY-MM-DD"
+const AVAILABLE_FROM_ISO    = process.env.AVAILABLE_FROM   || null;  // ISO 8601
+const AVAILABLE_UNTIL_ISO   = process.env.AVAILABLE_UNTIL  || null;  // ISO 8601
+const SCHEDULE_POLICY       = process.env.SCHEDULE_POLICY  || null;  // free-form tag
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(require("../serviceAccountKey.json"))
@@ -121,22 +133,36 @@ function makeAssignmentId(serviceDate, techSlug, customerSlug) {
   }
 
   // Build the assignment list.
+  // When SERVICE_DATE_OVERRIDE is supplied, seed a single assignment
+  // at that exact date (DAYS ignored). Otherwise default behavior:
+  // sequential days from today.
   const todayPT = lib.pacificDateString();
   const assignments = [];
-  for (let i = 0; i < DAYS; i++) {
-    const serviceDate = addDaysToYYYYMMDD(todayPT, i);
-    // Deadline: 10 PM Pacific on that service_date. Stored as ISO so the
-    // backend can compute "remaining time" without needing a TZ helper.
-    // (Pacific is UTC-7 during PDT; UTC-8 PST. Use a representative
-    // "T22:00:00-07:00" — UI converts to local for display.)
-    const deadlineIso = serviceDate + "T22:00:00-07:00";
+  if (SERVICE_DATE_OVERRIDE) {
+    const serviceDate = SERVICE_DATE_OVERRIDE;
     assignments.push({
-      assignment_id:     makeAssignmentId(serviceDate, TECH_SLUG, customerSlug),
-      service_date:      serviceDate,
-      service_deadline:  deadlineIso,
-      customerSlug:      customerSlug,
-      customerName:      customerName
+      assignment_id:    makeAssignmentId(serviceDate, TECH_SLUG, customerSlug),
+      service_date:     serviceDate,
+      service_deadline: serviceDate + "T22:00:00-07:00",
+      customerSlug:     customerSlug,
+      customerName:     customerName
     });
+  } else {
+    for (let i = 0; i < DAYS; i++) {
+      const serviceDate = addDaysToYYYYMMDD(todayPT, i);
+      // Deadline: 10 PM Pacific on that service_date. Stored as ISO so the
+      // backend can compute "remaining time" without needing a TZ helper.
+      // (Pacific is UTC-7 during PDT; UTC-8 PST. Use a representative
+      // "T22:00:00-07:00" — UI converts to local for display.)
+      const deadlineIso = serviceDate + "T22:00:00-07:00";
+      assignments.push({
+        assignment_id:     makeAssignmentId(serviceDate, TECH_SLUG, customerSlug),
+        service_date:      serviceDate,
+        service_deadline:  deadlineIso,
+        customerSlug:      customerSlug,
+        customerName:      customerName
+      });
+    }
   }
 
   let created = 0;
@@ -172,6 +198,17 @@ function makeAssignmentId(serviceDate, techSlug, customerSlug) {
       estimated_minutes:   90,
       budget_minutes:      75,
       allows_flex_start:   true,
+
+      // Phase 1b.2 — optional availability window. Only written when
+      // explicitly supplied via env vars; otherwise omitted to preserve
+      // legacy "today only" client-filter behavior for the test fixture.
+      available_from:      AVAILABLE_FROM_ISO
+        ? admin.firestore.Timestamp.fromDate(new Date(AVAILABLE_FROM_ISO))
+        : null,
+      available_until:     AVAILABLE_UNTIL_ISO
+        ? admin.firestore.Timestamp.fromDate(new Date(AVAILABLE_UNTIL_ISO))
+        : null,
+      schedule_policy:     SCHEDULE_POLICY || null,
 
       status:              "assigned",
       status_changed_at:   sts,

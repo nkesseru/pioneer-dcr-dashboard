@@ -94,6 +94,50 @@
     };
   }
 
+  // Add `days` to a Pacific YYYY-MM-DD string. Same UTC-noon anchor
+  // pattern used elsewhere in the codebase (today-work.js / _utils.js)
+  // to avoid DST drift across short windows.
+  function addDaysPT(yyyyMmDd, days) {
+    const base = new Date(yyyyMmDd + "T12:00:00Z");
+    base.setUTCDate(base.getUTCDate() + days);
+    return pacificDateString(base);
+  }
+
+  // "2026-06-07" → "Sunday, Jun 7" in Pacific. Noon-UTC anchor avoids
+  // off-by-one for users in non-Pacific browser zones.
+  function formatServiceDateLong(yyyyMmDd) {
+    if (!yyyyMmDd) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "short", day: "numeric"
+      }).format(new Date(yyyyMmDd + "T12:00:00Z"));
+    } catch (_e) { return yyyyMmDd; }
+  }
+
+  // Phase 1b.2 availability filter.
+  //
+  // Modern docs carry available_from + available_until (Firestore
+  // Timestamps). Both bounds present → tech can clock in iff now is
+  // inside the window. One bound present → use it AND fall back to
+  // service_date == today for the missing bound. Neither bound
+  // present → legacy doc; today-only behavior preserved.
+  function isAvailableNow(a, todayPT, nowMs) {
+    const hasFrom  = !!(a.available_from  && typeof a.available_from.toMillis  === "function");
+    const hasUntil = !!(a.available_until && typeof a.available_until.toMillis === "function");
+    if (hasFrom && hasUntil) {
+      return a.available_from.toMillis()  <= nowMs &&
+             a.available_until.toMillis() >= nowMs;
+    }
+    if (hasFrom && !hasUntil) {
+      return a.available_from.toMillis() <= nowMs && a.service_date === todayPT;
+    }
+    if (!hasFrom && hasUntil) {
+      return a.available_until.toMillis() >= nowMs && a.service_date === todayPT;
+    }
+    return a.service_date === todayPT;  // legacy doc
+  }
+
   // Format a Firestore Timestamp / Date / ms / ISO → "h:mm AM/PM" PT.
   function formatTimeShort(ts) {
     let ms = null;
@@ -186,6 +230,14 @@
     const db       = firebase.firestore();
     const todayPT  = pacificDateString();
     const periodId = getSemiMonthlyPeriod(todayPT).period_id;
+    // Phase 1b.2 — fetch a small window of assignments around today so
+    // early-work (Sunday assignments worked Friday/Saturday) and same-day
+    // late-completion both surface. Client-side isAvailableNow() does the
+    // final filter. Window today−1 to today+3 covers Pioneer's current
+    // Sun-Thu workweek + Fri/Sat early-work scenarios.
+    const lookbackPT  = addDaysPT(todayPT, -1);
+    const lookaheadPT = addDaysPT(todayPT,  3);
+    const nowMs       = Date.now();
 
     // Show the section frame immediately (with a loading state inside).
     showSection();
@@ -194,16 +246,22 @@
     // Parallel reads. We catch the assignments query separately because
     // it's the one that needs a composite index — may fail with a
     // friendly "still building" error in the first few minutes after a
-    // fresh deploy.
+    // fresh deploy. Range + orderBy uses the existing
+    // (staff_uid asc, service_date desc) composite from Phase 1a.
     const tasks = [
       db.collection("service_assignments")
         .where("staff_uid",    "==", currentStaff.uid)
-        .where("service_date", "==", todayPT)
+        .where("service_date", ">=", lookbackPT)
+        .where("service_date", "<=", lookaheadPT)
         .orderBy("service_date", "desc")
         .get()
         .then(function (snap) {
-          assignments = snap.docs.map(function (d) {
+          const raw = snap.docs.map(function (d) {
             return Object.assign({ _id: d.id }, d.data());
+          });
+          // Client-filter for the actual availability window.
+          assignments = raw.filter(function (a) {
+            return isAvailableNow(a, todayPT, nowMs);
           });
           return { ok: true };
         })
@@ -340,10 +398,24 @@
     const deadline = a.service_deadline ? formatTimeShort(a.service_deadline) : "";
     const windowStart = a.service_window_start ? formatTimeShort(a.service_window_start) : "";
 
+    // Phase 1b.2 — Pioneer Sunday-Thursday workweek allows Sunday
+    // assignments to be performed Friday/Saturday. The service_date
+    // stays Pioneer-canonical (Sunday). The card always shows the
+    // service date for clarity, plus a chip when today differs from
+    // the service date.
+    const todayPT = pacificDateString();
+    let availabilityChipHtml = "";
+    if (a.service_date && a.service_date !== todayPT) {
+      const isEarly = a.service_date > todayPT;
+      availabilityChipHtml = isEarly
+        ? '<span class="ptc-availability-chip is-early">Available Early</span>'
+        : '<span class="ptc-availability-chip is-late">Late Completion</span>';
+    }
+
     return (
       '<article class="ptc-card" data-assignment-id="' + escapeHtml(a._id) + '">' +
         '<header class="ptc-card-head">' +
-          '<span class="ptc-card-eyebrow">PIONEER · ' + escapeHtml(a.service_date) + '</span>' +
+          '<span class="ptc-card-eyebrow">PIONEER</span>' +
           statusChip(state) +
         '</header>' +
         '<h3 class="ptc-card-title">' +
@@ -352,7 +424,9 @@
         (a.location_name
           ? '<p class="ptc-card-loc">' + escapeHtml(a.location_name) + '</p>'
           : "") +
+        (availabilityChipHtml ? '<div class="ptc-availability-row">' + availabilityChipHtml + '</div>' : '') +
         '<dl class="ptc-card-meta">' +
+          '<div><dt>Service date</dt><dd>' + escapeHtml(formatServiceDateLong(a.service_date)) + '</dd></div>' +
           (windowStart ? '<div><dt>Window starts</dt><dd>' + escapeHtml(windowStart) + '</dd></div>' : '') +
           (deadline    ? '<div><dt>Deadline</dt><dd>' + escapeHtml(deadline) + '</dd></div>' : '') +
           (a.estimated_minutes ? '<div><dt>Estimated</dt><dd>' + escapeHtml(formatMinutesAsHm(a.estimated_minutes)) + '</dd></div>' : '') +
