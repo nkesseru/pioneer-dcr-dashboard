@@ -360,13 +360,8 @@
 
   function wireSearch() {
     // Customer search moved to tabs.customers.init() in Phase 25c.
-    const ts = $("tech-search");
+    // Tech search moved to tabs.techs.init() in Phase 25d.
     const ds = $("dcr-search");
-
-    // Delegated to applyCurrentTechFilter so that both the search-input
-    // handler AND the post-save row refresh use the same filter logic
-    // (avoids "save → re-render → search query forgotten").
-    if (ts) ts.addEventListener("input", function () { window.__pioneerAdmin.tabs.techs.applyFilter(); });
 
     if (ds) ds.addEventListener("input", function () {
       window.__pioneerAdmin.tabs.recentDcrs.renderFiltered(ds.value);
@@ -659,16 +654,9 @@
      assignment checklist listeners; admin.js wireWriteControls calls
      window.__pioneerAdmin.tabs.techs.{openEditModal, onSaveEdit}. */
 
-  // Slug derived from the display name field. Matches the server-side
-  // slugifyForTech() shape so the field acts as a true preview.
-  function slugifyForTech(s) {
-    return String(s || "")
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 64);
-  }
+  /* slugifyForTech moved to tab-techs.js (Phase 25d) as the local
+     slugifyTechCandidate (already present there). The tab-customers.js
+     auto-slug uses its own local slugifyCustomerCandidate copy (Phase 25c). */
 
   /* resetTechCreateModal + openTechCreateModal + onTechCreateSave moved
      to public/admin/tab-techs.js (Phase 16a). Callers use
@@ -715,51 +703,8 @@
     // Customer list event delegation moved to tabs.customers.init()
     // in Phase 25c.
 
-    // Tech list — same pattern, plus overflow-menu toggling.
-    //
-    // The row markup contains a [data-action="more"] trigger and a
-    // sibling .row-overflow-menu popover with the lower-priority
-    // actions (Promote / Archive / Delete). Clicking the trigger
-    // toggles the popover; clicking any menu item closes the popover
-    // and dispatches the action. Outside-clicks close every open
-    // popover (see installOverflowMenuOutsideClose).
-    const techRoot = $("tech-list");
-    if (techRoot) {
-      techRoot.addEventListener("click", function (ev) {
-        const btn = ev.target.closest("[data-action]");
-        if (!btn) return;
-        const row = btn.closest("[data-id]");
-        if (!row) return;
-        // techs now lives in tab-techs.js (Phase 16a); read via bridge.
-        const techs = window.__pioneerAdmin.deps.getTechs();
-        const t = techs.find(function (x) { return x.id === row.dataset.id; });
-        if (!t) return;
-
-        const action = btn.dataset.action;
-
-        // Overflow trigger: toggle the menu and stop here. We don't
-        // dispatch an action for "more" itself.
-        if (action === "more") {
-          toggleRowOverflow(btn);
-          return;
-        }
-
-        // Any other action — close the menu if it was open, then run.
-        // closing first means the popover doesn't linger over a confirm
-        // dialog or modal.
-        closeAllRowOverflowMenus();
-
-        if (action === "edit")    window.__pioneerAdmin.tabs.techs.openEditModal(t);
-        if (action === "media")   window.__pioneerAdmin.tabs.techs.openMediaModal(t);
-        if (action === "archive") window.__pioneerAdmin.tabs.techs.onArchive(t);
-        if (action === "delete")  window.__pioneerAdmin.tabs.techs.onDelete(t);
-        if (action === "resend") {
-          const email = (t.email || "").toLowerCase().trim();
-          if (email) window.__pioneerAdmin.tabs.admins.sendResetInviteFor(email, null);
-        }
-        if (action === "promote") window.__pioneerAdmin.tabs.admins.promoteTechToAdmin(t);
-      });
-    }
+    // Tech list event delegation (edit / media / archive / delete /
+    // resend / promote / more) moved to tabs.techs.init() in Phase 25d.
 
     // DCR list — V6 review/send dispatcher. Each DCR row has a
     // [data-action="review-send"] button; clicking opens the readiness
@@ -784,49 +729,9 @@
     // DCR review modal Send + Resend buttons are wired by
     // tabs.dcrReview.init() (Phase 21).
 
-    // Tech Modal Save buttons. Customer save button + "+ Add customer"
-    // + auto-slug moved to tabs.customers.init() in Phase 25c. Tech
-    // edit/create remain on separate buttons since they live in two
-    // different modals (tech-edit-modal vs tech-create-modal).
-    const techSave = $("tech-edit-save");
-    if (techSave) techSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveEdit(); });
-    const techCreateSave = $("tech-create-save");
-    if (techCreateSave) techCreateSave.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.onSaveCreate(); });
-
-    // "+ Add tech / Login setup" button — opens the create modal.
-    const techCreateOpen = $("tech-create-open");
-    if (techCreateOpen) techCreateOpen.addEventListener("click", function () { window.__pioneerAdmin.tabs.techs.openCreateModal(); });
-
-    // Assignment checklist wiring moved to tab-techs.js (Phase 16a).
-    // Its init() — called from boot — wires both checklists.
-
-    // Tech-create modal — auto-derive slug from display name as the admin
-    // types. We do NOT overwrite the slug field once the admin has typed
-    // their own value (track via a `data-touched` flag).
-    const createNameEl = $("tech-create-display-name");
-    const createSlugEl = $("tech-create-slug");
-    if (createNameEl && createSlugEl) {
-      createSlugEl.addEventListener("input", function () { createSlugEl.dataset.touched = "1"; });
-      createNameEl.addEventListener("input", function () {
-        if (createSlugEl.dataset.touched === "1") return;
-        createSlugEl.value = slugifyForTech(createNameEl.value);
-      });
-      // Reset the touched flag whenever the modal opens (resetTechCreateModal
-      // already blanks the value; this drops the sticky flag too).
-      const observer = function () { delete createSlugEl.dataset.touched; };
-      const openBtn = $("tech-create-open");
-      if (openBtn) openBtn.addEventListener("click", observer);
-    }
-
-    // Copy buttons on the create-modal success pane.
-    const copyResetBtn = $("tech-create-copy-reset");
-    if (copyResetBtn) copyResetBtn.addEventListener("click", function () {
-      copyInputValue("tech-create-reset-link", "tech-create-copy-reset");
-    });
-    const copyTempBtn = $("tech-create-copy-temp");
-    if (copyTempBtn) copyTempBtn.addEventListener("click", function () {
-      copyInputValue("tech-create-temp-password", "tech-create-copy-temp");
-    });
+    // Tech edit/create save buttons + "+ Add tech" + auto-slug + copy
+    // buttons moved to tabs.techs.init() in Phase 25d. Assignment
+    // checklists were already wired by tabs.techs.init() (Phase 16a).
 
     // Modal close affordances ([data-modal-close] backdrop/X/Cancel + Esc
     // for the three core editor modals) moved to admin/_shell.js as

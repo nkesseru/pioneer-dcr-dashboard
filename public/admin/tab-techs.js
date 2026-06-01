@@ -100,6 +100,10 @@
   const handleAdminWriteError  = window.__pioneerAdmin.shell.handleAdminWriteError;
   const setModalError          = window.__pioneerAdmin.shell.setModalError;
   const setModalSaving         = window.__pioneerAdmin.shell.setModalSaving;
+  // Phase 25d — needed by wireTechControls (list dispatcher + copy buttons).
+  const toggleRowOverflow         = window.__pioneerAdmin.shell.toggleRowOverflow;
+  const closeAllRowOverflowMenus  = window.__pioneerAdmin.shell.closeAllRowOverflowMenus;
+  const copyInputValue            = window.__pioneerAdmin.shell.copyInputValue;
 
   function $(id) { return document.getElementById(id); }
 
@@ -1419,9 +1423,111 @@
     }
   }
 
-  /* ---------- init: wires the assignment checklists ---------- */
+  /* ---------- one-time wiring ----------
+   * Phase 25d: tech search + list event delegation + save buttons +
+   * "+ Add tech" trigger + tech-create auto-slug + tech-create copy
+   * buttons moved from admin.js (wireSearch + wireWriteControls) into
+   * this module. The techs array is owned here, so the list-delegation
+   * reads it directly. Resend/promote still dispatch to tabs.admins
+   * (those flows belong to the admins module). slugifyTechCandidate
+   * (already local) replaces the slugifyForTech call admin.js used for
+   * the auto-slug — same body, byte-identical output, behavior preserved.
+   */
+  function wireTechControls() {
+    // Search input — calls applyCurrentTechFilter directly.
+    const ts = $("tech-search");
+    if (ts) ts.addEventListener("input", function () { applyCurrentTechFilter(); });
+
+    // List event delegation — Edit / Media / More-menu trigger plus the
+    // overflow menu's Promote / Archive / Delete / Resend actions. The
+    // techs array is owned here; no deps bridge lookup needed.
+    //
+    // The row markup contains a [data-action="more"] trigger and a
+    // sibling .row-overflow-menu popover with the lower-priority
+    // actions. Clicking the trigger toggles the popover; clicking any
+    // menu item closes the popover and dispatches the action.
+    // Outside-clicks close every open popover (shell wires that once
+    // at boot via installOverflowMenuOutsideClose — Phase 25b).
+    const techRoot = $("tech-list");
+    if (techRoot) {
+      techRoot.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-action]");
+        if (!btn) return;
+        const row = btn.closest("[data-id]");
+        if (!row) return;
+        const t = techs.find(function (x) { return x.id === row.dataset.id; });
+        if (!t) return;
+
+        const action = btn.dataset.action;
+
+        // Overflow trigger: toggle the menu and stop here. We don't
+        // dispatch an action for "more" itself.
+        if (action === "more") {
+          toggleRowOverflow(btn);
+          return;
+        }
+
+        // Any other action — close the menu if it was open, then run.
+        // Closing first means the popover doesn't linger over a confirm
+        // dialog or modal.
+        closeAllRowOverflowMenus();
+
+        if (action === "edit")    openTechEditModal(t);
+        if (action === "media")   openTechMediaModal(t);
+        if (action === "archive") onTechArchive(t);
+        if (action === "delete")  onTechDelete(t);
+        if (action === "resend") {
+          const email = (t.email || "").toLowerCase().trim();
+          if (email) window.__pioneerAdmin.tabs.admins.sendResetInviteFor(email, null);
+        }
+        if (action === "promote") window.__pioneerAdmin.tabs.admins.promoteTechToAdmin(t);
+      });
+    }
+
+    // Tech Modal Save buttons. Edit and create live in two separate
+    // modals so they're wired to two separate save buttons.
+    const techSave = $("tech-edit-save");
+    if (techSave) techSave.addEventListener("click", function () { onTechEditSave(); });
+    const techCreateSave = $("tech-create-save");
+    if (techCreateSave) techCreateSave.addEventListener("click", function () { onTechCreateSave(); });
+
+    // "+ Add tech / Login setup" button — opens the create modal.
+    const techCreateOpen = $("tech-create-open");
+    if (techCreateOpen) techCreateOpen.addEventListener("click", function () { openTechCreateModal(); });
+
+    // Tech-create modal — auto-derive slug from display name as the
+    // admin types. We do NOT overwrite the slug field once the admin
+    // has typed their own value (track via a `data-touched` flag).
+    const createNameEl = $("tech-create-display-name");
+    const createSlugEl = $("tech-create-slug");
+    if (createNameEl && createSlugEl) {
+      createSlugEl.addEventListener("input", function () { createSlugEl.dataset.touched = "1"; });
+      createNameEl.addEventListener("input", function () {
+        if (createSlugEl.dataset.touched === "1") return;
+        createSlugEl.value = slugifyTechCandidate(createNameEl.value);
+      });
+      // Reset the touched flag whenever the modal opens (resetTechCreateModal
+      // already blanks the value; this drops the sticky flag too).
+      const observer = function () { delete createSlugEl.dataset.touched; };
+      const openBtn = $("tech-create-open");
+      if (openBtn) openBtn.addEventListener("click", observer);
+    }
+
+    // Copy buttons on the create-modal success pane.
+    const copyResetBtn = $("tech-create-copy-reset");
+    if (copyResetBtn) copyResetBtn.addEventListener("click", function () {
+      copyInputValue("tech-create-reset-link", "tech-create-copy-reset");
+    });
+    const copyTempBtn = $("tech-create-copy-temp");
+    if (copyTempBtn) copyTempBtn.addEventListener("click", function () {
+      copyInputValue("tech-create-temp-password", "tech-create-copy-temp");
+    });
+  }
+
+  /* ---------- init: wires the assignment checklists + tech controls ---------- */
 
   function init() {
+    wireTechControls();
     wireAssignmentChecklistFor(
       "tech-assignments-search",
       "tech-assignments-list",
