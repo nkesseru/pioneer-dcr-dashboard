@@ -138,6 +138,37 @@
     return a.service_date === todayPT;  // legacy doc
   }
 
+  // Phase 1b.4 — derive DCR status for an assignment from its sessions.
+  // "submitted" — at least one session has dcr_submission_id set
+  //               (the Cloud Function back-stamps this on DCR submit).
+  // "pending"   — at least one completed session exists, no DCR yet.
+  // "none"      — no completed sessions yet (Clocked-in or never worked).
+  function dcrStatusForAssignment(assignmentId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    if (!list.length) return "none";
+    let hasCompleted = false;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].dcr_submission_id) return "submitted";
+      if (list[i].status === "completed") hasCompleted = true;
+    }
+    return hasCompleted ? "pending" : "none";
+  }
+
+  // Latest session for an assignment — used to populate
+  // pioneer_service_session_id in the Complete DCR URL so the Cloud
+  // Function knows which session to back-stamp dcr_submission_id onto.
+  function latestSessionIdForAssignment(assignmentId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    if (!list.length) return "";
+    // Sort by clock_in_at desc — most recent first.
+    const sorted = list.slice().sort(function (a, b) {
+      const am = (a.clock_in_at && typeof a.clock_in_at.toMillis === "function") ? a.clock_in_at.toMillis() : 0;
+      const bm = (b.clock_in_at && typeof b.clock_in_at.toMillis === "function") ? b.clock_in_at.toMillis() : 0;
+      return bm - am;
+    });
+    return sorted[0]._id || "";
+  }
+
   // Phase 1b.3 — cumulative worked minutes for an assignment.
   // Sums work_minutes across all completed sessions tied to assignment_id
   // for this tech, PLUS live elapsed for the active session if any
@@ -419,7 +450,29 @@
         '</div>';
       return;
     }
-    root.innerHTML = assignments.map(assignmentCard).join("");
+    // Phase 1b.4 — "Next Step: Complete DCR" banner. Shows when at
+    // least one paused assignment is missing a DCR AND the tech isn't
+    // currently clocked into anything. Points at the first such
+    // assignment by customer name for quick orientation.
+    let nextStepHtml = "";
+    if (!activeSession) {
+      const needsDcr = assignments.filter(function (a) {
+        return dcrStatusForAssignment(a._id) === "pending";
+      });
+      if (needsDcr.length === 1) {
+        nextStepHtml =
+          '<div class="ptc-next-step">' +
+            '<strong>Next step:</strong> Complete the DCR for ' +
+            escapeHtml(needsDcr[0].customer_name || needsDcr[0].customer_id || "this stop") + '.' +
+          '</div>';
+      } else if (needsDcr.length > 1) {
+        nextStepHtml =
+          '<div class="ptc-next-step">' +
+            '<strong>Next step:</strong> Complete ' + needsDcr.length + ' DCRs from today.' +
+          '</div>';
+      }
+    }
+    root.innerHTML = nextStepHtml + assignments.map(assignmentCard).join("");
   }
 
   // Compute live UI state from the active-session lookup (NOT from
@@ -518,6 +571,34 @@
       }
     }
 
+    // Phase 1b.4 — DCR status chip + Complete DCR action.
+    const dcrStatus = dcrStatusForAssignment(a._id);
+    let dcrChipHtml = "";
+    if (dcrStatus === "submitted") {
+      dcrChipHtml = '<span class="ptc-dcr-chip is-submitted">DCR Submitted</span>';
+    } else if (dcrStatus === "pending") {
+      dcrChipHtml = '<span class="ptc-dcr-chip is-pending">DCR Pending</span>';
+    }
+    // Append "Complete DCR" CTA when at least one completed session
+    // exists and DCR not yet submitted. Builds /index.html URL with
+    // the latest session id so the Cloud Function back-stamp lands on
+    // the right session doc. Re-tap-safe: tech can open the form,
+    // back out, and re-open without dedup (per Phase 1b.4 spec).
+    let completeDcrHtml = "";
+    if (dcrStatus === "pending") {
+      const latestSession = latestSessionIdForAssignment(a._id);
+      const params = new URLSearchParams();
+      params.set("pioneer_assignment_id", a._id);
+      if (latestSession) params.set("pioneer_service_session_id", latestSession);
+      if (a.customer_id) params.set("customer_slug", a.customer_id);
+      if (a.customer_name) params.set("customer_name", a.customer_name);
+      if (a.service_date)  params.set("sync_date", a.service_date);
+      const href = "/?" + params.toString();
+      completeDcrHtml =
+        '<a class="ptc-btn ptc-btn-dcr" href="' + escapeHtml(href) + '" ' +
+        'data-action="complete-dcr">Complete DCR</a>';
+    }
+
     return (
       '<article class="ptc-card" data-assignment-id="' + escapeHtml(a._id) + '">' +
         '<header class="ptc-card-head">' +
@@ -530,14 +611,18 @@
         (a.location_name
           ? '<p class="ptc-card-loc">' + escapeHtml(a.location_name) + '</p>'
           : "") +
-        (availabilityChipHtml ? '<div class="ptc-availability-row">' + availabilityChipHtml + '</div>' : '') +
+        (availabilityChipHtml || dcrChipHtml
+          ? '<div class="ptc-availability-row">' +
+              (availabilityChipHtml || '') + (dcrChipHtml || '') +
+            '</div>'
+          : '') +
         '<dl class="ptc-card-meta">' +
           '<div><dt>Service date</dt><dd>' + escapeHtml(formatServiceDateLong(a.service_date)) + '</dd></div>' +
           (windowStart ? '<div><dt>Window starts</dt><dd>' + escapeHtml(windowStart) + '</dd></div>' : '') +
           (deadline    ? '<div><dt>Deadline</dt><dd>'      + escapeHtml(deadline)       + '</dd></div>' : '') +
           budgetRowsHtml +
         '</dl>' +
-        '<div class="ptc-card-actions">' + ctaHtml + '</div>' +
+        '<div class="ptc-card-actions">' + ctaHtml + completeDcrHtml + '</div>' +
       '</article>'
     );
   }

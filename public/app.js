@@ -347,6 +347,28 @@
   // Deputy params (manual DCR — the existing flow).
   const deputyShiftParams = parseDeputyShiftFromUrl();
 
+  // Phase 1b.4 — Pioneer Time Clock entry point. Separate namespace
+  // from Deputy params so the two flows never collide in submitDcrV1's
+  // back-write logic. Tech arrives at /index.html from service-clock.js
+  // with these query params; we forward them in the submit payload so
+  // the Cloud Function can back-stamp the linked
+  // pioneer_service_sessions + service_assignments docs.
+  function parsePioneerAssignmentFromUrl() {
+    try {
+      const params = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
+      const assignmentId = (params.get("pioneer_assignment_id") || "").trim();
+      if (!assignmentId) return null;
+      return {
+        pioneer_assignment_id:      assignmentId,
+        pioneer_service_session_id: (params.get("pioneer_service_session_id") || "").trim(),
+        customer_slug:              (params.get("customer_slug") || "").trim(),
+        customer_name:              (params.get("customer_name") || "").trim(),
+        sync_date:                  (params.get("sync_date")     || "").trim()
+      };
+    } catch (e) { return null; }
+  }
+  const pioneerAssignmentParams = parsePioneerAssignmentFromUrl();
+
   function formatScheduledRange(startIso, endIso) {
     function fmt(iso) {
       if (!iso) return "";
@@ -2461,6 +2483,18 @@
         }
       }
 
+      // Phase 1b.4 — Pioneer Time Clock handoff. Independent from the
+      // Deputy block above (a DCR can carry either, both, or neither).
+      // submitDcrV1 reads pioneer_assignment_id + pioneer_service_session_id
+      // and back-stamps dcr_submission_id onto the matching
+      // pioneer_service_sessions doc + service_assignments doc.
+      if (pioneerAssignmentParams && pioneerAssignmentParams.pioneer_assignment_id) {
+        payload.pioneer_assignment_id = pioneerAssignmentParams.pioneer_assignment_id;
+        if (pioneerAssignmentParams.pioneer_service_session_id) {
+          payload.pioneer_service_session_id = pioneerAssignmentParams.pioneer_service_session_id;
+        }
+      }
+
       // Defensive guard against any silent shape regression.
       if (
         !payload.affirmation ||
@@ -2543,36 +2577,63 @@
   //   • Manual / admin / no session → calmer fallback with
   //     "Back to Today's Work" + "Start another DCR".
   function paintSuccessGoldenPath() {
-    const sessionId = (deputyShiftParams && String(deputyShiftParams.pioneer_session_id || "").trim()) || "";
+    // Phase 1b.4 — the "final-step" panel paints for EITHER a Deputy
+    // hand-off (deputy.pioneer_session_id) OR a Pioneer Time Clock
+    // hand-off (pioneer_assignment_id). Both flows can coexist on the
+    // same DCR (uncommon today; future cross-link). When only Pioneer
+    // is present, hide the Deputy-specific buttons.
+    const deputySessionId      = (deputyShiftParams && String(deputyShiftParams.pioneer_session_id || "").trim()) || "";
+    const pioneerAssignmentId  = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_assignment_id || "").trim()) || "";
     const finalStep = document.getElementById("success-final-step");
     const noSession = document.getElementById("success-no-session");
-    if (sessionId) {
+    if (deputySessionId || pioneerAssignmentId) {
       if (finalStep) finalStep.hidden = false;
       if (noSession) noSession.hidden = true;
+
+      // Deputy-specific buttons — Finish Work + Open Deputy. Show when
+      // the Deputy flow is active; hide when the DCR came from Pioneer
+      // only.
       const finishBtn = document.getElementById("success-finish-work");
-      if (finishBtn) {
-        finishBtn.onclick = function () {
-          // /work.html?finishSession=<id> triggers today-work.js to
-          // close the session AND surface the Deputy clock-out reminder
-          // via the existing finishWork code path. One tap on this
-          // button = one server write = one Deputy reminder. No
-          // duplicated logic between DCR and Today's Work surfaces.
-          window.location.href = "/work.html?finishSession=" + encodeURIComponent(sessionId);
-        };
-      }
-      // Phase A Deputy launcher — log the "Open Deputy App" tap from
-      // the success page. No preventDefault: the anchor must navigate
-      // so the OS can route to the Deputy app.
       const deputyBtn = document.getElementById("success-open-deputy");
-      if (deputyBtn && !deputyBtn.dataset.deputyClickWired) {
-        deputyBtn.dataset.deputyClickWired = "1";
-        deputyBtn.addEventListener("click", function () {
-          logDeputyOpenClick("dcr_success", {
-            shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
-            sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
-            pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+      if (deputySessionId) {
+        if (finishBtn) {
+          finishBtn.hidden = false;
+          finishBtn.onclick = function () {
+            // /work.html?finishSession=<id> triggers today-work.js to
+            // close the session AND surface the Deputy clock-out
+            // reminder via the existing finishWork code path.
+            window.location.href = "/work.html?finishSession=" + encodeURIComponent(deputySessionId);
+          };
+        }
+        if (deputyBtn && !deputyBtn.dataset.deputyClickWired) {
+          deputyBtn.dataset.deputyClickWired = "1";
+          deputyBtn.addEventListener("click", function () {
+            logDeputyOpenClick("dcr_success", {
+              shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
+              sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
+              pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+            });
           });
-        });
+        }
+      } else {
+        if (finishBtn) finishBtn.hidden = true;
+        if (deputyBtn) deputyBtn.hidden = true;
+      }
+
+      // Pioneer-specific back-link — repurpose the existing
+      // #success-back-to-work anchor to point at /work.html?focus=ptc
+      // and relabel as "Back to Pioneer Time Clock". Falls back to the
+      // default "Back to Today's Work" / /work.html for the Deputy-only
+      // case.
+      const backToWorkLink = document.getElementById("success-back-to-work");
+      if (backToWorkLink) {
+        if (pioneerAssignmentId) {
+          backToWorkLink.href = "/work.html?focus=ptc";
+          backToWorkLink.textContent = "← Back to Pioneer Time Clock";
+        } else {
+          backToWorkLink.href = "/work.html";
+          backToWorkLink.textContent = "← Back to Today's Work";
+        }
       }
     } else {
       if (finalStep) finalStep.hidden = true;
