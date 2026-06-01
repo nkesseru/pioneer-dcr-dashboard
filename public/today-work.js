@@ -619,10 +619,29 @@
     // footer empty so we don't double-print the same info.
     const ownerLine = "";
 
+    // Phase 1b.3 — show a small badge if this Deputy shift maps to the
+    // active Pioneer Time Clock session for the signed-in tech. Match
+    // is conservative (customer_slug + sync_date) so we never imply a
+    // cross-tech relationship. Display-only — no writes from here.
+    let pioneerBadgeHtml = "";
+    if (pioneerActiveSession) {
+      const shiftCustSlug = String(shift.customer_slug || shift.suggested_customer_slug || "").toLowerCase().trim();
+      const shiftDate     = String(shift.sync_date || "").trim();
+      const sessCustSlug  = String(pioneerActiveSession.customer_id || "").toLowerCase().trim();
+      const sessDate      = String(pioneerActiveSession.service_date || "").trim();
+      if (shiftCustSlug && shiftDate && shiftCustSlug === sessCustSlug && shiftDate === sessDate) {
+        pioneerBadgeHtml =
+          '<div class="assign-card-pioneer-badge" title="Pioneer Time Clock is tracking this stop">' +
+            '⏱ Clocked in with Pioneer Time Clock' +
+          '</div>';
+      }
+    }
+
     return (
       '<article class="assign-card work-card is-state-' + state + '"' +
         (opts.readOnly ? ' data-preview="true"' : '') +
         ' role="listitem" data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '">' +
+        pioneerBadgeHtml +
         '<header class="assign-card-head">' +
           '<div class="assign-card-customer">' +
             '<span class="assign-card-name' +
@@ -685,6 +704,13 @@
   let workShiftsByShiftId  = {};
   let workSessionByShiftId = {};
   let workCurrentStaff     = null;
+  // Phase 1b.3 — read-only mirror of active_service_sessions/{uid} so a
+  // Deputy card can show a "Clocked in with Pioneer Time Clock" badge
+  // when the legacy shift maps to the same customer + date as the
+  // active Pioneer session. Match is conservative (customer_slug +
+  // service_date) to avoid cross-tech writes — we never mutate the
+  // Pioneer side from here, this is display only.
+  let pioneerActiveSession = null;
   // V6 — Today's Work runs in one of two role modes:
   //   "tech"  — current user is a cleaning tech. Personal view; query
   //              gated by employee_email == auth email.
@@ -1680,6 +1706,23 @@
     wireWorkCardClicks();
     wireFilterBar();
     setAssignmentsState("loading");
+
+    // Phase 1b.3 — fetch active Pioneer Time Clock session (if any) so
+    // Deputy cards can show a "Clocked in with Pioneer Time Clock"
+    // badge when they match the same customer + date. Doc-id read; no
+    // index needed; soft-fails — Deputy display works whether or not
+    // this read succeeds.
+    if (staff && staff.uid) {
+      firebase.firestore().collection("active_service_sessions").doc(staff.uid).get()
+        .then(function (snap) {
+          if (snap.exists) {
+            pioneerActiveSession = snap.data();
+            // Re-render so any already-rendered cards pick up the badge.
+            try { renderWorkCards(); } catch (_e) {}
+          }
+        })
+        .catch(function (_e) { /* non-fatal */ });
+    }
 
     const dateRes  = resolveWorkDate();
     const queryDate = dateRes.date;

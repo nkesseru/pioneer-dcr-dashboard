@@ -138,6 +138,27 @@
     return a.service_date === todayPT;  // legacy doc
   }
 
+  // Phase 1b.3 — cumulative worked minutes for an assignment.
+  // Sums work_minutes across all completed sessions tied to assignment_id
+  // for this tech, PLUS live elapsed for the active session if any
+  // currently points at this assignment.
+  function cumulativeWorkedMinutes(assignmentId) {
+    let total = 0;
+    const list = sessionsByAssignment[assignmentId] || [];
+    list.forEach(function (s) {
+      if (s.status === "completed" && typeof s.work_minutes === "number") {
+        total += s.work_minutes;
+      }
+    });
+    // Live elapsed for the currently-active session, if it belongs to us.
+    if (activeSession && activeSession.assignment_id === assignmentId &&
+        activeSession.clock_in_at && typeof activeSession.clock_in_at.toMillis === "function") {
+      const liveMs = Date.now() - activeSession.clock_in_at.toMillis();
+      if (liveMs > 0) total += Math.floor(liveMs / 60000);
+    }
+    return total;
+  }
+
   // Format a Firestore Timestamp / Date / ms / ISO → "h:mm AM/PM" PT.
   function formatTimeShort(ts) {
     let ms = null;
@@ -164,6 +185,14 @@
   let currentPeriodDoc  = null;    // payroll_periods/{current} data or null
   let balanceDoc        = null;    // staff_labor_balances/{uid} data or null
   let clicksWired       = false;
+  // Phase 1b.3 — multiple sessions per assignment (Resume Work flow).
+  // sessionsByAssignment maps assignment_id → array of completed/active
+  // pioneer_service_sessions docs (raw + _id), used to compute
+  // cumulative worked_minutes per card.
+  let sessionsByAssignment = {};
+  // Re-render the cards every 30 s while a session is active so the
+  // "Worked: Xh Ym (currently working…)" timer text stays current.
+  let timerInterval     = null;
 
   /* ---------- auth resolution + first load ---------- */
 
@@ -273,7 +302,32 @@
       db.collection("payroll_periods").doc(periodId).get()
         .then(function (s) { currentPeriodDoc = s.exists ? s.data() : null; }),
       db.collection("staff_labor_balances").doc(currentStaff.uid).get()
-        .then(function (s) { balanceDoc = s.exists ? s.data() : null; })
+        .then(function (s) { balanceDoc = s.exists ? s.data() : null; }),
+      // Phase 1b.3 — fetch the tech's sessions in the same date window
+      // so we can compute cumulative worked_minutes per assignment AND
+      // derive the "paused" state. Reuses the existing
+      // (staff_uid asc, service_date desc) index.
+      db.collection("pioneer_service_sessions")
+        .where("staff_uid",    "==", currentStaff.uid)
+        .where("service_date", ">=", lookbackPT)
+        .where("service_date", "<=", lookaheadPT)
+        .orderBy("service_date", "desc")
+        .get()
+        .then(function (snap) {
+          sessionsByAssignment = {};
+          snap.docs.forEach(function (d) {
+            const s = Object.assign({ _id: d.id }, d.data());
+            if (s.status === "canceled") return;  // exclude canceled
+            const key = s.assignment_id;
+            if (!key) return;
+            if (!sessionsByAssignment[key]) sessionsByAssignment[key] = [];
+            sessionsByAssignment[key].push(s);
+          });
+        })
+        .catch(function (err) {
+          warnSC("sessions query failed (non-fatal — cumulative totals unavailable)", err && err.code);
+          sessionsByAssignment = {};
+        })
     ];
     const [assignResult] = await Promise.all(tasks);
 
@@ -290,6 +344,21 @@
 
     renderBalanceCard();
     renderAssignments();
+    // Phase 1b.3 — keep the "currently working" timer text fresh while
+    // a session is active. Cheap re-render every 30s; stops on
+    // clock-out / initial-load tear-down.
+    if (activeSession) startTimer();
+    else stopTimer();
+  }
+
+  function startTimer() {
+    if (timerInterval) return;
+    timerInterval = setInterval(function () {
+      try { renderAssignments(); } catch (_e) {}
+    }, 30000);
+  }
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   }
 
   /* ---------- render: balance card ---------- */
@@ -355,10 +424,15 @@
 
   // Compute live UI state from the active-session lookup (NOT from
   // assignment.status — that field is admin-managed and may lag).
+  // Phase 1b.3: "paused" = at least one completed session exists for
+  // this assignment but no active session right now (Resume Work flow).
   function deriveDisplayState(a) {
     if (activeSession && activeSession.assignment_id === a._id) return "in_progress";
     if (a.status === "completed") return "completed";
     if (a.status === "missed" || a.status === "canceled") return a.status;
+    const prior = sessionsByAssignment[a._id] || [];
+    const hasCompleted = prior.some(function (s) { return s.status === "completed"; });
+    if (hasCompleted) return "paused";
     return "ready";
   }
 
@@ -366,6 +440,7 @@
     const map = {
       "ready":       { cls: "is-ready",     label: "Ready" },
       "in_progress": { cls: "is-active",    label: "Clocked in" },
+      "paused":      { cls: "is-paused",    label: "Paused" },
       "completed":   { cls: "is-done",      label: "Completed" },
       "missed":      { cls: "is-missed",    label: "Missed" },
       "canceled":    { cls: "is-canceled",  label: "Canceled" }
@@ -382,6 +457,12 @@
     if (state === "in_progress") {
       ctaHtml = '<button type="button" class="ptc-btn ptc-btn-stop" ' +
                 'data-action="clock-out" data-assignment-id="' + escapeHtml(a._id) + '">Clock Out</button>';
+    } else if (state === "paused") {
+      // Phase 1b.3 — Resume Work after clock-out. Same dispatch as
+      // Clock In; the transaction creates a NEW session doc, so
+      // cumulative work_minutes accrues across multiple sessions.
+      ctaHtml = '<button type="button" class="ptc-btn ptc-btn-start" ' +
+                'data-action="clock-in" data-assignment-id="' + escapeHtml(a._id) + '">Resume Work</button>';
     } else if (state === "completed") {
       ctaHtml = '<button type="button" class="ptc-btn ptc-btn-done" disabled>Completed</button>';
     } else if (state === "missed" || state === "canceled") {
@@ -412,6 +493,31 @@
         : '<span class="ptc-availability-chip is-late">Late Completion</span>';
     }
 
+    // Phase 1b.3 — Worked / Budget / Remaining (or Over-budget) rows.
+    const workedMin = cumulativeWorkedMinutes(a._id);
+    const isActiveHere = state === "in_progress";
+    const workedSuffix = isActiveHere
+      ? ' <span class="ptc-worked-live" title="Includes current active session">(currently working — started ' +
+          escapeHtml(formatTimeShort(activeSession.clock_in_at)) + ')</span>'
+      : '';
+    let budgetRowsHtml = '<div><dt>Worked</dt><dd>' +
+        escapeHtml(formatMinutesAsHm(workedMin)) + workedSuffix +
+      '</dd></div>';
+    if (a.budget_minutes) {
+      budgetRowsHtml +=
+        '<div><dt>Budget</dt><dd>' + escapeHtml(formatMinutesAsHm(a.budget_minutes)) + '</dd></div>';
+      const remaining = a.budget_minutes - workedMin;
+      if (remaining >= 0) {
+        budgetRowsHtml +=
+          '<div><dt>Remaining</dt><dd>' + escapeHtml(formatMinutesAsHm(remaining)) + '</dd></div>';
+      } else {
+        budgetRowsHtml +=
+          '<div class="ptc-overbudget"><dt>Over budget by</dt><dd>' +
+            escapeHtml(formatMinutesAsHm(Math.abs(remaining))) +
+          '</dd></div>';
+      }
+    }
+
     return (
       '<article class="ptc-card" data-assignment-id="' + escapeHtml(a._id) + '">' +
         '<header class="ptc-card-head">' +
@@ -428,9 +534,8 @@
         '<dl class="ptc-card-meta">' +
           '<div><dt>Service date</dt><dd>' + escapeHtml(formatServiceDateLong(a.service_date)) + '</dd></div>' +
           (windowStart ? '<div><dt>Window starts</dt><dd>' + escapeHtml(windowStart) + '</dd></div>' : '') +
-          (deadline    ? '<div><dt>Deadline</dt><dd>' + escapeHtml(deadline) + '</dd></div>' : '') +
-          (a.estimated_minutes ? '<div><dt>Estimated</dt><dd>' + escapeHtml(formatMinutesAsHm(a.estimated_minutes)) + '</dd></div>' : '') +
-          (a.budget_minutes    ? '<div><dt>Budget</dt><dd>'    + escapeHtml(formatMinutesAsHm(a.budget_minutes))    + '</dd></div>' : '') +
+          (deadline    ? '<div><dt>Deadline</dt><dd>'      + escapeHtml(deadline)       + '</dd></div>' : '') +
+          budgetRowsHtml +
         '</dl>' +
         '<div class="ptc-card-actions">' + ctaHtml + '</div>' +
       '</article>'

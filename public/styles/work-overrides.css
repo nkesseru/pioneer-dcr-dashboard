@@ -297,6 +297,31 @@
 .ptc-availability-chip.is-early { background: #e4eefc; color: #1f4488; }
 .ptc-availability-chip.is-late  { background: #f6e0e0; color: #8a2a2a; }
 
+/* Phase 1b.3 — paused state + live timer text + over-budget row. */
+.ptc-status-chip.is-paused { background: #e6eaf2; color: #3a4762; }
+.ptc-worked-live {
+  display: inline-block;
+  font-size: 12px; font-weight: 500; color: var(--text-muted, #555);
+  font-style: italic;
+}
+.ptc-card-meta .ptc-overbudget dt { color: #8a2a2a; }
+.ptc-card-meta .ptc-overbudget dd { color: #8a2a2a; font-weight: 800; }
+
+/* Phase 1b.3 — cross-link badge on the legacy Deputy "Today's Work"
+   card when the same customer + date is currently active in the
+   Pioneer Time Clock. Sits at the very top of the card so it's the
+   first thing a tech sees. Display-only — Deputy continues to be the
+   official time clock during beta. */
+.assign-card-pioneer-badge {
+  background: #fff7e0;
+  color: #5a4400;
+  border: 1px solid #d8b85d;
+  border-radius: var(--radius-md, 8px) var(--radius-md, 8px) 0 0;
+  margin: -1px -1px 8px;
+  padding: 6px 12px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.2px;
+}
+
 .ptc-status-chip.is-ready    { background: #eef3fb; color: #234c8c; }
 .ptc-status-chip.is-active   { background: #fff4d6; color: #8a5a00; }
 .ptc-status-chip.is-done     { background: #e2f3e6; color: #2a6b3a; }
