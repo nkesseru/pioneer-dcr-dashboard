@@ -1,0 +1,27 @@
+{
+  "_comment": "Phase 1a seed input for seed-labor-opening-balances.js. Copy this file to scripts/opening-balances.json (NOT committed) and fill in real values. Required fields per entry: staff_email + opening_balance_minutes. Optional: reason (becomes the ledger entry's reason text). 0 is a valid value; the script does NOT default to zero — every staff to be seeded must appear here explicitly.",
+
+  "_format": {
+    "<staff_email_lowercase>": {
+      "opening_balance_minutes": "integer minutes; 0 OK; capped at 2400 unless override below",
+      "reason": "free text, optional but recommended",
+      "allow_above_cap": "optional bool; only true if the admin explicitly wants to seed above the 2400-minute cap"
+    }
+  },
+
+  "entries": {
+    "makaila@example.com": {
+      "opening_balance_minutes": 1440,
+      "reason": "Migrated from QuickBooks records, period ending 2026-05-31"
+    },
+    "casey@example.com": {
+      "opening_balance_minutes": 0,
+      "reason": "New hire, no prior balance"
+    },
+    "alex@example.com": {
+      "opening_balance_minutes": 2700,
+      "reason": "Senior tech, grandfathered balance per HR sign-off",
+      "allow_above_cap": true
+    }
+  }
+}

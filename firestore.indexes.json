@@ -31,6 +31,125 @@
         { "fieldPath": "acceptedByTechUid", "order": "ASCENDING" },
         { "fieldPath": "acceptedAt",        "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "service_date", "order": "ASCENDING" },
+        { "fieldPath": "status",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "customer_id",  "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "staff_uid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accrued_in_period_id", "order": "ASCENDING" },
+        { "fieldPath": "staff_uid",            "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid", "order": "ASCENDING"  },
+        { "fieldPath": "punch_at",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "service_date", "order": "ASCENDING" },
+        { "fieldPath": "punch_at",     "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "drive_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "drive_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",       "order": "ASCENDING" },
+        { "fieldPath": "service_date", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "payroll_periods",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "start_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payroll_periods",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "half",  "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "sick_leave_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",      "order": "ASCENDING"  },
+        { "fieldPath": "effective_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sick_leave_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",      "order": "ASCENDING"  },
+        { "fieldPath": "entry_type",     "order": "ASCENDING"  },
+        { "fieldPath": "effective_date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

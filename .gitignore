@@ -47,3 +47,9 @@ serviceAccountKey.json
 # on every run (offline path). Never commit.
 .secrets.local.json
 .secrets.local.*.json
+
+# Phase 1a labor seed input — holds per-employee opening sick-leave
+# balances supplied by HR. The committed template
+# (opening-balances.example.json) is fine; the real file with HR
+# numbers must stay local.
+scripts/opening-balances.json

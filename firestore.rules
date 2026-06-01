@@ -1065,6 +1065,126 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // PioneerOps native time clock — Phase 1a foundation collections.
+    // ====================================================================
+    // service_assignments: what a tech is supposed to do today.
+    // pioneer_service_sessions: one clock-in/clock-out cycle per assignment.
+    // active_service_sessions: doc-id-keyed lookup that enforces "at most
+    //   one active session per staff" via atomic create/delete in the
+    //   same transaction as the session write.
+    // time_punches: append-only audit log of every clock-in/out event.
+    // drive_segments: model only in Phase 1; auto-population in Phase 2.
+    // payroll_periods: semi-monthly cadence (1-15 / 16-EOM). Admin-managed.
+    // sick_leave_ledger: append-only audit ledger; minutes_delta in INTEGER
+    //   minutes (positive = credit, negative = debit). Entry types:
+    //   opening_balance, earned, used, admin_adjustment. (Phase 2 adds
+    //   carryover, carryover_forfeit.)
+    // staff_labor_balances: materialized cache of ledger sums; doc id =
+    //   staff_uid. Writes restricted to admin OR the staff themselves
+    //   (whitelisted current_period_* counters only).
+
+    function isOwnUid(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /service_assignments/{assignmentId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;  // soft-cancel via status field
+    }
+
+    match /pioneer_service_sessions/{sessionId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Tech creates their own active session at clock-in.
+      allow create: if isActiveStaff()
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.status == "active"
+                    && request.resource.data.clock_out_at == null;
+      // Update: admin override, OR own + transitioning active → completed.
+      allow update: if isPioneerAdmin()
+                    || (isOwnUid(resource.data.staff_uid)
+                        && resource.data.status == "active"
+                        && request.resource.data.status == "completed"
+                        && request.resource.data.clock_out_at is timestamp);
+      allow delete: if false;
+    }
+
+    match /active_service_sessions/{staffUid} {
+      allow read:   if isPioneerAdmin() || isOwnUid(staffUid);
+      // Create/delete only — never update. Doc id MUST equal staff_uid.
+      allow create: if isOwnUid(staffUid)
+                    && request.resource.data.staff_uid == staffUid;
+      allow update: if false;
+      allow delete: if isPioneerAdmin() || isOwnUid(staffUid);
+    }
+
+    match /time_punches/{punchId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      allow create: if isActiveStaff()
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.punch_type in ["clock_in", "clock_out"]
+                    && request.resource.data.punch_at is timestamp;
+      // NEVER mutated, NEVER deleted — legal audit record.
+      allow update, delete: if false;
+    }
+
+    match /drive_segments/{segmentId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Phase 1: admin-only writes. Phase 2 Cloud Function uses Admin SDK
+      // and bypasses rules for auto-generation.
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    match /payroll_periods/{periodId} {
+      allow read:   if isPioneerAdmin() || isActiveStaff();
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    match /sick_leave_ledger/{entryId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Phase 1 entry types only. minutes_delta is a signed integer;
+      // admin_adjustment requires a non-empty reason. Cloud Functions
+      // (Admin SDK) bypass these rules for automated entries (e.g. close).
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.staff_uid is string
+                    && request.resource.data.minutes_delta is number
+                    && request.resource.data.entry_type in [
+                         "opening_balance", "earned", "used", "admin_adjustment"
+                       ]
+                    && request.resource.data.effective_date is string
+                    && (request.resource.data.entry_type != "admin_adjustment"
+                        || (request.resource.data.reason is string
+                            && request.resource.data.reason.size() > 0));
+      // Append-only — corrections happen via NEW admin_adjustment entries.
+      allow update, delete: if false;
+    }
+
+    match /staff_labor_balances/{staffUid} {
+      // Staff can read their own balance doc. Admins can read any.
+      allow read: if isPioneerAdmin() || isOwnUid(staffUid);
+      // Phase 1a: ADMIN-ONLY writes (seed script via Admin SDK bypasses
+      // rules; manual admin tooling goes through this allow-create/update
+      // path). Staff cannot mutate balances directly — clock-in/clock-out
+      // in Phase 1b writes sessions + punches + active-session lookup
+      // ONLY; balance recomputation is deferred to admin tooling or a
+      // Phase 2 Cloud Function trigger.
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
     // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"
