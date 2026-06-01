@@ -68,12 +68,27 @@ function makeAssignmentId(serviceDate, techSlug, customerSlug) {
     process.exit(2);
   }
   const tech = techSnap.data() || {};
-  const staff_uid = tech.uid || tech.auth_uid || null;
-  if (!staff_uid) {
-    console.error(`[ERROR] cleaning_techs/${TECH_SLUG} has no uid — tech must sign in once before assignments can be seeded`);
+  const staff_email = String(tech.email || "").toLowerCase().trim();
+  if (!staff_email) {
+    console.error(`[ERROR] cleaning_techs/${TECH_SLUG} has no email field — cannot resolve Firebase Auth uid without it`);
     process.exit(2);
   }
-  const staff_email = String(tech.email || "").toLowerCase().trim();
+  // PioneerOps does not stamp uid on cleaning_techs docs — the auth uid
+  // is the runtime identity resolved via firebase.auth().currentUser.
+  // For this offline seed we look it up by email via the Admin SDK.
+  let staff_uid;
+  try {
+    const user = await admin.auth().getUserByEmail(staff_email);
+    staff_uid = user.uid;
+  } catch (e) {
+    if (e && e.code === "auth/user-not-found") {
+      console.error(`[ERROR] No Firebase Auth user found for ${staff_email}.`);
+      console.error("        Create the auth user first (e.g. via the admin '+ Add tech / Login setup' flow), then re-run.");
+    } else {
+      console.error(`[ERROR] Firebase Auth lookup failed for ${staff_email}:`, e && e.message);
+    }
+    process.exit(2);
+  }
   const staff_display_name = tech.display_name || tech.displayName || TECH_SLUG;
 
   // Resolve the customer.
