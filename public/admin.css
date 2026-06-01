@@ -6281,3 +6281,169 @@
   from { transform: translateY(16px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/* ==========================================================================
+   Labor Review tab (Phase 1e Lite) — admin Pioneer Time Clock dashboard
+   ========================================================================== */
+
+.labor-block {
+  margin-top: 18px;
+}
+.labor-block:first-of-type { margin-top: 8px; }
+.labor-block-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-text-strong, #0f172a);
+  margin: 0 0 4px 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.labor-block-sub {
+  margin: 0 0 10px 0;
+  color: var(--pc-text-muted, #64748b);
+  font-size: 13px;
+}
+
+/* ---- Open active sessions: prominent cards stacked ---- */
+.labor-active-list {
+  display: grid;
+  gap: 10px;
+}
+.labor-active-card {
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #2f6dd6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(47, 109, 214, 0.04), #fff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.labor-active-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 4px;
+}
+.labor-active-name  { font-weight: 700; font-size: 15px; color: #0f172a; }
+.labor-active-sub   { color: #475569; font-size: 13px; }
+.labor-active-meta  { color: #475569; font-size: 13px; display: flex; gap: 6px; flex-wrap: wrap; }
+.labor-active-meta strong { color: #0f172a; font-weight: 600; }
+.labor-active-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---- Today's-sessions table (grid-based dense rows) ---- */
+.labor-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.labor-row {
+  display: grid;
+  grid-template-columns:
+    minmax(110px, 1.1fr)  /* employee  */
+    minmax(160px, 2fr)    /* customer  */
+    minmax(110px, 1fr)    /* status    */
+    minmax(60px,  0.6fr)  /* in        */
+    minmax(60px,  0.6fr)  /* out       */
+    minmax(70px,  0.7fr)  /* worked    */
+    minmax(70px,  0.7fr)  /* budget    */
+    minmax(140px, 1.2fr)  /* geo       */
+    minmax(80px,  0.8fr)  /* dcr       */
+    minmax(90px,  0.9fr); /* action    */
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.labor-row:last-child { border-bottom: 0; }
+.labor-row-head {
+  background: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.labor-row .lr-col-emp   { font-weight: 600; color: #0f172a; }
+.labor-row .lr-col-cust  { color: #475569; }
+.labor-row .lr-col-in,
+.labor-row .lr-col-out,
+.labor-row .lr-col-wkd,
+.labor-row .lr-col-bgt   { font-variant-numeric: tabular-nums; }
+.labor-row .lr-col-act   { text-align: right; }
+.lr-row-meta {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #64748b;
+  padding-top: 4px;
+}
+.lr-reviewed-meta::before    { content: "✓ "; color: #047857; }
+.lr-forceclosed-meta::before { content: "⚠ "; color: #b45309; }
+
+/* ---- Chips (reuse Pioneer Time Clock palette tokens) ---- */
+.lr-chip {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  background: #e2e8f0; color: #475569;
+}
+.lr-chip.is-active   { background: #ccfbf1; color: #115e59; }
+.lr-chip.is-paused   { background: #e2e8f0; color: #334155; }
+.lr-chip.is-dcr      { background: #fef3c7; color: #78350f; }
+.lr-chip.is-complete { background: #d1fae5; color: #065f46; }
+.lr-chip.is-review   { background: #fee2e2; color: #991b1b; }
+.lr-chip.is-canceled { background: #f1f5f9; color: #64748b; }
+.lr-chip.is-missed   { background: #fee2e2; color: #991b1b; }
+
+.lr-geo {
+  display: inline-block;
+  font-size: 11px; font-weight: 700;
+  padding: 1px 6px; border-radius: 999px;
+}
+.lr-geo.is-onsite   { background: #d1fae5; color: #065f46; }
+.lr-geo.is-nearby   { background: #fef3c7; color: #78350f; }
+.lr-geo.is-offsite  { background: #fee2e2; color: #991b1b; }
+.lr-geo.is-unknown  { background: #e2e8f0; color: #475569; }
+
+.lr-dcr {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 600;
+  color: #475569;
+}
+.lr-dcr.is-submitted { color: #047857; }
+.lr-dcr.is-pending   { color: #b45309; }
+.lr-dcr.is-none      { color: #94a3b8; }
+
+/* ---- Buttons in labor cards ---- */
+.labor-btn {
+  font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: #f1f5f9; color: #1e293b;
+  transition: background 80ms ease, transform 80ms ease;
+}
+.labor-btn:hover  { background: #e2e8f0; }
+.labor-btn:active { transform: translateY(1px); }
+.labor-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+.labor-btn-review {
+  background: #fef3c7; color: #78350f; border-color: #fde68a;
+}
+.labor-btn-review:hover { background: #fde68a; }
+.labor-btn-danger {
+  background: #fee2e2; color: #991b1b; border-color: #fecaca;
+}
+.labor-btn-danger:hover { background: #fecaca; }
+
+/* ---- Responsive: collapse the table on narrow widths ---- */
+@media (max-width: 980px) {
+  .labor-row {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: auto;
+    row-gap: 4px;
+  }
+  .labor-row-head { display: none; }
+  .labor-row .lr-col-cust { grid-column: 1 / -1; color: #64748b; font-size: 12.5px; }
+  .labor-row .lr-col-geo  { grid-column: 1 / -1; }
+  .labor-row .lr-col-act  { grid-column: 1 / -1; text-align: left; }
+}

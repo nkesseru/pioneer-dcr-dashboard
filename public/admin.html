@@ -358,6 +358,7 @@
           <button class="admin-tab"           data-tab="admins"        role="tab" aria-selected="false">Admins</button>
           <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
           <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
+          <button class="admin-tab"           data-tab="labor-review"  role="tab" aria-selected="false">Labor</button>
           <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
             Attendance
             <span class="admin-tab-badge" id="attendance-tab-badge"
@@ -1349,6 +1350,38 @@
           <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--red"></span>3+ off · critical</span>
         </div>
         <div class="attendance-calendar" id="attn-calendar"></div>
+      </section>
+    </section>
+
+    <!-- ================== Labor Review (Phase 1e Lite) ==================
+         Today's Pioneer Time Clock sessions for admin review. Two blocks:
+         open active sessions (force-close affordance) + today's full list
+         (Review action on rows flagged needs_review).
+    -->
+    <section class="card admin-panel" data-panel="labor-review" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Labor</h2>
+          <p class="panel-sub" id="labor-sub">Loading today's sessions…</p>
+        </div>
+        <button class="panel-action" id="labor-refresh" type="button"
+                title="Re-read today's pioneer_service_sessions + active_service_sessions">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="labor-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="labor-error"   hidden></div>
+
+      <section class="labor-block">
+        <h3 class="labor-block-title">Open active sessions</h3>
+        <p class="labor-block-sub">Techs currently clocked in. Force-close any session stuck after the shift ended.</p>
+        <div class="labor-active-list" id="labor-active-list"></div>
+        <p class="admin-status admin-empty" id="labor-active-empty" hidden>No active sessions right now.</p>
+      </section>
+
+      <section class="labor-block">
+        <h3 class="labor-block-title">Today's sessions</h3>
+        <div class="labor-table" id="labor-table"></div>
+        <p class="admin-status admin-empty" id="labor-table-empty" hidden>No Pioneer Time Clock sessions today yet.</p>
       </section>
     </section>
 
@@ -2784,6 +2817,46 @@
     </div>
   </div>
 
+  <!-- ================== Force-close session modal (Phase 1e Lite) ================== -->
+  <div id="labor-force-close-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-fc-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-fc-title">Force close session</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-fc-summary">—</p>
+        <input type="hidden" id="labor-fc-session-id" />
+        <input type="hidden" id="labor-fc-active-uid" />
+
+        <div class="field-row">
+          <label for="labor-fc-clock-out-time">Clock-out time</label>
+          <input type="datetime-local" id="labor-fc-clock-out-time" autocomplete="off" />
+          <p class="field-hint">Defaults to now. Set this to the actual end time if you know it.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="labor-fc-reason">Reason <span class="req">*</span></label>
+          <textarea id="labor-fc-reason" rows="3" required minlength="5"
+                    placeholder="e.g. Tech forgot to clock out — verified end time via DCR submit at 4:30 PM."
+                    maxlength="500"></textarea>
+          <p class="field-hint">At least 5 characters. This is stored on the session for audit.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          This marks the session <strong>completed</strong>, removes the open active record,
+          stamps <code>force_closed_by_admin</code>, and flags it for review. No time_punches doc is written.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-fc-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-fc-save">Force close</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Toast container — top-right slide-ins for success/error notifications. -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -2825,7 +2898,8 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260530-refactor-phase23-hotfix-2"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin.js?v=20260530-refactor-phase24"></script>
+  <script src="admin/tab-labor-review.js?v=20260601-phase1e-lite"></script>
+  <script src="admin.js?v=20260601-phase1e-lite"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>
