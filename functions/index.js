@@ -3092,6 +3092,77 @@ exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req,
     }
   }
 
+  // ---- Pioneer Time Clock writeback (Phase 1b.4) ----
+  //
+  // When the DCR was initiated from the Pioneer Time Clock surface on
+  // /work, the form carries pioneer_assignment_id (the
+  // service_assignments doc id) and pioneer_service_session_id (the
+  // most-recent pioneer_service_sessions doc id the tech finished
+  // from). These are namespace-disjoint from the Deputy back-write
+  // above (pioneer_session_id / pioneer_work_sessions) so the two
+  // flows never collide.
+  //
+  // Three writes, all best-effort:
+  //   1. dcr_submissions already carries pioneer_assignment_id via the
+  //      payload spread (line ~2957), so no explicit write needed
+  //      here — the field is on the doc.
+  //   2. Back-stamp dcr_submission_id onto the linked
+  //      pioneer_service_sessions doc (the "last session for this
+  //      assignment").
+  //   3. Stamp dcr_submitted=true + dcr_submission_id +
+  //      dcr_submitted_at onto the service_assignments doc — gives
+  //      service-clock.js a fast denormalized read for the UI's "DCR
+  //      Submitted" chip without a second query.
+  //
+  // Soft-fail throughout: DCR submission already succeeded by this
+  // point; back-writes are operational ergonomics only.
+  const pioneerAssignmentId     = String((payload && payload.pioneer_assignment_id)     || "").trim();
+  const pioneerServiceSessionId = String((payload && payload.pioneer_service_session_id) || "").trim();
+  if (pioneerAssignmentId) {
+    // 2. session back-write (only when a session id was supplied)
+    if (pioneerServiceSessionId) {
+      try {
+        await db.collection("pioneer_service_sessions").doc(pioneerServiceSessionId).set({
+          dcr_submission_id: submissionId,
+          dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
+          updated_at:        admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        logger.info("submitDcrV1 pioneer_service_sessions writeback ok", {
+          submission_id:              submissionId,
+          pioneer_assignment_id:      pioneerAssignmentId,
+          pioneer_service_session_id: pioneerServiceSessionId
+        });
+      } catch (err) {
+        logger.warn("submitDcrV1 pioneer_service_sessions writeback failed (non-fatal)", {
+          submission_id:              submissionId,
+          pioneer_service_session_id: pioneerServiceSessionId,
+          error:                      err && err.message
+        });
+      }
+    }
+    // 3. service_assignments denormalized write — admin still owns the
+    //    .status field; we only set the DCR-completion signals.
+    try {
+      await db.collection("service_assignments").doc(pioneerAssignmentId).set({
+        dcr_submitted:     true,
+        dcr_submission_id: submissionId,
+        dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
+        updated_at:        admin.firestore.FieldValue.serverTimestamp(),
+        updated_by:        doc.submitted_by_email || "submitDcrV1"
+      }, { merge: true });
+      logger.info("submitDcrV1 service_assignments writeback ok", {
+        submission_id:         submissionId,
+        pioneer_assignment_id: pioneerAssignmentId
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 service_assignments writeback failed (non-fatal)", {
+        submission_id:         submissionId,
+        pioneer_assignment_id: pioneerAssignmentId,
+        error:                 err && err.message
+      });
+    }
+  }
+
   // Best-effort: create a supply_requests doc if the DCR asked for supplies.
   // Failure here is logged but never blocks the success response — the DCR is
   // already saved by the time we get here, and admins can manually create the
