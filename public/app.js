@@ -1284,13 +1284,36 @@
       target = document.querySelector('.checklist-card[data-section-id="' + sectionId + '"]');
     }
     if (!target) {
-      // No remaining incomplete section — fall back to the sign-and-submit
-      // area so the tech sees what's next. Affirmation checkbox is the
-      // most actionable anchor; submit button is the visual destination.
-      target = document.getElementById("affirm") ||
-               document.getElementById("submit-btn") ||
-               document.querySelector(".submit-bar") ||
-               null;
+      // Phase 1e.2 fix — when the LAST checklist section finishes, there's
+      // no next incomplete checklist to land on, but there ARE more cards
+      // below (Supplies, How was the clean?, Photos, Occupancy, Notes,
+      // Sign & submit). Walk forward from the #checklist-cards container
+      // and land on the FIRST visible .card so the tech sees the next
+      // question's header — not the affirmation checkbox at the bottom.
+      // Honors `hidden` (the Phase 1e.2 #time-budget-card stays hidden
+      // unless the over-budget reveal fires).
+      const checklistRoot = document.getElementById("checklist-cards");
+      if (checklistRoot) {
+        let sibling = checklistRoot.nextElementSibling;
+        while (sibling) {
+          if (sibling.classList &&
+              sibling.classList.contains("card") &&
+              !sibling.hidden) {
+            target = sibling;
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+      // Last-resort fallback if no card was found (e.g. checklist-cards is
+      // the final element on the page): land on the submit area so the
+      // tech still sees what's next instead of staying where they were.
+      if (!target) {
+        target = document.getElementById("affirm") ||
+                 document.getElementById("submit-btn") ||
+                 document.querySelector(".submit-bar") ||
+                 null;
+      }
     }
     debugDcrScroll("nextIncompleteSection", {
       sectionId: sectionId,
