@@ -41,13 +41,23 @@
 
   /* ---------- state ---------- */
 
-  let sessions          = [];   // pioneer_service_sessions for today (sorted desc by clock_in)
+  let sessions          = [];   // pioneer_service_sessions in range (sorted by service_date desc, clock_in desc)
   let activeByUid       = {};   // doc-id → active_service_sessions data
   let assignmentsById   = {};   // assignment_id → service_assignments data
   let techsByEmail      = {};   // staff_email → cleaning_techs row
   let techsByUid        = {};   // staff_uid   → cleaning_techs row
   let loaded            = false;
   let loading           = false;
+
+  // Phase 2A.3 — range state. Default = today (today-only).
+  // currentQuickFilter is "today" | "yesterday" | "last_7" | "last_30" |
+  // "pay_period" | "custom" | null (initial). Drives the active-button
+  // highlight; null on first paint means the buttons all show inactive.
+  let rangeStart           = "";   // YYYY-MM-DD (Pacific)
+  let rangeEnd             = "";
+  let currentQuickFilter   = "today";
+  let totalsCache          = null; // { totalWorked, totalRunning, needsReview, dcrPending, exceptions: { overBudget, offsite, adminRemoved, forceClosed } }
+  let byEmployeeCache      = [];
 
   /* ---------- helpers ---------- */
 
@@ -152,6 +162,176 @@
     return session.needs_review === true;
   }
 
+  /* ---------- Phase 2A.3: range helpers ---------- */
+
+  // Add or subtract whole days from a Pacific YYYY-MM-DD string. Uses UTC
+  // arithmetic on noon-UTC anchored Dates to sidestep DST entirely.
+  function addDaysPT(yyyymmdd, days) {
+    const parts = String(yyyymmdd || "").split("-");
+    if (parts.length !== 3) return yyyymmdd;
+    const y = Number(parts[0]); const m = Number(parts[1]) - 1; const d = Number(parts[2]);
+    const dt = new Date(Date.UTC(y, m, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  }
+  function daysBetween(a, b) {
+    const sa = Date.parse(a + "T00:00:00Z");
+    const sb = Date.parse(b + "T00:00:00Z");
+    if (!Number.isFinite(sa) || !Number.isFinite(sb)) return NaN;
+    return Math.round((sb - sa) / 86400000);
+  }
+  function lastDayOfMonth(yyyy, mm /* 1-12 */) {
+    // Day 0 of month+1 is the last day of month — locale-safe day-of-month.
+    return new Date(yyyy, mm, 0).getDate();
+  }
+  // Semi-monthly pay periods per Phase 1a: A = 1–15, B = 16–EOM.
+  // "Current Pay Period" returns the start of the period containing
+  // today through TODAY (not the period close — admin wants progress).
+  function getSemiMonthlyPeriodRange(todayPT) {
+    const parts = String(todayPT || "").split("-");
+    const y = Number(parts[0]); const m = Number(parts[1]); const d = Number(parts[2]);
+    const mm = String(m).padStart(2, "0");
+    if (d <= 15) {
+      return { start_date: y + "-" + mm + "-01", end_date: todayPT };
+    }
+    return { start_date: y + "-" + mm + "-16", end_date: todayPT };
+    // (period close for B is `lastDayOfMonth(y,m)`; not used here.)
+  }
+  function getQuickFilterRange(key, todayPT) {
+    switch (key) {
+      case "today":      return { start_date: todayPT, end_date: todayPT };
+      case "yesterday":  { const y = addDaysPT(todayPT, -1); return { start_date: y, end_date: y }; }
+      case "last_7":     return { start_date: addDaysPT(todayPT, -6),  end_date: todayPT };
+      case "last_30":    return { start_date: addDaysPT(todayPT, -29), end_date: todayPT };
+      case "pay_period": return getSemiMonthlyPeriodRange(todayPT);
+      default:           return { start_date: todayPT, end_date: todayPT };
+    }
+  }
+  function validateRange(start, end) {
+    if (!start || !end) return "Pick both start and end dates.";
+    if (start > end) return "End date is before start date.";
+    const span = daysBetween(start, end);
+    if (!Number.isFinite(span)) return "Invalid date.";
+    if (span + 1 > 31) return "Range too wide — max 31 days. Try Last 30 Days.";
+    return null;
+  }
+  function fmtServiceDate(yyyymmdd) {
+    if (!yyyymmdd) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) { return yyyymmdd; }
+  }
+  function fmtServiceDateLong(yyyymmdd) {
+    if (!yyyymmdd) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "long", day: "numeric", year: "numeric"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) { return yyyymmdd; }
+  }
+
+  // Initial range state — used by the very first refresh() to query before
+  // the user has touched any control. Defaults to today/today (Pacific).
+  function ensureRangeInitialized() {
+    if (rangeStart && rangeEnd) return;
+    const today = pacificDateString(new Date());
+    const r = getQuickFilterRange("today", today);
+    rangeStart = r.start_date;
+    rangeEnd   = r.end_date;
+    currentQuickFilter = "today";
+  }
+
+  /* ---------- Phase 2A.3: totals + by-employee ---------- */
+
+  function isRunningSession(s) {
+    return (s && s.status === "active") && !s.clock_out_at;
+  }
+  function isPausedSession(s) {
+    return (s && s.status === "paused") && !s.clock_out_at;
+  }
+  function dcrPendingFlag(s) {
+    if (!s) return false;
+    if (s.status === "dcr_pending") return true;
+    if (s.status !== "completed") return false;
+    const submitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+    return !submitted;
+  }
+  // Phase 1e.2 set the over-budget threshold at +15 min. Reusing the
+  // same threshold here keeps "over budget" consistent across DCR + admin.
+  function overBudgetFlag(s, assignment) {
+    const budget = (s && typeof s.budget_minutes === "number")
+      ? s.budget_minutes
+      : (assignment && typeof assignment.budget_minutes === "number"
+          ? assignment.budget_minutes : null);
+    if (budget == null || budget <= 0) return false;
+    if (typeof s.work_minutes !== "number") return false;
+    return s.work_minutes > budget + 15;
+  }
+  function offsiteFlag(s) {
+    return s && (s.clock_in_geo_status === "offsite" || s.clock_out_geo_status === "offsite");
+  }
+  function adminRemovedFlag(s) { return s && s.admin_removed === true; }
+  function forceClosedFlag(s) { return s && s.force_closed_by_admin === true; }
+
+  function computeTotals(arr) {
+    const out = {
+      totalWorked: 0, totalRunning: 0, needsReview: 0, dcrPending: 0,
+      exceptions: { overBudget: 0, offsite: 0, adminRemoved: 0, forceClosed: 0 }
+    };
+    (arr || []).forEach(function (s) {
+      const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
+      if (isRunningSession(s)) {
+        out.totalRunning += (liveElapsedMinutes(s.clock_in_at) || 0);
+      } else if (typeof s.work_minutes === "number") {
+        out.totalWorked += s.work_minutes;
+      }
+      if (needsReviewFlag(s))   out.needsReview += 1;
+      if (dcrPendingFlag(s))    out.dcrPending  += 1;
+      if (overBudgetFlag(s, assignment)) out.exceptions.overBudget   += 1;
+      if (offsiteFlag(s))                out.exceptions.offsite      += 1;
+      if (adminRemovedFlag(s))           out.exceptions.adminRemoved += 1;
+      if (forceClosedFlag(s))            out.exceptions.forceClosed  += 1;
+    });
+    return out;
+  }
+  function groupByEmployee(arr) {
+    const map = new Map();
+    (arr || []).forEach(function (s) {
+      const key = s.staff_uid || ("email:" + (s.staff_email || "")) || "(unknown)";
+      if (!map.has(key)) {
+        map.set(key, {
+          staff_uid: s.staff_uid || "",
+          staff_email: s.staff_email || "",
+          name: techName(s.staff_email, s.staff_uid),
+          sessions_count: 0,
+          worked_minutes: 0,
+          running_minutes: 0,
+          needs_review: 0,
+          dcr_pending: 0
+        });
+      }
+      const row = map.get(key);
+      row.sessions_count += 1;
+      if (isRunningSession(s)) {
+        row.running_minutes += (liveElapsedMinutes(s.clock_in_at) || 0);
+      } else if (typeof s.work_minutes === "number") {
+        row.worked_minutes += s.work_minutes;
+      }
+      if (needsReviewFlag(s)) row.needs_review += 1;
+      if (dcrPendingFlag(s))  row.dcr_pending  += 1;
+    });
+    return Array.from(map.values()).sort(function (a, b) {
+      const ta = a.worked_minutes + a.running_minutes;
+      const tb = b.worked_minutes + b.running_minutes;
+      if (tb !== ta) return tb - ta;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
   /* ---------- loaders ---------- */
 
   function setState(state, message) {
@@ -202,12 +382,17 @@
     setState("loading");
     try {
       hydrateTechMaps();
+      ensureRangeInitialized();
       const db = firebase.firestore();
-      const today = pacificDateString(new Date());
 
+      // Phase 2A.3 — pioneer_service_sessions query now spans a date range.
+      // Single-field equality+range; no composite index needed. Admin scope
+      // by rule isPioneerAdmin(). active_service_sessions stays
+      // date-agnostic (always "who is clocked in right now").
       const [sessSnap, activeSnap] = await Promise.all([
         db.collection("pioneer_service_sessions")
-          .where("service_date", "==", today)
+          .where("service_date", ">=", rangeStart)
+          .where("service_date", "<=", rangeEnd)
           .get(),
         db.collection("active_service_sessions").get()
       ]);
@@ -215,7 +400,10 @@
       sessions = sessSnap.docs.map(function (d) {
         return Object.assign({ _id: d.id }, d.data() || {});
       });
+      // Sort by service_date desc, then clock_in desc within a date.
       sessions.sort(function (a, b) {
+        const sd = String(b.service_date || "").localeCompare(String(a.service_date || ""));
+        if (sd !== 0) return sd;
         return tsToMs(b.clock_in_at) - tsToMs(a.clock_in_at);
       });
 
@@ -232,6 +420,9 @@
         if (a && a.assignment_id) ids.push(a.assignment_id);
       });
       await loadAssignmentsByIds(ids);
+
+      totalsCache     = computeTotals(sessions);
+      byEmployeeCache = groupByEmployee(sessions);
 
       loaded = true;
       setState(null);
@@ -252,26 +443,31 @@
   function render() {
     if (!loaded) return;
     renderHeader();
+    renderRangeControlsState();
+    renderTotals();
     renderActive();
+    renderByEmployee();
     renderTable();
   }
 
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v2A.2-remove-fix-2";
+  const LABOR_BUILD_TAG = "Labor v2A.3-range";
 
   function renderHeader() {
     const sub = $("labor-sub");
     if (!sub) return;
-    const today = pacificDateString(new Date());
-    let label = today;
-    try {
-      label = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/Los_Angeles", weekday: "long",
-        month: "long", day: "numeric", year: "numeric"
-      }).format(new Date(today + "T12:00:00Z"));
-    } catch (_e) {}
+    let label;
+    if (rangeStart && rangeEnd && rangeStart === rangeEnd) {
+      label = fmtServiceDateLong(rangeStart);
+    } else if (rangeStart && rangeEnd) {
+      const days = daysBetween(rangeStart, rangeEnd) + 1;
+      label = fmtServiceDate(rangeStart) + " → " + fmtServiceDate(rangeEnd) +
+              " (" + days + " day" + (days === 1 ? "" : "s") + ")";
+    } else {
+      label = "Today";
+    }
     const activeCount = Object.keys(activeByUid).length;
     const needsReviewCount = sessions.filter(needsReviewFlag).length;
     // Visible build tag (last segment) confirms which JS is rendering.
@@ -279,6 +475,84 @@
       (sessions.length === 1 ? "" : "s") +
       " · " + activeCount + " open · " + needsReviewCount + " needs review" +
       " · " + LABOR_BUILD_TAG;
+  }
+
+  // Phase 2A.3 — sync the date inputs + quick-filter button highlight to
+  // current range state. Called each render so the controls match the
+  // data shown below. Defensive on missing DOM (admin.html may not have
+  // shipped the controls in older deploys).
+  function renderRangeControlsState() {
+    const startEl = $("labor-range-start");
+    const endEl   = $("labor-range-end");
+    if (startEl && rangeStart) startEl.value = rangeStart;
+    if (endEl   && rangeEnd)   endEl.value   = rangeEnd;
+
+    document.querySelectorAll("[data-labor-quick]").forEach(function (b) {
+      const key = b.getAttribute("data-labor-quick");
+      const active = (key === currentQuickFilter);
+      b.classList.toggle("is-active", active);
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    // Range error banner — cleared by default; set when validate fails.
+    const errEl = $("labor-range-err");
+    if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+  }
+
+  function renderTotals() {
+    const wrap = $("labor-totals");
+    if (!wrap) return;
+    const t = totalsCache || computeTotals(sessions);
+    const ex = t.exceptions || { overBudget: 0, offsite: 0, adminRemoved: 0, forceClosed: 0 };
+    const exTotal = ex.overBudget + ex.offsite + ex.adminRemoved + ex.forceClosed;
+    function tile(label, value, sub) {
+      return '<div class="labor-tile">' +
+               '<div class="labor-tile-label">' + escapeHtml(label) + '</div>' +
+               '<div class="labor-tile-value">' + escapeHtml(value) + '</div>' +
+               (sub ? '<div class="labor-tile-sub">' + sub + '</div>' : '') +
+             '</div>';
+    }
+    const exSubLines =
+      '<span title="work_minutes > budget + 15">OB ' + ex.overBudget + '</span> · ' +
+      '<span title="clock_in or clock_out offsite">OS ' + ex.offsite + '</span> · ' +
+      '<span title="admin_removed = true">AR ' + ex.adminRemoved + '</span> · ' +
+      '<span title="force_closed_by_admin">FC ' + ex.forceClosed + '</span>';
+    wrap.innerHTML =
+      tile("Sessions",     String(sessions.length), null) +
+      tile("Worked",       fmtMinutes(t.totalWorked),  null) +
+      tile("Running",      fmtMinutes(t.totalRunning), t.totalRunning > 0 ? '<span class="labor-tile-running-dot" aria-hidden="true">●</span> live' : null) +
+      tile("Needs review", String(t.needsReview),   null) +
+      tile("DCR pending",  String(t.dcrPending),    null) +
+      tile("Exceptions",   String(exTotal),         exSubLines);
+  }
+
+  function renderByEmployee() {
+    const wrap = $("labor-by-employee-list");
+    const empty = $("labor-by-employee-empty");
+    if (!wrap || !empty) return;
+    const rows = byEmployeeCache || groupByEmployee(sessions);
+    if (!rows.length) { wrap.innerHTML = ""; empty.hidden = false; return; }
+    empty.hidden = true;
+    wrap.innerHTML = rows.map(function (r) {
+      const totalMin = r.worked_minutes + r.running_minutes;
+      const runningChip = r.running_minutes > 0
+        ? ' <span class="labor-be-running">+ running ' + escapeHtml(fmtMinutes(r.running_minutes)) + '</span>'
+        : '';
+      const flags = [];
+      if (r.needs_review > 0) flags.push('<span class="labor-be-flag is-review">' + r.needs_review + ' needs review</span>');
+      if (r.dcr_pending  > 0) flags.push('<span class="labor-be-flag is-dcr">' + r.dcr_pending + ' DCR pending</span>');
+      return (
+        '<div class="labor-be-row">' +
+          '<div class="labor-be-name">' + escapeHtml(r.name) + '</div>' +
+          '<div class="labor-be-count">' + r.sessions_count + ' session' +
+            (r.sessions_count === 1 ? "" : "s") + '</div>' +
+          '<div class="labor-be-time">' +
+            escapeHtml(fmtMinutes(r.worked_minutes)) + ' worked' + runningChip +
+          '</div>' +
+          '<div class="labor-be-flags">' + flags.join(" ") + '</div>' +
+        '</div>'
+      );
+    }).join("");
   }
 
   function renderActive() {
@@ -370,6 +644,7 @@
     empty.hidden = true;
     const headerHtml =
       '<div class="labor-row labor-row-head">' +
+        '<div class="lr-col-date">Date</div>' +
         '<div class="lr-col-emp">Employee</div>' +
         '<div class="lr-col-cust">Customer</div>' +
         '<div class="lr-col-status">Status</div>' +
@@ -451,6 +726,7 @@
         '<div class="labor-row" data-session-id="' + escapeHtml(s._id) + '"' +
             ' data-assignment-id="' + escapeHtml(s.assignment_id || "") + '"' +
             ' data-summary="' + escapeHtml(summary) + '">' +
+          '<div class="lr-col-date">' + escapeHtml(fmtServiceDate(s.service_date)) + '</div>' +
           '<div class="lr-col-emp">' + escapeHtml(techName(s.staff_email, s.staff_uid)) + '</div>' +
           '<div class="lr-col-cust">' + escapeHtml(customerLabel(s, assignment)) + '</div>' +
           '<div class="lr-col-status">' + sessionStatusDisplay(s) + '</div>' +
@@ -784,6 +1060,49 @@
     // Remove modal save (Phase 2A.2).
     const rmSaveBtn = $("labor-rm-save");
     if (rmSaveBtn) rmSaveBtn.addEventListener("click", function () { submitRemove(); });
+
+    // Phase 2A.3 — Range controls.
+    document.querySelectorAll("[data-labor-quick]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        const key = b.getAttribute("data-labor-quick");
+        if (!key) return;
+        const today = pacificDateString(new Date());
+        const r = getQuickFilterRange(key, today);
+        rangeStart = r.start_date;
+        rangeEnd   = r.end_date;
+        currentQuickFilter = key;
+        const startEl = $("labor-range-start"); if (startEl) startEl.value = rangeStart;
+        const endEl   = $("labor-range-end");   if (endEl)   endEl.value   = rangeEnd;
+        refresh();
+      });
+    });
+    const applyBtn = $("labor-range-apply");
+    if (applyBtn) applyBtn.addEventListener("click", function () {
+      const startEl = $("labor-range-start");
+      const endEl   = $("labor-range-end");
+      const start = (startEl && startEl.value) || "";
+      const end   = (endEl && endEl.value) || "";
+      const err = validateRange(start, end);
+      const errEl = $("labor-range-err");
+      if (err) {
+        if (errEl) { errEl.textContent = err; errEl.hidden = false; }
+        return;
+      }
+      if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+      rangeStart = start;
+      rangeEnd   = end;
+      // If the typed range happens to match a known quick filter, light
+      // it up; otherwise mark as "custom" so no button is highlighted.
+      const today = pacificDateString(new Date());
+      const candidates = ["today", "yesterday", "last_7", "last_30", "pay_period"];
+      let matched = null;
+      for (let i = 0; i < candidates.length; i++) {
+        const cand = getQuickFilterRange(candidates[i], today);
+        if (cand.start_date === start && cand.end_date === end) { matched = candidates[i]; break; }
+      }
+      currentQuickFilter = matched || "custom";
+      refresh();
+    });
   }
 
   /* ---------- export surface ---------- */

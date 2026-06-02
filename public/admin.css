@@ -6337,16 +6337,17 @@
 .labor-row {
   display: grid;
   grid-template-columns:
-    minmax(110px, 1.1fr)  /* employee  */
-    minmax(160px, 2fr)    /* customer  */
-    minmax(110px, 1fr)    /* status    */
-    minmax(60px,  0.6fr)  /* in        */
-    minmax(60px,  0.6fr)  /* out       */
-    minmax(70px,  0.7fr)  /* worked    */
-    minmax(70px,  0.7fr)  /* budget    */
-    minmax(140px, 1.2fr)  /* geo       */
-    minmax(80px,  0.8fr)  /* dcr       */
-    minmax(90px,  0.9fr); /* action    */
+    minmax(70px,  0.7fr)   /* date     (Phase 2A.3) */
+    minmax(110px, 1.1fr)   /* employee */
+    minmax(160px, 2fr)     /* customer */
+    minmax(110px, 1fr)     /* status   */
+    minmax(60px,  0.6fr)   /* in       */
+    minmax(60px,  0.6fr)   /* out      */
+    minmax(80px,  0.8fr)   /* worked   */
+    minmax(70px,  0.7fr)   /* budget   */
+    minmax(140px, 1.2fr)   /* geo      */
+    minmax(80px,  0.8fr)   /* dcr      */
+    minmax(160px, 1.4fr);  /* actions  */
   gap: 8px;
   padding: 10px 12px;
   align-items: center;
@@ -6354,6 +6355,7 @@
   font-size: 13px;
   color: #1e293b;
 }
+.labor-row .lr-col-date { color: #475569; font-variant-numeric: tabular-nums; }
 .labor-row:last-child { border-bottom: 0; }
 .labor-row-head {
   background: #f8fafc;
@@ -6463,9 +6465,160 @@
     row-gap: 4px;
   }
   .labor-row-head { display: none; }
+  .labor-row .lr-col-date { grid-column: 1 / -1; font-weight: 600; color: #0f172a; }
   .labor-row .lr-col-cust { grid-column: 1 / -1; color: #64748b; font-size: 12.5px; }
   .labor-row .lr-col-geo  { grid-column: 1 / -1; }
   .labor-row .lr-col-act  { grid-column: 1 / -1; text-align: left; }
+}
+
+/* ==========================================================================
+   Phase 2A.3 — date range controls, totals strip, by-employee list
+   ========================================================================== */
+
+.labor-range-row {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.labor-range-inputs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.labor-range-inputs label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.labor-range-inputs input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.labor-range-apply {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f6dd6;
+  background: #2f6dd6;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.labor-range-apply:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.labor-range-apply:active { transform: translateY(1px); }
+
+.labor-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.labor-quick-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.labor-quick-btn:hover { background: #f1f5f9; }
+.labor-quick-btn.is-active {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: #fff;
+}
+.labor-range-err {
+  padding: 8px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.labor-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.labor-tile {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.labor-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.labor-tile-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.labor-tile-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.labor-tile-sub span[title] {
+  text-decoration: dotted underline;
+}
+.labor-tile-running-dot { color: #16a34a; margin-right: 4px; }
+
+.labor-by-employee {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.labor-be-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(100px, 0.9fr) minmax(180px, 1.5fr) minmax(160px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.labor-be-row:last-child { border-bottom: 0; }
+.labor-be-name  { font-weight: 700; color: #0f172a; }
+.labor-be-count { color: #64748b; font-variant-numeric: tabular-nums; }
+.labor-be-time  { color: #1e293b; font-variant-numeric: tabular-nums; }
+.labor-be-running {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ccfbf1;
+  color: #115e59;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.labor-be-flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.labor-be-flag.is-review { background: #fee2e2; color: #991b1b; }
+.labor-be-flag.is-dcr    { background: #fef3c7; color: #78350f; }
+
+@media (max-width: 700px) {
+  .labor-be-row { grid-template-columns: 1fr; row-gap: 4px; }
 }
 
 /* ==========================================================================
