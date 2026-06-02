@@ -5733,59 +5733,22 @@ exports.exportPayrollCsvV1 = onRequest({
       "=== TOTALS ===\n" +
       summaryRows.join("\n") + "\n";
 
-    // ----- Upload CSV to Cloud Storage with embedded download token -----
-    // Phase 28D revision (v2) — fixed customMetadata persistence. The
-    // prior structure (top-level contentType + metadata.cacheControl +
-    // metadata.metadata.firebaseStorageDownloadTokens) caused the
-    // custom-metadata sub-object to be dropped on @google-cloud/storage
-    // file.save(), so the firebasestorage.googleapis.com download
-    // endpoint had no token to validate against (503).
-    //
-    // Per QA-confirmed working pattern: contentType lives INSIDE the
-    // metadata object, the customMetadata nest holds the token, and no
-    // competing fields are passed.
+    // ----- Upload CSV to Cloud Storage -----
+    // Phase 28D revision (v3) — Storage token URLs abandoned after two
+    // metadata-persistence attempts couldn't be made reliable in the
+    // function runtime. The download path is now an authenticated
+    // streaming endpoint (downloadPayrollExportCsvV1) that verifies the
+    // admin ID token and streams the CSV server-side. The Storage
+    // object stays plain — no customMetadata token, no public URL.
     const storagePath = "payroll_exports/" + exportId + "/payroll-" +
                         rangeStart + "-to-" + rangeEnd + ".csv";
     const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
     const file   = bucket.file(storagePath);
-    const downloadToken = crypto.randomUUID();
     await file.save(Buffer.from(csv, "utf8"), {
-      metadata: {
-        contentType: "text/csv; charset=utf-8",
-        metadata: {
-          firebaseStorageDownloadTokens: downloadToken
-        }
-      }
+      metadata: { contentType: "text/csv; charset=utf-8" }
     });
-
-    // Verify customMetadata persisted. If the token didn't land on the
-    // object, the download URL won't resolve — log a warning + still
-    // proceed (admin can void + re-export). This makes future regressions
-    // visible in function logs without breaking the flow.
-    try {
-      const [meta] = await file.getMetadata();
-      const persisted = meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens;
-      if (persisted !== downloadToken) {
-        logger.warn("exportPayrollCsvV1 download token did NOT persist on object metadata", {
-          export_id:     exportId,
-          object_path:   storagePath,
-          token_in_url:  downloadToken,
-          token_on_obj:  persisted || "(absent)",
-          metadata_seen: meta && meta.metadata ? Object.keys(meta.metadata) : "(no metadata)"
-        });
-      } else {
-        logger.info("exportPayrollCsvV1 download token verified on object", {
-          export_id: exportId, object_path: storagePath
-        });
-      }
-    } catch (err) {
-      logger.warn("exportPayrollCsvV1 metadata readback failed (non-fatal)", { error: err && err.message });
-    }
-
-    const downloadUrl = "https://firebasestorage.googleapis.com/v0/b/" +
-                        PAYROLL_EXPORT_BUCKET + "/o/" +
-                        encodeURIComponent(storagePath) +
-                        "?alt=media&token=" + downloadToken;
+    const downloadUrl = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/" +
+                        "downloadPayrollExportCsvV1?export_id=" + encodeURIComponent(exportId);
 
     // ----- Atomic batch: payroll_exports doc + per-session updates -----
     const sts = admin.firestore.FieldValue.serverTimestamp();
@@ -5972,6 +5935,103 @@ exports.voidPayrollExportV1 = onRequest({
   } catch (err) {
     logger.error("voidPayrollExportV1 failed", { error: err && err.message });
     res.status(500).json({ ok: false, error: (err && err.message) || "Void failed" });
+  }
+});
+
+/* --------------- downloadPayrollExportCsvV1 ---------------
+ *
+ * Authenticated streaming download of a payroll export's CSV. Replaces
+ * the Firebase Storage signed-URL / token-URL approaches that failed
+ * in this runtime. Admin gates exactly the same as the other 28D
+ * functions; downloads both active and voided exports (voided CSVs are
+ * the audit artifact and must remain accessible).
+ *
+ * The CSV is buffered via file.download() rather than piped via a
+ * read stream because Express on Cloud Functions Gen 2 doesn't always
+ * forward stream backpressure cleanly; a typical payroll CSV is a few
+ * MB so the buffer fits comfortably under the function memory cap.
+ */
+exports.downloadPayrollExportCsvV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.set("Access-Control-Expose-Headers", "Content-Disposition, Content-Type");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("downloadPayrollExportCsvV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const exportId = String(
+    (req.query && req.query.export_id) || (req.body && req.body.export_id) || ""
+  ).trim();
+  if (!exportId) {
+    res.status(400).json({ ok: false, error: "export_id is required." });
+    return;
+  }
+
+  try {
+    const db = admin.firestore();
+    const snap = await db.collection("payroll_exports").doc(exportId).get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, error: "Export not found." });
+      return;
+    }
+    const data = snap.data() || {};
+    if (data.status !== "active" && data.status !== "voided") {
+      res.status(409).json({ ok: false, error: "Export status is " + data.status });
+      return;
+    }
+    if (!data.storage_path) {
+      res.status(500).json({ ok: false, error: "Export has no storage_path." });
+      return;
+    }
+
+    const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
+    const file   = bucket.file(data.storage_path);
+    const [exists] = await file.exists();
+    if (!exists) {
+      logger.warn("downloadPayrollExportCsvV1 storage file missing", {
+        export_id: exportId, storage_path: data.storage_path
+      });
+      res.status(404).json({ ok: false, error: "CSV file is no longer in Storage." });
+      return;
+    }
+
+    const [buffer] = await file.download();
+    const filename = "payroll-" + (data.range_start || "unknown") +
+                     "-to-" + (data.range_end || "unknown") + ".csv";
+
+    logger.info("downloadPayrollExportCsvV1 served", {
+      caller:       staff.email,
+      export_id:    exportId,
+      storage_path: data.storage_path,
+      bytes:        buffer.length,
+      status:       data.status
+    });
+
+    res.set("Content-Type",        "text/csv; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="' + filename + '"');
+    res.set("Cache-Control",       "no-store");
+    res.status(200).send(buffer);
+  } catch (err) {
+    logger.error("downloadPayrollExportCsvV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Download failed" });
   }
 });
 

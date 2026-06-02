@@ -450,7 +450,7 @@
               'title="Generate CSV and lock these sessions as exported">' +
               'Export approved sessions →' +
             '</button>' +
-            '<span class="payroll-export-note">Admin CSV download link · audit trail in payroll_exports.</span>' +
+            '<span class="payroll-export-note">Server-side admin-auth download · audit trail in payroll_exports.</span>' +
           '</div>' +
         '</div>';
     } else if (totalBlockers > 0) {
@@ -614,13 +614,15 @@
             (e.void_reason ? ' — ' + escapeHtml(e.void_reason) : '') +
           '</p>'
         : '';
-      // Phase 28D revision — prefer download_url (Firebase Storage
-      // token-based) over signed_url (legacy field). Either is fine.
-      const dlHref = e.download_url || e.signed_url;
-      const downloadBtn = dlHref
-        ? '<a class="payroll-export-download" href="' + escapeHtml(dlHref) +
-          '" target="_blank" rel="noopener noreferrer">Download CSV ↗</a>'
-        : '<span class="payroll-export-no-url">No download URL</span>';
+      // Phase 28D revision (v3) — Download CSV goes through the
+      // authenticated streaming endpoint. Render as a <button> with a
+      // data attribute carrying the export_id; the wire-up handler
+      // calls downloadCsvViaAuthenticatedFetch() with the user's
+      // current ID token.
+      const downloadBtn = e.storage_path
+        ? '<button type="button" class="payroll-export-download" ' +
+          'data-payroll-download-id="' + escapeHtml(e._id) + '">Download CSV ↗</button>'
+        : '<span class="payroll-export-no-url">No CSV in Storage</span>';
       const voidBtn = !isVoided
         ? '<button type="button" class="payroll-export-void-btn" ' +
           'data-payroll-void-id="' + escapeHtml(e._id) +
@@ -662,6 +664,49 @@
         hour: "numeric", minute: "2-digit"
       }).format(new Date(ms));
     } catch (_e) { return "—"; }
+  }
+
+  /* ---------- Phase 28D — authenticated download ----------
+   *
+   * The download endpoint requires a Firebase ID token in the
+   * Authorization header. Browsers can't attach that to a plain
+   * <a href> click, so we fetch the URL with the bearer token, get
+   * the response body as a Blob, and trigger the download client-side
+   * via a synthetic anchor + URL.createObjectURL. Filename is parsed
+   * from the Content-Disposition header so the function stays the
+   * source of truth for naming.
+   */
+  async function downloadCsvViaAuthenticatedFetch(exportId, fallbackFilename) {
+    const base = (window.DOWNLOAD_PAYROLL_EXPORT_CSV_URL || "").trim();
+    if (!base) throw new Error("DOWNLOAD_PAYROLL_EXPORT_CSV_URL not configured.");
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const url = base + "?export_id=" + encodeURIComponent(exportId);
+    const res = await fetch(url, {
+      method:  "GET",
+      headers: { "Authorization": "Bearer " + idToken }
+    });
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json()).error || ""; } catch (_e) {
+        try { detail = await res.text(); } catch (__e) {}
+      }
+      throw new Error("HTTP " + res.status + (detail ? ": " + detail : ""));
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = cd.match(/filename="([^"]+)"/);
+    const filename = (m && m[1]) || fallbackFilename || "payroll-export.csv";
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000);
   }
 
   /* ---------- Phase 28D — export + void writers ---------- */
@@ -761,8 +806,15 @@
       const successBlock = $("payroll-export-success");
       if (successBlock) successBlock.hidden = false;
       const dl = $("payroll-export-success-dl");
-      // Phase 28D revision — prefer download_url (token-based).
-      if (dl) { dl.href = result.download_url || result.signed_url; dl.hidden = false; }
+      // Phase 28D revision (v3) — success-modal download triggers an
+      // authenticated fetch + blob save. The success-anchor is repurposed
+      // as a button (still styled as a link); attach the export_id so the
+      // global delegated handler routes to downloadCsvViaAuthenticatedFetch.
+      if (dl) {
+        dl.removeAttribute("href");
+        dl.setAttribute("data-payroll-download-id", result.export_id);
+        dl.hidden = false;
+      }
       const sumLine = $("payroll-export-success-summary");
       if (sumLine && result.summary) {
         sumLine.textContent =
@@ -920,6 +972,25 @@
         ev.preventDefault();
         openVoidModal(voidBtn.getAttribute("data-payroll-void-id"),
                       voidBtn.getAttribute("data-payroll-void-label"));
+        return;
+      }
+      // Phase 28D v3 — authenticated download.
+      const dlBtn = ev.target.closest && ev.target.closest("[data-payroll-download-id]");
+      if (dlBtn) {
+        ev.preventDefault();
+        const exportId = dlBtn.getAttribute("data-payroll-download-id");
+        const original = dlBtn.textContent;
+        dlBtn.disabled = true;
+        dlBtn.textContent = "Downloading…";
+        downloadCsvViaAuthenticatedFetch(exportId)
+          .catch(function (err) {
+            console.error("[payroll] download failed", err);
+            alert("Download failed: " + ((err && err.message) || "unknown"));
+          })
+          .finally(function () {
+            dlBtn.disabled = false;
+            dlBtn.textContent = original;
+          });
         return;
       }
     });

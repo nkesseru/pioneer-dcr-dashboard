@@ -3190,8 +3190,9 @@
           <p class="field-hint" style="margin-top:10px; line-height:1.5;">
             This will mark every approved session in the selected period as
             <code>exported</code> and lock the workweek(s) so the overtime
-            engine cannot re-allocate them. An <strong>Admin CSV download link</strong>
-            is returned. The <code>payroll_exports</code> doc + the CSV
+            engine cannot re-allocate them. The CSV downloads through an
+            <strong>admin-only Cloud Function</strong> (server-side auth
+            verification). The <code>payroll_exports</code> doc + the CSV
             file persist as the audit trail. <strong>Use Void this export
             to roll back</strong> — exported sessions cannot be modified
             until then.
@@ -3204,15 +3205,15 @@
           </p>
           <p class="field-hint" id="payroll-export-success-summary">—</p>
           <p style="margin-top:12px;">
-            <a id="payroll-export-success-dl" class="payroll-export-download"
-               href="#" target="_blank" rel="noopener noreferrer" hidden>
+            <button type="button" id="payroll-export-success-dl"
+                    class="payroll-export-download" hidden>
               Download CSV ↗
-            </a>
+            </button>
           </p>
           <p class="field-hint" style="margin-top:8px;">
-            <strong>Admin CSV download link.</strong> Do not share outside the
-            office — the link is the credential. Re-download anytime from
-            the Recent Exports list below.
+            Download streams through an <strong>admin-only Cloud Function</strong>
+            (auth checked server-side). The CSV file persists in Storage as the
+            audit artifact; re-download anytime from Recent Exports below.
           </p>
         </div>
       </div>
@@ -3450,10 +3451,10 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase28d-token"></script>
-  <script src="admin/tab-payroll.js?v=20260602-phase28d-token"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase28d-auth-download"></script>
+  <script src="admin/tab-payroll.js?v=20260602-phase28d-auth-download"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase28d-token"></script>
+  <script src="admin.js?v=20260602-phase28d-auth-download"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>
