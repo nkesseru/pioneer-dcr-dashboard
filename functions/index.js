@@ -2568,24 +2568,35 @@ exports.techHubViewV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (re
         const fobCodes             = cleanStringArray(s.fobCodes);   // future bucket; empty today
         const keyNotes             = cleanStringArray(s.keyFobNotes); // seed bucket name
         const securityInstructions = cleanStringArray(s.secureInstructions);
+        // Phase 1g additions — admin-editable buckets, tech-visible. The
+        // admin-only buckets (emergencyContacts, alarmCompanyNotes,
+        // rawDeputyNotes) are EXPLICITLY NOT forwarded.
+        const lockboxCodes         = cleanStringArray(s.lockboxCodes);
+        const disarmInstructions   = cleanStringArray(s.disarmInstructions);
+        const armInstructions      = cleanStringArray(s.armInstructions);
         const hasInfo = !!(
           alarmCodes.length || doorCodes.length || gateCodes.length ||
-          fobCodes.length || keyNotes.length || securityInstructions.length
+          fobCodes.length || keyNotes.length || securityInstructions.length ||
+          lockboxCodes.length || disarmInstructions.length || armInstructions.length
         );
         customer.securityInfo = {
           hasInfo:              hasInfo,
           alarmCodes:           alarmCodes,
+          disarmInstructions:   disarmInstructions,
           doorCodes:            doorCodes,
           gateCodes:            gateCodes,
+          lockboxCodes:         lockboxCodes,
           fobCodes:             fobCodes,
           keyNotes:             keyNotes,
+          armInstructions:      armInstructions,
           securityInstructions: securityInstructions
         };
       } else {
         customer.securityInfo = {
           hasInfo: false,
-          alarmCodes: [], doorCodes: [], gateCodes: [],
-          fobCodes: [], keyNotes: [], securityInstructions: []
+          alarmCodes: [], disarmInstructions: [], doorCodes: [], gateCodes: [],
+          lockboxCodes: [], fobCodes: [], keyNotes: [], armInstructions: [],
+          securityInstructions: []
         };
       }
     }

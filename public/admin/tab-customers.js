@@ -295,36 +295,201 @@
 
   async function populateCustomerSopBlock(c) {
     const publicBody = $("cust-edit-sop-body");
-    const secureBody = $("cust-edit-secure-body");
-    if (!c || !window.CustomerSop) {
-      if (publicBody) publicBody.innerHTML = '<div class="sop-empty">customer-sop.js not loaded.</div>';
-      if (secureBody) secureBody.innerHTML = '<div class="sop-empty">customer-sop.js not loaded.</div>';
+    if (!c) return;
+    if (publicBody && window.CustomerSop && typeof window.CustomerSop.renderPublic === "function") {
+      window.CustomerSop.renderPublic(publicBody, c);
+    } else if (publicBody) {
+      publicBody.innerHTML = '<div class="sop-empty">customer-sop.js not loaded.</div>';
+    }
+    // Phase 1g — Access & Security editor + Standing Notes summary
+    // replace the prior renderSecure(secureBody) read-only display.
+    const slug = getCustomerSlug(c);
+    populateAccessSecurityEditor(slug);
+    populateStandingNotesSummary(slug);
+  }
+
+  /* ---- Phase 1g: Access & Security Info editor ----
+   *
+   * Reads customer_secure/{slug} once when the modal opens and hydrates
+   * the 10 textareas (8 tech-visible + 2 admin-only) + read-only raw
+   * Deputy notes block + last-edited stamp. Stashes the original snapshot
+   * on the modal element so the save handler can no-op when nothing
+   * changed (preserving the "empty-everything → don't create empty doc"
+   * invariant from Phase 1g requirements).
+   *
+   * NEVER logs the textarea values. NEVER persists them anywhere except
+   * customer_secure/{slug}. Codes are kept out of console / event streams.
+   */
+  const SECURE_FIELD_IDS = {
+    // Tech-visible
+    alarmCodes:          "cust-edit-alarm-codes",
+    disarmInstructions:  "cust-edit-disarm-instructions",
+    doorCodes:           "cust-edit-door-codes",
+    gateCodes:           "cust-edit-gate-codes",
+    lockboxCodes:        "cust-edit-lockbox-codes",
+    keyFobNotes:         "cust-edit-key-fob-notes",
+    armInstructions:     "cust-edit-arm-instructions",
+    secureInstructions:  "cust-edit-secure-instructions",
+    // Admin-only
+    emergencyContacts:   "cust-edit-emergency-contacts",
+    alarmCompanyNotes:   "cust-edit-alarm-company-notes"
+  };
+  const SECURE_TECH_VISIBLE_KEYS = [
+    "alarmCodes", "disarmInstructions", "doorCodes", "gateCodes",
+    "lockboxCodes", "keyFobNotes", "armInstructions", "secureInstructions"
+  ];
+  const SECURE_ADMIN_ONLY_KEYS = ["emergencyContacts", "alarmCompanyNotes"];
+
+  function joinLines(arr) {
+    if (!Array.isArray(arr)) return "";
+    return arr
+      .map(function (s) { return String(s == null ? "" : s); })
+      .filter(function (s) { return s.length > 0; })
+      .join("\n");
+  }
+  function splitLines(text) {
+    return String(text || "")
+      .split(/\r?\n/)
+      .map(function (l) { return l.trim(); })
+      .filter(function (l) { return l.length > 0; });
+  }
+  function tsToMillisSecure(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts === "number") return ts;
+    return 0;
+  }
+  function fmtSecureDate(ts) {
+    const ms = tsToMillisSecure(ts);
+    if (!ms) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      }).format(new Date(ms));
+    } catch (_e) { return ""; }
+  }
+
+  async function populateAccessSecurityEditor(slug) {
+    const modal = $("customer-edit-modal");
+    if (!modal) return;
+    // Reset everything first so a previous customer's data doesn't ghost in.
+    Object.keys(SECURE_FIELD_IDS).forEach(function (k) {
+      const el = $(SECURE_FIELD_IDS[k]);
+      if (el) el.value = "";
+    });
+    const rawEl = $("cust-edit-raw-deputy-notes");
+    if (rawEl) rawEl.textContent = "—";
+    const stampEl = $("cust-edit-secure-last-edited");
+    if (stampEl) stampEl.textContent = "Loading…";
+    delete modal.dataset.secureExisted;
+    delete modal.dataset.secureSlug;
+
+    if (!slug) {
+      if (stampEl) stampEl.textContent = "No customer slug — open this customer from the list to edit.";
       return;
     }
-    if (publicBody && typeof window.CustomerSop.renderPublic === "function") {
-      window.CustomerSop.renderPublic(publicBody, c);
-    }
-    if (!secureBody) return;
-    secureBody.innerHTML = '<div class="sop-empty">Loading secure ops…</div>';
+    modal.dataset.secureSlug = slug;
     try {
-      const slug = getCustomerSlug(c);
       const snap = await firebase.firestore().collection("customer_secure").doc(slug).get();
       if (snap.exists) {
-        window.CustomerSop.renderSecure(secureBody, snap.data() || {});
+        modal.dataset.secureExisted = "true";
+        const data = snap.data() || {};
+        Object.keys(SECURE_FIELD_IDS).forEach(function (k) {
+          const el = $(SECURE_FIELD_IDS[k]);
+          if (el) el.value = joinLines(data[k]);
+        });
+        if (rawEl) rawEl.textContent = data.rawDeputyNotes
+          ? String(data.rawDeputyNotes)
+          : "—";
+        const editedAt = data.lastEditedAt || data.sourceUpdatedAt || data.parsedAt;
+        const editedBy = data.lastEditedBy ||
+          (data.parserVersion ? "Deputy import (" + data.parserVersion + ")" : "Deputy import");
+        const when = fmtSecureDate(editedAt);
+        if (stampEl) {
+          stampEl.textContent = when
+            ? ("Last edited " + when + " by " + editedBy)
+            : "No Access & Security edits recorded yet.";
+        }
       } else {
-        secureBody.innerHTML =
-          '<div class="sop-empty">No secure ops doc on file for this customer. ' +
-          (c.hasSecureSop
-            ? 'Customer doc has <code>hasSecureSop: true</code> but the secure doc is missing — re-run the seed parser to repair.'
-            : 'No codes / contacts / raw Deputy notes detected during import.') +
-          '</div>';
+        modal.dataset.secureExisted = "false";
+        if (stampEl) stampEl.textContent = "No Access & Security info on file yet.";
       }
     } catch (err) {
-      console.warn("[admin] customer_secure read failed", err && err.code);
-      secureBody.innerHTML =
-        '<div class="sop-empty">Couldn\'t load secure ops: ' +
-        escapeHtml(err && err.message || "unknown") +
-        '. Confirm you\'re signed in as an admin and firestore.rules has the /customer_secure block deployed.</div>';
+      // Don't echo error details into the DOM with raw user-controlled
+      // strings; this view stays admin-only anyway, but keep it minimal.
+      if (stampEl) stampEl.textContent =
+        "Couldn't load Access & Security: " + (err && err.code || err && err.message || "unknown");
+    }
+  }
+
+  function readAccessSecurityFromForm() {
+    const out = {};
+    Object.keys(SECURE_FIELD_IDS).forEach(function (k) {
+      const el = $(SECURE_FIELD_IDS[k]);
+      out[k] = splitLines(el && el.value);
+    });
+    return out;
+  }
+  function accessSecurityIsEmpty(values) {
+    const all = SECURE_TECH_VISIBLE_KEYS.concat(SECURE_ADMIN_ONLY_KEYS);
+    for (let i = 0; i < all.length; i++) {
+      if (Array.isArray(values[all[i]]) && values[all[i]].length > 0) return false;
+    }
+    return true;
+  }
+  function computeHasSecureSop(values, rawDeputyNotes) {
+    const all = SECURE_TECH_VISIBLE_KEYS.concat(SECURE_ADMIN_ONLY_KEYS);
+    for (let i = 0; i < all.length; i++) {
+      if (Array.isArray(values[all[i]]) && values[all[i]].length > 0) return true;
+    }
+    if (rawDeputyNotes && String(rawDeputyNotes).trim().length > 0) return true;
+    return false;
+  }
+
+  /* ---- Phase 1g: Standing Cleaning Notes read-only summary ---- */
+
+  async function populateStandingNotesSummary(slug) {
+    const root = $("cust-edit-standing-notes-body");
+    if (!root) return;
+    root.textContent = "Loading…";
+    if (!slug) { root.textContent = "—"; return; }
+    try {
+      const snap = await firebase.firestore().collection("customer_notes")
+        .where("customer_slug", "==", slug)
+        .limit(20)
+        .get();
+      const notes = snap.docs
+        .map(function (d) { return Object.assign({ id: d.id }, d.data() || {}); })
+        .filter(function (n) { return n.active !== false; });
+      if (!notes.length) {
+        root.innerHTML =
+          '<p class="standing-notes-empty">No standing notes for this customer yet. ' +
+          'Add one in the <strong>Customer Notes</strong> tab.</p>';
+        return;
+      }
+      notes.sort(function (a, b) {
+        return tsToMillisSecure(b.updated_at) - tsToMillisSecure(a.updated_at);
+      });
+      const top = notes.slice(0, 5);
+      const more = notes.length - top.length;
+      root.innerHTML =
+        '<ul class="standing-notes-summary-list">' +
+        top.map(function (n) {
+          const title = escapeHtml(n.title || "(untitled)");
+          const cat   = escapeHtml(n.category || "Other");
+          return '<li><span class="standing-notes-cat">' + cat + '</span> ' +
+                 '<strong>' + title + '</strong></li>';
+        }).join("") +
+        '</ul>' +
+        (more > 0
+          ? '<p class="standing-notes-more">+ ' + more + ' more in Customer Notes tab</p>'
+          : '');
+    } catch (err) {
+      root.textContent = "Couldn't load standing notes: " +
+        ((err && err.code) || (err && err.message) || "unknown");
     }
   }
 
@@ -506,17 +671,78 @@
       updated_by:        getCurrentAdminEmail()
     };
 
+    // Phase 1g — read the Access & Security textareas + decide what to
+    // commit. Three branches:
+    //   (a) doc didn't exist AND everything blank → skip customer_secure
+    //       write entirely (no empty doc created); hasSecureSop stays
+    //       whatever it was on the public doc (likely false).
+    //   (b) doc existed AND everything cleared → write empty arrays to
+    //       customer_secure (merge:true) so a Firestore-Console reader
+    //       sees the explicit clear; hasSecureSop recomputed from the
+    //       saved arrays (false if no field has content AND no raw
+    //       Deputy notes remain on the existing doc).
+    //   (c) anything non-empty → write the arrays + stamp last-edited
+    //       fields; hasSecureSop true if anything has content.
+    const modal = $("customer-edit-modal");
+    const secureExisted = (modal && modal.dataset.secureExisted === "true");
+    const secureSlug = (modal && modal.dataset.secureSlug) || id;
+    const secureValues = readAccessSecurityFromForm();
+    const allBlank = accessSecurityIsEmpty(secureValues);
+    const writeSecureDoc = secureExisted || !allBlank;
+
+    // For hasSecureSop, also consider the rawDeputyNotes that may exist
+    // on the secure doc today (admin can't edit it from this UI; preserve
+    // its contribution to hasSecureSop when present).
+    let secureRawNotes = "";
+    if (writeSecureDoc) {
+      try {
+        const existingSnap = await firebase.firestore()
+          .collection("customer_secure").doc(secureSlug).get();
+        if (existingSnap.exists) {
+          const existingData = existingSnap.data() || {};
+          secureRawNotes = String(existingData.rawDeputyNotes || "");
+        }
+      } catch (_e) { /* swallow — fall through with empty raw notes */ }
+    }
+    const hasSecureSop = writeSecureDoc
+      ? computeHasSecureSop(secureValues, secureRawNotes)
+      : !!(customers[idx] && customers[idx].hasSecureSop);
+
+    // Augment the public doc update with the hasSecureSop flag whenever
+    // we're touching customer_secure so the public flag stays in sync.
+    if (writeSecureDoc) {
+      updates.hasSecureSop = hasSecureSop;
+    }
+
     setModalSaving("customer-edit-modal", true);
     setModalError("customer-edit-modal", "");
     try {
-      await firebase.firestore().collection("customers").doc(id).update(updates);
+      const db = firebase.firestore();
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      const batch = db.batch();
+      const custRef = db.collection("customers").doc(id);
+      batch.update(custRef, updates);
+
+      if (writeSecureDoc) {
+        const securePayload = Object.assign({}, secureValues, {
+          lastEditedAt:    sts,
+          lastEditedBy:    getCurrentAdminEmail(),
+          lastEditedVia:   "admin_ui"
+        });
+        const secureRef = db.collection("customer_secure").doc(secureSlug);
+        batch.set(secureRef, securePayload, { merge: true });
+      }
+      await batch.commit();
+
       customers[idx] = Object.assign({}, customers[idx], updates, {
         updated_at:   new Date(),
         review_links: updates.review_links
       });
       applyCurrentCustomerFilter();
       closeModal("customer-edit-modal");
-      showToast("ok", "Customer updated.");
+      showToast("ok", writeSecureDoc
+        ? "Customer + Access & Security updated."
+        : "Customer updated.");
     } catch (err) {
       handleAdminWriteError(err, { context: "customer save", modalId: "customer-edit-modal" });
     } finally {

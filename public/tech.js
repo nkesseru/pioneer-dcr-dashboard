@@ -1014,12 +1014,18 @@
         '</section>'
       );
     }
-    // Order matters: alarm first because it's usually the timed one.
+    // Order matters: alarm first (it's the timed one). Phase 1g order:
+    // Alarm → Disarm → Door → Gate → Lockbox → Key/Fob → Arm → Security.
+    // Disarm is right after Alarm because it's the door-entry workflow;
+    // Arm sits near the bottom because it's the exit workflow.
     return (
-      block("Alarm Code",     info.alarmCodes) +
-      block("Door Code",      info.doorCodes) +
-      block("Gate Code",      info.gateCodes) +
-      block("Fob / Key Info", (info.fobCodes || []).concat(info.keyNotes || [])) +
+      block("Alarm Code",          info.alarmCodes) +
+      notesBlock("Disarm Instructions", info.disarmInstructions) +
+      block("Door Code",           info.doorCodes) +
+      block("Gate Code",           info.gateCodes) +
+      block("Lockbox Code",        info.lockboxCodes) +
+      block("Fob / Key Info",      (info.fobCodes || []).concat(info.keyNotes || [])) +
+      notesBlock("Arm Instructions",     info.armInstructions) +
       notesBlock("Security Instructions", info.securityInstructions)
     );
   }

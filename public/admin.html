@@ -1957,6 +1957,20 @@
           </dl>
         </div>
 
+        <!-- Phase 1g — Standing Cleaning Notes read-only summary. Source
+             of truth is customer_notes; managed in the Customer Notes tab.
+             This block is just an at-a-glance for admins working in
+             customer settings. Populated by populateStandingNotesSummary. -->
+        <div class="field-group" id="cust-edit-standing-notes-block">
+          <div class="field-group-title">Standing Cleaning Notes</div>
+          <p class="field-helper">
+            Tribal operational knowledge for this location (separate from
+            sensitive codes). Manage standing notes in the
+            <strong>Customer Notes</strong> tab.
+          </p>
+          <div id="cust-edit-standing-notes-body" class="standing-notes-summary">—</div>
+        </div>
+
         <div class="field-group" id="cust-edit-sop-block">
           <div class="field-group-title">Customer SOP — Public</div>
           <p class="field-helper">
@@ -1968,16 +1982,85 @@
           <div id="cust-edit-sop-body"></div>
         </div>
 
-        <div class="field-group" id="cust-edit-secure-block">
-          <div class="field-group-title">Admin-only Secure Ops</div>
+        <!-- Phase 1g — Access & Security Info editor. Replaces the
+             prior read-only "Admin-only Secure Ops" display. Writes to
+             customer_secure/{slug} (admin-only by firestore.rules) +
+             flips customers/{slug}.hasSecureSop atomically with the
+             basics save above. Visible-to-techs fields are forwarded
+             by techHubViewV1 to /tech.html Security Info modal; the
+             admin-only fields are NEVER forwarded. One entry per line. -->
+        <div class="field-group" id="cust-edit-access-security-block">
+          <div class="field-group-title">Access &amp; Security Info</div>
           <p class="field-helper">
-            Sensitive operational info — alarm / door / gate codes,
-            emergency contacts, raw Deputy notes, and any code-bearing
-            instructions. Read from <code>customer_secure/{slug}</code>
-            (admin-only by firestore.rules). Never appears in customer-facing
-            emails or tech-side pages.
+            Admin-only. <strong>Never</strong> appears in customer-facing DCR
+            emails or operational event logs. Techs see only the
+            "Visible to techs" fields below, and only for customers they're
+            assigned to. One entry per line.
           </p>
-          <div id="cust-edit-secure-body"></div>
+
+          <p class="field-section-label">Visible to techs on assigned customers</p>
+
+          <div class="field-row">
+            <label for="cust-edit-alarm-codes">Alarm code(s)</label>
+            <textarea id="cust-edit-alarm-codes" rows="2" autocomplete="off"
+              placeholder="e.g. 1234 (panel by side door)"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-disarm-instructions">Disarm instructions</label>
+            <textarea id="cust-edit-disarm-instructions" rows="2" autocomplete="off"
+              placeholder="e.g. Enter code within 30 seconds, then press OFF."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-door-codes">Door code(s)</label>
+            <textarea id="cust-edit-door-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Front: 5678 · Back: 9012"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-gate-codes">Gate code(s)</label>
+            <textarea id="cust-edit-gate-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Main gate: 4321"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-lockbox-codes">Lockbox code(s)</label>
+            <textarea id="cust-edit-lockbox-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Lockbox on north fence: 8765 (key inside)"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-key-fob-notes">Key location / fob notes</label>
+            <textarea id="cust-edit-key-fob-notes" rows="2" autocomplete="off"
+              placeholder="e.g. Key fob hangs inside utility closet; building access fob is required for elevator."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-arm-instructions">Arm instructions</label>
+            <textarea id="cust-edit-arm-instructions" rows="2" autocomplete="off"
+              placeholder="e.g. Press AWAY, exit through side door within 60 seconds, then pull door shut."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-secure-instructions">Building access / security instructions</label>
+            <textarea id="cust-edit-secure-instructions" rows="3" autocomplete="off"
+              placeholder="Free-form notes techs need at the door (e.g. ramp on left, follow alley to back entrance)."></textarea>
+          </div>
+
+          <p class="field-section-label">Admin-only (never shown to techs)</p>
+
+          <div class="field-row">
+            <label for="cust-edit-emergency-contacts">Emergency contact(s)</label>
+            <textarea id="cust-edit-emergency-contacts" rows="2" autocomplete="off"
+              placeholder="e.g. Susie Brittain · 509-927-2937 · after-hours alarms"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-alarm-company-notes">Alarm company</label>
+            <textarea id="cust-edit-alarm-company-notes" rows="2" autocomplete="off"
+              placeholder="e.g. Allied &amp; Fire Security · 509-624-3154"></textarea>
+          </div>
+
+          <p class="field-section-label">Imported (read-only)</p>
+          <div class="field-row">
+            <label>Raw Deputy notes</label>
+            <pre id="cust-edit-raw-deputy-notes" class="cust-edit-raw-deputy">—</pre>
+          </div>
+
+          <p class="field-hint" id="cust-edit-secure-last-edited">No Access &amp; Security edits recorded yet.</p>
         </div>
       </div>
       <footer class="admin-modal-footer">
@@ -3006,7 +3089,7 @@
   <script src="admin/tab-dcr-issues.js?v=20260529-refactor-phase12"></script>
   <script src="admin/tab-tech-health.js?v=20260529-refactor-phase13"></script>
   <script src="admin/tab-yesterdays-work.js?v=20260529-refactor-phase14"></script>
-  <script src="admin/tab-customers.js?v=20260529-refactor-phase15"></script>
+  <script src="admin/tab-customers.js?v=20260601-phase1g-access-security"></script>
   <script src="admin/tab-techs.js?v=20260529-refactor-phase16b"></script>
   <script src="admin/tab-admins.js?v=20260529-refactor-phase17"></script>
   <script src="admin/tab-supply-requests.js?v=20260529-refactor-phase18"></script>

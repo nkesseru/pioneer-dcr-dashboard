@@ -6449,6 +6449,83 @@
 }
 
 /* ==========================================================================
+   Customer-edit modal — Phase 1g additions (Standing Notes summary +
+   Access & Security editor subgroups + raw Deputy notes block).
+   ========================================================================== */
+
+.standing-notes-summary {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #1e293b;
+}
+.standing-notes-empty {
+  margin: 0;
+  color: var(--pc-text-muted, #64748b);
+}
+.standing-notes-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.standing-notes-summary-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.standing-notes-summary-list li:last-child { border-bottom: 0; }
+.standing-notes-cat {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  margin-right: 6px;
+}
+.standing-notes-more {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: var(--pc-text-muted, #64748b);
+}
+
+/* Sub-group divider used inside Access & Security to separate
+   "Visible to techs" / "Admin-only" / "Imported (read-only)". */
+.admin-modal-body .field-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--pc-text-subtle, #64748b);
+  margin: 14px 0 6px 0;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+.admin-modal-body .field-section-label:first-of-type {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Read-only raw Deputy notes pre block. */
+.cust-edit-raw-deputy {
+  margin: 0;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+  color: #334155;
+}
+
+/* ==========================================================================
    Sick Leave tab (Phase 1f) — per-tech balance table
    ========================================================================== */
 
