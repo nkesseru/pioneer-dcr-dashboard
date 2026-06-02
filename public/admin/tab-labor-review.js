@@ -251,6 +251,82 @@
     } catch (_e) { return yyyymmdd; }
   }
 
+  /* ---------- Phase 28B: workweek + overtime allocation helpers ----------
+   *
+   * WASHINGTON WORKWEEK POLICY (confirmed):
+   *   • Workweek = Sunday 00:00 → Saturday 23:59 Pacific.
+   *   • Overtime trigger = 40 hours of worked time per workweek (2400 min).
+   *   • Sick leave is EXCLUDED from the worked-hours bucket (paid leave,
+   *     not hours worked — WA RCW 49.46.130 + ES.A.8.1 policy reading).
+   *   • Paid drive time is NOT in the bucket yet. Field name
+   *     `payable_work_minutes` (separate from a future `payable_drive_minutes`)
+   *     signals this is the work-only sum today.
+   *
+   * The runtime engine fires on every Approve / Unapprove / Bulk Approve
+   * action. It re-queries the (staff_uid, workweek_id) bucket from
+   * Firestore (needs the new composite index), allocates regular/OT
+   * chronologically by clock_in_at, and batch-writes the split to every
+   * session in the bucket. Single source of truth at any moment.
+   */
+  const WEEKLY_REGULAR_CAP_MINUTES = 2400;   // 40h × 60m
+
+  function pacificWeekday(date) {
+    // 0 = Sunday ... 6 = Saturday in Pacific timezone.
+    try {
+      const wk = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", weekday: "short"
+      }).format(date);
+      const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const v = map[wk];
+      return (v === undefined) ? null : v;
+    } catch (_e) { return null; }
+  }
+  function computeWorkweekId(serviceDatePT) {
+    if (!serviceDatePT) return null;
+    const probe = new Date(serviceDatePT + "T12:00:00Z");
+    const wk = pacificWeekday(probe);
+    if (wk == null) return serviceDatePT;
+    if (wk === 0) return serviceDatePT;
+    return addDaysPT(serviceDatePT, -wk);
+  }
+  function computeWorkweekLabel(workweekId) {
+    if (!workweekId) return null;
+    const endId = addDaysPT(workweekId, 6);
+    try {
+      const fmtMonthDay = function (id) {
+        return new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles", month: "short", day: "numeric"
+        }).format(new Date(id + "T12:00:00Z"));
+      };
+      const year = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", year: "numeric"
+      }).format(new Date(endId + "T12:00:00Z"));
+      return fmtMonthDay(workweekId) + " – " + fmtMonthDay(endId) + ", " + year;
+    } catch (_e) { return workweekId + " → " + endId; }
+  }
+
+  // Pure allocation function — mutates each session with regular_minutes,
+  // overtime_minutes, payable_work_minutes. Order of input array IS the
+  // chronological order; caller must sort by clock_in_at ascending first.
+  function allocateOvertime(sortedSessions) {
+    let cumulativeRegular = 0;
+    (sortedSessions || []).forEach(function (s) {
+      const total = (typeof s.work_minutes === "number" && s.work_minutes > 0) ? s.work_minutes : 0;
+      const budget = Math.max(0, WEEKLY_REGULAR_CAP_MINUTES - cumulativeRegular);
+      let regular, overtime;
+      if (total <= budget) {
+        regular = total; overtime = 0;
+      } else {
+        regular = budget; overtime = total - budget;
+      }
+      s.regular_minutes      = regular;
+      s.overtime_minutes     = overtime;
+      s.payable_work_minutes = total;
+      cumulativeRegular += regular;
+    });
+    return cumulativeRegular;
+  }
+
   // Initial range state — used by the very first refresh() to query before
   // the user has touched any control. Defaults to today/today (Pacific).
   function ensureRangeInitialized() {
@@ -318,6 +394,14 @@
     return '<span class="lr-payroll-chip ' + cls + '">' +
            escapeHtml(label) + lockSuffix + '</span>';
   }
+  // Phase 28B — small amber OT chip rendered next to the payroll chip
+  // when a session has any overtime allocated. Helps admin visually scan
+  // for OT incidence at a glance.
+  function overtimeChip(s) {
+    if (!s || !(typeof s.overtime_minutes === "number") || s.overtime_minutes <= 0) return "";
+    return '<span class="lr-ot-chip" title="' +
+           escapeHtml(fmtMinutes(s.overtime_minutes)) + ' overtime this session">OT</span>';
+  }
   // Approve gate: row can move pending_review|reviewed → approved_for_payroll.
   // Refuses if any signal says "not clean payroll data."
   function approveGatePasses(s) {
@@ -378,14 +462,23 @@
   function computeTotals(arr) {
     const out = {
       totalWorked: 0, totalRunning: 0, needsReview: 0, dcrPending: 0,
+      // Phase 28B — totalOvertime is the sum of overtime_minutes across
+      // approved/exported sessions in the filtered set. otTechsCount is
+      // the number of distinct techs with any OT.
+      totalOvertime: 0, otTechsCount: 0,
       exceptions: { overBudget: 0, offsite: 0, adminRemoved: 0, forceClosed: 0 }
     };
+    const techsWithOt = new Set();
     (arr || []).forEach(function (s) {
       const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
       if (isRunningSession(s)) {
         out.totalRunning += (liveElapsedMinutes(s.clock_in_at) || 0);
       } else if (typeof s.work_minutes === "number") {
         out.totalWorked += s.work_minutes;
+      }
+      if (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0) {
+        out.totalOvertime += s.overtime_minutes;
+        if (s.staff_uid) techsWithOt.add(s.staff_uid);
       }
       if (needsReviewFlag(s))   out.needsReview += 1;
       if (dcrPendingFlag(s))    out.dcrPending  += 1;
@@ -394,6 +487,7 @@
       if (adminRemovedFlag(s))           out.exceptions.adminRemoved += 1;
       if (forceClosedFlag(s))            out.exceptions.forceClosed  += 1;
     });
+    out.otTechsCount = techsWithOt.size;
     return out;
   }
   function groupByEmployee(arr) {
@@ -408,6 +502,7 @@
           sessions_count: 0,
           worked_minutes: 0,
           running_minutes: 0,
+          overtime_minutes: 0,   // Phase 28B
           needs_review: 0,
           dcr_pending: 0
         });
@@ -418,6 +513,9 @@
         row.running_minutes += (liveElapsedMinutes(s.clock_in_at) || 0);
       } else if (typeof s.work_minutes === "number") {
         row.worked_minutes += s.work_minutes;
+      }
+      if (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0) {
+        row.overtime_minutes += s.overtime_minutes;
       }
       if (needsReviewFlag(s)) row.needs_review += 1;
       if (dcrPendingFlag(s))  row.dcr_pending  += 1;
@@ -579,7 +677,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v28A-payroll-approval";
+  const LABOR_BUILD_TAG = "Labor v28B-overtime";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -651,10 +749,15 @@
       '<span title="clock_in or clock_out offsite">OS ' + ex.offsite + '</span> · ' +
       '<span title="admin_removed = true">AR ' + ex.adminRemoved + '</span> · ' +
       '<span title="force_closed_by_admin">FC ' + ex.forceClosed + '</span>';
+    // Phase 28B — Overtime tile. Sub-line shows distinct techs with OT.
+    const otSub = (t.totalOvertime > 0)
+      ? (t.otTechsCount + ' tech' + (t.otTechsCount === 1 ? '' : 's') + ' with OT')
+      : 'No OT in this view';
     wrap.innerHTML =
       tile("Sessions",     String(sessions.length), null) +
       tile("Worked",       fmtMinutes(t.totalWorked),  null) +
       tile("Running",      fmtMinutes(t.totalRunning), t.totalRunning > 0 ? '<span class="labor-tile-running-dot" aria-hidden="true">●</span> live' : null) +
+      tile("Overtime",     fmtMinutes(t.totalOvertime), otSub) +
       tile("Needs review", String(t.needsReview),   null) +
       tile("DCR pending",  String(t.dcrPending),    null) +
       tile("Exceptions",   String(exTotal),         exSubLines);
@@ -668,9 +771,12 @@
     if (!rows.length) { wrap.innerHTML = ""; empty.hidden = false; return; }
     empty.hidden = true;
     wrap.innerHTML = rows.map(function (r) {
-      const totalMin = r.worked_minutes + r.running_minutes;
       const runningChip = r.running_minutes > 0
         ? ' <span class="labor-be-running">+ running ' + escapeHtml(fmtMinutes(r.running_minutes)) + '</span>'
+        : '';
+      // Phase 28B — inline OT chip on the time line when this tech has OT.
+      const otChip = r.overtime_minutes > 0
+        ? ' <span class="labor-be-ot">incl. ' + escapeHtml(fmtMinutes(r.overtime_minutes)) + ' OT</span>'
         : '';
       const flags = [];
       if (r.needs_review > 0) flags.push('<span class="labor-be-flag is-review">' + r.needs_review + ' needs review</span>');
@@ -681,7 +787,7 @@
           '<div class="labor-be-count">' + r.sessions_count + ' session' +
             (r.sessions_count === 1 ? "" : "s") + '</div>' +
           '<div class="labor-be-time">' +
-            escapeHtml(fmtMinutes(r.worked_minutes)) + ' worked' + runningChip +
+            escapeHtml(fmtMinutes(r.worked_minutes)) + ' worked' + otChip + runningChip +
           '</div>' +
           '<div class="labor-be-flags">' + flags.join(" ") + '</div>' +
         '</div>'
@@ -741,11 +847,13 @@
   // "Removed from PTC" chip when the session was admin-removed).
   // Phase 28A — append the payroll-state chip so admin sees both bits
   // at a glance.
+  // Phase 28B — also append the OT chip when overtime_minutes > 0.
   function sessionStatusDisplay(s) {
     const base = statusChip(s.status, needsReviewFlag(s));
     const archivedPrefix = (s && s.admin_removed === true) ? (removedChip() + " ") : "";
     const payrollSuffix  = " " + payrollChip(s);
-    return archivedPrefix + base + payrollSuffix;
+    const otSuffix       = overtimeChip(s) ? (" " + overtimeChip(s)) : "";
+    return archivedPrefix + base + payrollSuffix + otSuffix;
   }
   function removedMetaLine(s) {
     if (!s || s.admin_removed !== true) return "";
@@ -836,20 +944,31 @@
       const isTerminalZero =
         (s.status === "completed" || s.status === "dcr_pending") &&
         (s.work_minutes === 0 || s.work_minutes == null);
-      let workedLabel;
+      // Phase 28B — workedHtml is the (potentially HTML-containing)
+      // rendering for the Worked column. Replaces the legacy escapeHtml
+      // wrap so we can inject the amber OT line. All text branches
+      // explicitly escapeHtml their content.
+      let workedHtml;
       let workedClass = "";
       if (isRunning) {
-        workedLabel = "Running " + fmtMinutes(elapsed != null ? elapsed : 0);
+        workedHtml = escapeHtml("Running " + fmtMinutes(elapsed != null ? elapsed : 0));
       } else if (isPausedRow) {
         const fallback = (s.work_minutes != null) ? s.work_minutes : elapsed;
-        workedLabel = "Paused " + fmtMinutes(fallback != null ? fallback : 0);
+        workedHtml = escapeHtml("Paused " + fmtMinutes(fallback != null ? fallback : 0));
       } else if (isTerminalZero) {
-        workedLabel = "Review Required";
+        workedHtml = escapeHtml("Review Required");
         workedClass = " is-review-required";
       } else if (s.work_minutes != null) {
-        workedLabel = fmtMinutes(s.work_minutes);
+        const hasOt = (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0);
+        if (hasOt) {
+          const reg = (typeof s.regular_minutes === "number") ? s.regular_minutes : s.work_minutes;
+          workedHtml = escapeHtml(fmtMinutes(reg)) +
+            '<span class="lr-ot-line"> + ' + escapeHtml(fmtMinutes(s.overtime_minutes)) + ' OT</span>';
+        } else {
+          workedHtml = escapeHtml(fmtMinutes(s.work_minutes));
+        }
       } else {
-        workedLabel = "—";
+        workedHtml = "—";
       }
       const reviewBtn = needsReviewFlag(s)
         ? '<button type="button" class="labor-btn labor-btn-review" data-act="mark-reviewed">Review</button>'
@@ -906,13 +1025,15 @@
         '<div class="labor-row" data-session-id="' + escapeHtml(s._id) + '"' +
             ' data-assignment-id="' + escapeHtml(s.assignment_id || "") + '"' +
             ' data-summary="' + escapeHtml(summary) + '">' +
-          '<div class="lr-col-date">' + escapeHtml(fmtServiceDate(s.service_date)) + '</div>' +
+          '<div class="lr-col-date"' +
+              (s.workweek_label ? ' title="' + escapeHtml("Workweek: " + s.workweek_label) + '"' : '') +
+              '>' + escapeHtml(fmtServiceDate(s.service_date)) + '</div>' +
           '<div class="lr-col-emp">' + escapeHtml(techName(s.staff_email, s.staff_uid)) + '</div>' +
           '<div class="lr-col-cust">' + escapeHtml(customerLabel(s, assignment)) + '</div>' +
           '<div class="lr-col-status">' + sessionStatusDisplay(s) + '</div>' +
           '<div class="lr-col-in">' + escapeHtml(fmtTime(s.clock_in_at)) + '</div>' +
           '<div class="lr-col-out">' + escapeHtml(fmtTime(s.clock_out_at)) + '</div>' +
-          '<div class="lr-col-wkd' + workedClass + '">' + escapeHtml(workedLabel) + '</div>' +
+          '<div class="lr-col-wkd' + workedClass + '">' + workedHtml + '</div>' +
           '<div class="lr-col-bgt">' + escapeHtml(fmtMinutes(budget)) + '</div>' +
           '<div class="lr-col-geo">' + geoChip(s.clock_in_geo_status) +
               ' / ' + geoChip(s.clock_out_geo_status) + '</div>' +
@@ -958,52 +1079,225 @@
     await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update(patch);
   }
 
-  /* ---------- Phase 28A: approval writers ---------- */
+  /* ---------- Phase 28A → 28B: approval writers with OT recompute ----------
+   *
+   * Each approve / unapprove triggers a workweek-scoped recompute that:
+   *   1. Queries every existing approved_for_payroll + exported session
+   *      for that (staff_uid, workweek_id) bucket from Firestore.
+   *   2. Adds/removes the target session in the bucket per action.
+   *   3. Refuses if any bucket member is "exported" — admin must Void
+   *      the export first (Phase 28D).
+   *   4. Sorts chronologically by clock_in_at.
+   *   5. Allocates regular/overtime via allocateOvertime().
+   *   6. Batch-writes the state change AND the new split to every
+   *      affected session atomically.
+   *
+   * The query requires the (staff_uid, workweek_id) composite index
+   * deployed earlier in Phase 28B. If the index is still building, the
+   * write throws FAILED_PRECONDITION — caller surfaces a friendly error.
+   */
+
+  // Load workweek bucket. Returns sessions sorted chronologically with
+  // _ref (DocumentReference) attached for batch writes.
+  async function loadWorkweekBucket(staff_uid, workweek_id) {
+    const db = firebase.firestore();
+    const snap = await db.collection("pioneer_service_sessions")
+      .where("staff_uid",   "==", staff_uid)
+      .where("workweek_id", "==", workweek_id)
+      .get();
+    return snap.docs
+      .map(function (d) {
+        return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+      })
+      .filter(function (s) {
+        if (s.admin_removed === true) return false;
+        const ps = s.payroll_state || "pending_review";
+        return ps === "approved_for_payroll" || ps === "exported";
+      });
+  }
+  function sortByClockInAsc(bucket) {
+    bucket.sort(function (a, b) {
+      const aMs = tsToMs(a.clock_in_at);
+      const bMs = tsToMs(b.clock_in_at);
+      if (aMs !== bMs) return aMs - bMs;
+      return String(a._id).localeCompare(String(b._id));
+    });
+  }
+  function bucketContainsLockedExport(bucket) {
+    return (bucket || []).some(function (s) { return s.payroll_state === "exported"; });
+  }
+  function lockedExportError(workweekId) {
+    return new Error(
+      "Workweek " + workweekId + " contains exported sessions. " +
+      "Void the export first, then retry."
+    );
+  }
 
   async function approveSession(sessionId) {
+    const sess = sessions.find(function (s) { return s._id === sessionId; });
+    if (!sess) throw new Error("Session not in current view — refresh and retry.");
+    if (!sess.service_date) throw new Error("Session has no service_date — cannot determine workweek.");
+    if (!sess.staff_uid) throw new Error("Session has no staff_uid.");
+    const wid = computeWorkweekId(sess.service_date);
+    if (!wid) throw new Error("Could not compute workweek_id from service_date.");
     const actor = currentActor();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
-    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update({
-      payroll_state:            "approved_for_payroll",
-      payroll_state_changed_at: sts,
-      payroll_state_changed_by: actor,
-      approved_for_payroll_by:  actor,
-      approved_for_payroll_at:  sts
+    const db = firebase.firestore();
+
+    const existing = await loadWorkweekBucket(sess.staff_uid, wid);
+    if (bucketContainsLockedExport(existing)) throw lockedExportError(wid);
+
+    // Build the target's synthetic representation as approved.
+    const targetRef = db.collection("pioneer_service_sessions").doc(sessionId);
+    const targetEntry = Object.assign({}, sess, {
+      _id: sessionId,
+      _ref: targetRef,
+      payroll_state: "approved_for_payroll"
     });
+    // Bucket = existing (minus target if it's there) + target.
+    const bucket = existing
+      .filter(function (s) { return s._id !== sessionId; })
+      .concat([targetEntry]);
+    sortByClockInAsc(bucket);
+
+    allocateOvertime(bucket);
+    const wlabel = computeWorkweekLabel(wid);
+
+    const batch = db.batch();
+    bucket.forEach(function (s) {
+      const update = {
+        workweek_id:          wid,
+        workweek_label:       wlabel,
+        regular_minutes:      s.regular_minutes,
+        overtime_minutes:     s.overtime_minutes,
+        payable_work_minutes: s.payable_work_minutes,
+        overtime_computed_at: sts,
+        overtime_computed_by: actor
+      };
+      if (s._id === sessionId) {
+        update.payroll_state            = "approved_for_payroll";
+        update.payroll_state_changed_at = sts;
+        update.payroll_state_changed_by = actor;
+        update.approved_for_payroll_by  = actor;
+        update.approved_for_payroll_at  = sts;
+      }
+      batch.update(s._ref, update);
+    });
+    await batch.commit();
   }
 
   async function unapproveSession(sessionId) {
+    const sess = sessions.find(function (s) { return s._id === sessionId; });
+    if (!sess) throw new Error("Session not in current view — refresh and retry.");
+    const wid = sess.workweek_id || computeWorkweekId(sess.service_date);
+    if (!wid) throw new Error("Could not determine workweek_id.");
     const actor = currentActor();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
-    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update({
+    const db = firebase.firestore();
+
+    const existing = await loadWorkweekBucket(sess.staff_uid, wid);
+    if (bucketContainsLockedExport(existing)) throw lockedExportError(wid);
+
+    // Remove target from the bucket for the recompute. Target's own row
+    // gets the cleared fields written in the same batch.
+    const targetRef = db.collection("pioneer_service_sessions").doc(sessionId);
+    const bucket = existing.filter(function (s) { return s._id !== sessionId; });
+    sortByClockInAsc(bucket);
+    allocateOvertime(bucket);
+
+    const batch = db.batch();
+    bucket.forEach(function (s) {
+      batch.update(s._ref, {
+        regular_minutes:      s.regular_minutes,
+        overtime_minutes:     s.overtime_minutes,
+        payable_work_minutes: s.payable_work_minutes,
+        overtime_computed_at: sts,
+        overtime_computed_by: actor
+      });
+    });
+    // Target: clear approval fields + split. State flips to reviewed.
+    batch.update(targetRef, {
       payroll_state:            "reviewed",
       payroll_state_changed_at: sts,
       payroll_state_changed_by: actor,
-      // Clear approval audit fields so future Approve writes a fresh stamp.
       approved_for_payroll_by:  firebase.firestore.FieldValue.delete(),
-      approved_for_payroll_at:  firebase.firestore.FieldValue.delete()
+      approved_for_payroll_at:  firebase.firestore.FieldValue.delete(),
+      regular_minutes:          firebase.firestore.FieldValue.delete(),
+      overtime_minutes:         firebase.firestore.FieldValue.delete(),
+      payable_work_minutes:     firebase.firestore.FieldValue.delete(),
+      overtime_computed_at:     firebase.firestore.FieldValue.delete(),
+      overtime_computed_by:     firebase.firestore.FieldValue.delete()
     });
+    await batch.commit();
   }
 
   // Bulk Approve — caps at 50 sessions per click per Phase 28A decision.
-  // Returns { approved, capped, skipped_no_gate } so the caller can show
-  // a meaningful toast.
+  // Phase 28B: groups targets by (staff_uid, workweek_id) so each
+  // workweek is recomputed exactly once. Per-bucket batches commit
+  // sequentially — first locked-export bucket throws and remaining
+  // buckets are not processed.
   async function bulkApproveSessions(sessionIds) {
     const actor = currentActor();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
     const db = firebase.firestore();
-    const batch = db.batch();
+
+    // Group targets.
+    const byBucket = new Map();
     sessionIds.forEach(function (sid) {
-      const ref = db.collection("pioneer_service_sessions").doc(sid);
-      batch.update(ref, {
-        payroll_state:            "approved_for_payroll",
-        payroll_state_changed_at: sts,
-        payroll_state_changed_by: actor,
-        approved_for_payroll_by:  actor,
-        approved_for_payroll_at:  sts
-      });
+      const s = sessions.find(function (x) { return x._id === sid; });
+      if (!s || !s.service_date || !s.staff_uid) return;
+      const wid = computeWorkweekId(s.service_date);
+      if (!wid) return;
+      const key = s.staff_uid + "|" + wid;
+      if (!byBucket.has(key)) {
+        byBucket.set(key, { staff_uid: s.staff_uid, workweek_id: wid, targets: [] });
+      }
+      byBucket.get(key).targets.push(s);
     });
-    await batch.commit();
+
+    let approvedCount = 0;
+    for (const [, group] of byBucket) {
+      const existing = await loadWorkweekBucket(group.staff_uid, group.workweek_id);
+      if (bucketContainsLockedExport(existing)) throw lockedExportError(group.workweek_id);
+
+      const targetIdSet = new Set(group.targets.map(function (t) { return t._id; }));
+      const targetEntries = group.targets.map(function (t) {
+        return Object.assign({}, t, {
+          _ref: db.collection("pioneer_service_sessions").doc(t._id),
+          payroll_state: "approved_for_payroll"
+        });
+      });
+      const bucket = existing
+        .filter(function (s) { return !targetIdSet.has(s._id); })
+        .concat(targetEntries);
+      sortByClockInAsc(bucket);
+      allocateOvertime(bucket);
+      const wlabel = computeWorkweekLabel(group.workweek_id);
+
+      const batch = db.batch();
+      bucket.forEach(function (s) {
+        const update = {
+          workweek_id:          group.workweek_id,
+          workweek_label:       wlabel,
+          regular_minutes:      s.regular_minutes,
+          overtime_minutes:     s.overtime_minutes,
+          payable_work_minutes: s.payable_work_minutes,
+          overtime_computed_at: sts,
+          overtime_computed_by: actor
+        };
+        if (targetIdSet.has(s._id)) {
+          update.payroll_state            = "approved_for_payroll";
+          update.payroll_state_changed_at = sts;
+          update.payroll_state_changed_by = actor;
+          update.approved_for_payroll_by  = actor;
+          update.approved_for_payroll_at  = sts;
+        }
+        batch.update(s._ref, update);
+      });
+      await batch.commit();
+      approvedCount += group.targets.length;
+    }
+    return approvedCount;
   }
   const BULK_APPROVE_CAP = 50;
   function approvableInCurrentView() {

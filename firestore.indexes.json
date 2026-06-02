@@ -82,6 +82,14 @@
         { "fieldPath": "staff_uid",            "order": "ASCENDING" }
       ]
     },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",   "order": "ASCENDING" },
+        { "fieldPath": "workweek_id", "order": "ASCENDING" }
+      ]
+    },
 
     {
       "collectionGroup": "time_punches",

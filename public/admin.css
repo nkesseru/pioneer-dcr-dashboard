@@ -6480,6 +6480,39 @@
 .lr-payroll-chip.is-approved-for-payroll { background: #d1fae5; color: #065f46; }
 .lr-payroll-chip.is-exported             { background: #064e3b; color: #ecfdf5; }
 
+/* Phase 28B — small amber OT chip next to payroll chip when a session
+   has any allocated overtime. Inline ".lr-ot-line" decorates the Worked
+   column's "+ Xh Ym OT" tail in matching amber. */
+.lr-ot-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  vertical-align: middle;
+}
+.lr-ot-line {
+  color: #b45309;
+  font-style: italic;
+  font-weight: 600;
+}
+.labor-be-ot {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-left: 4px;
+  border: 1px solid #fde68a;
+}
+
 .labor-btn-approve {
   background: #d1fae5; color: #065f46; border-color: #a7f3d0;
   margin-left: 6px;
