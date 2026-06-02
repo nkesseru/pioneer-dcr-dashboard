@@ -184,6 +184,15 @@
           </p>
         </header>
 
+        <!-- Phase 1g hotfix — fallback banner shown by service-clock.js
+             when this tech has no Pioneer service_assignments for the
+             current availability window (e.g., Drew's Hormann Door
+             shift tonight). Default hidden; revealed only by
+             toggleLegacyFallbackBanner(true). -->
+        <div class="ptc-legacy-fallback-banner" id="ptc-legacy-fallback-banner" hidden>
+          <p><strong>Pioneer Time Clock unavailable for this shift — use Start Work below.</strong></p>
+        </div>
+
         <!-- Admin-preview callout — only painted by today-work.js when
              staff.role === "admin" AND ?work_date=… is on the URL. Stays
              hidden in the normal tech flow. -->
@@ -365,7 +374,7 @@
   <script src="celebrate.js?v=20260528-celebrate"></script>
   <script src="customer-display.js?v=20260528-displayname"></script>
   <script src="today-work.js?v=20260601-phase1b3-badge"></script>
-  <script src="service-clock.js?v=20260601-phase1d-lite-geo"></script>
+  <script src="service-clock.js?v=20260601-phase1g-hotfix-no-ptc"></script>
   <script src="work.js?v=20260528-displayname"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>

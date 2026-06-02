@@ -659,13 +659,23 @@
     const root = $("ptc-assignments");
     if (!root) return;
     if (!assignments.length) {
+      // Phase 1g hotfix — replace the prior confusing empty-state copy
+      // ("Check the Deputy section below for any legacy shifts") with
+      // an unambiguous instruction telling the tech where to clock in
+      // tonight. Also reveal the sibling banner above the legacy
+      // Today's Work card so the connection is obvious — Drew's
+      // Hormann Door shift case where Pioneer assignments aren't seeded.
       root.innerHTML =
         '<div class="ptc-empty">' +
-          '<p><strong>No Pioneer service stops assigned for today.</strong></p>' +
-          '<p>Check the Deputy section below for any legacy shifts.</p>' +
+          '<p><strong>Pioneer Time Clock is not set up for this shift yet.</strong></p>' +
+          '<p>Use <strong>Start Work</strong> below for tonight.</p>' +
         '</div>';
+      toggleLegacyFallbackBanner(true);
       return;
     }
+    // Defensive — if a later render shows assignments (Phase 2 may
+    // backfill from Deputy), make sure the banner doesn't get left on.
+    toggleLegacyFallbackBanner(false);
     // Phase 1b.4 — "Next Step: Complete DCR" banner. Shows when at
     // least one paused assignment is missing a DCR AND the tech isn't
     // currently clocked into anything. Points at the first such
@@ -1246,6 +1256,18 @@
     if (section) section.hidden = false;
   }
 
+  // Phase 1g hotfix — surface a small banner above the legacy Today's
+  // Work card whenever this tech has no Pioneer service_assignments
+  // for the current availability window. The banner is pre-placed in
+  // work.html (#ptc-legacy-fallback-banner) and starts hidden; we just
+  // flip the `hidden` attribute. The banner sits inside the Today's
+  // Work section's outer card, so it's visible right next to the
+  // legacy Start Work buttons.
+  function toggleLegacyFallbackBanner(show) {
+    const banner = $("ptc-legacy-fallback-banner");
+    if (banner) banner.hidden = !show;
+  }
+
   function renderIndexBuildingError() {
     const root = $("ptc-assignments");
     if (!root) return;
@@ -1266,6 +1288,9 @@
         '<p>' + escapeHtml(msg) + '</p>' +
         '<p>Deputy is still available below as a fallback.</p>' +
       '</div>';
+    // Phase 1g hotfix — also reveal the legacy fallback banner so the
+    // tech knows where to clock in tonight even if PTC errored.
+    toggleLegacyFallbackBanner(true);
   }
 
   /* ---------- boot ---------- */

@@ -641,3 +641,16 @@
 .ptc-status-loading { background: transparent; border: none; padding: 8px 0; }
 .ptc-status-warn  { background: #fff7e0; border-color: #d8b85d; color: #5a4400; }
 .ptc-status-error { background: #faebeb; border-color: #c98080; color: #6b1a1a; }
+
+/* Phase 1g hotfix — fallback banner sits above the legacy Today's Work
+   list when this tech has no Pioneer service_assignments tonight.
+   Toggled by service-clock.js toggleLegacyFallbackBanner(). */
+.ptc-legacy-fallback-banner {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #78350f;
+}
+.ptc-legacy-fallback-banner p { margin: 0; font-size: 13px; }
