@@ -1792,9 +1792,24 @@
     wire();
   }
 
+  // Phase 28C — external deep-link entry point. Called by tab-payroll.js
+  // when admin clicks "Open in Labor" on a blocker line. Sets range +
+  // status filter in one shot and runs refresh. Quick-filter chip
+  // highlight is set to "custom" since the inbound range may not match
+  // any known preset.
+  function applyExternalFilter(opts) {
+    opts = opts || {};
+    if (opts.rangeStart) rangeStart = opts.rangeStart;
+    if (opts.rangeEnd)   rangeEnd   = opts.rangeEnd;
+    if (opts.rangeStart || opts.rangeEnd) currentQuickFilter = "custom";
+    if (opts.statusFilter) currentStatusFilter = opts.statusFilter;
+    refresh();
+  }
+
   window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
   window.__pioneerAdmin.tabs.laborReview = {
-    init:    init,
-    refresh: refresh
+    init:                init,
+    refresh:             refresh,
+    applyExternalFilter: applyExternalFilter
   };
 }());

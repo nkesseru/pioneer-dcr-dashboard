@@ -6513,6 +6513,255 @@
   border: 1px solid #fde68a;
 }
 
+/* ==========================================================================
+   Phase 28C — Payroll tab (period picker, verification banner,
+   per-employee summary table, recent exports placeholder).
+   ========================================================================== */
+
+.payroll-period-row {
+  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.payroll-period-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+}
+.payroll-period-select {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  min-width: 220px;
+}
+.payroll-custom-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.payroll-custom-row label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.payroll-custom-row input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.payroll-apply-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f6dd6;
+  background: #2f6dd6;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.payroll-apply-btn:hover { background: #1d4ed8; }
+.payroll-custom-err {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.payroll-block {
+  margin-top: 14px;
+}
+.payroll-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Verification Layer banner — 3 states. */
+.payroll-banner {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+.payroll-banner.is-ready   { background: #ecfdf5; border-color: #6ee7b7; }
+.payroll-banner.is-blocked { background: #fef3c7; border-color: #fbbf24; }
+.payroll-banner.is-empty   { background: #f1f5f9; border-color: #cbd5e1; }
+.payroll-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0f172a;
+}
+.payroll-banner.is-ready   .payroll-banner-head { color: #065f46; }
+.payroll-banner.is-blocked .payroll-banner-head { color: #78350f; }
+.payroll-banner.is-empty   .payroll-banner-head { color: #475569; }
+.payroll-banner-dot { font-size: 14px; }
+.payroll-banner-msg {
+  margin: 8px 0 0 0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.payroll-banner-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+}
+.payroll-banner-list li {
+  padding: 4px 0;
+  font-size: 13px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.payroll-banner-bullet { color: #78350f; font-weight: 700; }
+.payroll-link-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #fbbf24;
+  background: #fff;
+  color: #78350f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-link-btn:hover { background: #fef3c7; }
+.payroll-banner-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.payroll-export-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #047857;
+  background: #047857;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.payroll-export-note {
+  font-size: 12px;
+  font-weight: 600;
+  color: #65a30d;
+}
+
+/* Per-employee summary table — 10 columns. */
+.payroll-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.payroll-row {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1.6fr)
+    minmax(70px,  0.7fr)
+    minmax(60px,  0.6fr)
+    minmax(60px,  0.6fr)
+    minmax(60px,  0.6fr)
+    minmax(70px,  0.8fr)
+    minmax(50px,  0.5fr)
+    minmax(50px,  0.5fr)
+    minmax(50px,  0.5fr)
+    minmax(110px, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.payroll-row:last-child { border-bottom: 0; }
+.payroll-row-head {
+  background: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-row-total {
+  background: #f8fafc;
+  font-weight: 800;
+  border-top: 2px solid #cbd5e1;
+}
+.payroll-row .pr-col-emp  { font-weight: 600; color: #0f172a; }
+.payroll-row .pr-col-num  { font-variant-numeric: tabular-nums; text-align: right; }
+.payroll-row .pr-col-total { font-weight: 700; }
+.payroll-row .pr-col-drive { color: #94a3b8; }
+.payroll-row .pr-col-apv  { text-align: right; }
+
+.pr-apv {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.pr-apv-all      { background: #d1fae5; color: #065f46; }
+.pr-apv-partial  { background: #fef3c7; color: #78350f; }
+.pr-apv-none     { background: #f1f5f9; color: #475569; }
+.pr-apv-zero     { background: #f1f5f9; color: #94a3b8; }
+.pr-apv-exported { background: #064e3b; color: #ecfdf5; }
+
+.payroll-footnote {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+.payroll-footnote code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.payroll-exports-placeholder {
+  padding: 14px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+}
+.payroll-exports-placeholder p { margin: 0 0 4px 0; font-size: 13px; }
+.payroll-exports-placeholder p:last-child { margin: 0; }
+.payroll-exports-sub { font-size: 12px; color: #64748b; }
+
+@media (max-width: 900px) {
+  .payroll-row {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 4px;
+  }
+  .payroll-row-head { display: none; }
+  .payroll-row .pr-col-emp { grid-column: 1 / -1; }
+  .payroll-row .pr-col-apv { grid-column: 1 / -1; text-align: left; }
+}
+
 .labor-btn-approve {
   background: #d1fae5; color: #065f46; border-color: #a7f3d0;
   margin-left: 6px;

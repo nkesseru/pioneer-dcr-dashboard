@@ -359,6 +359,7 @@
           <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
           <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
           <button class="admin-tab"           data-tab="labor-review"  role="tab" aria-selected="false">Labor</button>
+          <button class="admin-tab"           data-tab="payroll"       role="tab" aria-selected="false">Payroll</button>
           <button class="admin-tab"           data-tab="sick-leave"    role="tab" aria-selected="false">Sick Leave</button>
           <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
             Attendance
@@ -1442,6 +1443,65 @@
         <div class="labor-bulk-bar" id="labor-bulk-bar" hidden></div>
         <div class="labor-table" id="labor-table"></div>
         <p class="admin-status admin-empty" id="labor-table-empty" hidden>No Pioneer Time Clock sessions in this range.</p>
+      </section>
+    </section>
+
+    <!-- ================== Payroll (Phase 28C) ==================
+         Read-only summary surface over Phase 28A/B approval data.
+         Period picker · Verification Layer banner (Payroll Ready /
+         Blocked / No Approved) · per-employee summary table with
+         totals row · placeholder for Phase 28D exports.
+         No writes. No rule/index/function changes. -->
+    <section class="card admin-panel" data-panel="payroll" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Payroll</h2>
+          <p class="panel-sub" id="payroll-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="payroll-refresh" type="button"
+                title="Re-read sessions + sick leave for the selected period">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="payroll-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="payroll-error"   hidden></div>
+
+      <!-- Period picker: dropdown of recent semi-monthly periods + Custom. -->
+      <section class="payroll-period-row">
+        <label for="payroll-period-select" class="payroll-period-label">Period:</label>
+        <select id="payroll-period-select" class="payroll-period-select"></select>
+
+        <div class="payroll-custom-row" id="payroll-custom-row" hidden>
+          <label for="payroll-custom-start">Start</label>
+          <input type="date" id="payroll-custom-start" autocomplete="off" />
+          <span aria-hidden="true">→</span>
+          <label for="payroll-custom-end">End</label>
+          <input type="date" id="payroll-custom-end" autocomplete="off" />
+          <button type="button" class="payroll-apply-btn" id="payroll-custom-apply">Apply</button>
+          <div class="payroll-custom-err" id="payroll-custom-err" role="alert" hidden></div>
+        </div>
+      </section>
+
+      <!-- Verification Layer banner — rendered by tab-payroll.js. -->
+      <section class="payroll-block">
+        <div id="payroll-banner"></div>
+      </section>
+
+      <!-- Per-employee summary table. -->
+      <section class="payroll-block">
+        <h3 class="payroll-block-title">Per-employee summary</h3>
+        <div class="payroll-table" id="payroll-employee-table"></div>
+        <p class="admin-status admin-empty" id="payroll-employee-empty" hidden>No sessions in this period yet.</p>
+        <p class="payroll-footnote">
+          ⓘ <strong>Drive time integration ships after Phase 28D.</strong>
+          Today the Drive column reads <code>0.00</code> for everyone.
+          Hours are decimal (e.g. 8.50 = 8h 30m).
+        </p>
+      </section>
+
+      <!-- Recent exports placeholder — Phase 28D content lands here. -->
+      <section class="payroll-block">
+        <h3 class="payroll-block-title">Recent exports</h3>
+        <div id="payroll-recent-exports"></div>
       </section>
     </section>
 
@@ -3306,9 +3366,10 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase28b-overtime"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase28c-payroll-summary"></script>
+  <script src="admin/tab-payroll.js?v=20260602-phase28c-payroll-summary"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase28b-overtime"></script>
+  <script src="admin.js?v=20260602-phase28c-payroll-summary"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>
