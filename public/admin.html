@@ -359,6 +359,7 @@
           <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
           <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
           <button class="admin-tab"           data-tab="labor-review"  role="tab" aria-selected="false">Labor</button>
+          <button class="admin-tab"           data-tab="sick-leave"    role="tab" aria-selected="false">Sick Leave</button>
           <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
             Attendance
             <span class="admin-tab-badge" id="attendance-tab-badge"
@@ -1383,6 +1384,29 @@
         <div class="labor-table" id="labor-table"></div>
         <p class="admin-status admin-empty" id="labor-table-empty" hidden>No Pioneer Time Clock sessions today yet.</p>
       </section>
+    </section>
+
+    <!-- ================== Sick Leave (Phase 1f) ==================
+         Per-tech banked paid sick-leave balance management.
+         Set opening balance (one-time per tech) or post a signed
+         admin_adjustment. Every change creates a sick_leave_ledger
+         entry; balance docs are recomputed atomically in the same
+         batch. Cap = 2400 minutes (40h); admin can override per entry. -->
+    <section class="card admin-panel" data-panel="sick-leave" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Sick Leave</h2>
+          <p class="panel-sub" id="sick-leave-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="sick-leave-refresh" type="button"
+                title="Re-read staff_labor_balances">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="sick-leave-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="sick-leave-error"   hidden></div>
+
+      <div class="sick-leave-table" id="sick-leave-table"></div>
+      <p class="admin-status admin-empty" id="sick-leave-empty" hidden>No active cleaning techs.</p>
     </section>
 
     <!-- ================== Team Schedule ==================
@@ -2867,6 +2891,90 @@
     </div>
   </div>
 
+  <!-- ================== Set opening sick-leave balance modal (Phase 1f) ================== -->
+  <div id="sick-seed-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-seed-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-seed-title">Set opening sick-leave balance</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-seed-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-seed-hours">Opening balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-seed-hours" autocomplete="off"
+                 min="0" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Hours. Cap is 40h unless you check the override below.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-seed-reason">Reason (optional)</label>
+          <textarea id="sick-seed-reason" rows="2" maxlength="500"
+                    placeholder="e.g. Migrating from prior payroll system on 2026-06-01."></textarea>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-seed-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — override the Phase 1 ceiling for this entry.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Writes <code>opening_balance</code> ledger entry and the matching
+          <code>staff_labor_balances</code> doc in one batch.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-seed-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-seed-save">Save opening balance</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Sick-leave adjustment modal (Phase 1f) ================== -->
+  <div id="sick-adj-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-adj-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-adj-title">Add sick-leave adjustment</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-adj-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-adj-hours">Hours delta <span class="req">*</span></label>
+          <input type="number" id="sick-adj-hours" autocomplete="off"
+                 min="-100" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Positive credits, negative debits. e.g. <code>1.5</code> or <code>-0.5</code>.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-adj-reason">Reason <span class="req">*</span></label>
+          <textarea id="sick-adj-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Comp time for double-shift on 2026-05-30 (per Kirby)."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the ledger for audit.</p>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-adj-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — required if this adjustment pushes the balance above 40h.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Posts an <code>admin_adjustment</code> ledger entry and updates the balance doc in one batch.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-adj-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-adj-save">Save adjustment</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Toast container — top-right slide-ins for success/error notifications. -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -2909,7 +3017,8 @@
   <script src="admin/tab-schedule.js?v=20260530-refactor-phase23-hotfix-2"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
   <script src="admin/tab-labor-review.js?v=20260601-phase1e-lite"></script>
-  <script src="admin.js?v=20260601-phase1e-lite"></script>
+  <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
+  <script src="admin.js?v=20260601-phase1f"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

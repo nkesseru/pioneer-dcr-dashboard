@@ -53,7 +53,8 @@
     "tabs.feed", "tabs.recentDcrs", "tabs.dcrIssues", "tabs.techHealth",
     "tabs.yesterdaysWork", "tabs.customers", "tabs.techs", "tabs.admins",
     "tabs.supplyRequests", "tabs.dayHealth", "tabs.announcements",
-    "tabs.dcrReview", "tabs.schedule", "tabs.attendance", "tabs.laborReview"
+    "tabs.dcrReview", "tabs.schedule", "tabs.attendance", "tabs.laborReview",
+    "tabs.sickLeave"
     // tabs.deputyMapping has its own granular diagnostic — see below
   ];
   if (!window.__pioneerAdmin) {
@@ -548,6 +549,7 @@
     registerTabActivator("schedule",        window.__pioneerAdmin.tabs.schedule.refresh);
     registerTabActivator("attendance",      window.__pioneerAdmin.tabs.attendance.refresh);
     registerTabActivator("labor-review",    window.__pioneerAdmin.tabs.laborReview.refresh);
+    registerTabActivator("sick-leave",      window.__pioneerAdmin.tabs.sickLeave.refresh);
     registerTabActivator("tech-health",     window.__pioneerAdmin.tabs.techHealth.refresh);
     registerTabActivator("pilot-readiness", window.__pioneerAdmin.tabs.pilotReadiness.init);
     registerTabActivator("yesterday",       window.__pioneerAdmin.tabs.yesterdaysWork.init);
@@ -599,6 +601,7 @@
     window.__pioneerAdmin.tabs.schedule.init();
     window.__pioneerAdmin.tabs.attendance.init();
     window.__pioneerAdmin.tabs.laborReview.init();
+    window.__pioneerAdmin.tabs.sickLeave.init();
     window.__pioneerAdmin.tabs.techHealth.init();
     installModalCloseAffordances();
     installOverflowMenuOutsideClose();
