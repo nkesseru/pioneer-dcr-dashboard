@@ -1393,13 +1393,19 @@
         </div>
         <!-- Phase 2A.4 — status filter row. Defaults to "All" (excludes
              archived). "Archived" is the only path to see archived rows.
-             Pure client-side filter; no Firestore round trip. -->
+             Pure client-side filter; no Firestore round trip.
+             Phase 28A — 4 new payroll-state chips appended on the right. -->
         <div class="labor-quick-filters labor-status-filters" role="group" aria-label="Status filter">
           <span class="labor-filter-label">Status:</span>
-          <button type="button" class="labor-quick-btn" data-labor-status="all"           aria-pressed="true">All</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="needs_review"  aria-pressed="false">Needs Review</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"   aria-pressed="false">DCR Pending</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="archived"      aria-pressed="false">Archived</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="all"            aria-pressed="true">All</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="needs_review"   aria-pressed="false">Needs Review</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"    aria-pressed="false">DCR Pending</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="archived"       aria-pressed="false">Archived</button>
+          <span class="labor-filter-sep" aria-hidden="true">·</span>
+          <button type="button" class="labor-quick-btn" data-labor-status="pending_review" aria-pressed="false">Pending Review</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="reviewed"       aria-pressed="false">Reviewed</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="approved"       aria-pressed="false">Approved</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="exported"       aria-pressed="false">Exported</button>
         </div>
         <div class="labor-range-err" id="labor-range-err" role="alert" hidden></div>
       </section>
@@ -1430,6 +1436,10 @@
 
       <section class="labor-block">
         <h3 class="labor-block-title">Sessions</h3>
+        <!-- Phase 28A — bulk-approve bar. Populated by renderBulkApproveBar
+             whenever there's at least one approvable row in the current
+             filter view. Click → opens labor-bulk-approve-modal. -->
+        <div class="labor-bulk-bar" id="labor-bulk-bar" hidden></div>
         <div class="labor-table" id="labor-table"></div>
         <p class="admin-status admin-empty" id="labor-table-empty" hidden>No Pioneer Time Clock sessions in this range.</p>
       </section>
@@ -3106,6 +3116,40 @@
     </div>
   </div>
 
+  <!-- ================== Bulk Approve modal (Phase 28A) ==================
+       Opens from the bulk-approve bar above the Sessions table when
+       admin clicks "Approve N session(s)". Single batch write up to
+       BULK_APPROVE_CAP (50) sessions per click. Cap enforced client-side;
+       admin re-clicks after refresh for remaining batches. -->
+  <div id="labor-bulk-approve-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-bulk-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-bulk-title">Bulk approve for payroll</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-bulk-summary">—</p>
+        <p class="field-hint" style="margin-top:10px; line-height:1.5;">
+          Sessions must pass <strong>all gates</strong> before approval:
+          not archived · not active · not paused · not DCR-pending ·
+          needs_review false · DCR submitted · <code>work_minutes &gt; 0</code> ·
+          <code>assignment_id</code> present.
+        </p>
+        <p class="field-hint" style="margin-top:8px;">
+          Each approved session can still be reverted via the per-row
+          <strong>Unapprove</strong> button — until the export Cloud
+          Function locks it (Phase 28D).
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-bulk-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-bulk-save">Approve</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- ================== Link DCR placeholder modal (Phase 2A.4) ==================
        Opens from the per-row "Link DCR" button when DCR is pending.
        Phase 2A.4 ships the affordance only; real wire-up arrives in
@@ -3262,9 +3306,9 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase2a4-exceptions"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase28a-payroll"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase2a4-exceptions"></script>
+  <script src="admin.js?v=20260602-phase28a-payroll"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

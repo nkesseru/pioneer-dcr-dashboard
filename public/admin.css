@@ -6460,6 +6460,71 @@
   margin-left: 6px;
 }
 .labor-btn-linkdcr:hover { background: #fde68a; }
+
+/* ==========================================================================
+   Phase 28A — payroll approval (per-row chip + buttons + bulk bar).
+   ========================================================================== */
+
+.lr-payroll-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 4px;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.lr-payroll-chip.is-pending-review       { background: #f1f5f9; color: #475569; }
+.lr-payroll-chip.is-reviewed             { background: #dbeafe; color: #1e40af; }
+.lr-payroll-chip.is-approved-for-payroll { background: #d1fae5; color: #065f46; }
+.lr-payroll-chip.is-exported             { background: #064e3b; color: #ecfdf5; }
+
+.labor-btn-approve {
+  background: #d1fae5; color: #065f46; border-color: #a7f3d0;
+  margin-left: 6px;
+}
+.labor-btn-approve:hover { background: #a7f3d0; }
+.labor-btn-unapprove {
+  background: #fef3c7; color: #92400e; border-color: #fde68a;
+  margin-left: 6px;
+}
+.labor-btn-unapprove:hover { background: #fde68a; }
+
+.labor-bulk-bar {
+  margin: 10px 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  background: #ecfdf5;
+}
+.labor-bulk-msg {
+  color: #065f46;
+  font-size: 13px;
+}
+.labor-bulk-cap {
+  color: #92400e;
+  font-weight: 600;
+  font-size: 12px;
+  margin-left: 4px;
+}
+.labor-bulk-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #047857;
+  background: #047857;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labor-bulk-btn:hover  { background: #065f46; border-color: #065f46; }
+.labor-bulk-btn:active { transform: translateY(1px); }
 .lr-removed-meta {
   color: #4338ca;
   font-size: 12px;
@@ -6542,6 +6607,14 @@
 /* Phase 2A.4 — status filter row sits below the date filter row. Reuses
    the same chip-button styles so the two rows match visually. */
 .labor-status-filters { margin-top: 2px; }
+/* Phase 28A — separator pip between exception-state filters and the
+   new payroll-state filters so admins read them as two logical groups. */
+.labor-filter-sep {
+  color: #cbd5e1;
+  font-weight: 700;
+  padding: 0 4px;
+  user-select: none;
+}
 .labor-quick-btn {
   padding: 5px 12px;
   border-radius: 999px;

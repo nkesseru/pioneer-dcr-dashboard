@@ -65,7 +65,12 @@
   // The Firestore field name for "archived" is `admin_removed: true`,
   // unchanged from Phase 2A.2 (the audit fields stay; only UI label flips
   // from "Removed" to "Archived" in Phase 2A.4).
+  //
+  // Phase 28A — payroll-state filters expand the set to 8. Filter value
+  // "approved" maps to the Firestore field value "approved_for_payroll"
+  // (filter string is shorter for the chip label).
   let currentStatusFilter  = "all";   // "all" | "needs_review" | "dcr_pending" | "archived"
+                                       // | "pending_review" | "reviewed" | "approved" | "exported"
   let displaySessions      = [];      // filtered subset of `sessions`
 
   /* ---------- helpers ---------- */
@@ -289,18 +294,74 @@
   function adminRemovedFlag(s) { return s && s.admin_removed === true; }
   function forceClosedFlag(s) { return s && s.force_closed_by_admin === true; }
 
+  /* ---------- Phase 28A: payroll state + approval gates ---------- */
+
+  // Absent payroll_state field → treat as "pending_review" per the
+  // Phase 28 plan decision (no backfill on historical docs).
+  function payrollState(s) {
+    return (s && s.payroll_state) || "pending_review";
+  }
+  function payrollStateLabel(state) {
+    switch (state) {
+      case "pending_review":       return "Pending review";
+      case "reviewed":             return "Reviewed";
+      case "approved_for_payroll": return "Approved";
+      case "exported":             return "Exported";
+      default:                     return state || "—";
+    }
+  }
+  function payrollChip(s) {
+    const state = payrollState(s);
+    const cls = "is-" + state.replace(/_/g, "-");
+    const label = payrollStateLabel(state);
+    const lockSuffix = (state === "exported") ? " 🔒" : "";
+    return '<span class="lr-payroll-chip ' + cls + '">' +
+           escapeHtml(label) + lockSuffix + '</span>';
+  }
+  // Approve gate: row can move pending_review|reviewed → approved_for_payroll.
+  // Refuses if any signal says "not clean payroll data."
+  function approveGatePasses(s) {
+    if (!s) return false;
+    const state = payrollState(s);
+    if (state !== "pending_review" && state !== "reviewed") return false;
+    if (s.admin_removed === true) return false;
+    if (s.needs_review === true) return false;
+    if (s.status !== "completed") return false;     // active/paused/dcr_pending blocked
+    if (!s.assignment_id) return false;
+    if (typeof s.work_minutes !== "number" || s.work_minutes <= 0) return false;
+    const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+    if (!dcrSubmitted) return false;
+    return true;
+  }
+  // Unapprove gate: row can move approved_for_payroll → reviewed, but only
+  // if it hasn't been exported yet (exported sessions are locked; admin
+  // must Void the export first — Phase 28D).
+  function unapproveGatePasses(s) {
+    if (!s) return false;
+    if (payrollState(s) !== "approved_for_payroll") return false;
+    if (s.payroll_export_id) return false;
+    if (s.admin_removed === true) return false;
+    return true;
+  }
+
   // Phase 2A.4 — status filter. "all" excludes archived; "archived" shows
   // ONLY archived. The 0-of-3 non-archived filters share the
   // not-archived gate so admin never accidentally lumps archived rows
   // into the active review queue.
   function passesStatusFilter(s) {
     const isArchived = adminRemovedFlag(s);
+    const state = payrollState(s);
     switch (currentStatusFilter) {
-      case "archived":     return isArchived;
-      case "needs_review": return !isArchived && needsReviewFlag(s);
-      case "dcr_pending":  return !isArchived && dcrPendingFlag(s);
+      case "archived":       return isArchived;
+      case "needs_review":   return !isArchived && needsReviewFlag(s);
+      case "dcr_pending":    return !isArchived && dcrPendingFlag(s);
+      // Phase 28A — payroll-state filters. All four exclude archived rows.
+      case "pending_review": return !isArchived && state === "pending_review";
+      case "reviewed":       return !isArchived && state === "reviewed";
+      case "approved":       return !isArchived && state === "approved_for_payroll";
+      case "exported":       return !isArchived && state === "exported";
       case "all":
-      default:             return !isArchived;
+      default:               return !isArchived;
     }
   }
   function filterSessions(arr) { return (arr || []).filter(passesStatusFilter); }
@@ -488,12 +549,37 @@
     renderActive();
     renderByEmployee();
     renderTable();
+    renderBulkApproveBar();
+  }
+
+  // Phase 28A — Bulk Approve bar above the Sessions table. Visible
+  // whenever there's at least one approvable row in the current view.
+  // Click → confirmation modal (which respects the 50-session cap).
+  function renderBulkApproveBar() {
+    const wrap = $("labor-bulk-bar");
+    if (!wrap) return;
+    const ready = approvableInCurrentView();
+    if (!ready.length) { wrap.innerHTML = ""; wrap.hidden = true; return; }
+    wrap.hidden = false;
+    const capped = (ready.length > BULK_APPROVE_CAP);
+    const label = capped
+      ? "Approve first " + BULK_APPROVE_CAP + " of " + ready.length + " ready sessions"
+      : "Approve all " + ready.length + " ready session" + (ready.length === 1 ? "" : "s");
+    wrap.innerHTML =
+      '<div class="labor-bulk-msg">' +
+        '<strong>' + ready.length + '</strong> session' + (ready.length === 1 ? "" : "s") +
+        ' in this view pass all payroll gates.' +
+        (capped ? ' <span class="labor-bulk-cap">(cap: ' + BULK_APPROVE_CAP + ' per click)</span>' : '') +
+      '</div>' +
+      '<button type="button" class="labor-bulk-btn" id="labor-bulk-open">' +
+        escapeHtml(label) +
+      '</button>';
   }
 
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v2A.4-exceptions";
+  const LABOR_BUILD_TAG = "Labor v28A-payroll-approval";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -653,9 +739,13 @@
 
   // Phase 2A.2 — combined status display (legacy chip + optional
   // "Removed from PTC" chip when the session was admin-removed).
+  // Phase 28A — append the payroll-state chip so admin sees both bits
+  // at a glance.
   function sessionStatusDisplay(s) {
     const base = statusChip(s.status, needsReviewFlag(s));
-    return (s && s.admin_removed === true) ? (removedChip() + " " + base) : base;
+    const archivedPrefix = (s && s.admin_removed === true) ? (removedChip() + " ") : "";
+    const payrollSuffix  = " " + payrollChip(s);
+    return archivedPrefix + base + payrollSuffix;
   }
   function removedMetaLine(s) {
     if (!s || s.admin_removed !== true) return "";
@@ -782,10 +872,20 @@
       if (!s.assignment_id) {
         try { console.warn("[labor-review] session has no assignment_id — Archive disabled for this row", { id: s._id }); } catch (_e) {}
       }
-      const archiveBtn = (s.assignment_id && s.admin_removed !== true)
+      const archiveBtn = (s.assignment_id && s.admin_removed !== true && payrollState(s) !== "exported")
         ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Archive</button>'
         : '';
-      const actionCellContent = (reviewBtn + linkDcrBtn + archiveBtn) ||
+      // Phase 28A — Approve / Unapprove buttons. Approve visible only
+      // when the row passes all payroll gates. Unapprove visible only on
+      // approved-but-not-yet-exported rows. Both are single-click writes;
+      // bulk Approve has its own modal-confirmed path above the table.
+      const approveBtn = approveGatePasses(s)
+        ? '<button type="button" class="labor-btn labor-btn-approve" data-act="approve-session" title="Mark approved for payroll">Approve</button>'
+        : '';
+      const unapproveBtn = unapproveGatePasses(s)
+        ? '<button type="button" class="labor-btn labor-btn-unapprove" data-act="unapprove-session" title="Revert approval (only allowed before export)">Unapprove</button>'
+        : '';
+      const actionCellContent = (reviewBtn + linkDcrBtn + approveBtn + unapproveBtn + archiveBtn) ||
         (s.assignment_id
           ? '<span class="lr-no-actions">—</span>'
           : '<span class="lr-no-actions" title="Session has no assignment_id — cannot archive">no asgn id</span>');
@@ -838,11 +938,76 @@
 
   async function markReviewed(sessionId) {
     const actor = currentActor();
-    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update({
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    // Phase 28A — Mark Reviewed now ALSO bumps payroll_state from
+    // pending_review → reviewed. If the session is already reviewed/
+    // approved/exported, we don't downgrade — only clear needs_review +
+    // stamp the reviewer fields.
+    const sess = sessions.find(function (s) { return s._id === sessionId; });
+    const currentState = payrollState(sess);
+    const patch = {
       needs_review: false,
-      reviewed_at:  firebase.firestore.FieldValue.serverTimestamp(),
+      reviewed_at:  sts,
       reviewed_by:  actor
+    };
+    if (currentState === "pending_review") {
+      patch.payroll_state             = "reviewed";
+      patch.payroll_state_changed_at  = sts;
+      patch.payroll_state_changed_by  = actor;
+    }
+    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update(patch);
+  }
+
+  /* ---------- Phase 28A: approval writers ---------- */
+
+  async function approveSession(sessionId) {
+    const actor = currentActor();
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update({
+      payroll_state:            "approved_for_payroll",
+      payroll_state_changed_at: sts,
+      payroll_state_changed_by: actor,
+      approved_for_payroll_by:  actor,
+      approved_for_payroll_at:  sts
     });
+  }
+
+  async function unapproveSession(sessionId) {
+    const actor = currentActor();
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    await firebase.firestore().collection("pioneer_service_sessions").doc(sessionId).update({
+      payroll_state:            "reviewed",
+      payroll_state_changed_at: sts,
+      payroll_state_changed_by: actor,
+      // Clear approval audit fields so future Approve writes a fresh stamp.
+      approved_for_payroll_by:  firebase.firestore.FieldValue.delete(),
+      approved_for_payroll_at:  firebase.firestore.FieldValue.delete()
+    });
+  }
+
+  // Bulk Approve — caps at 50 sessions per click per Phase 28A decision.
+  // Returns { approved, capped, skipped_no_gate } so the caller can show
+  // a meaningful toast.
+  async function bulkApproveSessions(sessionIds) {
+    const actor = currentActor();
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const db = firebase.firestore();
+    const batch = db.batch();
+    sessionIds.forEach(function (sid) {
+      const ref = db.collection("pioneer_service_sessions").doc(sid);
+      batch.update(ref, {
+        payroll_state:            "approved_for_payroll",
+        payroll_state_changed_at: sts,
+        payroll_state_changed_by: actor,
+        approved_for_payroll_by:  actor,
+        approved_for_payroll_at:  sts
+      });
+    });
+    await batch.commit();
+  }
+  const BULK_APPROVE_CAP = 50;
+  function approvableInCurrentView() {
+    return (displaySessions || []).filter(approveGatePasses);
   }
 
   // Path A force-close: transactional update of session + delete of the
@@ -1071,6 +1236,64 @@
   }
   void closeLinkDcrModal; // closed via [data-modal-close] from the shell
 
+  /* ---------- Phase 28A: Bulk Approve modal ---------- */
+
+  function openBulkApproveModal() {
+    const modal = $("labor-bulk-approve-modal");
+    if (!modal) return;
+    const ready = approvableInCurrentView();
+    const willApprove = Math.min(ready.length, BULK_APPROVE_CAP);
+    const capped = (ready.length > BULK_APPROVE_CAP);
+    const sumEl = $("labor-bulk-summary");
+    if (sumEl) {
+      sumEl.innerHTML =
+        '<strong>' + willApprove + '</strong> session' + (willApprove === 1 ? "" : "s") +
+        ' will be approved for payroll.' +
+        (capped
+          ? ' <span class="labor-bulk-cap">' + (ready.length - willApprove) +
+            ' more remain — click again after refresh to handle them.</span>'
+          : '');
+    }
+    const saveBtn = $("labor-bulk-save");
+    if (saveBtn) {
+      saveBtn.textContent = "Approve " + willApprove + " session" + (willApprove === 1 ? "" : "s");
+      saveBtn.disabled = (willApprove === 0);
+    }
+    const errEl = $("labor-bulk-err");
+    if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeBulkApproveModal() {
+    const modal = $("labor-bulk-approve-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+  void closeBulkApproveModal; // closed via [data-modal-close] from the shell
+
+  async function submitBulkApprove() {
+    const errEl   = $("labor-bulk-err");
+    const saveBtn = $("labor-bulk-save");
+    function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }
+    const ready = approvableInCurrentView();
+    if (!ready.length) { showErr("No approvable sessions in this view."); return; }
+    const slice = ready.slice(0, BULK_APPROVE_CAP);
+    const ids = slice.map(function (s) { return s._id; });
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await bulkApproveSessions(ids);
+      try { console.info("[labor-review] bulk approved", { count: ids.length }); } catch (_e) {}
+      closeBulkApproveModal();
+      refresh();
+    } catch (err) {
+      console.error("[labor-review] bulk approve failed", err);
+      showErr((err && (err.message || err.code)) || "Bulk approve failed.");
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
   function closeRemoveModal() {
     const modal = $("labor-remove-modal");
     if (!modal) return;
@@ -1162,7 +1385,46 @@
         openLinkDcrModal(summary);
         return;
       }
+      // Phase 28A — Approve / Unapprove. Single-click writes; admin can
+      // immediately revert via Unapprove if mis-clicked. No modal.
+      if (btn.dataset.act === "approve-session") {
+        const row = btn.closest("[data-session-id]");
+        if (!row) return;
+        const sid = row.dataset.sessionId;
+        btn.disabled = true;
+        approveSession(sid).then(refresh).catch(function (err) {
+          console.error("[labor-review] approve failed", err);
+          alert((err && (err.message || err.code)) || "Approve failed.");
+          btn.disabled = false;
+        });
+        return;
+      }
+      if (btn.dataset.act === "unapprove-session") {
+        const row = btn.closest("[data-session-id]");
+        if (!row) return;
+        const sid = row.dataset.sessionId;
+        btn.disabled = true;
+        unapproveSession(sid).then(refresh).catch(function (err) {
+          console.error("[labor-review] unapprove failed", err);
+          alert((err && (err.message || err.code)) || "Unapprove failed.");
+          btn.disabled = false;
+        });
+        return;
+      }
     });
+
+    // Phase 28A — Bulk Approve open button is rendered into
+    // #labor-bulk-bar by renderBulkApproveBar; the bar's contents are
+    // regenerated each render so a direct addEventListener on the
+    // button would be lost. Use a delegated click on the wrap instead.
+    const bulkBar = $("labor-bulk-bar");
+    if (bulkBar) bulkBar.addEventListener("click", function (ev) {
+      const btn = ev.target.closest && ev.target.closest("#labor-bulk-open");
+      if (!btn) return;
+      openBulkApproveModal();
+    });
+    const bulkSave = $("labor-bulk-save");
+    if (bulkSave) bulkSave.addEventListener("click", function () { submitBulkApprove(); });
 
     // Force-close modal save + cancel (X / backdrop / Cancel use [data-modal-close]
     // which the shell wires globally).
