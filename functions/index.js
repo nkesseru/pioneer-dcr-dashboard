@@ -3130,11 +3130,20 @@ exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req,
   const pioneerAssignmentId     = String((payload && payload.pioneer_assignment_id)     || "").trim();
   const pioneerServiceSessionId = String((payload && payload.pioneer_service_session_id) || "").trim();
   if (pioneerAssignmentId) {
-    // 2. session back-write (only when a session id was supplied)
+    // 2. session back-write (only when a session id was supplied).
+    // Phase 2B — Also stamp dcr_id + dcr_status so Phase 28A's
+    // approveGatePasses() (which reads s.dcr_id OR s.dcr_status ===
+    // "submitted") will recognize the DCR as complete. Without this,
+    // sessions remained DCR Pending forever even after submit, and the
+    // payroll Verification Layer blocked exports. merge:true + last-
+    // write-wins on serverTimestamp() means a later DCR resubmission
+    // (newest submission) wins primary status, per Phase 2B spec #2.
     if (pioneerServiceSessionId) {
       try {
         await db.collection("pioneer_service_sessions").doc(pioneerServiceSessionId).set({
+          dcr_id:            submissionId,
           dcr_submission_id: submissionId,
+          dcr_status:        "submitted",
           dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
           updated_at:        admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
