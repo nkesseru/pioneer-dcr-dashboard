@@ -1384,11 +1384,22 @@
           <button type="button" class="labor-range-apply" id="labor-range-apply">Apply</button>
         </div>
         <div class="labor-quick-filters" role="group" aria-label="Quick date filters">
+          <span class="labor-filter-label">Date:</span>
           <button type="button" class="labor-quick-btn" data-labor-quick="today"      aria-pressed="true">Today</button>
           <button type="button" class="labor-quick-btn" data-labor-quick="yesterday"  aria-pressed="false">Yesterday</button>
           <button type="button" class="labor-quick-btn" data-labor-quick="last_7"     aria-pressed="false">Last 7 Days</button>
           <button type="button" class="labor-quick-btn" data-labor-quick="last_30"    aria-pressed="false">Last 30 Days</button>
           <button type="button" class="labor-quick-btn" data-labor-quick="pay_period" aria-pressed="false">Current Pay Period</button>
+        </div>
+        <!-- Phase 2A.4 — status filter row. Defaults to "All" (excludes
+             archived). "Archived" is the only path to see archived rows.
+             Pure client-side filter; no Firestore round trip. -->
+        <div class="labor-quick-filters labor-status-filters" role="group" aria-label="Status filter">
+          <span class="labor-filter-label">Status:</span>
+          <button type="button" class="labor-quick-btn" data-labor-status="all"           aria-pressed="true">All</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="needs_review"  aria-pressed="false">Needs Review</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"   aria-pressed="false">DCR Pending</button>
+          <button type="button" class="labor-quick-btn" data-labor-status="archived"      aria-pressed="false">Archived</button>
         </div>
         <div class="labor-range-err" id="labor-range-err" role="alert" hidden></div>
       </section>
@@ -3056,12 +3067,15 @@
     </div>
   </div>
 
-  <!-- ================== Remove assignment from PTC modal (Phase 2A.2) ================== -->
+  <!-- ================== Archive assignment modal (Phase 2A.2 + 2A.4 relabel) ==================
+       Phase 2A.4 — UI relabeled "Remove from PTC" → "Archive Assignment".
+       Underlying Firestore fields (status:"admin_removed",
+       removed_from_ptc, removed_reason/by/at) unchanged for back-compat. -->
   <div id="labor-remove-modal" class="admin-modal" hidden aria-hidden="true">
     <div class="admin-modal-backdrop" data-modal-close></div>
     <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-rm-title">
       <header class="admin-modal-header">
-        <h2 id="labor-rm-title">Remove from Pioneer Time Clock</h2>
+        <h2 id="labor-rm-title">Archive assignment</h2>
         <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
       </header>
       <div class="admin-modal-body">
@@ -3076,17 +3090,49 @@
         </div>
 
         <p class="field-hint" style="margin-top:8px;">
-          The assignment is flipped to <code>status: "admin_removed"</code> and
-          hidden from the tech's Pioneer Time Clock. <strong>Nothing is deleted</strong>;
-          related <code>pioneer_service_sessions</code> are preserved and flagged
-          <code>admin_removed: true</code>. If a tech is currently clocked into this
-          assignment, you'll be asked to Force close first.
+          The assignment is archived (Firestore <code>status: "admin_removed"</code>) and
+          hidden from the tech's Pioneer Time Clock + the default Labor view.
+          <strong>Nothing is deleted</strong>; related <code>pioneer_service_sessions</code> are
+          preserved and flagged <code>admin_removed: true</code>. Use the
+          <strong>Archived</strong> status filter above to see archived rows. If a tech is
+          currently clocked into this assignment, you'll be asked to Force close first.
         </p>
       </div>
       <footer class="admin-modal-footer">
         <div class="admin-modal-err" id="labor-rm-err" hidden></div>
         <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
-        <button type="button" class="modal-btn-save"   id="labor-rm-save">Remove from PTC</button>
+        <button type="button" class="modal-btn-save"   id="labor-rm-save">Archive</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Link DCR placeholder modal (Phase 2A.4) ==================
+       Opens from the per-row "Link DCR" button when DCR is pending.
+       Phase 2A.4 ships the affordance only; real wire-up arrives in
+       Phase 2B (admin pastes a DCR submission id + reason; batch writes
+       pioneer_service_sessions.{dcr_id, dcr_status, dcr_linked_by, …}).
+       Close-only modal with explainer copy — no write path. -->
+  <div id="labor-linkdcr-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-linkdcr-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-linkdcr-title">Link DCR</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-linkdcr-summary">—</p>
+        <p class="field-hint" style="margin-top:8px; line-height:1.5;">
+          Manual DCR linking lets an admin attach an existing DCR submission ID to
+          this session — useful when a tech clocked out but submitted the DCR from a
+          different surface, or when the DCR was emailed in and recorded manually.
+        </p>
+        <p class="field-hint" style="margin-top:8px; line-height:1.5;">
+          <strong>Coming in Phase 2B.</strong> This phase ships the button only so
+          admins can plan around it. Nothing happens on Close.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
       </footer>
     </div>
   </div>
@@ -3216,9 +3262,9 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase2a3-range"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase2a4-exceptions"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase2a3-range"></script>
+  <script src="admin.js?v=20260602-phase2a4-exceptions"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

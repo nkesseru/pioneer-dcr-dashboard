@@ -6356,6 +6356,14 @@
   color: #1e293b;
 }
 .labor-row .lr-col-date { color: #475569; font-variant-numeric: tabular-nums; }
+/* Phase 2A.4 — completed/dcr_pending rows with work_minutes=0 render
+   "Review Required" instead of an authoritative "0m". Muted amber
+   italic so admin spots them without alarm-bell red. */
+.labor-row .lr-col-wkd.is-review-required {
+  color: #b45309;
+  font-style: italic;
+  font-weight: 600;
+}
 .labor-row:last-child { border-bottom: 0; }
 .labor-row-head {
   background: #f8fafc;
@@ -6446,6 +6454,12 @@
   margin-left: 6px;
 }
 .labor-btn-remove:hover { background: #c7d2fe; }
+/* Phase 2A.4 — Link DCR placeholder button. Amber to match DCR theme. */
+.labor-btn-linkdcr {
+  background: #fef3c7; color: #78350f; border-color: #fde68a;
+  margin-left: 6px;
+}
+.labor-btn-linkdcr:hover { background: #fde68a; }
 .lr-removed-meta {
   color: #4338ca;
   font-size: 12px;
@@ -6514,8 +6528,20 @@
 .labor-quick-filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
+.labor-filter-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-right: 2px;
+}
+/* Phase 2A.4 — status filter row sits below the date filter row. Reuses
+   the same chip-button styles so the two rows match visually. */
+.labor-status-filters { margin-top: 2px; }
 .labor-quick-btn {
   padding: 5px 12px;
   border-radius: 999px;

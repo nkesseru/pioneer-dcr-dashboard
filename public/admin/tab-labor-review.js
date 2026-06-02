@@ -59,6 +59,15 @@
   let totalsCache          = null; // { totalWorked, totalRunning, needsReview, dcrPending, exceptions: { overBudget, offsite, adminRemoved, forceClosed } }
   let byEmployeeCache      = [];
 
+  // Phase 2A.4 — status filter. Applied AFTER the Firestore range query,
+  // BEFORE totals + by-employee + table render. Default "all" hides
+  // archived sessions; "archived" is the only way to see them.
+  // The Firestore field name for "archived" is `admin_removed: true`,
+  // unchanged from Phase 2A.2 (the audit fields stay; only UI label flips
+  // from "Removed" to "Archived" in Phase 2A.4).
+  let currentStatusFilter  = "all";   // "all" | "needs_review" | "dcr_pending" | "archived"
+  let displaySessions      = [];      // filtered subset of `sessions`
+
   /* ---------- helpers ---------- */
 
   function tsToMs(ts) {
@@ -138,8 +147,11 @@
   // Phase 2A.2 — small chip rendered on rows whose underlying assignment
   // (or session) was admin-removed from PTC. Keeps the row visible for
   // audit but signals "no longer in the tech-facing PTC list."
+  // Phase 2A.4 — "Removed from PTC" relabeled to "Archived" in the
+  // admin UI. The underlying Firestore field (`admin_removed: true`) is
+  // unchanged to preserve back-compat with Phase 2A.2 audit data.
   function removedChip() {
-    return '<span class="lr-chip is-removed" title="Hidden from Pioneer Time Clock for the assigned tech">Removed from PTC</span>';
+    return '<span class="lr-chip is-removed" title="Hidden from Pioneer Time Clock for the assigned tech">Archived</span>';
   }
   function geoChip(g) {
     if (!g) return "—";
@@ -276,6 +288,31 @@
   }
   function adminRemovedFlag(s) { return s && s.admin_removed === true; }
   function forceClosedFlag(s) { return s && s.force_closed_by_admin === true; }
+
+  // Phase 2A.4 — status filter. "all" excludes archived; "archived" shows
+  // ONLY archived. The 0-of-3 non-archived filters share the
+  // not-archived gate so admin never accidentally lumps archived rows
+  // into the active review queue.
+  function passesStatusFilter(s) {
+    const isArchived = adminRemovedFlag(s);
+    switch (currentStatusFilter) {
+      case "archived":     return isArchived;
+      case "needs_review": return !isArchived && needsReviewFlag(s);
+      case "dcr_pending":  return !isArchived && dcrPendingFlag(s);
+      case "all":
+      default:             return !isArchived;
+    }
+  }
+  function filterSessions(arr) { return (arr || []).filter(passesStatusFilter); }
+
+  // Centralized re-derive of the filtered subset + downstream caches.
+  // Called both at end of refresh() and on every status-filter click —
+  // the click path skips Firestore entirely (data is already loaded).
+  function recomputeDisplay() {
+    displaySessions = filterSessions(sessions);
+    totalsCache     = computeTotals(displaySessions);
+    byEmployeeCache = groupByEmployee(displaySessions);
+  }
 
   function computeTotals(arr) {
     const out = {
@@ -421,8 +458,11 @@
       });
       await loadAssignmentsByIds(ids);
 
-      totalsCache     = computeTotals(sessions);
-      byEmployeeCache = groupByEmployee(sessions);
+      // Phase 2A.4 — apply the active status filter to derive what
+      // the panel actually shows. Totals + By Employee follow the
+      // filter so admin can answer "how many bad sessions this period?"
+      // with one click on Archived.
+      recomputeDisplay();
 
       loaded = true;
       setState(null);
@@ -453,7 +493,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v2A.3-range";
+  const LABOR_BUILD_TAG = "Labor v2A.4-exceptions";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -490,6 +530,14 @@
     document.querySelectorAll("[data-labor-quick]").forEach(function (b) {
       const key = b.getAttribute("data-labor-quick");
       const active = (key === currentQuickFilter);
+      b.classList.toggle("is-active", active);
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    // Phase 2A.4 — status filter chip highlight.
+    document.querySelectorAll("[data-labor-status]").forEach(function (b) {
+      const key = b.getAttribute("data-labor-status");
+      const active = (key === currentStatusFilter);
       b.classList.toggle("is-active", active);
       b.setAttribute("aria-pressed", active ? "true" : "false");
     });
@@ -614,7 +662,7 @@
     const who = (s.removed_by && (s.removed_by.displayName || s.removed_by.email)) || "admin";
     const when = s.removed_at ? fmtDateTime(s.removed_at) : "";
     const reason = s.removed_reason ? " — " + s.removed_reason : "";
-    return '<div class="lr-removed-meta">Removed from PTC' +
+    return '<div class="lr-removed-meta">Archived' +
            (when ? ' ' + escapeHtml(when) : '') +
            ' by ' + escapeHtml(who) +
            escapeHtml(reason) +
@@ -638,8 +686,23 @@
     const wrap = $("labor-table");
     const empty = $("labor-table-empty");
     if (!wrap || !empty) return;
-    if (!sessions.length) {
-      wrap.innerHTML = ""; empty.hidden = false; return;
+    // Phase 2A.4 — table renders the filtered subset. Empty-state message
+    // reflects whether the filter scoped everything out vs the range
+    // having no sessions at all.
+    const shown = displaySessions || [];
+    if (!shown.length) {
+      wrap.innerHTML = "";
+      if (sessions.length > 0 && currentStatusFilter !== "all") {
+        empty.textContent = "No sessions match the " +
+          (currentStatusFilter === "needs_review" ? "Needs Review"
+            : currentStatusFilter === "dcr_pending" ? "DCR Pending"
+            : currentStatusFilter === "archived"   ? "Archived" : "current") +
+          " filter in this range.";
+      } else {
+        empty.textContent = "No Pioneer Time Clock sessions in this range.";
+      }
+      empty.hidden = false;
+      return;
     }
     empty.hidden = true;
     const headerHtml =
@@ -662,7 +725,7 @@
     // overwrites this attribute every time.
     try { wrap.setAttribute("data-render-version", LABOR_BUILD_TAG); } catch (_e) {}
 
-    const rowsHtml = sessions.map(function (s) {
+    const rowsHtml = shown.map(function (s) {
       const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
       const budget = (s.budget_minutes != null ? s.budget_minutes
                   : (assignment && assignment.budget_minutes != null ? assignment.budget_minutes
@@ -677,12 +740,22 @@
       const isRunning = (s.status === "active") && !s.clock_out_at;
       const isPausedRow = (s.status === "paused") && !s.clock_out_at;
       const elapsed = liveElapsedMinutes(s.clock_in_at);
+      // Phase 2A.4 — completed / dcr_pending rows with work_minutes === 0
+      // (or null) are suspicious. Show "Review Required" instead of an
+      // authoritative "0m" so admin doesn't gloss over a likely-bad clean.
+      const isTerminalZero =
+        (s.status === "completed" || s.status === "dcr_pending") &&
+        (s.work_minutes === 0 || s.work_minutes == null);
       let workedLabel;
+      let workedClass = "";
       if (isRunning) {
         workedLabel = "Running " + fmtMinutes(elapsed != null ? elapsed : 0);
       } else if (isPausedRow) {
         const fallback = (s.work_minutes != null) ? s.work_minutes : elapsed;
         workedLabel = "Paused " + fmtMinutes(fallback != null ? fallback : 0);
+      } else if (isTerminalZero) {
+        workedLabel = "Review Required";
+        workedClass = " is-review-required";
       } else if (s.work_minutes != null) {
         workedLabel = fmtMinutes(s.work_minutes);
       } else {
@@ -691,24 +764,31 @@
       const reviewBtn = needsReviewFlag(s)
         ? '<button type="button" class="labor-btn labor-btn-review" data-act="mark-reviewed">Review</button>'
         : '';
+      // Phase 2A.4 — Link DCR placeholder. Visible per row when DCR is
+      // pending and the row isn't archived. Click opens a "Coming in
+      // Phase 2B" modal — no write path yet.
+      const linkDcrBtn = (dcrPendingFlag(s) && !adminRemovedFlag(s))
+        ? '<button type="button" class="labor-btn labor-btn-linkdcr" data-act="link-dcr">Link DCR</button>'
+        : '';
       // Phase 2A.2 — Remove button is available on rows that have an
       // assignment_id and aren't already admin-removed. Admin can stack
       // it with Review when both apply.
+      // Phase 2A.4 — relabeled "Remove…" → "Archive" (same write path).
       // Phase 2A.2 regression note — if a session lacks assignment_id
-      // (historical or legacy doc), Remove can't write because the
+      // (historical or legacy doc), Archive can't write because the
       // batch needs to load service_assignments/{id}. Log to console so
       // admin can spot it in DevTools, and render a small hint in the
       // action cell instead of a blank.
       if (!s.assignment_id) {
-        try { console.warn("[labor-review] session has no assignment_id — Remove disabled for this row", { id: s._id }); } catch (_e) {}
+        try { console.warn("[labor-review] session has no assignment_id — Archive disabled for this row", { id: s._id }); } catch (_e) {}
       }
-      const removeBtn = (s.assignment_id && s.admin_removed !== true)
-        ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Remove…</button>'
+      const archiveBtn = (s.assignment_id && s.admin_removed !== true)
+        ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Archive</button>'
         : '';
-      const actionCellContent = (reviewBtn + removeBtn) ||
+      const actionCellContent = (reviewBtn + linkDcrBtn + archiveBtn) ||
         (s.assignment_id
           ? '<span class="lr-no-actions">—</span>'
-          : '<span class="lr-no-actions" title="Session has no assignment_id — cannot remove">no asgn id</span>');
+          : '<span class="lr-no-actions" title="Session has no assignment_id — cannot archive">no asgn id</span>');
       const reviewedMeta = (s.reviewed_by && s.reviewed_at)
         ? '<div class="lr-reviewed-meta">Reviewed ' + escapeHtml(fmtDateTime(s.reviewed_at)) +
             ' by ' + escapeHtml(s.reviewed_by.displayName || s.reviewed_by.email || "admin") +
@@ -732,7 +812,7 @@
           '<div class="lr-col-status">' + sessionStatusDisplay(s) + '</div>' +
           '<div class="lr-col-in">' + escapeHtml(fmtTime(s.clock_in_at)) + '</div>' +
           '<div class="lr-col-out">' + escapeHtml(fmtTime(s.clock_out_at)) + '</div>' +
-          '<div class="lr-col-wkd">' + escapeHtml(workedLabel) + '</div>' +
+          '<div class="lr-col-wkd' + workedClass + '">' + escapeHtml(workedLabel) + '</div>' +
           '<div class="lr-col-bgt">' + escapeHtml(fmtMinutes(budget)) + '</div>' +
           '<div class="lr-col-geo">' + geoChip(s.clock_in_geo_status) +
               ' / ' + geoChip(s.clock_out_geo_status) + '</div>' +
@@ -970,6 +1050,27 @@
     setTimeout(function () { const r = $("labor-rm-reason"); if (r) r.focus(); }, 60);
   }
 
+  // Phase 2A.4 — Link DCR placeholder. Real wire-up ships in Phase 2B
+  // (admin pastes a DCR submission id + reason; batch writes
+  // pioneer_service_sessions.{dcr_id, dcr_status, dcr_linked_by, …}).
+  // This phase only renders the affordance + an explainer modal so admin
+  // sees the button is coming without thinking it's broken.
+  function openLinkDcrModal(summary) {
+    const modal = $("labor-linkdcr-modal");
+    if (!modal) return;
+    const sEl = $("labor-linkdcr-summary");
+    if (sEl) sEl.textContent = summary || "—";
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeLinkDcrModal() {
+    const modal = $("labor-linkdcr-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+  void closeLinkDcrModal; // closed via [data-modal-close] from the shell
+
   function closeRemoveModal() {
     const modal = $("labor-remove-modal");
     if (!modal) return;
@@ -1038,17 +1139,27 @@
           });
         return;
       }
-      // Phase 2A.2 — Remove from PTC
+      // Phase 2A.2 — Archive Assignment (was "Remove from PTC" in 2A.2).
+      // Same data-act keeps the existing batch writer unchanged.
       if (btn.dataset.act === "remove-from-ptc") {
         const row = btn.closest("[data-assignment-id]");
         if (!row) return;
         const aid = row.dataset.assignmentId;
         if (!aid) {
-          alert("This row has no assignment_id — cannot remove. (Older session docs may lack the field; refresh and try again.)");
+          alert("This row has no assignment_id — cannot archive. (Older session docs may lack the field; refresh and try again.)");
           return;
         }
         const summary = row.dataset.summary || "";
         openRemoveModal(aid, summary);
+        return;
+      }
+      // Phase 2A.4 — Link DCR placeholder. Opens an info modal explaining
+      // the feature ships in Phase 2B. No write path.
+      if (btn.dataset.act === "link-dcr") {
+        const row = btn.closest("[data-session-id]");
+        if (!row) return;
+        const summary = (row.dataset.summary) || "";
+        openLinkDcrModal(summary);
         return;
       }
     });
@@ -1074,6 +1185,20 @@
         const startEl = $("labor-range-start"); if (startEl) startEl.value = rangeStart;
         const endEl   = $("labor-range-end");   if (endEl)   endEl.value   = rangeEnd;
         refresh();
+      });
+    });
+    // Phase 2A.4 — Status filter chips. Pure client-side filter; no
+    // Firestore round trip. Totals + By Employee + Sessions table all
+    // recompute from the filtered subset.
+    document.querySelectorAll("[data-labor-status]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        const key = b.getAttribute("data-labor-status");
+        if (!key) return;
+        currentStatusFilter = key;
+        if (loaded) {
+          recomputeDisplay();
+          render();
+        }
       });
     });
     const applyBtn = $("labor-range-apply");
