@@ -6752,6 +6752,100 @@
 .payroll-exports-placeholder p:last-child { margin: 0; }
 .payroll-exports-sub { font-size: 12px; color: #64748b; }
 
+/* Phase 28D — Recent Exports list + export/void affordances. */
+.payroll-export-btn.is-ready {
+  cursor: pointer;
+  opacity: 1;
+}
+.payroll-export-btn.is-ready:hover { background: #065f46; border-color: #065f46; }
+.payroll-export-btn.is-ready:active { transform: translateY(1px); }
+.payroll-export-row {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.payroll-export-row.is-voided {
+  background: #fafafa;
+  border-color: #d4d4d8;
+  opacity: 0.85;
+}
+.payroll-export-row-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-export-date   { font-weight: 700; font-variant-numeric: tabular-nums; }
+.payroll-export-period { color: #475569; }
+.payroll-export-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.payroll-export-badge.is-active { background: #d1fae5; color: #065f46; }
+.payroll-export-badge.is-voided { background: #fee2e2; color: #991b1b; }
+.payroll-export-overlap {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1e40af;
+}
+.payroll-export-row-meta {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12.5px;
+}
+.payroll-export-voided-line {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #991b1b;
+}
+.payroll-export-row-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.payroll-export-download {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #1e40af;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.payroll-export-download:hover { background: #1e3a8a; }
+.payroll-export-no-url {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.payroll-export-void-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-export-void-btn:hover { background: #fecaca; }
+.payroll-export-success-headline {
+  font-size: 14px;
+  color: #065f46;
+  margin: 0 0 6px;
+}
+
 @media (max-width: 900px) {
   .payroll-row {
     grid-template-columns: repeat(2, 1fr);

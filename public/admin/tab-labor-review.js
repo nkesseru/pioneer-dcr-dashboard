@@ -1321,6 +1321,16 @@
       if (!sessSnap.exists) throw new Error("Session no longer exists");
       const sess = sessSnap.data() || {};
 
+      // Phase 28D gate hardening — refuse force-close on exported sessions.
+      // Once a session is in a CSV export it must be voided before any
+      // mutation; otherwise the audit chain breaks.
+      if (sess.payroll_state === "exported") {
+        throw new Error(
+          "Cannot force-close an exported session. " +
+          "Void the payroll export in Payroll → Recent Exports first."
+        );
+      }
+
       const clockInMs = tsToMs(sess.clock_in_at);
       const outMs     = tsToMs(clockOutAt) || Date.now();
       const workMin   = clockInMs ? Math.max(0, Math.round((outMs - clockInMs) / 60000)) : null;
@@ -1445,6 +1455,21 @@
     const sts          = firebase.firestore.FieldValue.serverTimestamp();
 
     if (!assignmentId) throw new Error("Missing assignment id.");
+
+    // Phase 28D gate hardening — refuse to archive if any related
+    // session is already exported. Admin must Void the export first to
+    // unlock the audit chain.
+    const lockedSnap = await db.collection("pioneer_service_sessions")
+      .where("assignment_id", "==", assignmentId)
+      .where("payroll_state", "==", "exported")
+      .limit(1)
+      .get();
+    if (!lockedSnap.empty) {
+      throw new Error(
+        "Cannot archive — one or more related sessions are already exported (payroll_state=\"exported\"). " +
+        "Void the export in Payroll → Recent Exports first, then retry."
+      );
+    }
 
     const assignRef  = db.collection("service_assignments").doc(assignmentId);
     const assignSnap = await assignRef.get();

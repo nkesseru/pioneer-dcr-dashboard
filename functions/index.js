@@ -5355,6 +5355,574 @@ exports.refreshServiceAssignmentsFromDeputyV1 = onRequest({
   }
 });
 
+/* ============================================================================
+   Phase 28D — Payroll CSV export + audit log
+   ============================================================================
+
+   exportPayrollCsvV1   — admin-only HTTPS POST. Validates readiness,
+                          queries approved sessions + sick entries,
+                          generates a CSV, uploads to Cloud Storage at
+                          payroll_exports/{export_id}/payroll-…csv,
+                          generates a 7-day signed URL, atomically writes
+                          payroll_exports/{export_id} + flips each
+                          included session's payroll_state to "exported"
+                          (locking the workweek for re-allocation).
+
+   voidPayrollExportV1  — admin-only HTTPS POST. Reverses an export:
+                          marks payroll_exports doc voided, reverts every
+                          included session back to "approved_for_payroll",
+                          clears export-lock fields. CSV file is NOT
+                          deleted (audit trail preserved).
+
+   Rules (firestore + storage):
+     • payroll_exports collection: admin read, no client write (Admin SDK
+       only).
+     • payroll_exports/<id>/<file>.csv in Storage: admin read, no write.
+
+   See also:
+     • Phase 28B engine refuses Approve/Unapprove when
+       `workweek_locked_by_export === true` on any session in the
+       (staff_uid, workweek_id) bucket — set here on export.
+============================================================================ */
+
+const PAYROLL_EXPORT_BUCKET = "pioneer-dcr-hub.firebasestorage.app";
+const PAYROLL_BATCH_CAP     = 400;                  // Firestore batch limit is 500; leave headroom
+const PAYROLL_URL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days
+const PAYROLL_TZ            = "America/Los_Angeles";
+
+function payrollPacificClock(timestamp) {
+  if (!timestamp) return "";
+  try {
+    const ms = timestamp.toMillis ? timestamp.toMillis()
+             : (timestamp.seconds ? timestamp.seconds * 1000 : Number(timestamp));
+    if (!Number.isFinite(ms)) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: PAYROLL_TZ, hour: "2-digit", minute: "2-digit"
+    }).format(new Date(ms));
+  } catch (_e) { return ""; }
+}
+function payrollDecimalHours(minutes) {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes)) return "0.00";
+  return (minutes / 60).toFixed(2);
+}
+function payrollCsvCell(v) {
+  if (v == null) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function payrollCsvRow(arr) {
+  return arr.map(payrollCsvCell).join(",");
+}
+function payrollSessionNotes(s) {
+  const out = [];
+  if (s.force_closed_by_admin === true) {
+    out.push("force-closed" + (s.force_close_reason ? ": " + s.force_close_reason : ""));
+  }
+  const geoOffsiteIn  = (s.clock_in_geo_status  === "offsite");
+  const geoOffsiteOut = (s.clock_out_geo_status === "offsite");
+  if (geoOffsiteIn && geoOffsiteOut) out.push("geo offsite (in + out)");
+  else if (geoOffsiteIn)             out.push("geo offsite (in)");
+  else if (geoOffsiteOut)            out.push("geo offsite (out)");
+  const budget = (typeof s.budget_minutes === "number") ? s.budget_minutes : null;
+  if (budget != null && budget > 0 && typeof s.work_minutes === "number"
+      && s.work_minutes > budget + 15) {
+    out.push("over budget by " + (s.work_minutes - budget) + "m");
+  }
+  if (s.reviewed_by && s.reviewed_at) {
+    out.push("admin reviewed");
+  }
+  return out.join(" | ");
+}
+function payrollDcrStatus(s) {
+  if (s.dcr_status === "submitted") return "submitted";
+  if (s.dcr_id) return "submitted";
+  if (s.status === "dcr_pending") return "pending";
+  return "—";
+}
+function payrollGeoLabel(s) {
+  const inG  = s.clock_in_geo_status  || "—";
+  const outG = s.clock_out_geo_status || "—";
+  return inG + " / " + outG;
+}
+function payrollIsBlocker(s) {
+  // Mirrors tab-payroll.js computeBlockers semantics. Returns one of the
+  // 4 blocker keys, or null if clean. Used both for verification refusal
+  // and for the verification_snapshot stored on payroll_exports.
+  if (s.admin_removed === true) return null;
+  if (s.needs_review === true) return "needs_review";
+  if (s.status === "active" || s.status === "paused") return "active";
+  if (s.status === "completed" && !s.clock_out_at) return "missing_clockout";
+  const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+  if (s.status === "dcr_pending") return "dcr_pending";
+  if (s.status === "completed" && !dcrSubmitted) return "dcr_pending";
+  return null;
+}
+
+/* --------------- exportPayrollCsvV1 --------------- */
+
+exports.exportPayrollCsvV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("exportPayrollCsvV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const rangeStart  = String(body.range_start  || "").trim();
+  const rangeEnd    = String(body.range_end    || "").trim();
+  const periodLabel = String(body.period_label || "").trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart) || !/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)) {
+    res.status(400).json({ ok: false, error: "range_start and range_end must be YYYY-MM-DD." });
+    return;
+  }
+  if (rangeStart > rangeEnd) {
+    res.status(400).json({ ok: false, error: "range_end must be >= range_start." });
+    return;
+  }
+  const startMs = Date.parse(rangeStart + "T00:00:00Z");
+  const endMs   = Date.parse(rangeEnd   + "T00:00:00Z");
+  if (Math.round((endMs - startMs) / 86400000) + 1 > 31) {
+    res.status(400).json({ ok: false, error: "Range too wide — max 31 days." });
+    return;
+  }
+
+  const db  = admin.firestore();
+
+  try {
+    // ----- Concurrency guard: refuse if an active export covers this range -----
+    const activeSnap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .get();
+    const conflict = activeSnap.docs.find(function (d) {
+      const data = d.data() || {};
+      return data.range_start === rangeStart && data.range_end === rangeEnd;
+    });
+    if (conflict) {
+      res.status(409).json({
+        ok: false, error: "Export already exists for this range. Void it first to re-export.",
+        existing_export_id: conflict.id
+      });
+      return;
+    }
+
+    // ----- Server-side verification re-check -----
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", rangeStart)
+      .where("service_date", "<=", rangeEnd)
+      .get();
+    const allSessions = sessSnap.docs.map(function (d) {
+      return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+    });
+    const verification_snapshot = {
+      needs_review_count:     0,
+      active_count:           0,
+      dcr_pending_count:      0,
+      missing_clockout_count: 0
+    };
+    allSessions.forEach(function (s) {
+      const b = payrollIsBlocker(s);
+      if (b === "needs_review")     verification_snapshot.needs_review_count += 1;
+      if (b === "active")           verification_snapshot.active_count += 1;
+      if (b === "dcr_pending")      verification_snapshot.dcr_pending_count += 1;
+      if (b === "missing_clockout") verification_snapshot.missing_clockout_count += 1;
+    });
+    const totalBlockers = verification_snapshot.needs_review_count +
+                          verification_snapshot.active_count +
+                          verification_snapshot.dcr_pending_count +
+                          verification_snapshot.missing_clockout_count;
+    if (totalBlockers > 0) {
+      res.status(412).json({
+        ok: false,
+        error: "Payroll not ready — resolve blockers in Labor first.",
+        blockers: verification_snapshot
+      });
+      return;
+    }
+
+    // ----- Filter to exportable sessions -----
+    const exportable = allSessions.filter(function (s) {
+      if (s.admin_removed === true) return false;
+      if (s.payroll_state !== "approved_for_payroll") return false;
+      return true;
+    });
+
+    // ----- Query sick entries in range (used only) -----
+    const sickSnap = await db.collection("sick_leave_ledger")
+      .where("effective_date", ">=", rangeStart)
+      .where("effective_date", "<=", rangeEnd)
+      .get();
+    const sickEntries = sickSnap.docs
+      .map(function (d) { return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {}); })
+      .filter(function (e) { return e.entry_type === "used"; });
+
+    if (!exportable.length && !sickEntries.length) {
+      res.status(400).json({ ok: false, error: "Nothing to export — no approved sessions or sick entries in this range." });
+      return;
+    }
+
+    // ----- Build display-name map (cleaning_techs by uid) -----
+    const techSnap = await db.collection("cleaning_techs").get();
+    const techByUid   = {};
+    const techByEmail = {};
+    techSnap.docs.forEach(function (d) {
+      const t = Object.assign({ _id: d.id }, d.data() || {});
+      if (t.uid) techByUid[t.uid] = t;
+      if (t.email) techByEmail[String(t.email).toLowerCase()] = t;
+    });
+    function techDisplay(uid, email) {
+      const t = (uid && techByUid[uid]) || (email && techByEmail[String(email).toLowerCase()]);
+      if (t) return t.display_name || (((t.first_name || "") + " " + (t.last_name || "")).trim()) || t.email || "Tech";
+      return email || uid || "Tech";
+    }
+
+    // ----- Compute summary totals + per-employee aggregation -----
+    const employeesSet = new Set();
+    let totalRegularMin = 0, totalOvertimeMin = 0, totalSickMin = 0;
+    exportable.forEach(function (s) {
+      if (s.staff_uid) employeesSet.add(s.staff_uid);
+      totalRegularMin  += (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+      totalOvertimeMin += (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+    });
+    sickEntries.forEach(function (e) {
+      if (e.staff_uid) employeesSet.add(e.staff_uid);
+      totalSickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    const totalDriveMin = 0;  // Phase 28D: drive ships later
+    const totalPaidMin  = totalRegularMin + totalOvertimeMin + totalDriveMin + totalSickMin;
+
+    // ----- Build CSV (3 sections) -----
+    const sessionHeader = [
+      "Employee Name","Employee Email","Employee ID","Pay Period","Service Date",
+      "Customer","Location","Clock In","Clock Out",
+      "Regular Hours","Overtime Hours","Drive Hours","Sick Hours","Total Paid Hours",
+      "Payroll State","Needs Review","DCR Status","Geo Status","Notes"
+    ];
+    // Sort sessions by employee name then service_date then clock_in_at.
+    exportable.sort(function (a, b) {
+      const an = techDisplay(a.staff_uid, a.staff_email);
+      const bn = techDisplay(b.staff_uid, b.staff_email);
+      const cn = an.localeCompare(bn);
+      if (cn !== 0) return cn;
+      const da = String(a.service_date || "");
+      const db_ = String(b.service_date || "");
+      if (da !== db_) return da.localeCompare(db_);
+      const aMs = (a.clock_in_at && a.clock_in_at.toMillis) ? a.clock_in_at.toMillis() : 0;
+      const bMs = (b.clock_in_at && b.clock_in_at.toMillis) ? b.clock_in_at.toMillis() : 0;
+      return aMs - bMs;
+    });
+    const sessionRows = exportable.map(function (s) {
+      const reg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+      const ot  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+      const sessionTotal = reg + ot;  // drive=0, sick=0 on session row
+      return payrollCsvRow([
+        techDisplay(s.staff_uid, s.staff_email),
+        s.staff_email || "",
+        s.staff_uid || "",
+        periodLabel,
+        s.service_date || "",
+        s.customer_name || s.customer_id || "",
+        s.location_address || s.location_id || "",
+        payrollPacificClock(s.clock_in_at),
+        payrollPacificClock(s.clock_out_at),
+        payrollDecimalHours(reg),
+        payrollDecimalHours(ot),
+        "0.00",
+        "0.00",
+        payrollDecimalHours(sessionTotal),
+        "exported",
+        (s.needs_review === true) ? "true" : "false",
+        payrollDcrStatus(s),
+        payrollGeoLabel(s),
+        payrollSessionNotes(s)
+      ]);
+    });
+
+    const sickHeader = [
+      "Employee Name","Employee Email","Employee ID","Pay Period","Date",
+      "Type","Sick Hours","Total Paid Hours","Notes"
+    ];
+    sickEntries.sort(function (a, b) {
+      const an = techDisplay(a.staff_uid, a.staff_email);
+      const bn = techDisplay(b.staff_uid, b.staff_email);
+      const cn = an.localeCompare(bn);
+      if (cn !== 0) return cn;
+      return String(a.effective_date || "").localeCompare(String(b.effective_date || ""));
+    });
+    const sickRows = sickEntries.map(function (e) {
+      const min = Math.abs(Number(e.minutes_delta) || 0);
+      return payrollCsvRow([
+        techDisplay(e.staff_uid, e.staff_email),
+        e.staff_email || "",
+        e.staff_uid || "",
+        periodLabel,
+        e.effective_date || "",
+        "Sick Leave",
+        payrollDecimalHours(min),
+        payrollDecimalHours(min),
+        e.reason || ""
+      ]);
+    });
+
+    const generatedAtPT = new Intl.DateTimeFormat("en-US", {
+      timeZone: PAYROLL_TZ,
+      year: "numeric", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit"
+    }).format(new Date());
+
+    // Pre-allocate the export_id NOW so we can stamp it into the CSV summary.
+    const epochMs = Date.now();
+    const exportId = "payroll_export__" + rangeStart + "__" + rangeEnd + "__" + epochMs;
+
+    const summaryRows = [
+      payrollCsvRow(["Metric", "Value"]),
+      payrollCsvRow(["Period", periodLabel]),
+      payrollCsvRow(["Range Start", rangeStart]),
+      payrollCsvRow(["Range End",   rangeEnd]),
+      payrollCsvRow(["Total Employees",   String(employeesSet.size)]),
+      payrollCsvRow(["Total Work Sessions", String(exportable.length)]),
+      payrollCsvRow(["Total Sick Entries",  String(sickEntries.length)]),
+      payrollCsvRow(["Total Regular Hours",  payrollDecimalHours(totalRegularMin)]),
+      payrollCsvRow(["Total Overtime Hours", payrollDecimalHours(totalOvertimeMin)]),
+      payrollCsvRow(["Total Drive Hours",    payrollDecimalHours(totalDriveMin)]),
+      payrollCsvRow(["Total Sick Hours",     payrollDecimalHours(totalSickMin)]),
+      payrollCsvRow(["Grand Total Paid Hours", payrollDecimalHours(totalPaidMin)]),
+      payrollCsvRow(["Generated By", staff.email || ""]),
+      payrollCsvRow(["Generated At", generatedAtPT + " PT"]),
+      payrollCsvRow(["Export ID",    exportId])
+    ];
+
+    const csv =
+      "=== WORK SESSIONS ===\n" +
+      payrollCsvRow(sessionHeader) + "\n" +
+      sessionRows.join("\n") + "\n" +
+      "\n" +
+      "=== SICK LEAVE ===\n" +
+      payrollCsvRow(sickHeader) + "\n" +
+      sickRows.join("\n") + "\n" +
+      "\n" +
+      "=== TOTALS ===\n" +
+      summaryRows.join("\n") + "\n";
+
+    // ----- Upload CSV to Cloud Storage -----
+    const storagePath = "payroll_exports/" + exportId + "/payroll-" +
+                        rangeStart + "-to-" + rangeEnd + ".csv";
+    const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
+    const file   = bucket.file(storagePath);
+    await file.save(Buffer.from(csv, "utf8"), {
+      resumable:   false,
+      contentType: "text/csv; charset=utf-8",
+      metadata:    { cacheControl: "private, no-cache" }
+    });
+
+    // ----- 7-day signed URL -----
+    const expiresAtMs = Date.now() + PAYROLL_URL_EXPIRY_MS;
+    const [signedUrl] = await file.getSignedUrl({
+      action:  "read",
+      expires: expiresAtMs
+    });
+
+    // ----- Atomic batch: payroll_exports doc + per-session updates -----
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin" };
+
+    const includedSessionIds   = exportable.map(function (s) { return s._id; });
+    const includedSickEntryIds = sickEntries.map(function (e) { return e._id; });
+
+    const exportRef = db.collection("payroll_exports").doc(exportId);
+    const docPayload = {
+      export_id:               exportId,
+      range_start:             rangeStart,
+      range_end:               rangeEnd,
+      period_label:            periodLabel,
+      status:                  "active",
+      generated_by:            actor,
+      generated_by_email:      staff.email || "",
+      generated_at:            sts,
+      employee_count:          employeesSet.size,
+      session_count:           exportable.length,
+      sick_entry_count:        sickEntries.length,
+      regular_hours_total:     Number(payrollDecimalHours(totalRegularMin)),
+      overtime_hours_total:    Number(payrollDecimalHours(totalOvertimeMin)),
+      drive_hours_total:       Number(payrollDecimalHours(totalDriveMin)),
+      sick_hours_total:        Number(payrollDecimalHours(totalSickMin)),
+      total_paid_hours:        Number(payrollDecimalHours(totalPaidMin)),
+      storage_path:            storagePath,
+      signed_url:              signedUrl,
+      signed_url_expires_at:   admin.firestore.Timestamp.fromMillis(expiresAtMs),
+      included_session_ids:    includedSessionIds,
+      included_sick_entry_ids: includedSickEntryIds,
+      verification_snapshot:   verification_snapshot
+    };
+
+    // Write payroll_exports doc first.
+    await exportRef.set(docPayload);
+
+    // Flip each session in capped batches (Firestore limit 500/batch).
+    for (let i = 0; i < exportable.length; i += PAYROLL_BATCH_CAP) {
+      const slice = exportable.slice(i, i + PAYROLL_BATCH_CAP);
+      const batch = db.batch();
+      slice.forEach(function (s) {
+        batch.update(s._ref, {
+          payroll_state:             "exported",
+          payroll_export_id:         exportId,
+          exported_at:               sts,
+          exported_by:               actor,
+          workweek_locked_by_export: true,
+          payroll_state_changed_at:  sts,
+          payroll_state_changed_by:  actor
+        });
+      });
+      await batch.commit();
+    }
+
+    logger.info("exportPayrollCsvV1 ok", {
+      caller:           staff.email,
+      export_id:        exportId,
+      range_start:      rangeStart,
+      range_end:        rangeEnd,
+      session_count:    exportable.length,
+      sick_entry_count: sickEntries.length,
+      employee_count:   employeesSet.size
+    });
+
+    res.status(200).json({
+      ok: true,
+      export_id:    exportId,
+      signed_url:   signedUrl,
+      storage_path: storagePath,
+      summary: {
+        period_label:         periodLabel,
+        employee_count:       employeesSet.size,
+        session_count:        exportable.length,
+        sick_entry_count:     sickEntries.length,
+        regular_hours_total:  docPayload.regular_hours_total,
+        overtime_hours_total: docPayload.overtime_hours_total,
+        sick_hours_total:     docPayload.sick_hours_total,
+        total_paid_hours:     docPayload.total_paid_hours
+      }
+    });
+  } catch (err) {
+    logger.error("exportPayrollCsvV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Export failed" });
+  }
+});
+
+/* --------------- voidPayrollExportV1 --------------- */
+
+exports.voidPayrollExportV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const exportId   = String(body.export_id   || "").trim();
+  const voidReason = String(body.void_reason || "").trim();
+  if (!exportId) {
+    res.status(400).json({ ok: false, error: "export_id is required." });
+    return;
+  }
+  if (voidReason.length < 5) {
+    res.status(400).json({ ok: false, error: "void_reason must be at least 5 characters." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    const exportRef = db.collection("payroll_exports").doc(exportId);
+    const snap = await exportRef.get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, error: "Export not found." });
+      return;
+    }
+    const data = snap.data() || {};
+    if (data.status === "voided") {
+      res.status(409).json({ ok: false, error: "Export is already voided." });
+      return;
+    }
+
+    const sessionIds = Array.isArray(data.included_session_ids) ? data.included_session_ids : [];
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin" };
+
+    // Update payroll_exports doc first.
+    await exportRef.update({
+      status:          "voided",
+      voided_by:       actor,
+      voided_by_email: staff.email || "",
+      voided_at:       sts,
+      void_reason:     voidReason
+    });
+
+    // Revert sessions in capped batches.
+    for (let i = 0; i < sessionIds.length; i += PAYROLL_BATCH_CAP) {
+      const slice = sessionIds.slice(i, i + PAYROLL_BATCH_CAP);
+      const batch = db.batch();
+      slice.forEach(function (sid) {
+        const ref = db.collection("pioneer_service_sessions").doc(sid);
+        batch.update(ref, {
+          payroll_state:             "approved_for_payroll",
+          payroll_export_id:         admin.firestore.FieldValue.delete(),
+          exported_at:               admin.firestore.FieldValue.delete(),
+          exported_by:               admin.firestore.FieldValue.delete(),
+          workweek_locked_by_export: admin.firestore.FieldValue.delete(),
+          payroll_state_changed_at:  sts,
+          payroll_state_changed_by:  actor
+        });
+      });
+      await batch.commit();
+    }
+
+    logger.info("voidPayrollExportV1 ok", {
+      caller:        staff.email,
+      export_id:     exportId,
+      session_count: sessionIds.length
+    });
+    res.status(200).json({ ok: true, export_id: exportId, sessions_reverted: sessionIds.length });
+  } catch (err) {
+    logger.error("voidPayrollExportV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Void failed" });
+  }
+});
+
 exports.seedPilotCustomerAliasesV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
   res.set("Access-Control-Allow-Origin",  "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");

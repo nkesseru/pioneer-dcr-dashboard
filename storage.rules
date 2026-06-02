@@ -162,6 +162,26 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Payroll export CSVs (Phase 28D) — admin-only read; Cloud Function
+    // is the sole writer (Admin SDK bypasses rules). Primary access path
+    // is the 7-day signed URL returned by exportPayrollCsvV1; this rule
+    // is defense-in-depth for direct-path attempts.
+    //
+    // Path convention: payroll_exports/{exportId}/{filename}.csv
+    // Keep the admin email allowlist in sync with firestore.rules →
+    // isPioneerAdmin() and the announcement attachment block above.
+    match /payroll_exports/{exportId}/{fileName} {
+      allow read: if request.auth != null
+                  && request.auth.token.email is string
+                  && request.auth.token.email.lower() in [
+                    "nick@pioneercomclean.com",
+                    "april@pioneercomclean.com",
+                    "kirby@pioneercomclean.com",
+                    "mgies@pioneercomclean.com"
+                  ];
+      allow write: if false;  // Admin SDK only
+    }
+
     // Default-deny everything else.
     match /{allPaths=**} {
       allow read, write: if false;

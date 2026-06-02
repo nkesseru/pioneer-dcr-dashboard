@@ -3176,6 +3176,88 @@
     </div>
   </div>
 
+  <!-- ================== Export Payroll CSV modal (Phase 28D) ================== -->
+  <div id="payroll-export-confirm-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="payroll-export-confirm-title">
+      <header class="admin-modal-header">
+        <h2 id="payroll-export-confirm-title">Export payroll CSV</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="payroll-export-confirm-row">
+          <p class="field-hint" id="payroll-export-summary">—</p>
+          <p class="field-hint" style="margin-top:10px; line-height:1.5;">
+            This will mark every approved session in the selected period as
+            <code>exported</code> and lock the workweek(s) so the overtime
+            engine cannot re-allocate them. A 7-day signed URL is returned
+            for download. The <code>payroll_exports</code> doc + the CSV
+            file persist as the audit trail. <strong>Use Void this export
+            to roll back</strong> — exported sessions cannot be modified
+            until then.
+          </p>
+        </div>
+
+        <div id="payroll-export-success" hidden>
+          <p class="payroll-export-success-headline">
+            <strong>Export complete.</strong>
+          </p>
+          <p class="field-hint" id="payroll-export-success-summary">—</p>
+          <p style="margin-top:12px;">
+            <a id="payroll-export-success-dl" class="payroll-export-download"
+               href="#" target="_blank" rel="noopener noreferrer" hidden>
+              Download CSV ↗
+            </a>
+          </p>
+          <p class="field-hint" style="margin-top:8px;">
+            URL expires in 7 days. Re-download anytime from the Recent Exports list below.
+          </p>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="payroll-export-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+        <button type="button" class="modal-btn-save"   id="payroll-export-save">Confirm export</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Void Payroll Export modal (Phase 28D) ================== -->
+  <div id="payroll-void-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="payroll-void-title">
+      <header class="admin-modal-header">
+        <h2 id="payroll-void-title">Void payroll export</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="payroll-void-summary">—</p>
+        <input type="hidden" id="payroll-void-id" />
+
+        <div class="field-row">
+          <label for="payroll-void-reason">Reason <span class="req">*</span></label>
+          <textarea id="payroll-void-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Wrong session approved — need to remove and re-export."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the payroll_exports doc.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Void reverts each included session's <code>payroll_state</code>
+          back to <code>approved_for_payroll</code> and clears the
+          workweek-export lock so the overtime engine can re-allocate.
+          The CSV file in Storage is <strong>NOT deleted</strong> —
+          audit trail is preserved. A new export can be generated after
+          adjustments.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="payroll-void-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="payroll-void-save">Void export</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- ================== Bulk Approve modal (Phase 28A) ==================
        Opens from the bulk-approve bar above the Sessions table when
        admin clicks "Approve N session(s)". Single batch write up to
@@ -3366,10 +3448,10 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase28c-payroll-summary"></script>
-  <script src="admin/tab-payroll.js?v=20260602-phase28c-payroll-summary"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase28d-export"></script>
+  <script src="admin/tab-payroll.js?v=20260602-phase28d-export"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase28c-payroll-summary"></script>
+  <script src="admin.js?v=20260602-phase28d-export"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

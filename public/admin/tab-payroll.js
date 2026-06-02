@@ -43,8 +43,10 @@
   let techsByUid     = {};
   let loaded         = false;
   let loading        = false;
+  // Phase 28D — Recent Exports state. Loaded alongside sessions/sick.
+  let recentExports  = [];      // last 10 docs, sorted by generated_at desc
 
-  const PAYROLL_BUILD_TAG = "Payroll v28C-summary";
+  const PAYROLL_BUILD_TAG = "Payroll v28D-export";
 
   /* ---------- date + period helpers ---------- */
 
@@ -139,6 +141,11 @@
     if (!Number.isFinite(span)) return "Invalid date.";
     if (span + 1 > 31) return "Range too wide — max 31 days.";
     return null;
+  }
+  // Phase 28D — overlap check for Recent Exports prioritization.
+  function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+    if (!aStart || !aEnd || !bStart || !bEnd) return false;
+    return !(aEnd < bStart || aStart > bEnd);
   }
 
   function ensurePeriodInitialized() {
@@ -236,7 +243,7 @@
       // effective_date range (single-field range, no composite needed).
       // Sick entries are filtered to entry_type === "used" client-side
       // to avoid forcing a new composite index for the pilot scale.
-      const [sessSnap, sickSnap] = await Promise.all([
+      const [sessSnap, sickSnap, exportSnap] = await Promise.all([
         db.collection("pioneer_service_sessions")
           .where("service_date", ">=", currentPeriod.start_date)
           .where("service_date", "<=", currentPeriod.end_date)
@@ -244,7 +251,15 @@
         db.collection("sick_leave_ledger")
           .where("effective_date", ">=", currentPeriod.start_date)
           .where("effective_date", "<=", currentPeriod.end_date)
+          .get(),
+        // Phase 28D — Recent exports. Single-field orderBy keeps this
+        // index-free. Show 10 most recent overall; client-side filter
+        // surfaces the ones overlapping the current period first.
+        db.collection("payroll_exports")
+          .orderBy("generated_at", "desc")
+          .limit(10)
           .get()
+          .catch(function () { return null; })   // soft-fail if collection doesn't exist yet
       ]);
 
       sessions = sessSnap.docs.map(function (d) {
@@ -253,6 +268,20 @@
       sickEntries = sickSnap.docs
         .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
         .filter(function (e) { return e.entry_type === "used"; });
+
+      // Phase 28D — recent exports list. Sort with current-period
+      // overlap first, then by generated_at desc.
+      recentExports = exportSnap
+        ? exportSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        : [];
+      recentExports.sort(function (a, b) {
+        const aOverlap = rangesOverlap(a.range_start, a.range_end, currentPeriod.start_date, currentPeriod.end_date) ? 1 : 0;
+        const bOverlap = rangesOverlap(b.range_start, b.range_end, currentPeriod.start_date, currentPeriod.end_date) ? 1 : 0;
+        if (aOverlap !== bOverlap) return bOverlap - aOverlap;
+        const aMs = (a.generated_at && a.generated_at.toMillis) ? a.generated_at.toMillis() : 0;
+        const bMs = (b.generated_at && b.generated_at.toMillis) ? b.generated_at.toMillis() : 0;
+        return bMs - aMs;
+      });
 
       loaded = true;
       setState(null);
@@ -417,11 +446,11 @@
             '</strong> session' + (nonArchived.length === 1 ? '' : 's') +
             ' approved · no blockers in this period.</p>' +
           '<div class="payroll-banner-actions">' +
-            '<button type="button" class="payroll-export-btn" id="payroll-export-disabled" disabled ' +
-              'title="CSV export and audit log ship in Phase 28D">' +
-              'Export approved sessions' +
+            '<button type="button" class="payroll-export-btn is-ready" id="payroll-export-now" ' +
+              'title="Generate CSV and lock these sessions as exported">' +
+              'Export approved sessions →' +
             '</button>' +
-            '<span class="payroll-export-note">Coming in Phase 28D.</span>' +
+            '<span class="payroll-export-note">7-day signed URL · audit trail in payroll_exports.</span>' +
           '</div>' +
         '</div>';
     } else if (totalBlockers > 0) {
@@ -561,11 +590,238 @@
   function renderRecentExports() {
     const wrap = $("payroll-recent-exports");
     if (!wrap) return;
-    wrap.innerHTML =
-      '<div class="payroll-exports-placeholder">' +
-        '<p><strong>No exports yet.</strong> CSV export and audit log ship in Phase 28D.</p>' +
-        '<p class="payroll-exports-sub">Once Phase 28D is live, the most recent 10 exports for the selected period will appear here with download links and a void option.</p>' +
-      '</div>';
+    if (!recentExports.length) {
+      wrap.innerHTML =
+        '<div class="payroll-exports-placeholder">' +
+          '<p><strong>No exports yet.</strong> Click <em>Export approved sessions</em> in the green banner above to generate the first CSV.</p>' +
+        '</div>';
+      return;
+    }
+    wrap.innerHTML = recentExports.map(function (e) {
+      const overlap = rangesOverlap(e.range_start, e.range_end, currentPeriod.start_date, currentPeriod.end_date);
+      const isVoided = (e.status === "voided");
+      const genMs = (e.generated_at && e.generated_at.toMillis) ? e.generated_at.toMillis() : 0;
+      const genStr = genMs ? new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      }).format(new Date(genMs)) : "—";
+      const totalHours = (typeof e.total_paid_hours === "number") ? e.total_paid_hours.toFixed(2) : "—";
+      const voidedLine = isVoided && e.voided_at
+        ? '<p class="payroll-export-voided-line">Voided ' +
+            escapeHtml(genStrFromTs(e.voided_at)) +
+            ' by ' + escapeHtml((e.voided_by_email || (e.voided_by && e.voided_by.displayName)) || "admin") +
+            (e.void_reason ? ' — ' + escapeHtml(e.void_reason) : '') +
+          '</p>'
+        : '';
+      const downloadBtn = e.signed_url
+        ? '<a class="payroll-export-download" href="' + escapeHtml(e.signed_url) +
+          '" target="_blank" rel="noopener noreferrer">Download CSV ↗</a>'
+        : '<span class="payroll-export-no-url">No download URL</span>';
+      const voidBtn = !isVoided
+        ? '<button type="button" class="payroll-export-void-btn" ' +
+          'data-payroll-void-id="' + escapeHtml(e._id) +
+          '" data-payroll-void-label="' + escapeHtml(e.period_label || (e.range_start + " → " + e.range_end)) + '">' +
+          'Void this export…</button>'
+        : '';
+      const statusBadge = isVoided
+        ? '<span class="payroll-export-badge is-voided">🚫 VOIDED</span>'
+        : '<span class="payroll-export-badge is-active">✓ ACTIVE</span>';
+      const overlapMark = overlap ? '<span class="payroll-export-overlap">in current period</span>' : '';
+      return (
+        '<div class="payroll-export-row' + (isVoided ? ' is-voided' : '') + '">' +
+          '<div class="payroll-export-row-head">' +
+            '<span class="payroll-export-date">' + escapeHtml(genStr) + '</span>' +
+            '<span class="payroll-export-period">' + escapeHtml(e.period_label || (e.range_start + " → " + e.range_end)) + '</span>' +
+            statusBadge + overlapMark +
+          '</div>' +
+          '<div class="payroll-export-row-meta">' +
+            'Generated by ' + escapeHtml(e.generated_by_email || "admin") +
+            ' · ' + totalHours + ' total paid hours' +
+            ' · ' + (e.session_count || 0) + ' session' + ((e.session_count === 1) ? '' : 's') +
+            ' · ' + (e.employee_count || 0) + ' employee' + ((e.employee_count === 1) ? '' : 's') +
+          '</div>' +
+          voidedLine +
+          '<div class="payroll-export-row-actions">' +
+            downloadBtn + voidBtn +
+          '</div>' +
+        '</div>'
+      );
+    }).join("");
+  }
+  function genStrFromTs(ts) {
+    const ms = (ts && ts.toMillis) ? ts.toMillis() : 0;
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      }).format(new Date(ms));
+    } catch (_e) { return "—"; }
+  }
+
+  /* ---------- Phase 28D — export + void writers ---------- */
+
+  async function exportPayrollCsv() {
+    const url = (window.EXPORT_PAYROLL_CSV_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      throw new Error("EXPORT_PAYROLL_CSV_URL is not configured in firebase-config.js.");
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        range_start:  currentPeriod.start_date,
+        range_end:    currentPeriod.end_date,
+        period_label: currentPeriod.label
+      })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    if (!res.ok || !body || !body.ok) {
+      const err = new Error((body && body.error) || ("HTTP " + res.status));
+      err.body = body;
+      throw err;
+    }
+    return body;
+  }
+  async function voidPayrollExport(exportId, reason) {
+    const url = (window.VOID_PAYROLL_EXPORT_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      throw new Error("VOID_PAYROLL_EXPORT_URL is not configured in firebase-config.js.");
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ export_id: exportId, void_reason: reason })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    if (!res.ok || !body || !body.ok) {
+      const err = new Error((body && body.error) || ("HTTP " + res.status));
+      err.body = body;
+      throw err;
+    }
+    return body;
+  }
+
+  /* ---------- Phase 28D — modals ---------- */
+
+  function openExportConfirmModal() {
+    const modal = $("payroll-export-confirm-modal");
+    if (!modal) return;
+    const approvedCount = sessions.filter(function (s) {
+      return !adminRemovedFlag(s) && isApproved(s);
+    }).length;
+    const sickCount = sickEntries.length;
+    const sum = $("payroll-export-summary");
+    if (sum) {
+      sum.innerHTML =
+        '<strong>' + currentPeriod.label + '</strong><br>' +
+        approvedCount + ' approved session' + (approvedCount === 1 ? '' : 's') +
+        ' · ' + sickCount + ' sick entr' + (sickCount === 1 ? 'y' : 'ies');
+    }
+    const err = $("payroll-export-err");
+    if (err) { err.textContent = ""; err.hidden = true; }
+    const dl = $("payroll-export-success-dl");
+    if (dl) { dl.hidden = true; dl.removeAttribute("href"); }
+    const successBlock = $("payroll-export-success");
+    if (successBlock) successBlock.hidden = true;
+    const confirmRow = $("payroll-export-confirm-row");
+    if (confirmRow) confirmRow.hidden = false;
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeExportConfirmModal() {
+    const modal = $("payroll-export-confirm-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+  void closeExportConfirmModal; // closed by [data-modal-close]
+
+  async function submitExportConfirm() {
+    const err     = $("payroll-export-err");
+    const saveBtn = $("payroll-export-save");
+    function showErr(msg) { if (err) { err.textContent = msg; err.hidden = false; } }
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Exporting…"; }
+    try {
+      const result = await exportPayrollCsv();
+      // Flip modal into success state.
+      const confirmRow = $("payroll-export-confirm-row");
+      if (confirmRow) confirmRow.hidden = true;
+      const successBlock = $("payroll-export-success");
+      if (successBlock) successBlock.hidden = false;
+      const dl = $("payroll-export-success-dl");
+      if (dl) { dl.href = result.signed_url; dl.hidden = false; }
+      const sumLine = $("payroll-export-success-summary");
+      if (sumLine && result.summary) {
+        sumLine.textContent =
+          result.summary.session_count + " session(s) · " +
+          result.summary.employee_count + " employee(s) · " +
+          (result.summary.total_paid_hours || 0).toFixed(2) + " total paid hours";
+      }
+      // Refresh the Payroll tab in the background so banner + table + recent-exports update.
+      refresh();
+    } catch (e) {
+      console.error("[payroll] export failed", e);
+      let msg = (e && e.message) || "Export failed.";
+      if (e && e.body && e.body.blockers) {
+        const b = e.body.blockers;
+        msg += " · Server saw: " + b.needs_review_count + " needs review, " +
+               b.active_count + " active, " + b.dcr_pending_count + " DCR pending, " +
+               b.missing_clockout_count + " missing clock-out.";
+      }
+      showErr(msg);
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Confirm export"; }
+    }
+  }
+
+  function openVoidModal(exportId, exportLabel) {
+    const modal = $("payroll-void-modal");
+    if (!modal) return;
+    const idEl = $("payroll-void-id");        if (idEl) idEl.value = exportId || "";
+    const sumEl = $("payroll-void-summary");  if (sumEl) sumEl.textContent = exportLabel || exportId || "—";
+    const rEl = $("payroll-void-reason");     if (rEl) rEl.value = "";
+    const eEl = $("payroll-void-err");        if (eEl) { eEl.textContent = ""; eEl.hidden = true; }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+  }
+  function closeVoidModal() {
+    const modal = $("payroll-void-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+  void closeVoidModal;
+
+  async function submitVoid() {
+    const idEl = $("payroll-void-id");
+    const rEl  = $("payroll-void-reason");
+    const err  = $("payroll-void-err");
+    const saveBtn = $("payroll-void-save");
+    function showErr(msg) { if (err) { err.textContent = msg; err.hidden = false; } }
+    const exportId = (idEl && idEl.value) || "";
+    const reason = ((rEl && rEl.value) || "").trim();
+    if (!exportId) { showErr("Missing export id."); return; }
+    if (reason.length < 5) { showErr("Reason must be at least 5 characters."); return; }
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await voidPayrollExport(exportId, reason);
+      closeVoidModal();
+      refresh();
+    } catch (e) {
+      console.error("[payroll] void failed", e);
+      showErr((e && e.message) || "Void failed.");
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
   }
 
   /* ---------- deep-link "Open in Labor" ---------- */
@@ -646,13 +902,27 @@
       if (key) openInLabor(key);
     });
 
-    // Click on the disabled export button → friendly toast / alert.
+    // Phase 28D — Export button click (live) and Void button click
+    // (delegated on Recent Exports rows).
     document.addEventListener("click", function (ev) {
-      const btn = ev.target.closest && ev.target.closest("#payroll-export-disabled");
-      if (!btn) return;
-      ev.preventDefault();
-      alert("CSV export ships in Phase 28D. Sessions are approved and ready — the audit collection and Cloud Function arrive next.");
+      const exportBtn = ev.target.closest && ev.target.closest("#payroll-export-now");
+      if (exportBtn) {
+        ev.preventDefault();
+        openExportConfirmModal();
+        return;
+      }
+      const voidBtn = ev.target.closest && ev.target.closest("[data-payroll-void-id]");
+      if (voidBtn) {
+        ev.preventDefault();
+        openVoidModal(voidBtn.getAttribute("data-payroll-void-id"),
+                      voidBtn.getAttribute("data-payroll-void-label"));
+        return;
+      }
     });
+    const exportSave = $("payroll-export-save");
+    if (exportSave) exportSave.addEventListener("click", function () { submitExportConfirm(); });
+    const voidSave = $("payroll-void-save");
+    if (voidSave) voidSave.addEventListener("click", function () { submitVoid(); });
   }
 
   /* ---------- export surface ---------- */

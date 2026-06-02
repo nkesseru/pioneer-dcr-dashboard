@@ -1184,6 +1184,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Phase 28D — payroll_exports: audit log of CSV exports. One doc per
+    // export run. Doc id = deterministic export_id. Sole writer is the
+    // exportPayrollCsvV1 / voidPayrollExportV1 Cloud Functions via Admin
+    // SDK (bypasses these rules). Client reads admin-only; client writes
+    // denied so admins can't accidentally corrupt the audit trail outside
+    // the function flow.
+    match /payroll_exports/{exportId} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;  // Cloud Function only
+      allow update: if false;  // void goes through voidPayrollExportV1
+      allow delete: if false;
+    }
+
     // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
