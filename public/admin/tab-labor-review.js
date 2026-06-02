@@ -256,6 +256,11 @@
     renderTable();
   }
 
+  // Phase 2A.2 regression instrumentation — visible build marker so admin
+  // can confirm in one glance which code path is actually rendering the
+  // Labor panel. Bumped any time the table render path changes.
+  const LABOR_BUILD_TAG = "Labor v2A.2-remove-fix-2";
+
   function renderHeader() {
     const sub = $("labor-sub");
     if (!sub) return;
@@ -269,9 +274,11 @@
     } catch (_e) {}
     const activeCount = Object.keys(activeByUid).length;
     const needsReviewCount = sessions.filter(needsReviewFlag).length;
+    // Visible build tag (last segment) confirms which JS is rendering.
     sub.textContent = label + " · " + sessions.length + " session" +
       (sessions.length === 1 ? "" : "s") +
-      " · " + activeCount + " open · " + needsReviewCount + " needs review";
+      " · " + activeCount + " open · " + needsReviewCount + " needs review" +
+      " · " + LABOR_BUILD_TAG;
   }
 
   function renderActive() {
@@ -341,6 +348,19 @@
   }
 
   function renderTable() {
+    try { return renderTableInner(); }
+    catch (err) {
+      try { console.error("[labor-review] renderTable threw", err); } catch (_e) {}
+      const wrap = $("labor-table");
+      if (wrap) {
+        wrap.innerHTML =
+          '<div class="admin-status admin-error">renderTable failed: ' +
+          escapeHtml((err && err.message) || "unknown") +
+          ' (build: ' + LABOR_BUILD_TAG + ')</div>';
+      }
+    }
+  }
+  function renderTableInner() {
     const wrap = $("labor-table");
     const empty = $("labor-table-empty");
     if (!wrap || !empty) return;
@@ -361,14 +381,38 @@
         '<div class="lr-col-dcr">DCR</div>' +
         '<div class="lr-col-act">Actions</div>' +
       '</div>';
+    // Phase 2A.2 regression — pin the render-version on the wrap so a
+    // DevTools inspector can confirm in one click which code rendered
+    // the current table. Survives across refresh cycles since render
+    // overwrites this attribute every time.
+    try { wrap.setAttribute("data-render-version", LABOR_BUILD_TAG); } catch (_e) {}
+
     const rowsHtml = sessions.map(function (s) {
       const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
       const budget = (s.budget_minutes != null ? s.budget_minutes
                   : (assignment && assignment.budget_minutes != null ? assignment.budget_minutes
                   : null));
-      const worked = s.work_minutes != null
-        ? s.work_minutes
-        : (s.status === "active" ? liveElapsedMinutes(s.clock_in_at) : null);
+      // Phase 2A.2 regression — Worked label rewrite for active/paused
+      // rows. Prior code returned `s.work_minutes` whenever it was non-
+      // null, which surfaced 0m on active sessions because work_minutes
+      // is initialized to 0 on clock-in (only filled in on clock-out).
+      // New precedence: if the row is currently running (no clock_out_at),
+      // ignore work_minutes entirely and show the live elapsed time as
+      // "Running Xh Ym". Paused rows get a "Paused Xh Ym" treatment.
+      const isRunning = (s.status === "active") && !s.clock_out_at;
+      const isPausedRow = (s.status === "paused") && !s.clock_out_at;
+      const elapsed = liveElapsedMinutes(s.clock_in_at);
+      let workedLabel;
+      if (isRunning) {
+        workedLabel = "Running " + fmtMinutes(elapsed != null ? elapsed : 0);
+      } else if (isPausedRow) {
+        const fallback = (s.work_minutes != null) ? s.work_minutes : elapsed;
+        workedLabel = "Paused " + fmtMinutes(fallback != null ? fallback : 0);
+      } else if (s.work_minutes != null) {
+        workedLabel = fmtMinutes(s.work_minutes);
+      } else {
+        workedLabel = "—";
+      }
       const reviewBtn = needsReviewFlag(s)
         ? '<button type="button" class="labor-btn labor-btn-review" data-act="mark-reviewed">Review</button>'
         : '';
@@ -412,7 +456,7 @@
           '<div class="lr-col-status">' + sessionStatusDisplay(s) + '</div>' +
           '<div class="lr-col-in">' + escapeHtml(fmtTime(s.clock_in_at)) + '</div>' +
           '<div class="lr-col-out">' + escapeHtml(fmtTime(s.clock_out_at)) + '</div>' +
-          '<div class="lr-col-wkd">' + escapeHtml(fmtMinutes(worked)) + '</div>' +
+          '<div class="lr-col-wkd">' + escapeHtml(workedLabel) + '</div>' +
           '<div class="lr-col-bgt">' + escapeHtml(fmtMinutes(budget)) + '</div>' +
           '<div class="lr-col-geo">' + geoChip(s.clock_in_geo_status) +
               ' / ' + geoChip(s.clock_out_geo_status) + '</div>' +
