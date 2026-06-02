@@ -4865,6 +4865,496 @@ const PILOT_ALIAS_SEED = [
   { code: "HC PROP", customer_name: "High Country Property Management",   extras: ["highcountryproperty", "highcountrypm", "highcountrypropertymanagement"] }
 ];
 
+/* ============================================================================
+   Phase 2A.1 — Deputy → Pioneer service_assignments bridge.
+   ============================================================================
+
+   Reads deputy_shift_cache for a date range and creates/updates matching
+   service_assignments docs so Pioneer Time Clock has cards to render
+   without manual seeding.
+
+   See firestore.rules:1090-1095 — service_assignments writes are admin-only
+   from clients; Admin SDK bypasses, so this function writes them. No rule
+   change required for Phase 2A.
+
+   IMPORTANT idempotency rules (mirrored from the plan):
+     • doc id = "sa_deputy__" + shift_id (deterministic, unique per Deputy
+       roster id; handles split shifts on same day for same customer).
+       Falls back to "sa__" + sync_date + "__" + tech_slug + "__" + customer_slug
+       only when shift_id is missing.
+     • staff_uid resolved via admin.auth().getUserByEmail() — shift SKIPPED
+       if email->uid lookup fails (tech hasn't signed in yet).
+     • customer_slug empty → SKIP.
+     • Existing assignment in {in_progress, paused, dcr_pending, completed}
+       → REFRESH safe mapping fields ONLY; never touch status / session_id /
+       dcr_submission_id / created_at / assigned_by.
+     • Cross-check pioneer_service_sessions for live/completed sessions
+       before any status change (belt + suspenders).
+     • Deputy cancellation → mark assignment status "canceled_by_deputy"
+       ONLY if no Pioneer work has started. NEVER delete.
+============================================================================ */
+
+const BRIDGE_SOURCE_TAG       = "deputy_bridge_v1";
+const BRIDGE_DOC_ID_PREFIX    = "sa_deputy__";
+const BRIDGE_LATE_STATUSES    = ["in_progress", "paused", "dcr_pending", "completed"];
+const BRIDGE_AVAILABLE_GRACE_HOURS = 6;   // grace window after end_time
+
+function bridgePacificWeekday(date) {
+  // 0=Sunday … 6=Saturday — computed via en-US Intl with TZ override.
+  try {
+    const wk = new Intl.DateTimeFormat("en-US", {
+      timeZone: DEPUTY_SYNC_TIMEZONE, weekday: "short"
+    }).format(date);
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return map[wk];
+  } catch (_e) { return null; }
+}
+
+function bridgeIsoForPacificDateAt17(yyyyMmDd) {
+  // Returns an ISO 8601 string representing 17:00 Pacific on the given
+  // date. PST = -08:00; PDT = -07:00. Derive offset by formatting a test
+  // date in Pacific and inspecting the result minutes vs UTC.
+  const probe = new Date(yyyyMmDd + "T12:00:00Z");
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: DEPUTY_SYNC_TIMEZONE, hour: "2-digit", hour12: false
+  });
+  // Pacific hour at UTC noon: 04 (PST) or 05 (PDT). Offset = 12 - hour.
+  const pacificHour = parseInt(fmt.format(probe), 10);
+  const offsetHours = 12 - pacificHour;   // 8 (PST) or 7 (PDT)
+  const sign = "-";
+  const hh = String(Math.abs(offsetHours)).padStart(2, "0");
+  return yyyyMmDd + "T17:00:00" + sign + hh + ":00";
+}
+
+function bridgeAddDays(yyyyMmDd, days) {
+  const base = new Date(yyyyMmDd + "T12:00:00Z");
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+// Compute available_from per the customer's flex_start_policy. Defaults
+// to start_time (no flex). The supported policy values are:
+//   • "sun_to_fri_evening"     — Sunday work available from prior Fri 17:00 PT
+//   • "weekend_to_thu_evening" — Sat/Sun work available from prior Thu 17:00 PT
+//   • null / absent            — no flex
+function bridgeComputeAvailableFrom(startTime, syncDate, flexPolicy) {
+  if (!flexPolicy || !startTime) return startTime || null;
+  let dt;
+  try { dt = startTime.toDate ? startTime.toDate() : new Date(startTime); }
+  catch (_e) { return startTime; }
+  const wk = bridgePacificWeekday(dt);
+  if (wk == null) return startTime;
+  if (flexPolicy === "sun_to_fri_evening" && wk === 0) {
+    const iso = bridgeIsoForPacificDateAt17(bridgeAddDays(syncDate, -2));
+    return admin.firestore.Timestamp.fromDate(new Date(iso));
+  }
+  if (flexPolicy === "weekend_to_thu_evening" && (wk === 0 || wk === 6)) {
+    const offset = (wk === 0) ? -3 : -2;   // Sun→Thu = 3 days back; Sat→Thu = 2
+    const iso = bridgeIsoForPacificDateAt17(bridgeAddDays(syncDate, offset));
+    return admin.firestore.Timestamp.fromDate(new Date(iso));
+  }
+  return startTime;
+}
+
+function bridgeComputeAvailableUntil(endTime) {
+  if (!endTime) return null;
+  let dt;
+  try { dt = endTime.toDate ? endTime.toDate() : new Date(endTime); }
+  catch (_e) { return endTime; }
+  const ms = dt.getTime() + BRIDGE_AVAILABLE_GRACE_HOURS * 3600 * 1000;
+  return admin.firestore.Timestamp.fromMillis(ms);
+}
+
+function bridgeMakeAssignmentId(shift) {
+  const sid = shift.shift_id;
+  if (sid !== undefined && sid !== null && String(sid).length > 0 && Number(sid) !== 0) {
+    return BRIDGE_DOC_ID_PREFIX + String(sid);
+  }
+  // Fallback per Phase 2A spec — only fires if shift_id is missing/0.
+  // Uses tech slug (NOT uid) so the id stays human-debuggable.
+  const techKey = String(shift.employee_slug || shift.employee_email || "unknown_tech")
+    .toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  const custKey = String(shift.customer_slug || "unknown_customer")
+    .toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return "sa__" + shift.sync_date + "__" + techKey + "__" + custKey;
+}
+
+async function bridgeResolveUid(email, cache) {
+  if (!email) return null;
+  const key = String(email).toLowerCase().trim();
+  if (!key) return null;
+  if (cache[key] !== undefined) return cache[key];
+  try {
+    const user = await admin.auth().getUserByEmail(key);
+    cache[key] = user.uid;
+    return user.uid;
+  } catch (_e) {
+    cache[key] = null;
+    return null;
+  }
+}
+
+async function bridgeHasLiveOrCompletedSession(db, assignmentId) {
+  try {
+    const snap = await db.collection("pioneer_service_sessions")
+      .where("assignment_id", "==", assignmentId)
+      .where("status", "in", BRIDGE_LATE_STATUSES)
+      .limit(1)
+      .get();
+    return !snap.empty;
+  } catch (_e) {
+    // Index missing or transient error — be safe and assume sessions
+    // exist; the caller will route to "skip status overwrite" path.
+    return true;
+  }
+}
+
+async function bridgeCore(opts) {
+  const dryRun     = !!opts.dryRun;
+  const startDate  = (typeof opts.syncDate === "string" && opts.syncDate)
+                       || deputyTodayLocalDate();
+  const daysForward = Math.max(0, Math.min(30, Number(opts.daysForward) || 0));
+  const dates = [];
+  for (let i = 0; i <= daysForward; i++) dates.push(bridgeAddDays(startDate, i));
+
+  const db = admin.firestore();
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const uidCache = {};
+  const custCache = {};
+
+  const report = {
+    dry_run:           dryRun,
+    invoked_by:        String(opts.invokedBy || "manual"),
+    dates:             dates,
+    shifts_seen:       0,
+    created:           0,
+    updated_assigned:  0,
+    refreshed_late:    0,
+    cancelled:         0,
+    skipped: {
+      customer_unresolved: 0,
+      uid_unresolved:      0,
+      no_email:            0,
+      protected_session:   0,
+      cancelled_no_doc:    0,
+      cancelled_locked:    0,
+      no_change_needed:    0
+    },
+    errors:            []
+  };
+  // Optional per-shift detail when dry_run is on — caps at 50 to keep
+  // the response small.
+  const details = dryRun ? [] : null;
+  function pushDetail(shiftId, action, reason) {
+    if (!details || details.length >= 50) return;
+    details.push({ shift_id: shiftId, action: action, reason: reason || null });
+  }
+
+  for (const date of dates) {
+    let shifts = [];
+    try {
+      const snap = await db.collection("deputy_shift_cache")
+        .where("sync_date", "==", date)
+        .get();
+      shifts = snap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data() || {});
+      });
+    } catch (err) {
+      report.errors.push({ stage: "load_deputy_cache", date: date, msg: err.message });
+      continue;
+    }
+    report.shifts_seen += shifts.length;
+
+    for (const shift of shifts) {
+      const shiftIdStr = String(shift.shift_id || shift.id || "");
+      const deputyCancelled = String(shift.status || "") === "cancelled";
+
+      // Skip — customer mapping unresolved.
+      if (!shift.customer_slug) {
+        if (deputyCancelled) {
+          // Nothing to do; no doc would exist.
+          report.skipped.customer_unresolved += 1;
+          pushDetail(shiftIdStr, "skip", "customer_unresolved+cancelled");
+        } else {
+          report.skipped.customer_unresolved += 1;
+          pushDetail(shiftIdStr, "skip", "customer_unresolved");
+        }
+        continue;
+      }
+      // Skip — no email to resolve.
+      if (!shift.employee_email) {
+        report.skipped.no_email += 1;
+        pushDetail(shiftIdStr, "skip", "no_email");
+        continue;
+      }
+
+      const assignmentId = bridgeMakeAssignmentId(shift);
+      const assignmentRef = db.collection("service_assignments").doc(assignmentId);
+      let existingSnap;
+      try {
+        existingSnap = await assignmentRef.get();
+      } catch (err) {
+        report.errors.push({ stage: "load_existing", shift_id: shiftIdStr, msg: err.message });
+        continue;
+      }
+
+      // Cancellation handling.
+      if (deputyCancelled) {
+        if (!existingSnap.exists) {
+          report.skipped.cancelled_no_doc += 1;
+          pushDetail(shiftIdStr, "skip", "cancelled_no_doc");
+          continue;
+        }
+        const existingData = existingSnap.data() || {};
+        const lateStatus = BRIDGE_LATE_STATUSES.indexOf(existingData.status || "") >= 0;
+        const hasLive = await bridgeHasLiveOrCompletedSession(db, assignmentId);
+        if (lateStatus || hasLive) {
+          report.skipped.cancelled_locked += 1;
+          pushDetail(shiftIdStr, "skip", "cancelled_locked");
+          continue;
+        }
+        // Mark cancelled; never delete.
+        if (!dryRun) {
+          try {
+            await assignmentRef.update({
+              status:             "canceled_by_deputy",
+              status_changed_at:  sts,
+              status_changed_by:  BRIDGE_SOURCE_TAG,
+              updated_at:         sts,
+              updated_by:         BRIDGE_SOURCE_TAG
+            });
+          } catch (err) {
+            report.errors.push({ stage: "mark_cancelled", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.cancelled += 1;
+        pushDetail(shiftIdStr, "cancel", null);
+        continue;
+      }
+
+      // Resolve staff_uid.
+      const staff_uid = await bridgeResolveUid(shift.employee_email, uidCache);
+      if (!staff_uid) {
+        report.skipped.uid_unresolved += 1;
+        pushDetail(shiftIdStr, "skip", "uid_unresolved");
+        continue;
+      }
+
+      // Load customer for flex_start_policy + service_budget_minutes.
+      let customer = custCache[shift.customer_slug];
+      if (customer === undefined) {
+        try {
+          const cSnap = await db.collection("customers").doc(shift.customer_slug).get();
+          customer = cSnap.exists ? (cSnap.data() || {}) : null;
+        } catch (_e) { customer = null; }
+        custCache[shift.customer_slug] = customer;
+      }
+
+      const flexPolicy = (customer && customer.flex_start_policy) || null;
+      const budgetMin  = (customer && typeof customer.service_budget_minutes === "number")
+                          ? customer.service_budget_minutes
+                          : null;
+
+      // Build the mapping fields. Time math uses the cache's Timestamps
+      // as-is — they're already correct UTC moments.
+      const startTime = shift.start_time || null;
+      const endTime   = shift.end_time   || null;
+      let estimatedMin = null;
+      if (startTime && endTime) {
+        const sMs = startTime.toMillis ? startTime.toMillis() : new Date(startTime).getTime();
+        const eMs = endTime.toMillis   ? endTime.toMillis()   : new Date(endTime).getTime();
+        if (Number.isFinite(sMs) && Number.isFinite(eMs) && eMs > sMs) {
+          estimatedMin = Math.round((eMs - sMs) / 60000);
+        }
+      }
+      if (estimatedMin == null) estimatedMin = 90;
+
+      const availableFrom  = bridgeComputeAvailableFrom(startTime, date, flexPolicy);
+      const availableUntil = bridgeComputeAvailableUntil(endTime);
+
+      const mappingFields = {
+        service_date:          date,
+        staff_uid:             staff_uid,
+        staff_email:           String(shift.employee_email || "").toLowerCase().trim(),
+        staff_display_name:    shift.employee_display_name || "",
+        customer_id:           shift.customer_slug,
+        customer_name:         shift.customer_name || "",
+        location_id:           null,
+        location_name:         null,
+        location_address:      null,
+        location_lat:          null,
+        location_lon:          null,
+        location_geofence_radius_m: null,
+        service_window_start:  startTime,
+        service_deadline:      endTime,
+        estimated_minutes:     estimatedMin,
+        budget_minutes:        budgetMin,
+        allows_flex_start:     true,
+        available_from:        availableFrom,
+        available_until:       availableUntil,
+        schedule_policy:       flexPolicy,
+        deputy_shift_id:       Number(shift.shift_id) || null,
+        source:                "deputy_bridge",
+        updated_at:            sts,
+        updated_by:            BRIDGE_SOURCE_TAG
+      };
+
+      // CREATE path.
+      if (!existingSnap.exists) {
+        const payload = Object.assign({}, mappingFields, {
+          assignment_id:      assignmentId,
+          status:             "assigned",
+          status_changed_at:  sts,
+          status_changed_by:  BRIDGE_SOURCE_TAG,
+          session_id:         null,
+          dcr_submission_id:  null,
+          created_at:         sts,
+          created_by:         BRIDGE_SOURCE_TAG,
+          assigned_by:        BRIDGE_SOURCE_TAG,
+          notes:              "Auto-created from Deputy shift " + shiftIdStr
+        });
+        if (!dryRun) {
+          try { await assignmentRef.set(payload); }
+          catch (err) {
+            report.errors.push({ stage: "create", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.created += 1;
+        pushDetail(shiftIdStr, "create", null);
+        continue;
+      }
+
+      // UPDATE paths.
+      const existing = existingSnap.data() || {};
+      const existingStatus = String(existing.status || "");
+      const lateStatus = BRIDGE_LATE_STATUSES.indexOf(existingStatus) >= 0;
+      const hasLive = lateStatus
+        ? true
+        : await bridgeHasLiveOrCompletedSession(db, assignmentId);
+
+      if (lateStatus || hasLive) {
+        // REFRESH SAFE FIELDS ONLY — never touch status / session_id /
+        // dcr_submission_id / created_at / assigned_by.
+        const safe = Object.assign({}, mappingFields);
+        delete safe.staff_uid;   // never change tech mid-stream — sessions
+                                 // reference this assignment by id, staff
+                                 // identity must remain stable
+        delete safe.service_date;
+        if (!dryRun) {
+          try { await assignmentRef.update(safe); }
+          catch (err) {
+            report.errors.push({ stage: "update_late", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.refreshed_late += 1;
+        pushDetail(shiftIdStr, "refresh_late", null);
+        continue;
+      }
+
+      // Full mapping update — assignment is "assigned" (or
+      // "canceled_by_deputy" being re-armed).
+      const patch = Object.assign({}, mappingFields, {
+        status:             "assigned",
+        status_changed_at:  (existingStatus === "assigned") ? (existing.status_changed_at || sts) : sts,
+        status_changed_by:  (existingStatus === "assigned") ? (existing.status_changed_by || BRIDGE_SOURCE_TAG) : BRIDGE_SOURCE_TAG
+      });
+      if (!dryRun) {
+        try { await assignmentRef.update(patch); }
+        catch (err) {
+          report.errors.push({ stage: "update_assigned", shift_id: shiftIdStr, msg: err.message });
+          continue;
+        }
+      }
+      report.updated_assigned += 1;
+      pushDetail(shiftIdStr, "update_assigned", null);
+    }
+  }
+
+  if (details) report.details = details;
+  return report;
+}
+
+/* --- HTTPS twin: admin-only "Refresh Pioneer Time Clock from Deputy" --- */
+exports.refreshServiceAssignmentsFromDeputyV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshServiceAssignmentsFromDeputyV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+
+  // Validate sync_date (YYYY-MM-DD) within ±60 days of today.
+  let syncDate = null;
+  const raw = String(body.sync_date || "").trim();
+  if (raw) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      res.status(400).json({ ok: false, error: "sync_date must be YYYY-MM-DD." });
+      return;
+    }
+    const today = new Date(deputyTodayLocalDate() + "T00:00:00Z").getTime();
+    const target = new Date(raw + "T00:00:00Z").getTime();
+    if (Number.isNaN(target)) {
+      res.status(400).json({ ok: false, error: "sync_date is not a real calendar date." });
+      return;
+    }
+    const diffDays = Math.round((target - today) / (24 * 3600 * 1000));
+    if (diffDays < -60 || diffDays > 60) {
+      res.status(400).json({ ok: false, error: "sync_date must be within ±60 days of today." });
+      return;
+    }
+    syncDate = raw;
+  }
+
+  const daysForward = Math.max(0, Math.min(30, Number(body.days_forward) || 0));
+  const dryRun = !!body.dry_run;
+
+  try {
+    const report = await bridgeCore({
+      syncDate:    syncDate,
+      daysForward: daysForward,
+      dryRun:      dryRun,
+      invokedBy:   "admin:" + (staff.email || "")
+    });
+    logger.info("refreshServiceAssignmentsFromDeputyV1 ok", {
+      caller:           staff.email,
+      dates:            report.dates,
+      shifts_seen:      report.shifts_seen,
+      created:          report.created,
+      updated_assigned: report.updated_assigned,
+      refreshed_late:   report.refreshed_late,
+      cancelled:        report.cancelled,
+      dry_run:          report.dry_run
+    });
+    res.status(200).json({ ok: true, report: report });
+  } catch (err) {
+    logger.error("refreshServiceAssignmentsFromDeputyV1 failed", { error: err.message });
+    res.status(500).json({ ok: false, error: err.message || "bridge failed" });
+  }
+});
+
 exports.seedPilotCustomerAliasesV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
   res.set("Access-Control-Allow-Origin",  "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");

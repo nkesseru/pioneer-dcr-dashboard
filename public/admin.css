@@ -6449,6 +6449,124 @@
 }
 
 /* ==========================================================================
+   Phase 2A.1 — Pioneer Time Clock bridge block (inside Schedule tab).
+   ========================================================================== */
+
+.schedule-bridge-block {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.schedule-bridge-title {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.schedule-bridge-sub {
+  margin: 0;
+  color: var(--pc-text-muted, #64748b);
+  font-size: 13px;
+}
+.schedule-bridge-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+.schedule-bridge-row label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.schedule-bridge-row input[type="date"],
+.schedule-bridge-row input[type="number"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.schedule-bridge-dry {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 500;
+}
+.schedule-bridge-status {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--pc-text-muted, #64748b);
+}
+.schedule-bridge-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+.schedule-bridge-result {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.bridge-result-headline {
+  font-size: 13px;
+  color: #334155;
+  margin-bottom: 10px;
+}
+.bridge-result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 12px;
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+.bridge-result-stats > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.bridge-result-stats dt { font-size: 12px; color: #64748b; margin: 0; }
+.bridge-result-stats dd { font-weight: 700; font-variant-numeric: tabular-nums; margin: 0; color: #0f172a; }
+.bridge-result-skips dt { color: #94a3b8; }
+.bridge-result-skips dd { color: #64748b; }
+.bridge-result-detail {
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.bridge-result-detail summary { cursor: pointer; font-weight: 600; color: #475569; }
+.bridge-result-detail ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.bridge-result-detail li {
+  padding: 3px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: #334155;
+}
+.bridge-result-detail li code {
+  background: #f1f5f9;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.bridge-result-errors li { color: #991b1b; font-family: ui-sans-serif, system-ui, sans-serif; }
+.bridge-detail-reason {
+  display: inline-block; padding: 0 5px; border-radius: 3px;
+  background: #fef3c7; color: #78350f; font-size: 10.5px;
+  margin-left: 4px;
+}
+
+/* ==========================================================================
    Customer-edit modal — Phase 1g additions (Standing Notes summary +
    Access & Security editor subgroups + raw Deputy notes block).
    ========================================================================== */

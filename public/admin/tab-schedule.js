@@ -2039,6 +2039,131 @@
     }
   }
 
+  /* ---------- Phase 2A.1: Deputy → service_assignments bridge ----------
+   *
+   * Calls refreshServiceAssignmentsFromDeputyV1 server-side. Dry-run is
+   * ON by default — admins click to preview the result, then uncheck and
+   * click again to commit. The function returns an idempotent report so
+   * re-running is always safe; the UI just re-renders the latest result.
+   */
+  function setBridgeStatus(text) {
+    const el = $("schedule-bridge-status");
+    if (!el) return;
+    if (!text) { el.textContent = ""; el.hidden = true; return; }
+    el.textContent = text;
+    el.hidden = false;
+  }
+  function setBridgeError(msg) {
+    const el = $("schedule-bridge-error");
+    if (!el) return;
+    if (!msg) { el.textContent = ""; el.hidden = true; return; }
+    el.textContent = msg;
+    el.hidden = false;
+  }
+  function renderBridgeResult(report) {
+    const root = $("schedule-bridge-result");
+    if (!root) return;
+    if (!report) { root.innerHTML = ""; root.hidden = true; return; }
+    const skipped = report.skipped || {};
+    const errors  = Array.isArray(report.errors) ? report.errors : [];
+    const details = Array.isArray(report.details) ? report.details : [];
+    const detailRows = details.slice(0, 30).map(function (d) {
+      const reason = d.reason ? ' <span class="bridge-detail-reason">' + escapeHtml(d.reason) + '</span>' : '';
+      return '<li><code>' + escapeHtml(String(d.shift_id || '?')) + '</code> · ' +
+             escapeHtml(d.action || '?') + reason + '</li>';
+    }).join("");
+    const errorRows = errors.slice(0, 20).map(function (e) {
+      return '<li><strong>' + escapeHtml(e.stage || '?') + '</strong> · shift ' +
+             escapeHtml(String(e.shift_id || e.date || '?')) + ': ' +
+             escapeHtml(e.msg || '?') + '</li>';
+    }).join("");
+    const html =
+      '<div class="bridge-result-headline">' +
+        '<strong>' + (report.dry_run ? 'Dry-run complete' : 'Bridge run complete') + '</strong>' +
+        ' · dates: ' + escapeHtml((report.dates || []).join(", ") || "—") +
+        ' · deputy shifts seen: <strong>' + Number(report.shifts_seen || 0) + '</strong>' +
+      '</div>' +
+      '<dl class="bridge-result-stats">' +
+        '<div><dt>Created</dt><dd>' + Number(report.created || 0) + '</dd></div>' +
+        '<div><dt>Updated (assigned)</dt><dd>' + Number(report.updated_assigned || 0) + '</dd></div>' +
+        '<div><dt>Refreshed (late status)</dt><dd>' + Number(report.refreshed_late || 0) + '</dd></div>' +
+        '<div><dt>Cancelled</dt><dd>' + Number(report.cancelled || 0) + '</dd></div>' +
+      '</dl>' +
+      '<dl class="bridge-result-stats bridge-result-skips">' +
+        '<div><dt>Skip — customer unresolved</dt><dd>' + Number(skipped.customer_unresolved || 0) + '</dd></div>' +
+        '<div><dt>Skip — uid unresolved</dt><dd>' + Number(skipped.uid_unresolved || 0) + '</dd></div>' +
+        '<div><dt>Skip — no email</dt><dd>' + Number(skipped.no_email || 0) + '</dd></div>' +
+        '<div><dt>Skip — cancelled (no doc)</dt><dd>' + Number(skipped.cancelled_no_doc || 0) + '</dd></div>' +
+        '<div><dt>Skip — cancelled (locked)</dt><dd>' + Number(skipped.cancelled_locked || 0) + '</dd></div>' +
+      '</dl>' +
+      (detailRows
+        ? '<details class="bridge-result-detail"><summary>Per-shift detail (' + details.length + ')</summary><ul>' + detailRows + '</ul></details>'
+        : '') +
+      (errorRows
+        ? '<details class="bridge-result-detail bridge-result-errors" open><summary>Errors (' + errors.length + ')</summary><ul>' + errorRows + '</ul></details>'
+        : '');
+    root.innerHTML = html;
+    root.hidden = false;
+  }
+  async function onBridgeRunClick() {
+    const btn      = $("schedule-bridge-run-btn");
+    const dateEl   = $("schedule-bridge-date");
+    const fwdEl    = $("schedule-bridge-days-forward");
+    const dryEl    = $("schedule-bridge-dry-run");
+    setBridgeError("");
+    renderBridgeResult(null);
+
+    const url = (window.REFRESH_SERVICE_ASSIGNMENTS_FROM_DEPUTY_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      setBridgeError("REFRESH_SERVICE_ASSIGNMENTS_FROM_DEPUTY_URL is not configured in firebase-config.js.");
+      return;
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) { setBridgeError("Not signed in. Refresh and sign in again."); return; }
+
+    const syncDate    = (dateEl && dateEl.value) || "";
+    const daysForward = Math.max(0, Math.min(30, Number(fwdEl && fwdEl.value) || 0));
+    const dryRun      = !!(dryEl && dryEl.checked);
+
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = dryRun ? "Previewing…" : "Refreshing…"; }
+    setBridgeStatus((dryRun ? "Previewing" : "Refreshing") +
+                    " Pioneer service_assignments for " + (syncDate || "today") +
+                    (daysForward ? " (+" + daysForward + " days)" : "") + "…");
+
+    try {
+      const idToken = await u.getIdToken();
+      const res = await fetch(url, {
+        method:  "POST",
+        headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sync_date:    syncDate || undefined,
+          days_forward: daysForward,
+          dry_run:      dryRun
+        })
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body || !body.ok) {
+        throw new Error((body && body.error) || ("HTTP " + res.status));
+      }
+      setBridgeStatus(null);
+      renderBridgeResult(body.report || null);
+    } catch (err) {
+      setBridgeStatus(null);
+      setBridgeError("Bridge run failed: " + (err && err.message || err));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.label || "Refresh Pioneer Time Clock from Deputy";
+        delete btn.dataset.label;
+      }
+    }
+  }
+  function defaultBridgeDateToToday() {
+    const el = $("schedule-bridge-date");
+    if (!el || el.value) return;
+    try { el.value = pacificDateString(new Date()); } catch (_e) {}
+  }
+
   function wireScheduleControls() {
     const form = $("schedule-upload-form");
     if (form) form.addEventListener("submit", onScheduleUploadSubmit);
@@ -2046,6 +2171,10 @@
     if (publishForm) publishForm.addEventListener("submit", onPublishScheduleSubmit);
     const syncNowBtn = $("schedule-sync-now-btn");
     if (syncNowBtn) syncNowBtn.addEventListener("click", onSyncFromDeputyClick);
+    // Phase 2A.1 — Pioneer Time Clock bridge controls
+    const bridgeBtn = $("schedule-bridge-run-btn");
+    if (bridgeBtn) bridgeBtn.addEventListener("click", onBridgeRunClick);
+    defaultBridgeDateToToday();
     const refresh = $("schedule-refresh");
     if (refresh) refresh.addEventListener("click", function () {
       loadTeamSchedule();

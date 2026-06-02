@@ -1462,6 +1462,50 @@
         <div class="schedule-sync-status"  id="schedule-sync-status"  aria-live="polite" hidden></div>
         <div class="schedule-sync-error"   id="schedule-sync-error"   role="alert" hidden></div>
 
+        <!-- ============ Phase 2A.1 — Pioneer Time Clock bridge ============
+             Calls refreshServiceAssignmentsFromDeputyV1 server-side. Reads
+             deputy_shift_cache for the chosen date (+ optional days_forward)
+             and creates/updates one service_assignments doc per shift. Dry-run
+             default ON so the first click previews the result without writing.
+             Sits inside the Sync block so admins finishing a Deputy sync can
+             immediately push the changes into Pioneer Time Clock. -->
+        <section class="schedule-bridge-block" id="schedule-bridge-block">
+          <header class="schedule-bridge-head">
+            <div>
+              <h3 class="schedule-bridge-title">Refresh Pioneer Time Clock from Deputy</h3>
+              <p class="schedule-bridge-sub">
+                Generates a Pioneer service_assignment for every Deputy shift on the date
+                you pick. Idempotent — re-running on the same date is safe. Never overwrites
+                active or completed Pioneer sessions.
+              </p>
+            </div>
+          </header>
+
+          <div class="schedule-bridge-row">
+            <label for="schedule-bridge-date">Date (Pacific)</label>
+            <input type="date" id="schedule-bridge-date" autocomplete="off" />
+
+            <label for="schedule-bridge-days-forward">+ days forward</label>
+            <input type="number" id="schedule-bridge-days-forward"
+                   min="0" max="30" step="1" value="0" inputmode="numeric" />
+
+            <label class="schedule-bridge-dry">
+              <input type="checkbox" id="schedule-bridge-dry-run" checked />
+              <span>Dry-run (preview only — no writes)</span>
+            </label>
+
+            <button type="button" class="panel-action panel-action-primary"
+                    id="schedule-bridge-run-btn"
+                    title="Calls refreshServiceAssignmentsFromDeputyV1 server-side">
+              Refresh Pioneer Time Clock from Deputy
+            </button>
+          </div>
+
+          <div class="schedule-bridge-status" id="schedule-bridge-status" aria-live="polite" hidden></div>
+          <div class="schedule-bridge-error"  id="schedule-bridge-error"  role="alert" hidden></div>
+          <div class="schedule-bridge-result" id="schedule-bridge-result" hidden></div>
+        </section>
+
         <!-- Success summary — shown after a clean sync. Populated by admin.js. -->
         <div class="schedule-sync-success" id="schedule-sync-success" hidden>
           <div class="schedule-sync-success-row schedule-sync-success-headline">
@@ -3097,7 +3141,7 @@
   <script src="admin/tab-announcements.js?v=20260529-refactor-phase20"></script>
   <script src="admin/tab-dcr-review.js?v=20260530-refactor-phase21"></script>
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
-  <script src="admin/tab-schedule.js?v=20260530-refactor-phase23-hotfix-2"></script>
+  <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
   <script src="admin/tab-labor-review.js?v=20260601-phase1e-lite"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
