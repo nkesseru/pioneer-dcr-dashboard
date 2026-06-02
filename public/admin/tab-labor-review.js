@@ -359,7 +359,7 @@
         '<div class="lr-col-bgt">Budget</div>' +
         '<div class="lr-col-geo">Geo (in/out)</div>' +
         '<div class="lr-col-dcr">DCR</div>' +
-        '<div class="lr-col-act"></div>' +
+        '<div class="lr-col-act">Actions</div>' +
       '</div>';
     const rowsHtml = sessions.map(function (s) {
       const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
@@ -375,9 +375,21 @@
       // Phase 2A.2 — Remove button is available on rows that have an
       // assignment_id and aren't already admin-removed. Admin can stack
       // it with Review when both apply.
+      // Phase 2A.2 regression note — if a session lacks assignment_id
+      // (historical or legacy doc), Remove can't write because the
+      // batch needs to load service_assignments/{id}. Log to console so
+      // admin can spot it in DevTools, and render a small hint in the
+      // action cell instead of a blank.
+      if (!s.assignment_id) {
+        try { console.warn("[labor-review] session has no assignment_id — Remove disabled for this row", { id: s._id }); } catch (_e) {}
+      }
       const removeBtn = (s.assignment_id && s.admin_removed !== true)
         ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Remove…</button>'
         : '';
+      const actionCellContent = (reviewBtn + removeBtn) ||
+        (s.assignment_id
+          ? '<span class="lr-no-actions">—</span>'
+          : '<span class="lr-no-actions" title="Session has no assignment_id — cannot remove">no asgn id</span>');
       const reviewedMeta = (s.reviewed_by && s.reviewed_at)
         ? '<div class="lr-reviewed-meta">Reviewed ' + escapeHtml(fmtDateTime(s.reviewed_at)) +
             ' by ' + escapeHtml(s.reviewed_by.displayName || s.reviewed_by.email || "admin") +
@@ -405,7 +417,7 @@
           '<div class="lr-col-geo">' + geoChip(s.clock_in_geo_status) +
               ' / ' + geoChip(s.clock_out_geo_status) + '</div>' +
           '<div class="lr-col-dcr">' + dcrChip(s) + '</div>' +
-          '<div class="lr-col-act">' + reviewBtn + removeBtn + '</div>' +
+          '<div class="lr-col-act">' + actionCellContent + '</div>' +
           (reviewedMeta || forceClosedMeta || removedMeta
             ? '<div class="lr-row-meta">' + reviewedMeta + forceClosedMeta + removedMeta + '</div>'
             : '') +
