@@ -595,32 +595,199 @@
 
     // Action visibility — Approve/Reject/Apply only on pending; closed
     // suggestions are read-only.
-    const isPending = String(s.status || "pending") === "pending";
+    // Phase 1e.3 — "Re-publish as note" shows ONLY when the suggestion
+    // was already approved by the old flow but no resulting_note_id was
+    // stamped (i.e., the standing note was never actually created). This
+    // is the in-UI backfill path.
+    const status = String(s.status || "pending");
+    const isPending = status === "pending";
+    const needsRepublish = (status === "approved") && !s.resulting_note_id;
     $("suggestion-approve").hidden = !isPending;
     $("suggestion-reject").hidden  = !isPending;
     $("suggestion-apply-to-note").hidden = !isPending;
+    const republishBtn = $("suggestion-republish");
+    if (republishBtn) republishBtn.hidden = !needsRepublish;
 
     setModalError("suggestion-review-modal", "");
     openModal("suggestion-review-modal");
   }
 
-  async function setSuggestionStatus(id, newStatus) {
+  // Phase 1e.3 — first 60 chars of the first non-blank line becomes the
+  // note title when an admin Approves a brand-new suggestion (no
+  // existing_note_id). Keeps note authoring zero-friction while still
+  // giving the list a meaningful headline. Admin can rename anytime.
+  function deriveTitleFromSuggestion(text) {
+    const firstLine = String(text || "").split(/\r?\n/).find(function (ln) {
+      return String(ln || "").trim().length > 0;
+    });
+    const trimmed = String(firstLine || "").trim();
+    if (!trimmed) return "Suggested note";
+    if (trimmed.length <= 60) return trimmed;
+    return trimmed.slice(0, 57).trimEnd() + "…";
+  }
+
+  function formatApprovalDivider(suggestedByLabel) {
+    let dateStr = "";
+    try {
+      dateStr = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric", year: "numeric"
+      }).format(new Date());
+    } catch (_e) { dateStr = new Date().toISOString().slice(0, 10); }
+    const who = suggestedByLabel ? " (suggested by " + suggestedByLabel + ")" : "";
+    return "\n\n--- Approved " + dateStr + who + " ---\n";
+  }
+
+  // Phase 1e.3 — publish a suggestion's text into customer_notes (canonical
+  // source for the tech-side "Important Cleaning Notes" card). Either:
+  //   • APPEND mode: suggestion.existing_note_id is set → append to that
+  //     note's body with a dated divider so the original text is never
+  //     silently overwritten. Transactional read-then-update.
+  //   • CREATE mode: no existing_note_id → batch.set a fresh customer_notes
+  //     doc + stamp suggestion.resulting_note_id atomically.
+  //
+  // Status flip happens in the SAME atomic op unless `preserveExistingReview`
+  // is true (the "Re-publish as note" backfill path for already-approved
+  // suggestions that lack a resulting_note_id from before this fix).
+  async function publishSuggestionAsNote(suggestionId, opts) {
+    opts = opts || {};
     const adminEmail = getCurrentAdminEmail();
     const db  = firebase.firestore();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
-    const notes = $("suggestion-review-notes").value.trim();
-    try {
-      await db.collection("customer_note_suggestions").doc(id).update({
-        status:        newStatus,
-        reviewed_by:   adminEmail,
-        reviewed_at:   sts,
-        review_notes:  notes || null
+    const reviewNotes = opts.reviewNotes || null;
+
+    const sugRef  = db.collection("customer_note_suggestions").doc(suggestionId);
+    const sugSnap = await sugRef.get();
+    if (!sugSnap.exists) throw new Error("Suggestion not found");
+    const s = sugSnap.data() || {};
+    const suggestedChange = String(s.suggested_change || "").trim();
+    if (!suggestedChange) throw new Error("Suggestion text is empty.");
+    const customerSlug = s.customer_slug || "";
+    if (!customerSlug) throw new Error("Suggestion is missing customer_slug.");
+    const suggestedByLabel =
+      s.suggested_by_display_name || s.suggested_by || "tech";
+
+    const statusPatch = opts.preserveExistingReview
+      ? {} // backfill path: keep prior reviewed_by/reviewed_at/status as-is
+      : {
+          status:       "approved",
+          reviewed_by:  adminEmail,
+          reviewed_at:  sts,
+          review_notes: reviewNotes
+        };
+
+    if (s.existing_note_id) {
+      let resultingNoteId = s.existing_note_id;
+      await db.runTransaction(async function (tx) {
+        const noteRef = db.collection("customer_notes").doc(s.existing_note_id);
+        const noteSnap = await tx.get(noteRef);
+        if (!noteSnap.exists) {
+          // Linked note was archived/deleted since suggestion was filed.
+          // Fall back to a fresh note doc so the suggestion still lands
+          // somewhere visible. Allocate inside the txn so commit is atomic.
+          const newRef = db.collection("customer_notes").doc();
+          tx.set(newRef, {
+            customer_slug:        customerSlug,
+            title:                deriveTitleFromSuggestion(suggestedChange),
+            body:                 suggestedChange,
+            category:             "Other",
+            active:               true,
+            review_due_at:        null,
+            last_reviewed_at:     null,
+            last_reviewed_by:     null,
+            created_at:           sts,
+            created_by:           adminEmail,
+            updated_at:           sts,
+            updated_by:           adminEmail,
+            source_suggestion_id: suggestionId
+          });
+          resultingNoteId = newRef.id;
+        } else {
+          const existing = noteSnap.data() || {};
+          const newBody = (existing.body || "") +
+            formatApprovalDivider(suggestedByLabel) + suggestedChange;
+          tx.update(noteRef, {
+            body:       newBody,
+            updated_at: sts,
+            updated_by: adminEmail
+          });
+        }
+        tx.update(sugRef, Object.assign({}, statusPatch, {
+          resulting_note_id: resultingNoteId
+        }));
       });
-      showToast("ok", "Suggestion " + newStatus + ".");
+      return resultingNoteId;
+    }
+
+    // CREATE mode — fresh customer_notes doc.
+    const newNoteRef = db.collection("customer_notes").doc();
+    const batch = db.batch();
+    batch.set(newNoteRef, {
+      customer_slug:        customerSlug,
+      title:                deriveTitleFromSuggestion(suggestedChange),
+      body:                 suggestedChange,
+      category:             "Other",
+      active:               true,
+      review_due_at:        null,
+      last_reviewed_at:     null,
+      last_reviewed_by:     null,
+      created_at:           sts,
+      created_by:           adminEmail,
+      updated_at:           sts,
+      updated_by:           adminEmail,
+      source_suggestion_id: suggestionId
+    });
+    batch.update(sugRef, Object.assign({}, statusPatch, {
+      resulting_note_id: newNoteRef.id
+    }));
+    await batch.commit();
+    return newNoteRef.id;
+  }
+
+  async function setSuggestionStatus(id, newStatus) {
+    const reviewNotes = $("suggestion-review-notes").value.trim() || null;
+    try {
+      if (newStatus === "approved") {
+        // Phase 1e.3 — Approve now writes the standing note AND flips
+        // the suggestion status in one atomic op. Existing notes get
+        // appended (never silently overwritten); fresh suggestions
+        // become brand-new customer_notes docs.
+        await publishSuggestionAsNote(id, { reviewNotes: reviewNotes });
+        showToast("ok", "Suggestion approved and published as standing note.");
+      } else {
+        // Reject path unchanged — single-field status flip.
+        const adminEmail = getCurrentAdminEmail();
+        const db  = firebase.firestore();
+        const sts = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection("customer_note_suggestions").doc(id).update({
+          status:       newStatus,
+          reviewed_by:  adminEmail,
+          reviewed_at:  sts,
+          review_notes: reviewNotes
+        });
+        showToast("ok", "Suggestion " + newStatus + ".");
+      }
       closeModal("suggestion-review-modal");
       await loadNoteSuggestions();
+      // Refresh the notes panel too so the new/updated note shows up.
+      await loadCustomerNotes();
     } catch (err) {
       handleAdminWriteError(err, { context: "suggestion review", modalId: "suggestion-review-modal" });
+    }
+  }
+
+  // Backfill path for suggestions already approved before Phase 1e.3 (no
+  // resulting_note_id stamped). Same publish logic, but preserves the
+  // original reviewed_by/reviewed_at so we don't rewrite history.
+  async function republishApprovedSuggestion(id) {
+    try {
+      await publishSuggestionAsNote(id, { preserveExistingReview: true });
+      showToast("ok", "Re-published as standing note.");
+      closeModal("suggestion-review-modal");
+      await loadNoteSuggestions();
+      await loadCustomerNotes();
+    } catch (err) {
+      handleAdminWriteError(err, { context: "suggestion republish", modalId: "suggestion-review-modal" });
     }
   }
 
@@ -684,6 +851,11 @@
     });
     const apply = $("suggestion-apply-to-note");
     if (apply) apply.addEventListener("click", onSuggestionApplyToNote);
+    const republish = $("suggestion-republish");
+    if (republish) republish.addEventListener("click", function () {
+      const id = $("suggestion-review-id").value;
+      if (id) republishApprovedSuggestion(id);
+    });
 
     const refresh = $("suggestions-refresh");
     if (refresh) refresh.addEventListener("click", loadNoteSuggestions);

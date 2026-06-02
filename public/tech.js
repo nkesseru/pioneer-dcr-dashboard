@@ -777,6 +777,7 @@
   function renderCustomerNotes(notes, customerSlug) {
     const root  = $("tech-notes-list");
     const empty = $("tech-notes-empty");
+    const label = $("tech-notes-list-label");
     if (!root || !empty) return;
 
     currentCustomerSlugForNotes = customerSlug || "";
@@ -786,9 +787,11 @@
     if (!notes || notes.length === 0) {
       root.innerHTML = "";
       empty.hidden = false;
+      if (label) label.hidden = true;
       return;
     }
     empty.hidden = true;
+    if (label) label.hidden = false;
     root.innerHTML = notes.map(noteCardHtml).join("");
   }
 

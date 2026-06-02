@@ -2595,9 +2595,19 @@
                 title="Open the note editor with the tech's text pre-filled">
           Apply to note…
         </button>
+        <!-- Phase 1e.3 — backfill button. Visible ONLY on already-approved
+             suggestions that have no resulting_note_id (i.e. the standing
+             note was never created by the old approve-only flow). One click
+             publishes the text as a customer_notes doc and stamps
+             resulting_note_id on the suggestion. -->
+        <button type="button" class="row-btn" id="suggestion-republish" hidden
+                title="Publish this approved suggestion as a standing customer note">
+          Re-publish as note
+        </button>
         <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
         <button type="button" class="row-btn row-btn-danger" id="suggestion-reject">Reject</button>
-        <button type="button" class="modal-btn-save" id="suggestion-approve">Approve</button>
+        <button type="button" class="modal-btn-save" id="suggestion-approve"
+                title="Approve and publish as a standing customer note (visible to techs on /tech.html)">Approve</button>
       </footer>
     </div>
   </div>
@@ -2879,7 +2889,7 @@
   <script src="admin/_budget.js?v=20260529-refactor-phase4a"></script>
   <script src="admin/tab-sos.js?v=20260529-refactor-phase4b"></script>
   <script src="admin/tab-improvements.js?v=20260529-refactor-phase5"></script>
-  <script src="admin/tab-customer-notes.js?v=20260529-refactor-phase6"></script>
+  <script src="admin/tab-customer-notes.js?v=20260601-phase1e3-approve-publishes"></script>
   <script src="admin/tab-service-recoveries.js?v=20260529-refactor-phase7"></script>
   <script src="admin/tab-training.js?v=20260529-refactor-phase8"></script>
   <script src="admin/tab-pilot-readiness.js?v=20260529-refactor-phase9"></script>

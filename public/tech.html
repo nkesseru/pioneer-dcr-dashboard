@@ -253,9 +253,15 @@
             cleaning preferences. Office-maintained.
           </p>
         </header>
+        <!-- Phase 1e.3 — small label shown above the notes list when one
+             or more standing notes exist. Hidden when the empty state
+             takes over. Toggled by tech.js renderCustomerNotes(). -->
+        <p id="tech-notes-list-label" class="tech-notes-list-label" hidden>
+          Standing notes for this location
+        </p>
         <div id="tech-notes-list" class="tech-notes-list" role="list"></div>
         <p id="tech-notes-empty" class="tech-empty" hidden>
-          No standing notes for this customer yet. Tap "Suggest update" if you have something the office should add.
+          No standing notes yet. Tap <strong>Suggest update</strong> if there's something the office should add for future cleanings.
         </p>
       </section>
 
@@ -566,7 +572,7 @@
   <script src="walkthrough.js"></script>
   <script src="customer-sop.js"></script>
   <script src="customer-display.js?v=20260528-displayname"></script>
-  <script src="tech.js?v=20260528-displayname"></script>
+  <script src="tech.js?v=20260601-phase1e3-standing-notes"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
 </body>
