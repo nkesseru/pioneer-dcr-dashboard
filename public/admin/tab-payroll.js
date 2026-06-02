@@ -450,7 +450,7 @@
               'title="Generate CSV and lock these sessions as exported">' +
               'Export approved sessions →' +
             '</button>' +
-            '<span class="payroll-export-note">7-day signed URL · audit trail in payroll_exports.</span>' +
+            '<span class="payroll-export-note">Admin CSV download link · audit trail in payroll_exports.</span>' +
           '</div>' +
         '</div>';
     } else if (totalBlockers > 0) {
@@ -614,8 +614,11 @@
             (e.void_reason ? ' — ' + escapeHtml(e.void_reason) : '') +
           '</p>'
         : '';
-      const downloadBtn = e.signed_url
-        ? '<a class="payroll-export-download" href="' + escapeHtml(e.signed_url) +
+      // Phase 28D revision — prefer download_url (Firebase Storage
+      // token-based) over signed_url (legacy field). Either is fine.
+      const dlHref = e.download_url || e.signed_url;
+      const downloadBtn = dlHref
+        ? '<a class="payroll-export-download" href="' + escapeHtml(dlHref) +
           '" target="_blank" rel="noopener noreferrer">Download CSV ↗</a>'
         : '<span class="payroll-export-no-url">No download URL</span>';
       const voidBtn = !isVoided
@@ -758,7 +761,8 @@
       const successBlock = $("payroll-export-success");
       if (successBlock) successBlock.hidden = false;
       const dl = $("payroll-export-success-dl");
-      if (dl) { dl.href = result.signed_url; dl.hidden = false; }
+      // Phase 28D revision — prefer download_url (token-based).
+      if (dl) { dl.href = result.download_url || result.signed_url; dl.hidden = false; }
       const sumLine = $("payroll-export-success-summary");
       if (sumLine && result.summary) {
         sumLine.textContent =

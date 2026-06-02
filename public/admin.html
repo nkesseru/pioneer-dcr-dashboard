@@ -3190,8 +3190,8 @@
           <p class="field-hint" style="margin-top:10px; line-height:1.5;">
             This will mark every approved session in the selected period as
             <code>exported</code> and lock the workweek(s) so the overtime
-            engine cannot re-allocate them. A 7-day signed URL is returned
-            for download. The <code>payroll_exports</code> doc + the CSV
+            engine cannot re-allocate them. An <strong>Admin CSV download link</strong>
+            is returned. The <code>payroll_exports</code> doc + the CSV
             file persist as the audit trail. <strong>Use Void this export
             to roll back</strong> — exported sessions cannot be modified
             until then.
@@ -3210,7 +3210,9 @@
             </a>
           </p>
           <p class="field-hint" style="margin-top:8px;">
-            URL expires in 7 days. Re-download anytime from the Recent Exports list below.
+            <strong>Admin CSV download link.</strong> Do not share outside the
+            office — the link is the credential. Re-download anytime from
+            the Recent Exports list below.
           </p>
         </div>
       </div>
@@ -3448,10 +3450,10 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260602-phase28d-export"></script>
-  <script src="admin/tab-payroll.js?v=20260602-phase28d-export"></script>
+  <script src="admin/tab-labor-review.js?v=20260602-phase28d-token"></script>
+  <script src="admin/tab-payroll.js?v=20260602-phase28d-token"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase28d-export"></script>
+  <script src="admin.js?v=20260602-phase28d-token"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

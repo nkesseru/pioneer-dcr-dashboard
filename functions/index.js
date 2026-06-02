@@ -5733,23 +5733,33 @@ exports.exportPayrollCsvV1 = onRequest({
       "=== TOTALS ===\n" +
       summaryRows.join("\n") + "\n";
 
-    // ----- Upload CSV to Cloud Storage -----
+    // ----- Upload CSV to Cloud Storage with embedded download token -----
+    // Phase 28D revision — switched from getSignedUrl() (which requires
+    // iam.serviceAccounts.signBlob on the runtime SA) to the Firebase
+    // Storage download-token pattern. The token is embedded in the
+    // object metadata; the resulting URL is unauthenticated at the
+    // network layer but only resolves with the token, which we store
+    // exclusively on the admin-read-only payroll_exports doc. Same
+    // pattern as functions/techMediaUpload.js + DCR photo uploads.
     const storagePath = "payroll_exports/" + exportId + "/payroll-" +
                         rangeStart + "-to-" + rangeEnd + ".csv";
     const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
     const file   = bucket.file(storagePath);
+    const downloadToken = crypto.randomUUID();
     await file.save(Buffer.from(csv, "utf8"), {
       resumable:   false,
       contentType: "text/csv; charset=utf-8",
-      metadata:    { cacheControl: "private, no-cache" }
+      metadata:    {
+        cacheControl: "private, no-cache",
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken
+        }
+      }
     });
-
-    // ----- 7-day signed URL -----
-    const expiresAtMs = Date.now() + PAYROLL_URL_EXPIRY_MS;
-    const [signedUrl] = await file.getSignedUrl({
-      action:  "read",
-      expires: expiresAtMs
-    });
+    const downloadUrl = "https://firebasestorage.googleapis.com/v0/b/" +
+                        PAYROLL_EXPORT_BUCKET + "/o/" +
+                        encodeURIComponent(storagePath) +
+                        "?alt=media&token=" + downloadToken;
 
     // ----- Atomic batch: payroll_exports doc + per-session updates -----
     const sts = admin.firestore.FieldValue.serverTimestamp();
@@ -5777,8 +5787,14 @@ exports.exportPayrollCsvV1 = onRequest({
       sick_hours_total:        Number(payrollDecimalHours(totalSickMin)),
       total_paid_hours:        Number(payrollDecimalHours(totalPaidMin)),
       storage_path:            storagePath,
-      signed_url:              signedUrl,
-      signed_url_expires_at:   admin.firestore.Timestamp.fromMillis(expiresAtMs),
+      // Phase 28D revision — download_url uses the Firebase Storage
+      // download-token pattern (no signBlob IAM dependency). signed_url
+      // kept as null for back-compat with the field name; UI prefers
+      // download_url when present. The token in download_url IS the
+      // secret — payroll_exports is admin-read-only by firestore.rules.
+      download_url:            downloadUrl,
+      signed_url:              null,
+      signed_url_expires_at:   null,
       included_session_ids:    includedSessionIds,
       included_sick_entry_ids: includedSickEntryIds,
       verification_snapshot:   verification_snapshot
@@ -5818,7 +5834,8 @@ exports.exportPayrollCsvV1 = onRequest({
     res.status(200).json({
       ok: true,
       export_id:    exportId,
-      signed_url:   signedUrl,
+      download_url: downloadUrl,
+      signed_url:   null,            // Phase 28D revision — kept for client back-compat
       storage_path: storagePath,
       summary: {
         period_label:         periodLabel,
