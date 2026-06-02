@@ -453,8 +453,18 @@
           const raw = snap.docs.map(function (d) {
             return Object.assign({ _id: d.id }, d.data());
           });
+          // Phase 2A.2 — hide admin-removed assignments from the tech's
+          // Pioneer Time Clock list. Audit history stays in Firestore
+          // (status === "admin_removed", removed_from_ptc === true) and
+          // remains visible in admin Labor Review with a "Removed from
+          // PTC" chip.
+          const visible = raw.filter(function (a) {
+            if (a && a.removed_from_ptc === true) return false;
+            if (a && a.status === "admin_removed") return false;
+            return true;
+          });
           // Client-filter for the actual availability window.
-          assignments = raw.filter(function (a) {
+          assignments = visible.filter(function (a) {
             return isAvailableNow(a, todayPT, nowMs);
           });
           return { ok: true };

@@ -3018,6 +3018,41 @@
     </div>
   </div>
 
+  <!-- ================== Remove assignment from PTC modal (Phase 2A.2) ================== -->
+  <div id="labor-remove-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-rm-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-rm-title">Remove from Pioneer Time Clock</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-rm-summary">—</p>
+        <input type="hidden" id="labor-rm-assignment-id" />
+
+        <div class="field-row">
+          <label for="labor-rm-reason">Reason <span class="req">*</span></label>
+          <textarea id="labor-rm-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Created by mistake — duplicate of 6817 Cedar. No DCR needed."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the assignment and any related sessions for audit.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          The assignment is flipped to <code>status: "admin_removed"</code> and
+          hidden from the tech's Pioneer Time Clock. <strong>Nothing is deleted</strong>;
+          related <code>pioneer_service_sessions</code> are preserved and flagged
+          <code>admin_removed: true</code>. If a tech is currently clocked into this
+          assignment, you'll be asked to Force close first.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-rm-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-rm-save">Remove from PTC</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- ================== Set opening sick-leave balance modal (Phase 1f) ================== -->
   <div id="sick-seed-modal" class="admin-modal" hidden aria-hidden="true">
     <div class="admin-modal-backdrop" data-modal-close></div>
@@ -3143,7 +3178,7 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260601-phase1e-lite"></script>
+  <script src="admin/tab-labor-review.js?v=20260601-phase2a2-remove"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
   <script src="admin.js?v=20260601-phase1f"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>

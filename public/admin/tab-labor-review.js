@@ -125,6 +125,12 @@
       default:            return '<span class="lr-chip">' + escapeHtml(s || "—") + '</span>';
     }
   }
+  // Phase 2A.2 — small chip rendered on rows whose underlying assignment
+  // (or session) was admin-removed from PTC. Keeps the row visible for
+  // audit but signals "no longer in the tech-facing PTC list."
+  function removedChip() {
+    return '<span class="lr-chip is-removed" title="Hidden from Pioneer Time Clock for the assigned tech">Removed from PTC</span>';
+  }
   function geoChip(g) {
     if (!g) return "—";
     if (g === "onsite")  return '<span class="lr-geo is-onsite">Onsite</span>';
@@ -316,6 +322,24 @@
     }).join("");
   }
 
+  // Phase 2A.2 — combined status display (legacy chip + optional
+  // "Removed from PTC" chip when the session was admin-removed).
+  function sessionStatusDisplay(s) {
+    const base = statusChip(s.status, needsReviewFlag(s));
+    return (s && s.admin_removed === true) ? (removedChip() + " " + base) : base;
+  }
+  function removedMetaLine(s) {
+    if (!s || s.admin_removed !== true) return "";
+    const who = (s.removed_by && (s.removed_by.displayName || s.removed_by.email)) || "admin";
+    const when = s.removed_at ? fmtDateTime(s.removed_at) : "";
+    const reason = s.removed_reason ? " — " + s.removed_reason : "";
+    return '<div class="lr-removed-meta">Removed from PTC' +
+           (when ? ' ' + escapeHtml(when) : '') +
+           ' by ' + escapeHtml(who) +
+           escapeHtml(reason) +
+           '</div>';
+  }
+
   function renderTable() {
     const wrap = $("labor-table");
     const empty = $("labor-table-empty");
@@ -348,6 +372,12 @@
       const reviewBtn = needsReviewFlag(s)
         ? '<button type="button" class="labor-btn labor-btn-review" data-act="mark-reviewed">Review</button>'
         : '';
+      // Phase 2A.2 — Remove button is available on rows that have an
+      // assignment_id and aren't already admin-removed. Admin can stack
+      // it with Review when both apply.
+      const removeBtn = (s.assignment_id && s.admin_removed !== true)
+        ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Remove…</button>'
+        : '';
       const reviewedMeta = (s.reviewed_by && s.reviewed_at)
         ? '<div class="lr-reviewed-meta">Reviewed ' + escapeHtml(fmtDateTime(s.reviewed_at)) +
             ' by ' + escapeHtml(s.reviewed_by.displayName || s.reviewed_by.email || "admin") +
@@ -359,11 +389,15 @@
             (s.force_close_reason ? ' — ' + escapeHtml(s.force_close_reason) : '') +
           '</div>'
         : '';
+      const removedMeta = removedMetaLine(s);
+      const summary = techName(s.staff_email, s.staff_uid) + " · " + customerLabel(s, assignment);
       return (
-        '<div class="labor-row" data-session-id="' + escapeHtml(s._id) + '">' +
+        '<div class="labor-row" data-session-id="' + escapeHtml(s._id) + '"' +
+            ' data-assignment-id="' + escapeHtml(s.assignment_id || "") + '"' +
+            ' data-summary="' + escapeHtml(summary) + '">' +
           '<div class="lr-col-emp">' + escapeHtml(techName(s.staff_email, s.staff_uid)) + '</div>' +
           '<div class="lr-col-cust">' + escapeHtml(customerLabel(s, assignment)) + '</div>' +
-          '<div class="lr-col-status">' + statusChip(s.status, needsReviewFlag(s)) + '</div>' +
+          '<div class="lr-col-status">' + sessionStatusDisplay(s) + '</div>' +
           '<div class="lr-col-in">' + escapeHtml(fmtTime(s.clock_in_at)) + '</div>' +
           '<div class="lr-col-out">' + escapeHtml(fmtTime(s.clock_out_at)) + '</div>' +
           '<div class="lr-col-wkd">' + escapeHtml(fmtMinutes(worked)) + '</div>' +
@@ -371,9 +405,9 @@
           '<div class="lr-col-geo">' + geoChip(s.clock_in_geo_status) +
               ' / ' + geoChip(s.clock_out_geo_status) + '</div>' +
           '<div class="lr-col-dcr">' + dcrChip(s) + '</div>' +
-          '<div class="lr-col-act">' + reviewBtn + '</div>' +
-          (reviewedMeta || forceClosedMeta
-            ? '<div class="lr-row-meta">' + reviewedMeta + forceClosedMeta + '</div>'
+          '<div class="lr-col-act">' + reviewBtn + removeBtn + '</div>' +
+          (reviewedMeta || forceClosedMeta || removedMeta
+            ? '<div class="lr-row-meta">' + reviewedMeta + forceClosedMeta + removedMeta + '</div>'
             : '') +
         '</div>'
       );
@@ -517,6 +551,128 @@
     }
   }
 
+  /* ---------- Phase 2A.2: Remove assignment from PTC ----------
+   *
+   * Reads service_assignments/{id}, blocks if an active_service_session
+   * points at this assignment (force-close first per spec), then in one
+   * batch:
+   *   • service_assignments/{id}.update({ status: "admin_removed",
+   *       removed_from_ptc: true, removed_reason, removed_by, removed_at })
+   *   • for each pioneer_service_sessions where assignment_id == id:
+   *       .update({ admin_removed: true, removed_reason, removed_by,
+   *                 removed_at, needs_review: true })
+   *
+   * NEVER deletes any doc. Audit trail preserved. /work hides assignments
+   * whose status === "admin_removed" OR removed_from_ptc === true
+   * (service-clock.js filter, Phase 2A.2).
+   */
+  async function removeAssignmentFromPtc(opts) {
+    const assignmentId = opts.assignmentId;
+    const reason       = opts.reason;
+    const actor        = currentActor();
+    const db           = firebase.firestore();
+    const sts          = firebase.firestore.FieldValue.serverTimestamp();
+
+    if (!assignmentId) throw new Error("Missing assignment id.");
+
+    const assignRef  = db.collection("service_assignments").doc(assignmentId);
+    const assignSnap = await assignRef.get();
+    if (!assignSnap.exists) throw new Error("Assignment not found: " + assignmentId);
+    const assignData = assignSnap.data() || {};
+    const staffUid   = assignData.staff_uid || "";
+
+    // Block if the assigned tech is actively clocked into this assignment.
+    if (staffUid) {
+      const activeSnap = await db.collection("active_service_sessions")
+        .doc(staffUid).get();
+      if (activeSnap.exists) {
+        const active = activeSnap.data() || {};
+        if (active.assignment_id === assignmentId) {
+          throw new Error(
+            "Tech is currently clocked into this assignment. " +
+            "Use Force close in the Open Active Sessions block first, then Remove."
+          );
+        }
+      }
+    }
+
+    // Fetch every pioneer_service_sessions doc that points at this
+    // assignment. Each gets the admin_removed audit fields. Sessions
+    // are NOT deleted; work_minutes / clock-in / clock-out preserved.
+    const sessionsSnap = await db.collection("pioneer_service_sessions")
+      .where("assignment_id", "==", assignmentId)
+      .get();
+
+    const batch = db.batch();
+    batch.update(assignRef, {
+      status:           "admin_removed",
+      removed_from_ptc: true,
+      removed_reason:   reason,
+      removed_by:       actor,
+      removed_at:       sts,
+      updated_at:       sts,
+      updated_by:       actor
+    });
+    sessionsSnap.docs.forEach(function (d) {
+      batch.update(d.ref, {
+        admin_removed: true,
+        removed_reason: reason,
+        removed_by:    actor,
+        removed_at:    sts,
+        needs_review:  true
+      });
+    });
+    await batch.commit();
+    return { affected_sessions: sessionsSnap.size };
+  }
+
+  function openRemoveModal(assignmentId, summary) {
+    const modal = $("labor-remove-modal");
+    if (!modal) return;
+    const idEl = $("labor-rm-assignment-id"); if (idEl) idEl.value = assignmentId || "";
+    const sEl  = $("labor-rm-summary");       if (sEl)  sEl.textContent = summary || "—";
+    const rEl  = $("labor-rm-reason");        if (rEl)  rEl.value = "";
+    const eEl  = $("labor-rm-err");           if (eEl)  { eEl.textContent = ""; eEl.hidden = true; }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    setTimeout(function () { const r = $("labor-rm-reason"); if (r) r.focus(); }, 60);
+  }
+
+  function closeRemoveModal() {
+    const modal = $("labor-remove-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  async function submitRemove() {
+    const assignmentId = ($("labor-rm-assignment-id") && $("labor-rm-assignment-id").value) || "";
+    const reason       = (($("labor-rm-reason") && $("labor-rm-reason").value) || "").trim();
+    const errEl        = $("labor-rm-err");
+    const saveBtn      = $("labor-rm-save");
+    function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }
+
+    if (!assignmentId) { showErr("Missing assignment id."); return; }
+    if (reason.length < 5) { showErr("Reason must be at least 5 characters."); return; }
+
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      const r = await removeAssignmentFromPtc({ assignmentId: assignmentId, reason: reason });
+      closeRemoveModal();
+      refresh();
+      try {
+        console.info("[labor-review] removed assignment from PTC", {
+          assignment_id: assignmentId, affected_sessions: r.affected_sessions
+        });
+      } catch (_e) {}
+    } catch (err) {
+      console.error("[labor-review] remove failed", err);
+      showErr((err && (err.message || err.code)) || "Remove failed.");
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
   /* ---------- wire-up ---------- */
 
   function wire() {
@@ -550,12 +706,28 @@
           });
         return;
       }
+      // Phase 2A.2 — Remove from PTC
+      if (btn.dataset.act === "remove-from-ptc") {
+        const row = btn.closest("[data-assignment-id]");
+        if (!row) return;
+        const aid = row.dataset.assignmentId;
+        if (!aid) {
+          alert("This row has no assignment_id — cannot remove. (Older session docs may lack the field; refresh and try again.)");
+          return;
+        }
+        const summary = row.dataset.summary || "";
+        openRemoveModal(aid, summary);
+        return;
+      }
     });
 
     // Force-close modal save + cancel (X / backdrop / Cancel use [data-modal-close]
     // which the shell wires globally).
-    const saveBtn = $("labor-fc-save");
-    if (saveBtn) saveBtn.addEventListener("click", function () { submitForceClose(); });
+    const fcSaveBtn = $("labor-fc-save");
+    if (fcSaveBtn) fcSaveBtn.addEventListener("click", function () { submitForceClose(); });
+    // Remove modal save (Phase 2A.2).
+    const rmSaveBtn = $("labor-rm-save");
+    if (rmSaveBtn) rmSaveBtn.addEventListener("click", function () { submitRemove(); });
   }
 
   /* ---------- export surface ---------- */

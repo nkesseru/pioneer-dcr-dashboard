@@ -6393,6 +6393,9 @@
 .lr-chip.is-review   { background: #fee2e2; color: #991b1b; }
 .lr-chip.is-canceled { background: #f1f5f9; color: #64748b; }
 .lr-chip.is-missed   { background: #fee2e2; color: #991b1b; }
+/* Phase 2A.2 — "Removed from PTC" admin-only chip. Sits next to the
+   normal status chip so audit history stays glanceable. */
+.lr-chip.is-removed  { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
 
 .lr-geo {
   display: inline-block;
@@ -6434,6 +6437,19 @@
   background: #fee2e2; color: #991b1b; border-color: #fecaca;
 }
 .labor-btn-danger:hover { background: #fecaca; }
+/* Phase 2A.2 — Remove from PTC button. Distinct from danger (Force close)
+   because removal is a softer, audit-only action. */
+.labor-btn-remove {
+  background: #e0e7ff; color: #3730a3; border-color: #c7d2fe;
+  margin-left: 6px;
+}
+.labor-btn-remove:hover { background: #c7d2fe; }
+.lr-removed-meta {
+  color: #4338ca;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.lr-removed-meta::before { content: "🚫 "; }
 
 /* ---- Responsive: collapse the table on narrow widths ---- */
 @media (max-width: 980px) {
