@@ -5734,28 +5734,54 @@ exports.exportPayrollCsvV1 = onRequest({
       summaryRows.join("\n") + "\n";
 
     // ----- Upload CSV to Cloud Storage with embedded download token -----
-    // Phase 28D revision — switched from getSignedUrl() (which requires
-    // iam.serviceAccounts.signBlob on the runtime SA) to the Firebase
-    // Storage download-token pattern. The token is embedded in the
-    // object metadata; the resulting URL is unauthenticated at the
-    // network layer but only resolves with the token, which we store
-    // exclusively on the admin-read-only payroll_exports doc. Same
-    // pattern as functions/techMediaUpload.js + DCR photo uploads.
+    // Phase 28D revision (v2) — fixed customMetadata persistence. The
+    // prior structure (top-level contentType + metadata.cacheControl +
+    // metadata.metadata.firebaseStorageDownloadTokens) caused the
+    // custom-metadata sub-object to be dropped on @google-cloud/storage
+    // file.save(), so the firebasestorage.googleapis.com download
+    // endpoint had no token to validate against (503).
+    //
+    // Per QA-confirmed working pattern: contentType lives INSIDE the
+    // metadata object, the customMetadata nest holds the token, and no
+    // competing fields are passed.
     const storagePath = "payroll_exports/" + exportId + "/payroll-" +
                         rangeStart + "-to-" + rangeEnd + ".csv";
     const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
     const file   = bucket.file(storagePath);
     const downloadToken = crypto.randomUUID();
     await file.save(Buffer.from(csv, "utf8"), {
-      resumable:   false,
-      contentType: "text/csv; charset=utf-8",
-      metadata:    {
-        cacheControl: "private, no-cache",
+      metadata: {
+        contentType: "text/csv; charset=utf-8",
         metadata: {
           firebaseStorageDownloadTokens: downloadToken
         }
       }
     });
+
+    // Verify customMetadata persisted. If the token didn't land on the
+    // object, the download URL won't resolve — log a warning + still
+    // proceed (admin can void + re-export). This makes future regressions
+    // visible in function logs without breaking the flow.
+    try {
+      const [meta] = await file.getMetadata();
+      const persisted = meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens;
+      if (persisted !== downloadToken) {
+        logger.warn("exportPayrollCsvV1 download token did NOT persist on object metadata", {
+          export_id:     exportId,
+          object_path:   storagePath,
+          token_in_url:  downloadToken,
+          token_on_obj:  persisted || "(absent)",
+          metadata_seen: meta && meta.metadata ? Object.keys(meta.metadata) : "(no metadata)"
+        });
+      } else {
+        logger.info("exportPayrollCsvV1 download token verified on object", {
+          export_id: exportId, object_path: storagePath
+        });
+      }
+    } catch (err) {
+      logger.warn("exportPayrollCsvV1 metadata readback failed (non-fatal)", { error: err && err.message });
+    }
+
     const downloadUrl = "https://firebasestorage.googleapis.com/v0/b/" +
                         PAYROLL_EXPORT_BUCKET + "/o/" +
                         encodeURIComponent(storagePath) +
