@@ -437,6 +437,18 @@
   }
 
   async function check(staff) {
+    // 2026-06-03 — Rollout gate. The mandatory-announcement modal pops
+    // automatically on every page load whenever an unread mandatory
+    // announcement exists, which is the right behavior in steady state
+    // but the wrong behavior during a live shift-testing window where
+    // techs are mid-flow. Default OFF; flip window.MOBILE_POPUP_ENABLED
+    // to true in firebase-config.js to restore steady-state behavior.
+    // The component, the modal DOM, and every existing call site are
+    // preserved — only the auto-pop fires when this flag is true.
+    if (window.MOBILE_POPUP_ENABLED !== true) {
+      log("check skipped — MOBILE_POPUP_ENABLED is not true (auto-pop disabled)");
+      return;
+    }
     // Safe fallback if user/tech identity missing — silently skip the
     // check rather than block the page. Per the V6 pilot spec.
     if (!staff || !staff.uid) {
