@@ -5287,6 +5287,83 @@ async function bridgeCore(opts) {
 }
 
 /* --- HTTPS twin: admin-only "Refresh Pioneer Time Clock from Deputy" --- */
+/* --------------- bridgeDeputyToServiceAssignmentsV1 (Phase 2A.2) ---------------
+ *
+ * Scheduled twin of refreshServiceAssignmentsFromDeputyV1. Calls the
+ * same bridgeCore() so logic stays single-sourced. Sequenced to run
+ * ~5 minutes after syncDeputyShiftsV1 (which schedules at :00/:10/…
+ * minutes); a :05/:15/… offset would be ideal but Cloud Scheduler doesn't
+ * guarantee phase relative to other jobs — what matters is that within
+ * any 10-min window the bridge runs after the sync that preceded it.
+ *
+ * Idempotency: bridgeCore uses a deterministic doc id
+ * `sa_deputy__<shift_id>`. On re-run:
+ *   • If the assignment doc is in a late status (in_progress / paused /
+ *     dcr_pending / completed), only safe mapping fields refresh; status,
+ *     session_id, dcr_submission_id, created_at, assigned_by are preserved.
+ *   • Live-session safety check: existence of a
+ *     pioneer_service_sessions doc in active/paused/dcr_pending/completed
+ *     blocks status overwrite.
+ *   • Deputy cancellation → status="canceled_by_deputy" only if no
+ *     Pioneer work has started. NEVER deletes.
+ *
+ * If skipped > 0, logs a warning with the per-reason counts so the
+ * office can triage uid_unresolved / no_email / customer_unresolved
+ * cases via Cloud Logging.
+ *
+ * Created by the Drew/Whittaker Sev-1 (2026-06-02). The manual
+ * refreshServiceAssignmentsFromDeputyV1 stays as an admin-triggered
+ * twin for on-demand backfills (e.g. after a mass tech onboarding).
+ */
+exports.bridgeDeputyToServiceAssignmentsV1 = onSchedule({
+  schedule:       "every 10 minutes",
+  timeZone:       DEPUTY_SYNC_TIMEZONE,
+  timeoutSeconds: 120
+}, async (event) => {
+  try {
+    const result = await bridgeCore({
+      invokedBy:   "scheduled",
+      daysForward: 1,
+      dryRun:      false
+    });
+    const skippedTotal =
+      (result.skipped.customer_unresolved || 0) +
+      (result.skipped.uid_unresolved      || 0) +
+      (result.skipped.no_email            || 0) +
+      (result.skipped.protected_session   || 0) +
+      (result.skipped.cancelled_no_doc    || 0) +
+      (result.skipped.cancelled_locked    || 0);
+
+    const summary = {
+      dates:            result.dates,
+      shifts_seen:      result.shifts_seen,
+      created:          result.created,
+      updated_assigned: result.updated_assigned,
+      refreshed_late:   result.refreshed_late,
+      cancelled:        result.cancelled,
+      skipped:          result.skipped,
+      errors_count:     (result.errors || []).length
+    };
+
+    if (skippedTotal > 0) {
+      logger.warn("bridgeDeputyToServiceAssignmentsV1 had skipped shifts", summary);
+    } else {
+      logger.info("bridgeDeputyToServiceAssignmentsV1 ok", summary);
+    }
+    if (result.errors && result.errors.length) {
+      logger.error("bridgeDeputyToServiceAssignmentsV1 surfaced errors", {
+        errors: result.errors.slice(0, 20)
+      });
+    }
+  } catch (err) {
+    logger.error("bridgeDeputyToServiceAssignmentsV1 failed", {
+      error: err && err.message,
+      stack: err && err.stack
+    });
+    throw err;   // surface to Cloud Functions for retry semantics
+  }
+});
+
 exports.refreshServiceAssignmentsFromDeputyV1 = onRequest({
   cors:           false,
   timeoutSeconds: 120
