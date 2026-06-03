@@ -550,6 +550,7 @@
     registerTabActivator("attendance",      window.__pioneerAdmin.tabs.attendance.refresh);
     registerTabActivator("labor-review",    window.__pioneerAdmin.tabs.laborReview.refresh);
     registerTabActivator("payroll",         window.__pioneerAdmin.tabs.payroll.refresh);
+    registerTabActivator("payroll-exceptions", window.__pioneerAdmin.tabs.payrollExceptions.refresh);
     registerTabActivator("sick-leave",      window.__pioneerAdmin.tabs.sickLeave.refresh);
     registerTabActivator("tech-health",     window.__pioneerAdmin.tabs.techHealth.refresh);
     registerTabActivator("pilot-readiness", window.__pioneerAdmin.tabs.pilotReadiness.init);
@@ -563,6 +564,7 @@
     window.__pioneerAdmin.tabs.announcements.init();
     window.__pioneerAdmin.tabs.admins.init();
     window.__pioneerAdmin.tabs.dcrReview.init();
+    window.__pioneerAdmin.tabs.payrollExceptions.init();
     // Populate the deps bridge BEFORE any tab module's init/refresh
     // can read from it. Scaffolding for tab modules that still need
     // closure-local helpers from admin.js (customers array, modal

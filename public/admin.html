@@ -360,6 +360,13 @@
           <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
           <button class="admin-tab"           data-tab="labor-review"  role="tab" aria-selected="false">Labor</button>
           <button class="admin-tab"           data-tab="payroll"       role="tab" aria-selected="false">Payroll</button>
+          <button class="admin-tab"           data-tab="payroll-exceptions" role="tab" aria-selected="false">
+            Payroll Exceptions
+            <span class="admin-tab-badge" id="payroll-exceptions-tab-badge"
+                  title="Pending time adjustment requests"
+                  aria-label="Pending time adjustment requests"
+                  hidden>0</span>
+          </button>
           <button class="admin-tab"           data-tab="sick-leave"    role="tab" aria-selected="false">Sick Leave</button>
           <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
             Attendance
@@ -1503,6 +1510,44 @@
         <h3 class="payroll-block-title">Recent exports</h3>
         <div id="payroll-recent-exports"></div>
       </section>
+    </section>
+
+    <!-- ================== Payroll Exceptions (Phase 29) ================
+         Employee-submitted time-adjustment requests. Replaces the legacy
+         Slack-based payroll correction loop. Pending / Approved / Denied
+         sub-tabs. Approve writes effective_clock_in/out + effective_minutes
+         on the related pioneer_service_sessions doc (original clock data
+         preserved); the payroll export re-buckets OT on the fly when an
+         adjustment is present. -->
+    <section class="card admin-panel" data-panel="payroll-exceptions" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Payroll Exceptions</h2>
+          <p class="panel-sub" id="payroll-exceptions-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="payroll-exceptions-refresh" type="button"
+                title="Re-read time_adjustment_requests">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="payroll-exceptions-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="payroll-exceptions-error"   hidden></div>
+
+      <div id="payroll-exceptions-subtabs" role="tablist" aria-label="Status">
+        <button type="button" class="pe-subtab is-active" role="tab"
+                aria-selected="true" data-pe-subtab="pending">
+          Pending <span class="pe-subtab-count">0</span>
+        </button>
+        <button type="button" class="pe-subtab" role="tab"
+                aria-selected="false" data-pe-subtab="approved">
+          Approved <span class="pe-subtab-count">0</span>
+        </button>
+        <button type="button" class="pe-subtab" role="tab"
+                aria-selected="false" data-pe-subtab="denied">
+          Denied <span class="pe-subtab-count">0</span>
+        </button>
+      </div>
+
+      <div id="payroll-exceptions-list"></div>
     </section>
 
     <!-- ================== Sick Leave (Phase 1f) ==================
@@ -3453,8 +3498,9 @@
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
   <script src="admin/tab-labor-review.js?v=20260602-phase28d-auth-download"></script>
   <script src="admin/tab-payroll.js?v=20260602-phase28d-auth-download"></script>
+  <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260602-phase28d-auth-download"></script>
+  <script src="admin.js?v=20260603-phase29-v1"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

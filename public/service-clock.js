@@ -303,6 +303,21 @@
     return sorted[0]._id || "";
   }
 
+  // Phase 29 — latest COMPLETED session for an assignment. The Request Time
+  // Adjustment flow targets a completed session (clock-in + clock-out present).
+  // Returns the full session record, or null if none.
+  function latestCompletedSessionForAssignment(assignmentId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    const completed = list.filter(function (s) { return s.status === "completed"; });
+    if (!completed.length) return null;
+    completed.sort(function (a, b) {
+      const am = (a.clock_in_at && typeof a.clock_in_at.toMillis === "function") ? a.clock_in_at.toMillis() : 0;
+      const bm = (b.clock_in_at && typeof b.clock_in_at.toMillis === "function") ? b.clock_in_at.toMillis() : 0;
+      return bm - am;
+    });
+    return completed[0];
+  }
+
   // Phase 1b.3 — cumulative worked minutes for an assignment.
   // Sums work_minutes across all completed sessions tied to assignment_id
   // for this tech, PLUS live elapsed for the active session if any
@@ -355,6 +370,10 @@
   // pioneer_service_sessions docs (raw + _id), used to compute
   // cumulative worked_minutes per card.
   let sessionsByAssignment = {};
+  // Phase 29 — pending time-adjustment requests for this tech, keyed by
+  // "assignment_id|service_session_id". Used to suppress the Request
+  // Adjustment button so we don't render a duplicate-submit affordance.
+  let pendingAdjustmentKeys = {};
   // Re-render the cards every 30 s while a session is active so the
   // "Worked: Xh Ym (currently working…)" timer text stays current.
   let timerInterval     = null;
@@ -502,6 +521,25 @@
         .catch(function (err) {
           warnSC("sessions query failed (non-fatal — cumulative totals unavailable)", err && err.code);
           sessionsByAssignment = {};
+        }),
+      // Phase 29 — pending time-adjustment requests for this tech. Single
+      // equality query (no composite index needed). Used to hide the
+      // Request Adjustment button on cards that already have one pending.
+      db.collection("time_adjustment_requests")
+        .where("employee_uid", "==", currentStaff.uid)
+        .where("status",       "==", "pending")
+        .get()
+        .then(function (snap) {
+          pendingAdjustmentKeys = {};
+          snap.docs.forEach(function (d) {
+            const r = d.data() || {};
+            const k = String(r.assignment_id || "") + "|" + String(r.service_session_id || "");
+            pendingAdjustmentKeys[k] = d.id;
+          });
+        })
+        .catch(function (err) {
+          warnSC("pending adjustments query failed (non-fatal)", err && err.code);
+          pendingAdjustmentKeys = {};
         })
     ];
     const [assignResult] = await Promise.all(tasks);
@@ -889,6 +927,23 @@
           'data-action="clock-in" data-assignment-id="' + id + '">Clock In</button>';
     }
 
+    // Phase 29 — Request Time Adjustment. Available once a session for this
+    // assignment is COMPLETED, the shift_date is in the allowed window, the
+    // session isn't payroll-locked, and no pending request already exists.
+    // Rendered as a tertiary affordance under the primary CTA so it doesn't
+    // crowd the main flow.
+    const adjEligibility = adjustmentEligibility(a);
+    if (adjEligibility.eligible) {
+      buttonsHtml +=
+        '<button type="button" class="ptc-btn ptc-btn-tertiary" ' +
+          'data-action="request-time-adjustment" data-assignment-id="' + id +
+          '" data-session-id="' + escapeHtml(adjEligibility.sessionId) +
+          '">Request Time Adjustment</button>';
+    } else if (adjEligibility.reasonChip) {
+      buttonsHtml +=
+        '<p class="ptc-adjustment-note">' + escapeHtml(adjEligibility.reasonChip) + '</p>';
+    }
+
     return (
       '<article class="ptc-card" data-assignment-id="' + id + '" data-state="' + state + '">' +
         '<header class="ptc-card-head">' +
@@ -1237,6 +1292,16 @@
       const btn = ev.target.closest("[data-action]");
       if (!btn) return;
       const action = btn.dataset.action;
+
+      // Phase 29 — Request Time Adjustment opens a modal; no inline
+      // mutation, so handle it before the clock-in/out fast path.
+      if (action === "request-time-adjustment") {
+        const aid = btn.dataset.assignmentId;
+        const sid = btn.dataset.sessionId;
+        if (aid && sid) openTimeAdjustmentModal(aid, sid);
+        return;
+      }
+
       const assignmentId = btn.dataset.assignmentId;
       if (!assignmentId) return;
       if (btn.disabled) return;
@@ -1252,6 +1317,273 @@
       });
     });
     clicksWired = true;
+  }
+
+  /* ---------- Phase 29 — Time Adjustment Request ---------- */
+
+  // Returns { eligible, sessionId, reasonChip } for the assignment card. The
+  // reasonChip is shown when the shift COULD have requested an adjustment but
+  // one is already pending (we don't render a chip when there's simply no
+  // completed session — that path is the normal Ready/Working state).
+  function adjustmentEligibility(a) {
+    const completed = latestCompletedSessionForAssignment(a._id);
+    if (!completed) return { eligible: false, sessionId: "", reasonChip: "" };
+    // Payroll-locked sessions are off-limits to this V1 flow.
+    if (completed.payroll_state === "approved_for_payroll" ||
+        completed.payroll_state === "exported" ||
+        completed.workweek_locked_by_export === true) {
+      return { eligible: false, sessionId: completed._id,
+               reasonChip: "Payroll already locked — ask office." };
+    }
+    // Shift_date must be within today / yesterday / current pay period.
+    const shiftDate = String(completed.service_date || a.service_date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) {
+      return { eligible: false, sessionId: completed._id, reasonChip: "" };
+    }
+    const todayPT     = pacificDateString();
+    const yesterdayPT = addDaysPT(todayPT, -1);
+    const period      = getSemiMonthlyPeriod(todayPT);
+    const periodStart = period.period_id.endsWith("-A")
+      ? (period.month + "-01")
+      : (period.month + "-16");
+    const allowedStart = (yesterdayPT < periodStart) ? yesterdayPT : periodStart;
+    if (shiftDate < allowedStart || shiftDate > todayPT) {
+      return { eligible: false, sessionId: completed._id, reasonChip: "" };
+    }
+    // Already pending request for this shift?
+    const key = a._id + "|" + completed._id;
+    if (pendingAdjustmentKeys[key]) {
+      return { eligible: false, sessionId: completed._id,
+               reasonChip: "Time adjustment request pending review." };
+    }
+    return { eligible: true, sessionId: completed._id, reasonChip: "" };
+  }
+
+  // One-time CSS injection. The modal sits above the PTC cards via a
+  // fixed overlay; reuses the .ptc-btn typography so it looks at home.
+  let timeAdjustmentStylesInjected = false;
+  function ensureTimeAdjustmentStyles() {
+    if (timeAdjustmentStylesInjected) return;
+    timeAdjustmentStylesInjected = true;
+    const css = [
+      ".ptc-btn-tertiary{background:transparent;color:#2f6dd6;border:1px solid #c9d4ec;box-shadow:none;}",
+      ".ptc-btn-tertiary:hover{background:#eef3fb;}",
+      ".ptc-adjustment-note{margin:0;padding:8px 12px;font-size:12px;color:#555;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;text-align:center;}",
+      ".ptc-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;}",
+      ".ptc-modal{background:#fff;border-radius:14px;max-width:520px;width:100%;box-shadow:0 30px 60px rgba(0,0,0,0.25);max-height:92vh;display:flex;flex-direction:column;}",
+      ".ptc-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e2e6ee;}",
+      ".ptc-modal-head h3{margin:0;font-size:18px;font-weight:700;color:#0f172a;}",
+      ".ptc-modal-close{appearance:none;border:none;background:transparent;font-size:24px;line-height:1;cursor:pointer;color:#475569;padding:4px 10px;border-radius:8px;}",
+      ".ptc-modal-close:hover{background:#f4f6fb;color:#0f172a;}",
+      ".ptc-modal-body{padding:18px 22px;overflow:auto;}",
+      ".ptc-modal-meta{margin:0 0 14px;font-size:13px;color:#475569;}",
+      ".ptc-modal-current{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:10px;padding:12px;margin-bottom:18px;}",
+      ".ptc-modal-current .cell{display:flex;flex-direction:column;}",
+      ".ptc-modal-current .cell label{font-size:11px;font-weight:700;letter-spacing:0.4px;color:#64748b;text-transform:uppercase;}",
+      ".ptc-modal-current .cell span{font-size:15px;font-weight:700;color:#0f172a;margin-top:2px;}",
+      ".ptc-modal-field{display:flex;flex-direction:column;margin-bottom:14px;}",
+      ".ptc-modal-field label{font-size:13px;font-weight:700;color:#1e293b;margin-bottom:6px;}",
+      ".ptc-modal-field input,.ptc-modal-field select,.ptc-modal-field textarea{font:inherit;font-size:15px;padding:10px 12px;border:1px solid #c9d4ec;border-radius:10px;background:#fff;color:#0f172a;width:100%;}",
+      ".ptc-modal-field textarea{min-height:80px;resize:vertical;}",
+      ".ptc-modal-err{margin:0 0 10px;padding:10px 12px;background:#fee2e2;color:#991b1b;border-radius:10px;font-size:13px;}",
+      ".ptc-modal-actions{display:flex;gap:10px;padding:14px 22px 18px;border-top:1px solid #e2e6ee;}",
+      ".ptc-modal-actions .ptc-btn{flex:1;}",
+      "@media (max-width:480px){.ptc-modal-current{grid-template-columns:1fr 1fr;}.ptc-modal-current .cell:last-child{grid-column:span 2;}}"
+    ].join("\n");
+    const style = document.createElement("style");
+    style.setAttribute("data-pioneer", "time-adjustment-styles");
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // Convert a Firestore Timestamp / Date / ms → "YYYY-MM-DDTHH:MM" suitable
+  // for an <input type="datetime-local"> default value. Uses the BROWSER's
+  // local zone — the Pioneer office is in Pacific so this matches what the
+  // tech sees on the card. Returns "" on missing input.
+  function tsToLocalInputValue(ts) {
+    let ms = null;
+    if (!ts) return "";
+    if (typeof ts === "number") ms = ts;
+    else if (ts.toMillis && typeof ts.toMillis === "function") ms = ts.toMillis();
+    else if (ts.seconds != null) ms = ts.seconds * 1000;
+    if (ms == null) return "";
+    const dt = new Date(ms);
+    const pad = function (n) { return String(n).padStart(2, "0"); };
+    return dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate()) +
+           "T" + pad(dt.getHours()) + ":" + pad(dt.getMinutes());
+  }
+
+  function findSessionInState(assignmentId, sessionId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i]._id === sessionId) return list[i];
+    }
+    return null;
+  }
+
+  function openTimeAdjustmentModal(assignmentId, sessionId) {
+    const session = findSessionInState(assignmentId, sessionId);
+    if (!session) { alert("Couldn't find that session — refresh and try again."); return; }
+    const assignment = assignments.find(function (a) { return a._id === assignmentId; }) || {};
+    ensureTimeAdjustmentStyles();
+
+    const currentInStr  = formatTimeShort(session.clock_in_at)  || "—";
+    const currentOutStr = formatTimeShort(session.clock_out_at) || "—";
+    const currentMin = (typeof session.work_minutes === "number") ? session.work_minutes
+      : (session.clock_in_at && session.clock_out_at &&
+         session.clock_in_at.toMillis && session.clock_out_at.toMillis
+         ? Math.round((session.clock_out_at.toMillis() - session.clock_in_at.toMillis()) / 60000)
+         : null);
+    const currentTotalStr = (currentMin != null) ? formatMinutesAsHm(currentMin) : "—";
+
+    const customerLabel = assignment.customer_name || session.customer_name || assignment.customer_id || "Customer";
+    const locationLabel = assignment.location_name || session.location_address || "";
+    const dateLabel     = formatServiceDateLong(session.service_date || assignment.service_date || "");
+
+    const reasonOptions = [
+      ["", "Select a reason"],
+      ["forgot_clock_in",  "Forgot to clock in"],
+      ["forgot_clock_out", "Forgot to clock out"],
+      ["app_issue",        "App issue"],
+      ["phone_issue",      "Phone issue"],
+      ["no_internet",      "No internet"],
+      ["emergency",        "Emergency"],
+      ["other",            "Other"]
+    ];
+
+    const overlay = document.createElement("div");
+    overlay.className = "ptc-modal-overlay";
+    overlay.setAttribute("data-time-adjustment-modal", "1");
+    overlay.innerHTML =
+      '<div class="ptc-modal" role="dialog" aria-modal="true" aria-labelledby="ptc-time-adj-title">' +
+        '<header class="ptc-modal-head">' +
+          '<h3 id="ptc-time-adj-title">Request Time Adjustment</h3>' +
+          '<button type="button" class="ptc-modal-close" data-time-adj-close="1" aria-label="Close">×</button>' +
+        '</header>' +
+        '<div class="ptc-modal-body">' +
+          '<p class="ptc-modal-meta">' + escapeHtml(customerLabel) +
+            (locationLabel ? ' · ' + escapeHtml(locationLabel) : '') +
+            (dateLabel ? ' · ' + escapeHtml(dateLabel) : '') + '</p>' +
+          '<div class="ptc-modal-current">' +
+            '<div class="cell"><label>Current Clock In</label><span>' + escapeHtml(currentInStr) + '</span></div>' +
+            '<div class="cell"><label>Current Clock Out</label><span>' + escapeHtml(currentOutStr) + '</span></div>' +
+            '<div class="cell"><label>Current Total</label><span>' + escapeHtml(currentTotalStr) + '</span></div>' +
+          '</div>' +
+          '<p class="ptc-modal-err" data-time-adj-err hidden></p>' +
+          '<div class="ptc-modal-field">' +
+            '<label for="ptc-time-adj-in">Requested Clock In</label>' +
+            '<input type="datetime-local" id="ptc-time-adj-in" data-time-adj-in required>' +
+          '</div>' +
+          '<div class="ptc-modal-field">' +
+            '<label for="ptc-time-adj-out">Requested Clock Out</label>' +
+            '<input type="datetime-local" id="ptc-time-adj-out" data-time-adj-out required>' +
+          '</div>' +
+          '<div class="ptc-modal-field">' +
+            '<label for="ptc-time-adj-reason">Reason</label>' +
+            '<select id="ptc-time-adj-reason" data-time-adj-reason required>' +
+              reasonOptions.map(function (pair) {
+                return '<option value="' + escapeHtml(pair[0]) + '">' + escapeHtml(pair[1]) + '</option>';
+              }).join('') +
+            '</select>' +
+          '</div>' +
+          '<div class="ptc-modal-field">' +
+            '<label for="ptc-time-adj-notes">Notes (required)</label>' +
+            '<textarea id="ptc-time-adj-notes" data-time-adj-notes required placeholder="What happened? Office uses this to verify."></textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ptc-modal-actions">' +
+          '<button type="button" class="ptc-btn ptc-btn-secondary" data-time-adj-close="1">Cancel</button>' +
+          '<button type="button" class="ptc-btn ptc-btn-primary" data-time-adj-submit="1">Submit Request</button>' +
+        '</div>' +
+      '</div>';
+
+    overlay.querySelector("[data-time-adj-in]").value  = tsToLocalInputValue(session.clock_in_at);
+    overlay.querySelector("[data-time-adj-out]").value = tsToLocalInputValue(session.clock_out_at);
+
+    // Close on backdrop click or X / Cancel button.
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay || ev.target.closest("[data-time-adj-close]")) {
+        document.body.removeChild(overlay);
+      }
+    });
+    overlay.querySelector("[data-time-adj-submit]").addEventListener("click", function () {
+      submitTimeAdjustmentFromModal(overlay, assignmentId, sessionId);
+    });
+
+    document.body.appendChild(overlay);
+    setTimeout(function () { overlay.querySelector("[data-time-adj-in]").focus(); }, 50);
+  }
+
+  function showAdjustmentError(overlay, msg) {
+    const errEl = overlay.querySelector("[data-time-adj-err]");
+    errEl.textContent = msg;
+    errEl.hidden = false;
+  }
+
+  async function submitTimeAdjustmentFromModal(overlay, assignmentId, sessionId) {
+    const submitBtn = overlay.querySelector("[data-time-adj-submit]");
+    const errEl = overlay.querySelector("[data-time-adj-err]");
+    errEl.hidden = true;
+
+    const inVal     = overlay.querySelector("[data-time-adj-in]").value;
+    const outVal    = overlay.querySelector("[data-time-adj-out]").value;
+    const reasonVal = overlay.querySelector("[data-time-adj-reason]").value;
+    const notesVal  = overlay.querySelector("[data-time-adj-notes]").value.trim();
+
+    if (!inVal || !outVal) { showAdjustmentError(overlay, "Both requested clock-in and clock-out are required."); return; }
+    if (!reasonVal)        { showAdjustmentError(overlay, "Pick a reason from the dropdown."); return; }
+    if (!notesVal)         { showAdjustmentError(overlay, "Notes are required — tell the office what happened."); return; }
+
+    const inMs  = new Date(inVal).getTime();
+    const outMs = new Date(outVal).getTime();
+    if (!Number.isFinite(inMs) || !Number.isFinite(outMs)) {
+      showAdjustmentError(overlay, "Requested clock times are invalid."); return;
+    }
+    if (outMs <= inMs) {
+      showAdjustmentError(overlay, "Requested clock out must be after requested clock in."); return;
+    }
+
+    const url = (window.CREATE_TIME_ADJUSTMENT_REQUEST_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      showAdjustmentError(overlay, "CREATE_TIME_ADJUSTMENT_REQUEST_URL is not configured. Contact the office.");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = "Submitting…";
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error("Not signed in.");
+      const idToken = await user.getIdToken();
+      const res = await fetch(url, {
+        method:  "POST",
+        headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignment_id:        assignmentId,
+          service_session_id:   sessionId,
+          requested_clock_in:   new Date(inMs).toISOString(),
+          requested_clock_out:  new Date(outMs).toISOString(),
+          reason:               reasonVal,
+          notes:                notesVal
+        })
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body || !body.ok) {
+        throw new Error((body && body.error) || ("HTTP " + res.status));
+      }
+      // Mark this key as blocked so the button hides without a full reload,
+      // then close the modal and re-render cards.
+      pendingAdjustmentKeys[assignmentId + "|" + sessionId] = body.request_id || "pending";
+      document.body.removeChild(overlay);
+      renderAssignments();
+      alert("Time adjustment request submitted. The office will review it.");
+    } catch (err) {
+      warnSC("submitTimeAdjustment failed", err && err.message);
+      showAdjustmentError(overlay, (err && err.message) || "Submit failed.");
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
   }
 
   /* ---------- UI utility states ---------- */

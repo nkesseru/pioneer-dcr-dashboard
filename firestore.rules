@@ -1198,6 +1198,77 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 29 — Payroll Exception Engine.
+    // ====================================================================
+    // time_adjustment_requests is the structured replacement for Slack-
+    // based payroll corrections. Employees REQUEST adjustments; admins
+    // approve / deny. The payroll export reads approved effective times
+    // while preserving original clock data on both the request doc and
+    // the session doc.
+    //
+    // Schema (validated where it matters at the boundary — the rest is
+    // shape-only and handled by the Cloud Function that writes it):
+    //   assignment_id           string                  required
+    //   service_session_id      string|null
+    //   employee_uid            string  == request.auth.uid on create
+    //   employee_email          string
+    //   employee_name           string
+    //   customer_name           string
+    //   location_name           string|null
+    //   shift_date              string  YYYY-MM-DD
+    //   status                  "pending" on create; admins flip to
+    //                           "approved" | "denied" | "canceled"
+    //   original_clock_in       Timestamp|null
+    //   original_clock_out      Timestamp|null
+    //   requested_clock_in      Timestamp
+    //   requested_clock_out     Timestamp
+    //   original_minutes        number|null
+    //   requested_minutes       number
+    //   delta_minutes           number
+    //   reason                  one of: forgot_clock_in | forgot_clock_out |
+    //                                   app_issue | phone_issue | no_internet |
+    //                                   emergency | other
+    //   notes                   string (required, non-empty)
+    //   submitted_at            serverTimestamp
+    //   submitted_by_uid        string  == request.auth.uid
+    //   created_at, updated_at  serverTimestamp
+    //
+    // Writes:
+    //   create: the employee for their own shift (employee_uid &
+    //     submitted_by_uid == auth.uid), status "pending", reason in
+    //     the enum, notes non-empty.
+    //   update: admin only — to flip status to approved / denied /
+    //     canceled and stamp reviewed metadata. Plus the writing
+    //     Cloud Function (Admin SDK) bypasses rules entirely.
+    //   delete: never. Audit record.
+    //
+    // Reads:
+    //   admin (any), or the submitter (own doc only).
+    match /time_adjustment_requests/{requestId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && resource.data.employee_uid == request.auth.uid);
+      allow create: if isActiveStaff()
+                    && request.resource.data.employee_uid == request.auth.uid
+                    && request.resource.data.submitted_by_uid == request.auth.uid
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.assignment_id is string
+                    && request.resource.data.assignment_id.size() > 0
+                    && request.resource.data.shift_date is string
+                    && request.resource.data.requested_clock_in  is timestamp
+                    && request.resource.data.requested_clock_out is timestamp
+                    && request.resource.data.requested_clock_out > request.resource.data.requested_clock_in
+                    && request.resource.data.reason in [
+                         "forgot_clock_in", "forgot_clock_out", "app_issue",
+                         "phone_issue", "no_internet", "emergency", "other"
+                       ]
+                    && request.resource.data.notes is string
+                    && request.resource.data.notes.size() > 0;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
     // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"

@@ -5695,16 +5695,114 @@ exports.exportPayrollCsvV1 = onRequest({
       totalSickMin += Math.abs(Number(e.minutes_delta) || 0);
     });
     const totalDriveMin = 0;  // Phase 28D: drive ships later
-    const totalPaidMin  = totalRegularMin + totalOvertimeMin + totalDriveMin + totalSickMin;
+    // Mutable — Phase 29 rebucketing below may shift the reg/ot split when any
+    // session carries has_approved_time_adjustment. Recomputed after the
+    // rebucketing pass.
+    let totalPaidMin = totalRegularMin + totalOvertimeMin + totalDriveMin + totalSickMin;
+
+    // ----- Phase 29 — load any approved time-adjustment requests overlapping
+    // this range so we can show audit columns (reason / approved by / approved
+    // at) for sessions that carry has_approved_time_adjustment === true. Single
+    // range query; map by request id.
+    const adjMap = {};
+    try {
+      const adjSnap = await db.collection("time_adjustment_requests")
+        .where("shift_date", ">=", rangeStart)
+        .where("shift_date", "<=", rangeEnd)
+        .get();
+      adjSnap.docs.forEach(function (d) {
+        const r = d.data() || {};
+        if (r.status !== "approved") return;
+        adjMap[d.id] = r;
+      });
+    } catch (err) {
+      logger.warn("exportPayrollCsvV1: time_adjustment_requests lookup failed (non-fatal)", {
+        error: err && err.message
+      });
+    }
+
+    // ----- Phase 29 — Re-bucket regular vs overtime per workweek when any
+    // session in that bucket carries an approved time adjustment. Sessions
+    // without adjustments keep their stored regular_minutes / overtime_minutes
+    // from the Labor OT engine; adjusted sessions contribute effective_minutes
+    // and the entire workweek is re-split at the 40h cap so the export sums
+    // line up with what the office expects to pay.
+    function workweekIdForDate(yyyymmdd) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ""))) return "";
+      const dt = new Date(yyyymmdd + "T12:00:00Z");
+      const dow = dt.getUTCDay();   // 0 = Sunday (workweek start)
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      return dt.toISOString().slice(0, 10);
+    }
+    function sessionStartMs(s) {
+      if (s.has_approved_time_adjustment === true && s.effective_clock_in
+          && s.effective_clock_in.toMillis) {
+        return s.effective_clock_in.toMillis();
+      }
+      if (s.clock_in_at && s.clock_in_at.toMillis) return s.clock_in_at.toMillis();
+      return 0;
+    }
+    function sessionPayMinutes(s) {
+      if (s.has_approved_time_adjustment === true && typeof s.effective_minutes === "number") {
+        return s.effective_minutes;
+      }
+      const reg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+      const ot  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+      return reg + ot;
+    }
+    const REG_CAP_MIN = 2400;   // 40h × 60m — must match Labor Review WEEKLY_REGULAR_CAP_MINUTES.
+    const wwBuckets = {};
+    exportable.forEach(function (s) {
+      const ww  = workweekIdForDate(String(s.service_date || ""));
+      const key = (s.staff_uid || ("email:" + (s.staff_email || ""))) + "|" + ww;
+      if (!wwBuckets[key]) wwBuckets[key] = { sessions: [], adjusted: false };
+      wwBuckets[key].sessions.push(s);
+      if (s.has_approved_time_adjustment === true) wwBuckets[key].adjusted = true;
+    });
+    let rebucketDeltaMin = 0;
+    Object.keys(wwBuckets).forEach(function (key) {
+      const b = wwBuckets[key];
+      if (!b.adjusted) return;   // unchanged — keep OT engine's stored split
+      b.sessions.sort(function (a, c) { return sessionStartMs(a) - sessionStartMs(c); });
+      let regBudget = REG_CAP_MIN;
+      b.sessions.forEach(function (s) {
+        const mins = Math.max(0, sessionPayMinutes(s));
+        const reg  = Math.min(mins, Math.max(regBudget, 0));
+        const ot   = Math.max(0, mins - reg);
+        regBudget -= reg;
+        // Delta for the running totals: (new reg + new ot) − (stored reg + stored ot).
+        const priorReg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+        const priorOt  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+        rebucketDeltaMin += (reg + ot) - (priorReg + priorOt);
+        // Track the reg/ot split shift so the summary line reflects the adjustment.
+        totalRegularMin  += (reg - priorReg);
+        totalOvertimeMin += (ot  - priorOt);
+        s._export_regular_minutes  = reg;
+        s._export_overtime_minutes = ot;
+      });
+    });
+    if (rebucketDeltaMin !== 0) {
+      totalPaidMin += rebucketDeltaMin;
+      logger.info("exportPayrollCsvV1: Phase 29 rebucketing applied", {
+        rebucket_delta_minutes: rebucketDeltaMin,
+        total_regular_after:    totalRegularMin,
+        total_overtime_after:   totalOvertimeMin,
+        total_paid_after:       totalPaidMin
+      });
+    }
 
     // ----- Build CSV (3 sections) -----
     const sessionHeader = [
       "Employee Name","Employee Email","Employee ID","Pay Period","Service Date",
       "Customer","Location","Clock In","Clock Out",
       "Regular Hours","Overtime Hours","Drive Hours","Sick Hours","Total Paid Hours",
-      "Payroll State","Needs Review","DCR Status","Geo Status","Notes"
+      "Payroll State","Needs Review","DCR Status","Geo Status","Notes",
+      // Phase 29 — adjustment audit columns. Empty for non-adjusted rows.
+      "Time Adjusted?","Original Clock In","Original Clock Out",
+      "Adjustment Minutes","Adjustment Reason","Approved By","Approved At"
     ];
-    // Sort sessions by employee name then service_date then clock_in_at.
+    // Sort sessions by employee name then service_date then effective start
+    // (or original start when not adjusted).
     exportable.sort(function (a, b) {
       const an = techDisplay(a.staff_uid, a.staff_email);
       const bn = techDisplay(b.staff_uid, b.staff_email);
@@ -5713,14 +5811,40 @@ exports.exportPayrollCsvV1 = onRequest({
       const da = String(a.service_date || "");
       const db_ = String(b.service_date || "");
       if (da !== db_) return da.localeCompare(db_);
-      const aMs = (a.clock_in_at && a.clock_in_at.toMillis) ? a.clock_in_at.toMillis() : 0;
-      const bMs = (b.clock_in_at && b.clock_in_at.toMillis) ? b.clock_in_at.toMillis() : 0;
-      return aMs - bMs;
+      return sessionStartMs(a) - sessionStartMs(b);
     });
     const sessionRows = exportable.map(function (s) {
-      const reg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
-      const ot  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+      const adjusted = (s.has_approved_time_adjustment === true);
+      const reg = (typeof s._export_regular_minutes  === "number")
+        ? s._export_regular_minutes
+        : ((typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0);
+      const ot  = (typeof s._export_overtime_minutes === "number")
+        ? s._export_overtime_minutes
+        : ((typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0);
       const sessionTotal = reg + ot;  // drive=0, sick=0 on session row
+      const clockInTs  = adjusted ? s.effective_clock_in  : s.clock_in_at;
+      const clockOutTs = adjusted ? s.effective_clock_out : s.clock_out_at;
+
+      // Phase 29 audit columns — only populated when adjusted.
+      let adjReason = "", adjApprovedBy = "", adjApprovedAt = "", adjDeltaStr = "";
+      if (adjusted) {
+        const r = adjMap[s.time_adjustment_request_id] || {};
+        adjReason     = r.reason || "";
+        adjApprovedBy = r.reviewed_by_name || "";
+        adjApprovedAt = (r.reviewed_at && r.reviewed_at.toMillis)
+          ? new Intl.DateTimeFormat("en-US", {
+              timeZone: PAYROLL_TZ,
+              year: "numeric", month: "short", day: "numeric",
+              hour: "numeric", minute: "2-digit"
+            }).format(new Date(r.reviewed_at.toMillis()))
+          : "";
+        const eff = (typeof s.effective_minutes === "number")
+          ? s.effective_minutes
+          : sessionTotal;
+        const orig = (typeof s.work_minutes === "number") ? s.work_minutes : null;
+        adjDeltaStr = (orig != null) ? String(eff - orig) : String(eff);
+      }
+
       return payrollCsvRow([
         techDisplay(s.staff_uid, s.staff_email),
         s.staff_email || "",
@@ -5729,8 +5853,8 @@ exports.exportPayrollCsvV1 = onRequest({
         s.service_date || "",
         s.customer_name || s.customer_id || "",
         s.location_address || s.location_id || "",
-        payrollPacificClock(s.clock_in_at),
-        payrollPacificClock(s.clock_out_at),
+        payrollPacificClock(clockInTs),
+        payrollPacificClock(clockOutTs),
         payrollDecimalHours(reg),
         payrollDecimalHours(ot),
         "0.00",
@@ -5740,7 +5864,14 @@ exports.exportPayrollCsvV1 = onRequest({
         (s.needs_review === true) ? "true" : "false",
         payrollDcrStatus(s),
         payrollGeoLabel(s),
-        payrollSessionNotes(s)
+        payrollSessionNotes(s),
+        adjusted ? "yes" : "no",
+        adjusted ? payrollPacificClock(s.clock_in_at)  : "",
+        adjusted ? payrollPacificClock(s.clock_out_at) : "",
+        adjDeltaStr,
+        adjReason,
+        adjApprovedBy,
+        adjApprovedAt
       ]);
     });
 
@@ -6109,6 +6240,479 @@ exports.downloadPayrollExportCsvV1 = onRequest({
   } catch (err) {
     logger.error("downloadPayrollExportCsvV1 failed", { error: err && err.message });
     res.status(500).json({ ok: false, error: (err && err.message) || "Download failed" });
+  }
+});
+
+/* ============================================================================
+ * Phase 29 — Payroll Exception Engine.
+ *
+ * Replaces the Slack-based payroll correction loop. Employees REQUEST time
+ * adjustments via createTimeAdjustmentRequestV1; admins approve / deny via
+ * approveTimeAdjustmentRequestV1 / denyTimeAdjustmentRequestV1.
+ *
+ * Critical invariants (per Phase 29 spec):
+ *   • Original clock data on the session is NEVER overwritten. Approved
+ *     effective times are stamped as new fields:
+ *       has_approved_time_adjustment, effective_clock_in, effective_clock_out,
+ *       effective_minutes, time_adjustment_request_id
+ *   • Active / paused sessions cannot be adjusted (would break clock state).
+ *   • Sessions whose workweek is locked for payroll are off-limits to this
+ *     flow — payroll_state in {approved_for_payroll, exported} or
+ *     workweek_locked_by_export === true. Admin must use the existing Labor
+ *     Review unlock path first.
+ *   • Approval mutates ONLY the four effective fields + time_adjustment_request_id
+ *     on the session. work_minutes / clock_in_at / clock_out_at / payroll_state
+ *     / DCR linkage are preserved. The payroll export re-buckets OT on the
+ *     fly when has_approved_time_adjustment is true.
+ *   • One pending request per (employee, assignment, session) — duplicates
+ *     are refused.
+ *   • Submission window: shift_date in {today PT, yesterday PT} OR shift_date
+ *     within the current semi-monthly pay period.
+ *
+ * Auth model:
+ *   • create — the assigned tech (or admin on their behalf). employees can
+ *     only submit for their own assignment.
+ *   • approve / deny — admin only.
+ *
+ * Audit trail:
+ *   • The request doc itself is append-only-shaped: original_clock_in/out and
+ *     original_minutes are snapshotted at submit time, never updated.
+ *   • reviewed_by_uid + reviewed_by_name + reviewed_at stamped on
+ *     approve/deny. denial_reason stamped on deny.
+ * ============================================================================ */
+
+const TIME_ADJUSTMENT_REASONS = [
+  "forgot_clock_in", "forgot_clock_out", "app_issue",
+  "phone_issue", "no_internet", "emergency", "other"
+];
+const TIME_ADJUSTMENT_TZ = "America/Los_Angeles";
+
+function payrollExceptionTodayPT() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ADJUSTMENT_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
+}
+function payrollExceptionAddDaysPT(yyyyMmDd, days) {
+  const dt = new Date(yyyyMmDd + "T12:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ADJUSTMENT_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(dt);
+}
+function payrollExceptionGetEndOfMonth(yyyyMmDd) {
+  const parts = String(yyyyMmDd).split("-");
+  const year  = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return parts[0] + "-" + parts[1] + "-" + String(lastDay).padStart(2, "0");
+}
+function payrollExceptionGetSemiMonthlyPeriod(yyyyMmDd) {
+  const parts = String(yyyyMmDd).split("-");
+  const year  = parts[0], month = parts[1];
+  const day   = parseInt(parts[2], 10);
+  const half  = (day <= 15) ? "A" : "B";
+  const start = (half === "A") ? (year + "-" + month + "-01") : (year + "-" + month + "-16");
+  const end   = (half === "A") ? (year + "-" + month + "-15") : payrollExceptionGetEndOfMonth(yyyyMmDd);
+  return { period_id: year + "-" + month + "-" + half, start_date: start, end_date: end };
+}
+
+// Resolves the tech display name + email from cleaning_techs by uid.
+// Used at submit time to denormalize so the admin pending list doesn't
+// require a second lookup.
+async function resolveTechIdentityByUid(uid) {
+  if (!uid) return { name: "", email: "" };
+  try {
+    const snap = await db.collection(TECHS_COLLECTION)
+      .where("uid", "==", uid)
+      .limit(1)
+      .get();
+    if (snap.empty) return { name: "", email: "" };
+    const t = snap.docs[0].data() || {};
+    const name = t.display_name
+      || (((t.first_name || "") + " " + (t.last_name || "")).trim())
+      || t.email || "";
+    return { name: name, email: t.email || "" };
+  } catch (err) {
+    logger.warn("resolveTechIdentityByUid failed (non-fatal)", { error: err && err.message, uid: uid });
+    return { name: "", email: "" };
+  }
+}
+
+/* --------------- createTimeAdjustmentRequestV1 --------------- */
+
+exports.createTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+
+  const body = req.body || {};
+  const assignmentId         = String(body.assignment_id       || "").trim();
+  const serviceSessionId     = String(body.service_session_id  || "").trim();
+  const requestedClockInRaw  = String(body.requested_clock_in  || "").trim();
+  const requestedClockOutRaw = String(body.requested_clock_out || "").trim();
+  const reason               = String(body.reason              || "").trim();
+  const notes                = String(body.notes               || "").trim();
+
+  if (!assignmentId)     { res.status(400).json({ ok: false, error: "assignment_id is required." });     return; }
+  if (!serviceSessionId) { res.status(400).json({ ok: false, error: "service_session_id is required — only sessions with a clock-in/out can be adjusted." }); return; }
+  if (!notes)            { res.status(400).json({ ok: false, error: "notes is required." });             return; }
+  if (TIME_ADJUSTMENT_REASONS.indexOf(reason) < 0) {
+    res.status(400).json({ ok: false, error: "reason must be one of: " + TIME_ADJUSTMENT_REASONS.join(", ") });
+    return;
+  }
+
+  const reqInMs  = Date.parse(requestedClockInRaw);
+  const reqOutMs = Date.parse(requestedClockOutRaw);
+  if (!Number.isFinite(reqInMs) || !Number.isFinite(reqOutMs)) {
+    res.status(400).json({ ok: false, error: "requested_clock_in and requested_clock_out must be ISO timestamps." });
+    return;
+  }
+  if (reqOutMs <= reqInMs) {
+    res.status(400).json({ ok: false, error: "requested_clock_out must be after requested_clock_in." });
+    return;
+  }
+  const requestedMinutes = Math.round((reqOutMs - reqInMs) / 60000);
+  if (requestedMinutes > 24 * 60) {
+    res.status(400).json({ ok: false, error: "Requested span longer than 24 hours is not allowed." });
+    return;
+  }
+
+  try {
+    const assignSnap = await db.collection("service_assignments").doc(assignmentId).get();
+    if (!assignSnap.exists) {
+      res.status(404).json({ ok: false, error: "Assignment not found." });
+      return;
+    }
+    const a = assignSnap.data() || {};
+
+    // Employees may only submit for their own assignment. Admins may submit on
+    // behalf of any tech.
+    if (staff.role !== "admin" && a.staff_uid !== staff.uid) {
+      res.status(403).json({ ok: false, error: "You can only adjust your own shifts." });
+      return;
+    }
+
+    const sessRef = db.collection("pioneer_service_sessions").doc(serviceSessionId);
+    const sessSnap = await sessRef.get();
+    if (!sessSnap.exists) {
+      res.status(404).json({ ok: false, error: "Session not found." });
+      return;
+    }
+    const s = sessSnap.data() || {};
+    if (s.assignment_id !== assignmentId) {
+      res.status(400).json({ ok: false, error: "Session does not belong to that assignment." });
+      return;
+    }
+    if (s.status === "active" || s.status === "paused") {
+      res.status(409).json({ ok: false, error: "Clock out of this shift before requesting an adjustment." });
+      return;
+    }
+    if (s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported"
+        || s.workweek_locked_by_export === true) {
+      res.status(409).json({
+        ok:    false,
+        error: "This shift is already in a locked payroll period — contact admin for an override."
+      });
+      return;
+    }
+
+    const shiftDate = String(s.service_date || a.service_date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) {
+      res.status(400).json({ ok: false, error: "Shift date missing or malformed on this session." });
+      return;
+    }
+
+    // Window: today, yesterday, OR within current semi-monthly pay period.
+    // Union of the two halves; "yesterday" matters at the period boundary
+    // (e.g. today is the 16th, yesterday is the 15th of the previous period).
+    const todayPT     = payrollExceptionTodayPT();
+    const yesterdayPT = payrollExceptionAddDaysPT(todayPT, -1);
+    const period      = payrollExceptionGetSemiMonthlyPeriod(todayPT);
+    const allowedStart = (yesterdayPT < period.start_date) ? yesterdayPT : period.start_date;
+    const allowedEnd   = todayPT;
+    if (shiftDate < allowedStart || shiftDate > allowedEnd) {
+      res.status(400).json({
+        ok:    false,
+        error: "Shift is outside the allowed window (today, yesterday, or current pay period "
+               + period.start_date + " → " + period.end_date + ")."
+      });
+      return;
+    }
+
+    // Duplicate-pending check. Single equality query on assignment + status
+    // (no composite index needed: this collection won't have many rows per
+    // assignment, so client-side staff_uid filter is fine).
+    const dupSnap = await db.collection("time_adjustment_requests")
+      .where("assignment_id", "==", assignmentId)
+      .where("status",        "==", "pending")
+      .limit(20)
+      .get();
+    const dup = dupSnap.docs.find(function (d) {
+      const r = d.data() || {};
+      return r.employee_uid === a.staff_uid && r.service_session_id === serviceSessionId;
+    });
+    if (dup) {
+      res.status(409).json({
+        ok:    false,
+        error: "A pending request already exists for this shift.",
+        existing_request_id: dup.id
+      });
+      return;
+    }
+
+    // Compute originals + delta.
+    const origInMs  = (s.clock_in_at  && s.clock_in_at.toMillis)  ? s.clock_in_at.toMillis()  : null;
+    const origOutMs = (s.clock_out_at && s.clock_out_at.toMillis) ? s.clock_out_at.toMillis() : null;
+    const originalMinutes = (typeof s.work_minutes === "number")
+      ? s.work_minutes
+      : (origInMs != null && origOutMs != null ? Math.round((origOutMs - origInMs) / 60000) : null);
+    const deltaMinutes = (originalMinutes != null)
+      ? (requestedMinutes - originalMinutes)
+      : requestedMinutes;
+
+    const tech = await resolveTechIdentityByUid(a.staff_uid);
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const docRef = db.collection("time_adjustment_requests").doc();
+    await docRef.set({
+      assignment_id:         assignmentId,
+      service_session_id:    serviceSessionId,
+      employee_uid:          a.staff_uid,
+      employee_name:         tech.name || a.staff_display_name || "",
+      employee_email:        tech.email || "",
+      customer_name:         s.customer_name || a.customer_name || "",
+      location_name:         s.location_address || a.location_name || a.location_id || "",
+      shift_date:            shiftDate,
+      status:                "pending",
+      original_clock_in:     s.clock_in_at  || null,
+      original_clock_out:    s.clock_out_at || null,
+      requested_clock_in:    admin.firestore.Timestamp.fromMillis(reqInMs),
+      requested_clock_out:   admin.firestore.Timestamp.fromMillis(reqOutMs),
+      original_minutes:      originalMinutes,
+      requested_minutes:     requestedMinutes,
+      delta_minutes:         deltaMinutes,
+      reason:                reason,
+      notes:                 notes,
+      payroll_impact_cents:  null,   // pay rate not modeled yet (V1)
+      submitted_at:          sts,
+      submitted_by_uid:      staff.uid,
+      created_at:            sts,
+      updated_at:            sts
+    });
+
+    logger.info("time adjustment request created", {
+      request_id: docRef.id, employee_uid: a.staff_uid, assignment_id: assignmentId,
+      session_id: serviceSessionId, reason: reason, delta_minutes: deltaMinutes
+    });
+    res.status(200).json({ ok: true, request_id: docRef.id });
+  } catch (err) {
+    logger.error("createTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Create failed" });
+  }
+});
+
+/* --------------- approveTimeAdjustmentRequestV1 --------------- */
+
+exports.approveTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const requestId = String(body.request_id || "").trim();
+  if (!requestId) {
+    res.status(400).json({ ok: false, error: "request_id is required." });
+    return;
+  }
+
+  try {
+    const reqRef  = db.collection("time_adjustment_requests").doc(requestId);
+    const reqSnap = await reqRef.get();
+    if (!reqSnap.exists) {
+      res.status(404).json({ ok: false, error: "Request not found." });
+      return;
+    }
+    const r = reqSnap.data() || {};
+    if (r.status !== "pending") {
+      res.status(409).json({ ok: false, error: "Request is not pending (status: " + r.status + ")." });
+      return;
+    }
+
+    const sessRef  = db.collection("pioneer_service_sessions").doc(r.service_session_id);
+    const sessSnap = await sessRef.get();
+    if (!sessSnap.exists) {
+      res.status(404).json({ ok: false, error: "Session referenced by this request no longer exists." });
+      return;
+    }
+    const s = sessSnap.data() || {};
+    if (s.status === "active" || s.status === "paused") {
+      res.status(409).json({ ok: false, error: "Session is currently active/paused — cannot apply an adjustment." });
+      return;
+    }
+    if (s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported"
+        || s.workweek_locked_by_export === true) {
+      res.status(409).json({
+        ok:    false,
+        error: "Session's workweek is locked for payroll. Unlock in Labor Review before approving."
+      });
+      return;
+    }
+
+    // Effective values come from the request (employee-stated). Defensive
+    // re-check — request fields were validated at create time but the
+    // session may have been edited since.
+    const effectiveIn  = r.requested_clock_in;
+    const effectiveOut = r.requested_clock_out;
+    if (!effectiveIn || !effectiveOut || typeof effectiveIn.toMillis !== "function") {
+      res.status(400).json({ ok: false, error: "Request is missing requested clock timestamps." });
+      return;
+    }
+    const effectiveMinutes = Math.round((effectiveOut.toMillis() - effectiveIn.toMillis()) / 60000);
+    const finalDeltaMinutes = (typeof s.work_minutes === "number")
+      ? (effectiveMinutes - s.work_minutes)
+      : effectiveMinutes;
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const reviewerName = (staff.tech && staff.tech.display_name) || staff.email || "Admin";
+
+    const batch = db.batch();
+    batch.update(reqRef, {
+      status:                "approved",
+      reviewed_by_uid:       staff.uid,
+      reviewed_by_name:      reviewerName,
+      reviewed_at:           sts,
+      effective_clock_in:    effectiveIn,
+      effective_clock_out:   effectiveOut,
+      effective_minutes:     effectiveMinutes,
+      delta_minutes:         finalDeltaMinutes,
+      updated_at:            sts
+    });
+    batch.update(sessRef, {
+      has_approved_time_adjustment: true,
+      effective_clock_in:           effectiveIn,
+      effective_clock_out:          effectiveOut,
+      effective_minutes:            effectiveMinutes,
+      time_adjustment_request_id:   requestId,
+      updated_at:                   sts
+    });
+    await batch.commit();
+
+    logger.info("time adjustment approved", {
+      request_id: requestId, session_id: r.service_session_id,
+      employee_uid: r.employee_uid, reviewer_uid: staff.uid,
+      effective_minutes: effectiveMinutes, final_delta_minutes: finalDeltaMinutes
+    });
+    res.status(200).json({ ok: true, request_id: requestId, effective_minutes: effectiveMinutes });
+  } catch (err) {
+    logger.error("approveTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack, request_id: requestId
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Approve failed" });
+  }
+});
+
+/* --------------- denyTimeAdjustmentRequestV1 --------------- */
+
+exports.denyTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const requestId    = String(body.request_id    || "").trim();
+  const denialReason = String(body.denial_reason || "").trim();
+  if (!requestId)    { res.status(400).json({ ok: false, error: "request_id is required." });    return; }
+  if (!denialReason) { res.status(400).json({ ok: false, error: "denial_reason is required." }); return; }
+
+  try {
+    const reqRef  = db.collection("time_adjustment_requests").doc(requestId);
+    const reqSnap = await reqRef.get();
+    if (!reqSnap.exists) {
+      res.status(404).json({ ok: false, error: "Request not found." });
+      return;
+    }
+    const r = reqSnap.data() || {};
+    if (r.status !== "pending") {
+      res.status(409).json({ ok: false, error: "Request is not pending (status: " + r.status + ")." });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const reviewerName = (staff.tech && staff.tech.display_name) || staff.email || "Admin";
+
+    await reqRef.update({
+      status:            "denied",
+      denial_reason:     denialReason,
+      reviewed_by_uid:   staff.uid,
+      reviewed_by_name:  reviewerName,
+      reviewed_at:       sts,
+      updated_at:        sts
+    });
+
+    logger.info("time adjustment denied", {
+      request_id: requestId, employee_uid: r.employee_uid,
+      reviewer_uid: staff.uid, denial_reason: denialReason
+    });
+    res.status(200).json({ ok: true, request_id: requestId });
+  } catch (err) {
+    logger.error("denyTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack, request_id: requestId
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Deny failed" });
   }
 });
 
