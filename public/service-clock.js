@@ -1321,11 +1321,33 @@
 
   /* ---------- Phase 29 — Time Adjustment Request ---------- */
 
+  // Phase 29A — gating flag. While the office finishes QA, the Request
+  // Time Adjustment button only renders for admins/testers. To open it
+  // up to all techs: set window.PHASE29_TIME_ADJUSTMENTS_ENABLED = true
+  // in firebase-config.js. Admin / tester emails always see the button
+  // for ongoing QA regardless of the flag.
+  const PHASE29_TESTER_EMAILS = [
+    "nick@pioneercomclean.com",
+    "april@pioneercomclean.com",
+    "kirby@pioneercomclean.com",
+    "mgies@pioneercomclean.com"
+  ];
+  function phase29ButtonVisibleForCurrentStaff() {
+    const email = String((currentStaff && currentStaff.email) || "").toLowerCase().trim();
+    if (email && PHASE29_TESTER_EMAILS.indexOf(email) >= 0) return true;
+    return window.PHASE29_TIME_ADJUSTMENTS_ENABLED === true;
+  }
+
   // Returns { eligible, sessionId, reasonChip } for the assignment card. The
   // reasonChip is shown when the shift COULD have requested an adjustment but
   // one is already pending (we don't render a chip when there's simply no
   // completed session — that path is the normal Ready/Working state).
   function adjustmentEligibility(a) {
+    // Phase 29A — feature flag gate. Non-tester employees see no button
+    // and no "pending review" note until the office flips the flag.
+    if (!phase29ButtonVisibleForCurrentStaff()) {
+      return { eligible: false, sessionId: "", reasonChip: "" };
+    }
     const completed = latestCompletedSessionForAssignment(a._id);
     if (!completed) return { eligible: false, sessionId: "", reasonChip: "" };
     // Payroll-locked sessions are off-limits to this V1 flow.

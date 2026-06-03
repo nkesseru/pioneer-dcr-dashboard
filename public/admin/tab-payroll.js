@@ -299,10 +299,34 @@
 
   /* ---------- aggregations ---------- */
 
+  // Phase 29A — QA / test sessions are excluded from every payroll-facing
+  // surface so seed data can't bleed into totals, blockers, or the
+  // Verification banner. The CSV export already filters on payroll_state;
+  // this is the summary-tab equivalent.
+  function isQaTestSession(s) {
+    return !!(s && (s.is_test === true || s.exclude_from_payroll_export === true));
+  }
+
+  // Phase 29A — single source of truth for "what minutes does this session
+  // contribute to payroll." When has_approved_time_adjustment is true and
+  // effective_minutes is present, return that; otherwise fall back to
+  // work_minutes. Original clock_in_at / clock_out_at / work_minutes are
+  // never overwritten on the session itself — this just gives the summary
+  // the right answer at read time.
+  function effectiveWorkMinutes(s) {
+    if (!s) return 0;
+    if (s.has_approved_time_adjustment === true &&
+        typeof s.effective_minutes === "number") {
+      return s.effective_minutes;
+    }
+    return (typeof s.work_minutes === "number" && s.work_minutes > 0) ? s.work_minutes : 0;
+  }
+
   function computeBlockers(arr) {
     const out = { needs_review: 0, active: 0, dcr_pending: 0, missing_clockout: 0 };
     (arr || []).forEach(function (s) {
       if (adminRemovedFlag(s)) return;
+      if (isQaTestSession(s))  return;     // Phase 29A
       if (needsReviewFlag(s))    out.needs_review     += 1;
       if (isActiveSession(s))    out.active           += 1;
       if (dcrPendingFlag(s))     out.dcr_pending      += 1;
@@ -336,10 +360,12 @@
     }
     (sessions || []).forEach(function (s) {
       if (adminRemovedFlag(s)) return;
+      if (isQaTestSession(s))  return;     // Phase 29A — QA seed never counts toward payroll
       const row = getOrCreate(s.staff_uid, s.staff_email);
-      if (typeof s.work_minutes === "number" && s.work_minutes > 0) {
-        row.worked_min += s.work_minutes;
-      }
+      // Phase 29A — when an approved time adjustment exists, effective_minutes
+      // is the payroll-facing total. Otherwise the stored work_minutes wins.
+      const workMin = effectiveWorkMinutes(s);
+      if (workMin > 0) row.worked_min += workMin;
       if (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0) {
         row.overtime_min += s.overtime_minutes;
       }

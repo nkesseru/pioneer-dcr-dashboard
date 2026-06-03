@@ -5536,6 +5536,10 @@ function payrollIsBlocker(s) {
   // 4 blocker keys, or null if clean. Used both for verification refusal
   // and for the verification_snapshot stored on payroll_exports.
   if (s.admin_removed === true) return null;
+  // Phase 29A — QA / test sessions never count as blockers. They are also
+  // already excluded from the exportable filter (payroll_state !==
+  // "approved_for_payroll"); this keeps the verification snapshot clean.
+  if (s.is_test === true || s.exclude_from_payroll_export === true) return null;
   if (s.needs_review === true) return "needs_review";
   if (s.status === "active" || s.status === "paused") return "active";
   if (s.status === "completed" && !s.clock_out_at) return "missing_clockout";

@@ -1244,27 +1244,22 @@ service cloud.firestore {
     //
     // Reads:
     //   admin (any), or the submitter (own doc only).
+    //
+    // Phase 29A — security hardening: ALL writes go through Cloud Functions
+    // (createTimeAdjustmentRequestV1 / approveTimeAdjustmentRequestV1 /
+    // denyTimeAdjustmentRequestV1) which use the Admin SDK and bypass these
+    // rules. Direct client writes are denied across the board so an
+    // employee cannot flip status to "approved" via a raw Firestore SDK
+    // call, and an admin cannot accidentally mutate effective fields
+    // outside the audited approval flow. Reads remain client-visible (own
+    // for employees; any for admins) so the admin tab and employee UI keep
+    // working.
     match /time_adjustment_requests/{requestId} {
       allow read: if isPioneerAdmin()
                   || (request.auth != null
                       && resource.data.employee_uid == request.auth.uid);
-      allow create: if isActiveStaff()
-                    && request.resource.data.employee_uid == request.auth.uid
-                    && request.resource.data.submitted_by_uid == request.auth.uid
-                    && request.resource.data.status == "pending"
-                    && request.resource.data.assignment_id is string
-                    && request.resource.data.assignment_id.size() > 0
-                    && request.resource.data.shift_date is string
-                    && request.resource.data.requested_clock_in  is timestamp
-                    && request.resource.data.requested_clock_out is timestamp
-                    && request.resource.data.requested_clock_out > request.resource.data.requested_clock_in
-                    && request.resource.data.reason in [
-                         "forgot_clock_in", "forgot_clock_out", "app_issue",
-                         "phone_issue", "no_internet", "emergency", "other"
-                       ]
-                    && request.resource.data.notes is string
-                    && request.resource.data.notes.size() > 0;
-      allow update: if isPioneerAdmin();
+      allow create: if false;   // Cloud Function only — createTimeAdjustmentRequestV1
+      allow update: if false;   // Cloud Function only — approveTimeAdjustmentRequestV1 / denyTimeAdjustmentRequestV1
       allow delete: if false;
     }
 
