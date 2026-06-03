@@ -257,12 +257,10 @@
             paintTeamHubUnreadBadge(staff);
           }
 
-          // Mount Today's Work workflow.
-          if (window.PIONEER_TODAY_WORK && typeof window.PIONEER_TODAY_WORK.init === "function") {
-            window.PIONEER_TODAY_WORK.init(staff);
-          } else {
-            console.warn("[work] PIONEER_TODAY_WORK missing — workflow won't mount");
-          }
+          // UI cleanup 2026-06-02 — duplicate Today's Work section
+          // removed from work.html; Pioneer Time Clock above is the
+          // single source of truth. PIONEER_TODAY_WORK init call
+          // removed along with the DOM it mounted into.
         }
       });
     } catch (err) {

@@ -669,23 +669,18 @@
     const root = $("ptc-assignments");
     if (!root) return;
     if (!assignments.length) {
-      // Phase 1g hotfix — replace the prior confusing empty-state copy
-      // ("Check the Deputy section below for any legacy shifts") with
-      // an unambiguous instruction telling the tech where to clock in
-      // tonight. Also reveal the sibling banner above the legacy
-      // Today's Work card so the connection is obvious — Drew's
-      // Hormann Door shift case where Pioneer assignments aren't seeded.
+      // UI cleanup 2026-06-02 — legacy Today's Work fallback removed.
+      // Copy updated: previously directed techs to "Start Work below" in
+      // the duplicate section. With that section gone, the actionable
+      // path when a tech has no Pioneer assignment is to contact the
+      // office to seed/bridge their assignment.
       root.innerHTML =
         '<div class="ptc-empty">' +
-          '<p><strong>Pioneer Time Clock is not set up for this shift yet.</strong></p>' +
-          '<p>Use <strong>Start Work</strong> below for tonight.</p>' +
+          '<p><strong>No Pioneer Time Clock assignments for this shift.</strong></p>' +
+          '<p>Contact the office so your shift can be added to Pioneer Time Clock.</p>' +
         '</div>';
-      toggleLegacyFallbackBanner(true);
       return;
     }
-    // Defensive — if a later render shows assignments (Phase 2 may
-    // backfill from Deputy), make sure the banner doesn't get left on.
-    toggleLegacyFallbackBanner(false);
     // Phase 1b.4 — "Next Step: Complete DCR" banner. Shows when at
     // least one paused assignment is missing a DCR AND the tech isn't
     // currently clocked into anything. Points at the first such
@@ -1266,17 +1261,10 @@
     if (section) section.hidden = false;
   }
 
-  // Phase 1g hotfix — surface a small banner above the legacy Today's
-  // Work card whenever this tech has no Pioneer service_assignments
-  // for the current availability window. The banner is pre-placed in
-  // work.html (#ptc-legacy-fallback-banner) and starts hidden; we just
-  // flip the `hidden` attribute. The banner sits inside the Today's
-  // Work section's outer card, so it's visible right next to the
-  // legacy Start Work buttons.
-  function toggleLegacyFallbackBanner(show) {
-    const banner = $("ptc-legacy-fallback-banner");
-    if (banner) banner.hidden = !show;
-  }
+  // UI cleanup 2026-06-02 — toggleLegacyFallbackBanner() removed.
+  // The #ptc-legacy-fallback-banner DOM was inside the deleted
+  // legacy Today's Work section in work.html, and the banner's
+  // "use Start Work below" instruction no longer has a target.
 
   function renderIndexBuildingError() {
     const root = $("ptc-assignments");
@@ -1292,15 +1280,15 @@
     const root = $("ptc-assignments");
     if (!root) return;
     const msg = (err && err.message) || (err && String(err)) || "Unknown error";
+    // UI cleanup 2026-06-02 — legacy Today's Work fallback removed;
+    // error copy points techs to office support instead of "Deputy
+    // below".
     root.innerHTML =
       '<div class="ptc-status ptc-status-error">' +
         '<p><strong>Couldn\'t load Pioneer Time Clock.</strong></p>' +
         '<p>' + escapeHtml(msg) + '</p>' +
-        '<p>Deputy is still available below as a fallback.</p>' +
+        '<p>Hard-reload (Cmd+Shift+R). If it persists, contact the office.</p>' +
       '</div>';
-    // Phase 1g hotfix — also reveal the legacy fallback banner so the
-    // tech knows where to clock in tonight even if PTC errored.
-    toggleLegacyFallbackBanner(true);
   }
 
   /* ---------- boot ---------- */
