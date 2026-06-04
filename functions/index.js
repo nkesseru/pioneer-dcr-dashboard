@@ -2894,7 +2894,24 @@ exports.techHubViewV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (re
 // `cors: false` tells Functions v2 not to attach its own CORS middleware —
 // we set the headers ourselves so the same headers go out on every response,
 // including 4xx/5xx errors and the OPTIONS preflight.
-exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req, res) => {
+// Phase 32 — secrets needed by the submitDcrV1 native-email auto-send
+// hook. Declared here so the onRequest({ secrets: [...] }) binding below
+// can reference them at module-load time (defineSecret must run before
+// the onRequest call that lists it). Same const names are reused later
+// by generateAndSendDcrEmailV1 — defineSecret is single-call-per-name,
+// so do NOT re-declare further down.
+const OPENAI_API_KEY             = defineSecret("OPENAI_API_KEY");
+const GMAIL_SENDER_EMAIL         = defineSecret("GMAIL_SENDER_EMAIL");
+const GMAIL_SERVICE_ACCOUNT_KEY  = defineSecret("GMAIL_SERVICE_ACCOUNT_KEY");
+const KIRBY_ALERT_EMAIL          = defineSecret("KIRBY_ALERT_EMAIL");
+const APRIL_ALERT_EMAIL          = defineSecret("APRIL_ALERT_EMAIL");
+
+exports.submitDcrV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120,                                         // bumped from 60 to absorb the OpenAI + Gmail leg
+  secrets: [OPENAI_API_KEY, GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY,
+            KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL]
+}, async (req, res) => {
   // ---- CORS: set on every response, before any branching ----
   res.set("Access-Control-Allow-Origin",  "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -3189,61 +3206,128 @@ exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req,
   // request from the office if needed.
   await maybeCreateSupplyRequest(doc, submissionId);
 
-  // ---- Zapier (best-effort, never blocks the success response) ----
-  // Read URL at request time (not module load) so deploys without the env var
-  // still work and a redeploy with the var picks it up immediately.
-  const zapierUrl = (process.env.ZAPIER_DCR_WEBHOOK_URL || "").trim();
-  const zapierPayload = buildZapierPayload(doc, submissionId);
-  // Minimal verification log — confirms (a) the array shape Zapier
-  // receives and (b) the photo count exposed via the new flat fields.
-  // Keeps logs scannable without dumping URLs (those are already
-  // available via Cloud Storage if a triage needs them).
-  logger.info("submitDcrV1 zapier payload shape", {
-    submission_id:      submissionId,
-    photo_count:        zapierPayload.photo_count,
-    photo_urls_is_array: Array.isArray(zapierPayload.photo_urls),
-    flat_field_count:   Object.keys(zapierPayload)
-                          .filter(function (k) { return /^photo_url_\d+$/.test(k); })
-                          .length
-  });
-  const zapierResult  = await sendToZapier(zapierUrl, zapierPayload);
-
-  // Persist the Zapier outcome on the doc. Best-effort — if the update itself
-  // fails we still return success to the browser.
+  // ---- Phase 32: Native DCR email auto-send (replaces Zapier as primary) ----
+  // Fires after the DCR doc is written. Wrapped in try/catch so any
+  // failure (Gmail outage, OpenAI hiccup, missing customer config) NEVER
+  // blocks the tech's success response. Audit + native_email status are
+  // stamped on the dcr_submissions doc by the helper.
+  let nativeEmailResult = { status: "skipped", reason: "not_invoked", code: "not_invoked" };
   try {
-    await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
-      zapier:                       zapierResult,
-      "delivery.zapier_sent":       zapierResult.status === "sent",
-      "delivery.zapier_sent_at":    zapierResult.sent_at,
-      "delivery.zapier_attempts":   zapierResult.attempted ? 1 : 0,
-      "delivery.last_error":        zapierResult.error,
-      updated_at:                   admin.firestore.FieldValue.serverTimestamp()
+    nativeEmailResult = await dcrEmail.sendNativeDcrEmailForSubmission({
+      admin:                  admin,
+      db:                     db,
+      logger:                 logger,
+      dcrId:                  submissionId,
+      invokedBy:              "submitDcrV1",
+      forceSend:              false,
+      dryRun:                 false,
+      openaiApiKey:           OPENAI_API_KEY.value(),
+      gmailSenderEmail:       GMAIL_SENDER_EMAIL.value(),
+      gmailServiceAccountKey: GMAIL_SERVICE_ACCOUNT_KEY.value(),
+      kirbyAlertEmail:        KIRBY_ALERT_EMAIL.value(),
+      aprilAlertEmail:        APRIL_ALERT_EMAIL.value()
     });
+    if (nativeEmailResult.status === "sent") {
+      logger.info("submitDcrV1 native email sent", {
+        submission_id: submissionId,
+        recipient:     nativeEmailResult.recipient,
+        messageId:     nativeEmailResult.messageId
+      });
+    } else if (nativeEmailResult.status === "skipped") {
+      logger.info("submitDcrV1 native email skipped", {
+        submission_id: submissionId,
+        reason:        nativeEmailResult.reason,
+        code:          nativeEmailResult.code
+      });
+    } else {
+      logger.warn("submitDcrV1 native email failed", {
+        submission_id: submissionId,
+        reason:        nativeEmailResult.reason,
+        code:          nativeEmailResult.code
+      });
+    }
   } catch (err) {
-    logger.error("submitDcrV1 firestore zapier-status update failed", {
-      error: err.message,
+    // Swallow — DCR submit must succeed even if the email path explodes.
+    logger.error("submitDcrV1 native email path threw (swallowed)", {
       submission_id: submissionId,
-      zapier_status: zapierResult.status
+      error:         err && err.message,
+      stack:         err && err.stack
     });
+    nativeEmailResult = { status: "failed", reason: (err && err.message) || "unknown error", code: "hook_threw" };
   }
 
-  if (zapierResult.status === "failed") {
-    logger.warn("Zapier delivery failed", {
-      submission_id: submissionId,
-      status_code: zapierResult.status_code,
-      error: zapierResult.error
+  // ---- Zapier (Phase 32: OFF by default; opt-in via env flag) ----
+  // The Zap on the Zapier side was disabled around 2026-06-03, returning
+  // HTTP 404 "please unsubscribe me!" on every POST. Native pipeline above
+  // is the primary delivery path now. Leave the code intact and gated so
+  // we can re-enable as fallback if the native path ever needs an outage
+  // backup — set USE_ZAPIER_DCR_FALLBACK=true in the function env.
+  const zapierFallbackEnabled = String(process.env.USE_ZAPIER_DCR_FALLBACK || "").toLowerCase() === "true";
+  let zapierResult = {
+    attempted:   false,
+    status:      "disabled_native_cutover",
+    status_code: null,
+    error:       null,
+    sent_at:     null
+  };
+  if (zapierFallbackEnabled) {
+    const zapierUrl = (process.env.ZAPIER_DCR_WEBHOOK_URL || "").trim();
+    const zapierPayload = buildZapierPayload(doc, submissionId);
+    logger.info("submitDcrV1 zapier payload shape (fallback mode)", {
+      submission_id:      submissionId,
+      photo_count:        zapierPayload.photo_count,
+      photo_urls_is_array: Array.isArray(zapierPayload.photo_urls)
     });
-  } else if (zapierResult.status === "sent") {
-    logger.info("Zapier delivery succeeded", {
-      submission_id: submissionId,
-      status_code: zapierResult.status_code
-    });
+    zapierResult = await sendToZapier(zapierUrl, zapierPayload);
+    try {
+      await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
+        zapier:                       zapierResult,
+        "delivery.zapier_sent":       zapierResult.status === "sent",
+        "delivery.zapier_sent_at":    zapierResult.sent_at,
+        "delivery.zapier_attempts":   zapierResult.attempted ? 1 : 0,
+        "delivery.last_error":        zapierResult.error,
+        updated_at:                   admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (err) {
+      logger.error("submitDcrV1 firestore zapier-status update failed", {
+        error: err.message, submission_id: submissionId, zapier_status: zapierResult.status
+      });
+    }
+    if (zapierResult.status === "failed") {
+      logger.warn("Zapier delivery failed", {
+        submission_id: submissionId, status_code: zapierResult.status_code, error: zapierResult.error
+      });
+    } else if (zapierResult.status === "sent") {
+      logger.info("Zapier delivery succeeded", {
+        submission_id: submissionId, status_code: zapierResult.status_code
+      });
+    }
+  } else {
+    // Stamp the cutover state on the doc once so admin UIs can show
+    // "disabled — native cutover" instead of stale "Zapier failed".
+    try {
+      await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
+        zapier:     zapierResult,                                                                                      // { status: "disabled_native_cutover", ... }
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 firestore zapier-cutover stamp failed (non-fatal)", {
+        error: err.message, submission_id: submissionId
+      });
+    }
   }
 
   return res.status(200).json({
-    ok: true,
+    ok:            true,
     submission_id: submissionId,
-    zapier: zapierResult
+    native_email:  {
+      status:     nativeEmailResult.status,
+      reason:     nativeEmailResult.reason,
+      code:       nativeEmailResult.code,
+      recipient:  nativeEmailResult.recipient,
+      messageId:  nativeEmailResult.messageId
+    },
+    zapier:        zapierResult
   });
 });
 
@@ -7259,16 +7343,11 @@ exports.deputyApiDiagnosticV1 = onRequest({
                                    in Workspace Admin → Security → API Controls.
 
    All business logic lives in functions/dcrEmail.js. This block just
-   declares the secrets + binds them to the onRequest endpoint. =============== */
-const OPENAI_API_KEY             = defineSecret("OPENAI_API_KEY");
-const GMAIL_SENDER_EMAIL         = defineSecret("GMAIL_SENDER_EMAIL");
-const GMAIL_SERVICE_ACCOUNT_KEY  = defineSecret("GMAIL_SERVICE_ACCOUNT_KEY");
-// V6 — these were originally declared further down (for submitFeedbackV1).
-// Moved up so generateAndSendDcrEmailV1 can also bind them; the
-// duplicate `defineSecret` calls below are removed to avoid the
-// "secret already declared" deploy-time error.
-const KIRBY_ALERT_EMAIL          = defineSecret("KIRBY_ALERT_EMAIL");
-const APRIL_ALERT_EMAIL          = defineSecret("APRIL_ALERT_EMAIL");
+   binds the (already-declared above) secrets to the onRequest endpoint.
+
+   Phase 32 moved these defineSecret calls above submitDcrV1 so the
+   auto-send hook can also bind them. The const names below are still in
+   scope here. =================================================== */
 
 exports.generateAndSendDcrEmailV1 = onRequest(
   {

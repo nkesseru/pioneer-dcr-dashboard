@@ -4370,6 +4370,320 @@ async function getDcrEmailReadiness(opts) {
 }
 
 /* ----------------------------------------------------------------------------
+ * sendNativeDcrEmailForSubmission — Phase 32 cutover entrypoint.
+ *
+ * Single wrapper that BOTH the admin manual-send handler and the
+ * submitDcrV1 post-write hook should call. Composes the existing
+ * pieces:
+ *   1. Read the dcr_submissions doc.
+ *   2. Apply QA / test-customer / opt-out exclusions BEFORE the
+ *      readiness check so seed data and excluded customers exit clean.
+ *   3. Run getDcrEmailReadiness (mode="send") — exit "skipped" when
+ *      blockers exist. Treats `already_sent` as duplicate_already_sent
+ *      unless forceSend === true.
+ *   4. Optionally short-circuit when dryRun.
+ *   5. Call sendDcrEmailCore with the resolved customerId.
+ *   6. Stamp native_email status onto dcr_submissions via
+ *      recordEmailStatus.
+ *   7. Return a structured result that both the HTTP handler and the
+ *      submitDcrV1 hook can interpret without any further branching.
+ *
+ * Required inputs (callers must pre-resolve all secrets):
+ *   admin, db, logger
+ *   dcrId
+ *   openaiApiKey, gmailSenderEmail, gmailServiceAccountKey
+ *   kirbyAlertEmail?, aprilAlertEmail?
+ *
+ * Optional inputs:
+ *   invokedBy        string — telemetry tag (e.g. "submitDcrV1" or
+ *                              admin email)
+ *   forceSend        bool   — override already_sent
+ *   dryRun           bool   — skip the network call; everything else
+ *                              runs (readiness, exclusion, planned recipient)
+ *   subjectPrefix    string — override the subject tag (default
+ *                              "[Pioneer DCR]" for prod auto-sends, or
+ *                              "[TEST V6]" if caller doesn't set anything)
+ *
+ * Returns:
+ *   {
+ *     status:         "sent" | "skipped" | "failed",
+ *     reason:         string,                 // human-readable explanation
+ *     code:           string | null,          // blocker / failure code (machine)
+ *     dcrId:          string,
+ *     customerId:     string | null,
+ *     recipient:      string | null,          // primary "to"
+ *     messageId:      string | null,          // Gmail message id when sent
+ *     payloadDocId:   string | null,          // dcr_email_payloads doc id
+ *     invokedBy:      string,
+ *     attemptedAt:    ISO string,             // when this helper ran
+ *     sentAt:         ISO string | null
+ *   }
+ *
+ * Never throws for "expected" outcomes. Any thrown exception bubbles
+ * up so the caller (the submitDcrV1 hook wraps in try/catch) can decide
+ * to swallow vs surface.
+ * --------------------------------------------------------------------------- */
+async function sendNativeDcrEmailForSubmission(opts) {
+  const { admin: adminSdk, db, logger } = opts;
+  const dcrId         = String(opts.dcrId || "").trim();
+  const invokedBy     = String(opts.invokedBy || "unspecified");
+  const forceSend     = opts.forceSend === true;
+  const dryRun        = opts.dryRun === true;
+  const subjectPrefix = opts.subjectPrefix || "[Pioneer DCR]";
+  const attemptedAt   = new Date().toISOString();
+
+  function result(status, reason, extras) {
+    return Object.assign({
+      status:        status,
+      reason:        reason,
+      code:          (extras && extras.code) || null,
+      dcrId:         dcrId,
+      customerId:    null,
+      recipient:     null,
+      messageId:     null,
+      payloadDocId:  null,
+      invokedBy:     invokedBy,
+      attemptedAt:   attemptedAt,
+      sentAt:        null
+    }, extras || {});
+  }
+
+  if (!dcrId) {
+    return result("failed", "dcrId is required", { code: "bad_request" });
+  }
+
+  // ---- 1. Read DCR ----
+  const dcrSnap = await db.collection("dcr_submissions").doc(dcrId).get();
+  if (!dcrSnap.exists) {
+    return result("failed", "DCR not found", { code: "dcr_not_found" });
+  }
+  const dcr = Object.assign({ id: dcrSnap.id }, dcrSnap.data());
+
+  // ---- 2. QA / test-data exclusions BEFORE the readiness call ----
+  // Mirrors the Phase 29A QA filter used across payroll surfaces, plus
+  // explicit Phase 32 customer-side opt-out fields. A submission tagged
+  // as QA/test bypasses email entirely so seed data never reaches real
+  // customers. NOTE: customer-side exclusion is also re-checked after
+  // we resolve the customer doc inside readiness — this pre-check is
+  // the fast path when the DCR doc itself is flagged.
+  if (dcr.is_test === true || dcr.exclude_from_customer_reporting === true ||
+      dcr.is_qa_test === true) {
+    const reason = "DCR flagged as QA/test (is_test/is_qa_test/exclude_from_customer_reporting on submission)";
+    if (!dryRun) {
+      await recordEmailStatus(db, dcrId, {
+        native_email: {
+          status:      "skipped",
+          reason:      reason,
+          code:        "qa_test_submission",
+          invokedBy:   invokedBy,
+          attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+        }
+      }, adminSdk);
+    }
+    return result("skipped", reason, { code: "qa_test_submission" });
+  }
+
+  // ---- 3. Readiness check ----
+  const customerSlugGuess = String(dcr.customer_slug || dcr.customer_id || dcr.customerId || "").trim();
+  const readiness = await getDcrEmailReadiness({
+    db:      db,
+    logger:  logger,
+    dcrId:   dcrId,
+    mode:    forceSend ? "resend" : "send"
+  });
+  const resolved = readiness.resolved || {};
+  const customerId = resolved.customerId || customerSlugGuess || null;
+  const recipient = (Array.isArray(resolved.emailRecipients) && resolved.emailRecipients[0]) || null;
+
+  // ---- 3b. Customer-doc-level exclusion (re-check after readiness resolves) ----
+  // Even if the DCR submission itself isn't QA-flagged, the customer doc
+  // can carry exclude_from_customer_reporting. Read the customer doc
+  // directly to honor it BEFORE we send.
+  if (customerId) {
+    try {
+      const cSnap = await db.collection("customers").doc(customerId).get();
+      if (cSnap.exists) {
+        const c = cSnap.data() || {};
+        if (c.is_test === true || c.exclude_from_customer_reporting === true ||
+            c.disable_customer_notifications === true ||
+            c.disable_dcr_email === true) {
+          const reason = 'customers/' + customerId + " is flagged as test/excluded";
+          if (!dryRun) {
+            await recordEmailStatus(db, dcrId, {
+              native_email: {
+                status:      "skipped",
+                reason:      reason,
+                code:        "customer_excluded",
+                customerId:  customerId,
+                invokedBy:   invokedBy,
+                attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+              }
+            }, adminSdk);
+          }
+          return result("skipped", reason, { code: "customer_excluded", customerId: customerId });
+        }
+      }
+    } catch (err) {
+      logger.warn("[native-email] customer exclusion lookup failed (non-fatal)", {
+        dcrId: dcrId, customerId: customerId, error: err && err.message
+      });
+    }
+  }
+
+  // ---- 4. Block on readiness blockers (with already_sent / forceSend logic) ----
+  if (!readiness.ready) {
+    const firstBlocker = (readiness.blockers && readiness.blockers[0]) || {};
+    const code = firstBlocker.code || "not_ready";
+    // "already_sent" gets a more specific reason for duplicate-protection visibility.
+    if (code === "already_sent") {
+      const reason = "duplicate_already_sent — DCR email already sent previously" +
+                     (resolved.lastSentAt ? " at " + resolved.lastSentAt : "");
+      if (!dryRun) {
+        await recordEmailStatus(db, dcrId, {
+          native_email: {
+            status:       "skipped",
+            reason:       reason,
+            code:         "duplicate_already_sent",
+            customerId:   customerId,
+            recipient:    resolved.lastSentTo || recipient,
+            messageId:    resolved.lastSentMessageId || null,
+            invokedBy:    invokedBy,
+            attemptedAt:  adminSdk.firestore.FieldValue.serverTimestamp()
+          }
+        }, adminSdk);
+      }
+      return result("skipped", reason, {
+        code: "duplicate_already_sent",
+        customerId: customerId,
+        recipient: resolved.lastSentTo || recipient,
+        messageId: resolved.lastSentMessageId || null,
+        payloadDocId: dcrId,
+        sentAt: resolved.lastSentAt || null
+      });
+    }
+    // Map common blockers to skipped reasons (don't fail the parent flow).
+    const reason = firstBlocker.message || code;
+    if (!dryRun) {
+      await recordEmailStatus(db, dcrId, {
+        native_email: {
+          status:      "skipped",
+          reason:      reason,
+          code:        code,
+          customerId:  customerId,
+          invokedBy:   invokedBy,
+          attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+        }
+      }, adminSdk);
+    }
+    return result("skipped", reason, { code: code, customerId: customerId, recipient: recipient });
+  }
+
+  // ---- 5. Dry-run short-circuit (after readiness so we still surface the planned recipient) ----
+  if (dryRun) {
+    return result("skipped", "dry_run — would have sent", {
+      code: "dry_run",
+      customerId: customerId,
+      recipient: recipient
+    });
+  }
+
+  // ---- 6. Send via sendDcrEmailCore ----
+  let core;
+  try {
+    core = await sendDcrEmailCore({
+      admin:                  adminSdk,
+      db:                     db,
+      logger:                 logger,
+      dcrId:                  dcrId,
+      customerId:             customerId,
+      openaiApiKey:           opts.openaiApiKey,
+      gmailSenderEmail:       opts.gmailSenderEmail,
+      gmailServiceAccountKey: opts.gmailServiceAccountKey,
+      kirbyAlertEmail:        opts.kirbyAlertEmail,
+      aprilAlertEmail:        opts.aprilAlertEmail,
+      subjectPrefix:          subjectPrefix
+    });
+  } catch (err) {
+    // sendDcrEmailCore only throws for truly unexpected runtime errors.
+    // Stamp + surface as failed.
+    logger.error("[native-email] sendDcrEmailCore threw", {
+      dcrId: dcrId, customerId: customerId, error: err && err.message, stack: err && err.stack
+    });
+    await recordEmailStatus(db, dcrId, {
+      native_email: {
+        status:      "failed",
+        reason:      (err && err.message) || "unknown error",
+        code:        "core_threw",
+        customerId:  customerId,
+        recipient:   recipient,
+        invokedBy:   invokedBy,
+        attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+      }
+    }, adminSdk);
+    return result("failed", (err && err.message) || "core threw", {
+      code: "core_threw", customerId: customerId, recipient: recipient
+    });
+  }
+
+  // ---- 7. Translate core result into our return shape + stamp native_email ----
+  if (core && core.ok && core.status === "sent") {
+    const sentAtIso = new Date().toISOString();
+    await recordEmailStatus(db, dcrId, {
+      native_email: {
+        status:       "sent",
+        reason:       null,
+        code:         null,
+        customerId:   customerId,
+        recipient:    core.to || recipient,
+        messageId:    core.messageId || null,
+        payloadDocId: core.payloadDocId || dcrId,
+        invokedBy:    invokedBy,
+        attemptedAt:  adminSdk.firestore.FieldValue.serverTimestamp(),
+        sentAt:       adminSdk.firestore.FieldValue.serverTimestamp()
+      }
+    }, adminSdk);
+    return result("sent", "delivered via Gmail API", {
+      code:         null,
+      customerId:   customerId,
+      recipient:    core.to || recipient,
+      messageId:    core.messageId || null,
+      payloadDocId: core.payloadDocId || dcrId,
+      sentAt:       sentAtIso
+    });
+  }
+  if (core && core.ok && core.status === "skipped") {
+    const reason = core.reason || "core returned skipped";
+    await recordEmailStatus(db, dcrId, {
+      native_email: {
+        status:      "skipped",
+        reason:      reason,
+        code:        "core_skipped",
+        customerId:  customerId,
+        recipient:   recipient,
+        invokedBy:   invokedBy,
+        attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+      }
+    }, adminSdk);
+    return result("skipped", reason, { code: "core_skipped", customerId: customerId, recipient: recipient });
+  }
+  // Failure path (core.ok === false).
+  const failCode = (core && core.code) || "unknown_failure";
+  const failMsg  = (core && core.error) || "core returned unexpected shape";
+  await recordEmailStatus(db, dcrId, {
+    native_email: {
+      status:      "failed",
+      reason:      failMsg,
+      code:        failCode,
+      customerId:  customerId,
+      recipient:   recipient,
+      invokedBy:   invokedBy,
+      attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+    }
+  }, adminSdk);
+  return result("failed", failMsg, { code: failCode, customerId: customerId, recipient: recipient });
+}
+
+/* ----------------------------------------------------------------------------
  * buildHttpHandler — admin-auth wrapper around sendDcrEmailCore.
  *
  * Returns an async (req, res) handler suitable for onRequest(). All the
@@ -4501,6 +4815,10 @@ module.exports = {
   // HTTP handler before it calls sendDcrEmailCore. Pure read, no
   // Firestore writes.
   getDcrEmailReadiness:              getDcrEmailReadiness,
+  // Phase 32 — single entrypoint used by BOTH the admin manual send path
+  // AND the submitDcrV1 auto-send hook. Wraps readiness + exclusions +
+  // sendDcrEmailCore + native_email stamping.
+  sendNativeDcrEmailForSubmission:   sendNativeDcrEmailForSubmission,
   // Helpers exported for unit testing or reuse in future scheduled trigger.
   normalizeDcrForEmail:              normalizeDcrForEmail,
   // ---- V1 helpers (legacy; preserved for compatibility) ----
