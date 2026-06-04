@@ -4760,15 +4760,55 @@ function buildHttpHandler(deps) {
         }
       }
 
-      const result = await sendDcrEmailCore({
-        admin, db, logger,
-        dcrId, customerId, testRecipientEmail,
-        openaiApiKey:           OPENAI_API_KEY.value(),
-        gmailSenderEmail:       GMAIL_SENDER_EMAIL.value(),
-        gmailServiceAccountKey: GMAIL_SERVICE_ACCOUNT_KEY.value(),
-        kirbyAlertEmail:        safeSecretValue(KIRBY_ALERT_EMAIL),
-        aprilAlertEmail:        safeSecretValue(APRIL_ALERT_EMAIL)
-      });
+      // Phase 32 — production-path sends route through the wrapper so
+      // dcr_submissions.native_email gets stamped consistently with the
+      // submitDcrV1 auto-send path. Test sends (testRecipientEmail set)
+      // keep the legacy direct-core path so QA can target thin DCRs
+      // without tripping the wrapper's QA-exclusion guard.
+      let result;
+      if (!testRecipientEmail) {
+        const wrapped = await sendNativeDcrEmailForSubmission({
+          admin: admin, db: db, logger: logger,
+          dcrId:                  dcrId,
+          invokedBy:              "admin:" + (staff.email || "?"),
+          forceSend:              confirmResend,
+          dryRun:                 false,
+          openaiApiKey:           OPENAI_API_KEY.value(),
+          gmailSenderEmail:       GMAIL_SENDER_EMAIL.value(),
+          gmailServiceAccountKey: GMAIL_SERVICE_ACCOUNT_KEY.value(),
+          kirbyAlertEmail:        safeSecretValue(KIRBY_ALERT_EMAIL),
+          aprilAlertEmail:        safeSecretValue(APRIL_ALERT_EMAIL)
+        });
+        // Translate wrapper shape → sendDcrEmailCore-compatible shape so
+        // the existing response-mapping code below works unchanged.
+        if (wrapped.status === "sent") {
+          result = {
+            ok: true, status: "sent",
+            subject:       null,
+            messageId:     wrapped.messageId,
+            promptVersion: null,
+            emailTemplate: null,
+            to:            wrapped.recipient,
+            summary:       null,
+            isTestSend:    false,
+            payloadDocId:  wrapped.payloadDocId
+          };
+        } else if (wrapped.status === "skipped") {
+          result = { ok: true, status: "skipped", reason: wrapped.reason };
+        } else {
+          result = { ok: false, code: wrapped.code || "unknown_failure", error: wrapped.reason };
+        }
+      } else {
+        result = await sendDcrEmailCore({
+          admin, db, logger,
+          dcrId, customerId, testRecipientEmail,
+          openaiApiKey:           OPENAI_API_KEY.value(),
+          gmailSenderEmail:       GMAIL_SENDER_EMAIL.value(),
+          gmailServiceAccountKey: GMAIL_SERVICE_ACCOUNT_KEY.value(),
+          kirbyAlertEmail:        safeSecretValue(KIRBY_ALERT_EMAIL),
+          aprilAlertEmail:        safeSecretValue(APRIL_ALERT_EMAIL)
+        });
+      }
 
       // Map structured core result → HTTP. Success + skipped are 2xx;
       // expected failures get specific codes; everything else is 500.
