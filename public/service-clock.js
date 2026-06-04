@@ -802,9 +802,16 @@
       geoChipHtml = '<span class="ptc-geo-chip is-nearby">Nearby</span>';
     } else if (geoStatus === "offsite") {
       geoChipHtml = '<span class="ptc-geo-chip is-offsite">Offsite — review</span>';
-    } else if (geoStatus && /^unknown/.test(geoStatus)) {
+    } else if (geoStatus === "unknown_no_site_coordinates") {
+      // Customer doc has no location_lat / location_lon — the site
+      // isn't geofenced. Not a tech problem, not a clock-in blocker.
       geoChipHtml = '<span class="ptc-geo-chip is-unknown" title="' +
-        escapeHtml(geoStatus.replace(/_/g, " ")) + '">Location unavailable</span>';
+        escapeHtml(geoStatus.replace(/_/g, " ")) + '">Site not geofenced</span>';
+    } else if (geoStatus && /^unknown/.test(geoStatus)) {
+      // Phone-side GPS state (permission denied, unsupported, timeout).
+      // Still not a clock-in blocker — Phase 1d Lite is informational.
+      geoChipHtml = '<span class="ptc-geo-chip is-unknown" title="' +
+        escapeHtml(geoStatus.replace(/_/g, " ")) + '">GPS unavailable</span>';
     }
 
     const metaParts = [];
