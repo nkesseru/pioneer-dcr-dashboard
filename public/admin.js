@@ -565,6 +565,11 @@
     window.__pioneerAdmin.tabs.admins.init();
     window.__pioneerAdmin.tabs.dcrReview.init();
     window.__pioneerAdmin.tabs.payrollExceptions.init();
+    window.__pioneerAdmin.tabs.missionControl.init();
+    // Phase 31 — Mission Control loads the top panel on auth-ready.
+    // Fire-and-forget; its own loadSnapshot() handles parallel reads
+    // and degrades to per-card "—" placeholders if any single read fails.
+    window.__pioneerAdmin.tabs.missionControl.refresh();
     // Populate the deps bridge BEFORE any tab module's init/refresh
     // can read from it. Scaffolding for tab modules that still need
     // closure-local helpers from admin.js (customers array, modal

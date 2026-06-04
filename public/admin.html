@@ -150,6 +150,17 @@
          per firestore.rules). See refreshDayHealthMetrics24h. -->
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
+      <!-- ============ PioneerOps Mission Control (Phase 31) ============
+           Top-of-page operational snapshot. Replaces the leading-with-
+           DCR-email-metrics design with a 6-card view oriented around
+           what matters at shift rollout: shifts → DCRs → clock issues
+           → supply → readiness → payroll exceptions. Ops day window
+           is 4 PM Pacific cutoff (yesterday 4 PM → today 4 PM). The
+           legacy DCR-email-pipeline card below this is preserved in a
+           collapsed `<details>` so the old metrics remain one click
+           away — not removed. -->
+      <section id="mission-control" aria-label="PioneerOps Mission Control"></section>
+
       <!-- "Current Ops Day" — native PioneerOps DCR pipeline health.
            Window is Pioneer ops-day-aligned (4 PM Pacific cutoff, see
            getOpsDayWindow() in admin.js), not midnight or rolling 24h.
@@ -165,6 +176,9 @@
            Open tracking is intentionally NOT shown — we don't track opens
            today, so a fake "—" or zero would mislead. See the TODO block
            in admin.js for the future tracking-pixel / click-event plan. -->
+      <details class="admin-legacy-dcr-email-metrics" id="admin-legacy-dcr-email-metrics" style="margin-bottom:14px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#64748b;padding:8px 12px;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;list-style:revert;">Legacy DCR Email Metrics (native pipeline send-side stats)</summary>
+        <div style="margin-top:10px;">
       <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
         <header class="health-head">
           <span class="health-eyebrow">Current Ops Day</span>
@@ -216,6 +230,8 @@
           <a href="#admin-ops-overview" id="admin-day-health-foot-right" hidden>Review</a>
         </footer>
       </section>
+        </div>
+      </details>
 
       <!-- The strip keeps id="attention-strip" so the existing
            wireAttentionStrip() click delegator and every
@@ -3499,8 +3515,9 @@
   <script src="admin/tab-labor-review.js?v=20260602-phase28d-auth-download"></script>
   <script src="admin/tab-payroll.js?v=20260603-phase29a-effective-minutes"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
+  <script src="admin/tab-mission-control.js?v=20260604-phase31-mc-v1"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
-  <script src="admin.js?v=20260603-phase29-v1"></script>
+  <script src="admin.js?v=20260604-phase31-mission-control"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>
