@@ -214,12 +214,20 @@
       // 10. office_manager_bottlenecks — recent
       safe("om_bottlenecks", db.collection("office_manager_bottlenecks")
         .orderBy("created_at", "desc").limit(14).get()),
-      // 11. office_manager_improvements — recent
+      // 11. office_manager_improvements — full pipeline read (cap 200 so
+      // a runaway collection doesn't burn the page; in practice this is
+      // a small set even after a year).
       safe("om_improvements", db.collection("office_manager_improvements")
-        .orderBy("created_at", "desc").limit(14).get()),
-      // 12. current week's office_manager_weekly_reviews doc
+        .orderBy("created_at", "desc").limit(200).get()),
+      // 12. current week's office_manager_weekly_reviews doc (hiring +
+      // Phase 1B review fields share this doc — Phase 1A wrote hiring,
+      // Phase 1B writes the review prompts as additional top-level fields).
       safe("om_week", db.collection("office_manager_weekly_reviews")
-        .doc(isoWeekId(todayPT)).get())
+        .doc(isoWeekId(todayPT)).get()),
+      // 13. office_manager_weekly_reviews — recent 12 entries (newest first
+      // by updated_at; week_ending used only for display label).
+      safe("om_weeks", db.collection("office_manager_weekly_reviews")
+        .orderBy("updated_at", "desc").limit(12).get())
     ]);
 
     function docs(idx) {
@@ -246,6 +254,7 @@
       omBottlenecks:    docs(10),
       omImprovements:   docs(11),
       omWeek:           docs(12),
+      omWeeks:          docs(13),
       failedReads:      reads.filter(r => !r.ok).map(r => r.label + ": " + r.err)
     };
   }
@@ -451,12 +460,358 @@
 
     renderBottleneckHistory(snap.omBottlenecks || [], todayBottleneck);
     renderReflectionHistory(snap.omReflections || [], todayReflection);
-    renderImprovementMetrics(snap.omImprovements || []);
-    renderImprovementHistory(snap.omImprovements || []);
+
+    // ---- Phase 1B — Improvement Pipeline + metrics + Scorecard + Weekly Review ----
+    const improvements = normalizeImprovements(snap.omImprovements || []);
+    renderImprovementMetrics(improvements);
+    renderImprovementPipeline(improvements);
+    renderScorecard({
+      hiring:    (snap.omWeek && snap.omWeek.hiring) ? "healthy" : "attention",
+      staffing:  worstStaffingTier({
+        openShifts: openShifts.length, callOuts: openCallOuts.length,
+        missingPunches: missingPunches.length, pendingAdj: pendingTimeAdj.length
+      }),
+      customer:  worstCustomerTier({
+        openConcerns: openDcrIssues.length, openSupply: openSupply.length,
+        repeatCount: repeatConcerns.length, missingDcr: missingDcrSessions.length
+      }),
+      admin:     worstAdminTier({
+        activeExports: activePayrollExports.length, pendingApprov: pendingTimeAdj.length,
+        onboardingTodo: (snap.techs || []).filter(t => t.active !== false && !t.uid).length,
+        employeeIssues: openEmployeeIssues.length
+      }),
+      improvement: improvementActivityTier(improvements)
+    });
+    renderWeeklyReview(snap.omWeek, snap.omWeeks || [], snap.todayPT);
 
     if (snap.failedReads && snap.failedReads.length) {
       console.warn("[manager] read failures:", snap.failedReads);
     }
+  }
+
+  /* ---------- Phase 1B — pipeline + scorecard + weekly review ---------- */
+
+  // Normalize legacy + new improvement docs into a single shape so the
+  // pipeline renderer doesn't have to branch on schema versions.
+  function normalizeImprovements(list) {
+    return list.map(d => {
+      const status = mapLegacyStatus(d.status || "submitted");
+      const title = d.title || (d.idea ? String(d.idea).slice(0, 80) : "(untitled)");
+      const description = d.description || d.idea || "";
+      return {
+        _id:               d._id,
+        title:             title,
+        description:       description,
+        status:            status,
+        owner_uid:         d.owner_uid || null,
+        owner_name:        d.owner_name || null,
+        due_date:          d.due_date || null,
+        approved_at:       d.approved_at || null,
+        approved_by_name:  d.approved_by_name || null,
+        implemented_at:    d.implemented_at || null,
+        implemented_by_name: d.implemented_by_name || null,
+        rejected_at:       d.rejected_at || null,
+        rejected_reason:   d.rejected_reason || null,
+        impact_notes:      d.impact_notes || null,
+        submitted_by_name: d.submitted_by_name || d.created_by_email || null,
+        submitted_by_email:d.submitted_by_email || d.created_by_email || null,
+        submitted_at:      d.submitted_at || d.created_at || null,
+        created_at:        d.created_at,
+        updated_at:        d.updated_at
+      };
+    });
+  }
+  function mapLegacyStatus(s) {
+    const lc = String(s || "").toLowerCase();
+    if (lc === "new") return "submitted";
+    if (["submitted","approved","in_progress","implemented","rejected"].indexOf(lc) >= 0) return lc;
+    return "submitted";
+  }
+
+  function renderImprovementMetrics(items) {
+    const submitted = items.length;
+    // "Approved" per spec means anything past Submitted (Approved + In Progress + Implemented).
+    const approved   = items.filter(i =>
+      ["approved","in_progress","implemented"].indexOf(i.status) >= 0).length;
+    const implemented = items.filter(i => i.status === "implemented").length;
+    const rate = approved > 0 ? Math.round((implemented / approved) * 100) : null;
+    $("mc-im-submitted").textContent   = String(submitted);
+    $("mc-im-approved").textContent    = String(approved);
+    $("mc-im-implemented").textContent = String(implemented);
+    $("mc-im-rate").textContent        = (rate == null) ? "—" : (rate + "%");
+  }
+
+  function renderImprovementPipeline(items) {
+    const groups = { submitted: [], approved: [], in_progress: [], implemented: [], rejected: [] };
+    items.forEach(i => { (groups[i.status] || groups.submitted).push(i); });
+    // Update counts strip
+    Object.keys(groups).forEach(status => {
+      const cntEl = $("mc-pipe-count-" + status);
+      const hdrEl = $("mc-pipe-h-" + status);
+      if (cntEl) cntEl.textContent = String(groups[status].length);
+      if (hdrEl) hdrEl.textContent = String(groups[status].length);
+      const target = $("mc-pipe-cards-" + status);
+      if (!target) return;
+      if (groups[status].length === 0) {
+        target.innerHTML = '<p class="mc-empty">Nothing here.</p>';
+        return;
+      }
+      target.innerHTML = groups[status].map(renderImprovementCard).join("");
+    });
+  }
+
+  function renderImprovementCard(it) {
+    const submittedLine = '<div class="mc-card-meta">' +
+      '<span><span class="mc-card-meta-label">Submitted by</span>' + escapeHtml(it.submitted_by_email || "—") + '</span>' +
+      '<span><span class="mc-card-meta-label">Submitted</span>' + escapeHtml(fmtPacificDateTime(it.submitted_at)) + '</span>' +
+      (it.owner_name ? '<span><span class="mc-card-meta-label">Owner</span>' + escapeHtml(it.owner_name) + '</span>' : '') +
+      (it.due_date   ? '<span><span class="mc-card-meta-label">Due</span>'   + escapeHtml(it.due_date) + '</span>' : '') +
+      (it.approved_at   ? '<span><span class="mc-card-meta-label">Approved</span>'   + escapeHtml(fmtPacificDateTime(it.approved_at)) + '</span>' : '') +
+      (it.implemented_at? '<span><span class="mc-card-meta-label">Implemented</span>'+ escapeHtml(fmtPacificDateTime(it.implemented_at)) + '</span>' : '') +
+      '</div>';
+    const impactHtml = it.impact_notes
+      ? '<div class="mc-card-impact"><strong>Impact</strong>' + escapeHtml(it.impact_notes) + '</div>'
+      : '';
+    const rejectionHtml = (it.status === "rejected" && it.rejected_reason)
+      ? '<div class="mc-card-impact" style="background:var(--mc-critical-soft);border-left-color:var(--mc-critical);"><strong style="color:var(--mc-critical);">Reason</strong>' +
+        escapeHtml(it.rejected_reason) + '</div>'
+      : '';
+    const actions = renderImprovementActions(it);
+    return (
+      '<article class="mc-card" data-improvement-id="' + escapeHtml(it._id) + '">' +
+        '<h4 class="mc-card-title">' + escapeHtml(it.title) + '</h4>' +
+        (it.description && it.description !== it.title
+          ? '<p class="mc-card-desc">' + escapeHtml(it.description) + '</p>'
+          : '') +
+        submittedLine +
+        impactHtml +
+        rejectionHtml +
+        (actions ? '<div class="mc-card-actions">' + actions + '</div>' : '') +
+      '</article>'
+    );
+  }
+
+  function renderImprovementActions(it) {
+    const buttons = [];
+    const isTerminal = it.status === "implemented" || it.status === "rejected";
+    if (it.status === "submitted") {
+      buttons.push(actionButtonHtml(it._id, "approve",   "Approve",     "is-success"));
+      buttons.push(actionButtonHtml(it._id, "reject",    "Reject",      "is-danger"));
+    } else if (it.status === "approved") {
+      buttons.push(actionButtonHtml(it._id, "in_progress", "Move to In Progress", "is-primary"));
+      buttons.push(actionButtonHtml(it._id, "reject",      "Reject",              "is-danger"));
+    } else if (it.status === "in_progress") {
+      buttons.push(actionButtonHtml(it._id, "implement", "Mark Implemented", "is-success"));
+    }
+    if (!isTerminal) {
+      buttons.push(actionButtonHtml(it._id, "owner",   it.owner_name ? "Change Owner" : "Assign Owner"));
+      buttons.push(actionButtonHtml(it._id, "due",     it.due_date    ? "Change Due Date" : "Set Due Date"));
+      buttons.push(actionButtonHtml(it._id, "impact",  it.impact_notes ? "Update Impact" : "Add Impact Notes"));
+    } else if (it.status === "implemented") {
+      buttons.push(actionButtonHtml(it._id, "impact",  it.impact_notes ? "Update Impact" : "Add Impact Notes"));
+    }
+    return buttons.join("");
+  }
+  function actionButtonHtml(id, action, label, extraCls) {
+    return '<button type="button" class="mc-card-action' + (extraCls ? " " + extraCls : "") +
+           '" data-improvement-action="' + escapeHtml(action) + '" data-id="' + escapeHtml(id) + '">' +
+           escapeHtml(label) + '</button>';
+  }
+
+  // ---- Action handlers (per status transition) ----
+  async function applyImprovementAction(id, action) {
+    const db = firebase.firestore();
+    const ref = db.collection("office_manager_improvements").doc(id);
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const baseStamp = {
+      updated_at:       sts,
+      updated_by_uid:   currentUser.uid,
+      updated_by_email: currentUser.email
+    };
+    try {
+      if (action === "approve") {
+        await ref.update(Object.assign(baseStamp, {
+          status:              "approved",
+          approved_at:         sts,
+          approved_by_uid:     currentUser.uid,
+          approved_by_email:   currentUser.email,
+          approved_by_name:    currentUser.displayName || currentUser.email
+        }));
+      } else if (action === "reject") {
+        const reason = window.prompt("Reason for rejection (visible in history):");
+        if (reason == null) return;
+        const r = String(reason).trim();
+        if (!r) { alert("A reason is required to reject."); return; }
+        await ref.update(Object.assign(baseStamp, {
+          status:              "rejected",
+          rejected_at:         sts,
+          rejected_by_uid:     currentUser.uid,
+          rejected_by_email:   currentUser.email,
+          rejected_reason:     r
+        }));
+      } else if (action === "in_progress") {
+        await ref.update(Object.assign(baseStamp, {
+          status:              "in_progress",
+          in_progress_at:      sts
+        }));
+      } else if (action === "implement") {
+        const notes = window.prompt("Implementation impact (what changed? what's the result?):");
+        if (notes == null) return;
+        const n = String(notes).trim();
+        await ref.update(Object.assign(baseStamp, {
+          status:              "implemented",
+          implemented_at:      sts,
+          implemented_by_uid:  currentUser.uid,
+          implemented_by_email:currentUser.email,
+          implemented_by_name: currentUser.displayName || currentUser.email,
+          impact_notes:        n || null
+        }));
+      } else if (action === "owner") {
+        const name = window.prompt("Owner name (who's accountable?):");
+        if (name == null) return;
+        const n = String(name).trim();
+        await ref.update(Object.assign(baseStamp, {
+          owner_name:  n || null,
+          owner_uid:   null   // V1 — name-only; uid resolution comes later
+        }));
+      } else if (action === "due") {
+        const due = window.prompt("Due date (YYYY-MM-DD):");
+        if (due == null) return;
+        const d = String(due).trim();
+        if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) { alert("Format must be YYYY-MM-DD."); return; }
+        await ref.update(Object.assign(baseStamp, {
+          due_date: d || null
+        }));
+      } else if (action === "impact") {
+        const notes = window.prompt("Impact notes:", "");
+        if (notes == null) return;
+        await ref.update(Object.assign(baseStamp, {
+          impact_notes: String(notes).trim() || null
+        }));
+      } else {
+        return;
+      }
+      refreshAll();
+    } catch (err) {
+      console.error("[manager] improvement action failed", err);
+      alert("Couldn't update: " + (err.message || err));
+    }
+  }
+
+  /* ---------- Scorecard ---------- */
+
+  function worstStaffingTier(s) {
+    if (s.missingPunches > 0 || s.pendingAdj > 0) return "critical";
+    if (s.openShifts > 0 || s.callOuts > 0)       return "attention";
+    return "healthy";
+  }
+  function worstCustomerTier(c) {
+    if (c.openConcerns > 0 || c.repeatCount > 0 || c.missingDcr > 0) return "attention";
+    if (c.openSupply > 5) return "attention";
+    return "healthy";
+  }
+  function worstAdminTier(a) {
+    if (a.activeExports > 0 || a.pendingApprov > 0) return "critical";
+    if (a.onboardingTodo > 0 || a.employeeIssues > 0) return "attention";
+    return "healthy";
+  }
+  // Improvement Activity: green if anything implemented in last 30 days,
+  // attention if there's a pipeline but nothing implemented recently, red
+  // if the pipeline is empty entirely (no signal of management thinking).
+  function improvementActivityTier(items) {
+    if (!items.length) return "critical";
+    const thirty = Date.now() - 30 * 86400000;
+    const recentImpl = items.filter(i => i.status === "implemented" &&
+      tsToMs(i.implemented_at) >= thirty).length;
+    if (recentImpl > 0) return "healthy";
+    return "attention";
+  }
+  function tierLabel(tier) {
+    if (tier === "healthy")   return "Healthy";
+    if (tier === "attention") return "Attention";
+    if (tier === "critical")  return "Action Needed";
+    return "—";
+  }
+  function renderScorecard(verdicts) {
+    ["hiring", "staffing", "customer", "admin", "improvement"].forEach(key => {
+      const pill = document.querySelector('[data-scorecard="' + key + '"]');
+      if (!pill) return;
+      const tier = verdicts[key] || "attention";
+      pill.setAttribute("data-tier", tier);
+      const lbl = pill.querySelector(".mc-scorecard-label");
+      if (lbl) lbl.textContent = tierLabel(tier);
+    });
+  }
+
+  /* ---------- Weekly Review ---------- */
+
+  // Friday in Pacific. We use Pacific date math because the weekly
+  // cadence is anchored to Pioneer's local week.
+  function isPacificFriday() {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "short" })
+        .format(new Date()) === "Fri";
+    } catch (_e) { return false; }
+  }
+  // Compute the Friday of the ISO week that contains the given Pacific
+  // date. Used as week_ending so older reviews sort/display naturally.
+  function fridayOfWeek(yyyymmdd) {
+    const parts = String(yyyymmdd).split("-").map(Number);
+    const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    const day = dt.getUTCDay() || 7;   // Mon=1 … Sun=7
+    // Friday = day 5
+    dt.setUTCDate(dt.getUTCDate() + (5 - day));
+    return dt.toISOString().slice(0, 10);
+  }
+
+  function renderWeeklyReview(omWeek, omWeeks, todayPT) {
+    const banner = $("manager-weekly-banner");
+    const todayIsFriday = isPacificFriday();
+    banner.hidden = !todayIsFriday;
+
+    // Pre-populate the form with this week's review if one exists.
+    const hasThisWeek = omWeek && (omWeek.biggest_win || omWeek.biggest_risk ||
+                                   omWeek.trend_observed || omWeek.improvement_proposal ||
+                                   omWeek.where_stuck);
+    if (hasThisWeek) {
+      $("weekly-biggest-win").value  = omWeek.biggest_win || "";
+      $("weekly-biggest-risk").value = omWeek.biggest_risk || "";
+      $("weekly-trend").value        = omWeek.trend_observed || "";
+      $("weekly-proposal").value     = omWeek.improvement_proposal || "";
+      $("weekly-stuck").value        = omWeek.where_stuck || "";
+      $("manager-weekly-submit").textContent = "Update this week's review";
+    } else {
+      $("weekly-biggest-win").value  = "";
+      $("weekly-biggest-risk").value = "";
+      $("weekly-trend").value        = "";
+      $("weekly-proposal").value     = "";
+      $("weekly-stuck").value        = "";
+      $("manager-weekly-submit").textContent = "Save this week's review";
+    }
+
+    // History — only entries with at least one review field populated.
+    const reviews = (omWeeks || []).filter(w =>
+      w.biggest_win || w.biggest_risk || w.trend_observed ||
+      w.improvement_proposal || w.where_stuck);
+    const root = $("manager-weekly-history");
+    if (!reviews.length) {
+      root.innerHTML = '<p class="mc-history-title">History</p><p class="mc-empty">No weekly reviews yet.</p>';
+      return;
+    }
+    root.innerHTML = '<p class="mc-history-title">Past reviews · newest first</p>' + reviews.map(r => {
+      const weekLabel = r.week_ending ? "Week ending " + r.week_ending : (r._id || "Week");
+      return (
+        '<div class="mc-history-item">' +
+          '<div class="mc-history-when">' + escapeHtml(weekLabel) +
+            (r.updated_by_email ? " · " + escapeHtml(r.updated_by_email) : "") + '</div>' +
+          (r.biggest_win  ? '<div><strong>Biggest Win:</strong> '   + escapeHtml(r.biggest_win)  + '</div>' : '') +
+          (r.biggest_risk ? '<div><strong>Biggest Risk:</strong> '  + escapeHtml(r.biggest_risk) + '</div>' : '') +
+          (r.trend_observed ? '<div><strong>Trend:</strong> '       + escapeHtml(r.trend_observed) + '</div>' : '') +
+          (r.improvement_proposal ? '<div><strong>Proposal:</strong> ' + escapeHtml(r.improvement_proposal) + '</div>' : '') +
+          (r.where_stuck ? '<div><strong>Stuck on:</strong> '       + escapeHtml(r.where_stuck) + '</div>' : '') +
+        '</div>'
+      );
+    }).join("");
   }
 
   /* ---------- renderers (Phase 1A.1 cockpit) ---------- */
@@ -830,24 +1185,81 @@
     const errEl = $("manager-improvement-err");
     const okEl  = $("manager-improvement-ok");
     errEl.hidden = true; okEl.hidden = true;
-    const idea = $("improvement-idea").value.trim();
-    if (!idea) {
-      errEl.textContent = "Idea text is required.";
+    const title = $("improvement-title").value.trim();
+    const desc  = $("improvement-idea").value.trim();
+    if (!title) { errEl.textContent = "Title is required."; errEl.hidden = false; return; }
+    if (!desc)  { errEl.textContent = "Description is required."; errEl.hidden = false; return; }
+    const db = firebase.firestore();
+    try {
+      await db.collection("office_manager_improvements").add({
+        title:               title,
+        description:         desc,
+        idea:                desc,                                                                                     // legacy field for backward compat
+        status:              "submitted",
+        owner_uid:           null,
+        owner_name:          null,
+        due_date:            null,
+        approved_at:         null,
+        implemented_at:      null,
+        impact_notes:        null,
+        submitted_by_uid:    currentUser.uid,
+        submitted_by_email:  currentUser.email,
+        submitted_by_name:   currentUser.displayName || currentUser.email,
+        submitted_at:        firebase.firestore.FieldValue.serverTimestamp(),
+        created_by_uid:      currentUser.uid,
+        created_by_email:    currentUser.email,
+        created_at:          firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at:          firebase.firestore.FieldValue.serverTimestamp()
+      });
+      okEl.textContent = "Submitted to the pipeline.";
+      okEl.hidden = false;
+      $("improvement-title").value = "";
+      $("improvement-idea").value = "";
+      refreshAll();
+    } catch (err) {
+      errEl.textContent = "Couldn't save: " + (err.message || err);
+      errEl.hidden = false;
+    }
+  }
+
+  /* Phase 1B — Weekly Review submission. Same doc as hiring metrics
+   * (office_manager_weekly_reviews/<isoWeekId>) — merge:true preserves
+   * any hiring data already in the doc and stamps the new review fields
+   * alongside it. */
+  async function submitWeeklyReview(ev) {
+    ev.preventDefault();
+    const errEl = $("manager-weekly-err");
+    const okEl  = $("manager-weekly-ok");
+    errEl.hidden = true; okEl.hidden = true;
+    const fields = {
+      biggest_win:          $("weekly-biggest-win").value.trim(),
+      biggest_risk:         $("weekly-biggest-risk").value.trim(),
+      trend_observed:       $("weekly-trend").value.trim(),
+      improvement_proposal: $("weekly-proposal").value.trim(),
+      where_stuck:          $("weekly-stuck").value.trim()
+    };
+    if (Object.values(fields).some(v => !v)) {
+      errEl.textContent = "All five prompts are required.";
       errEl.hidden = false;
       return;
     }
     const db = firebase.firestore();
+    const todayPT = pacificDateString();
+    const weekId = isoWeekId(todayPT);
     try {
-      await db.collection("office_manager_improvements").add({
-        idea:             idea,
-        status:           "new",
-        created_by_uid:   currentUser.uid,
-        created_by_email: currentUser.email,
-        created_at:       firebase.firestore.FieldValue.serverTimestamp()
-      });
+      await db.collection("office_manager_weekly_reviews").doc(weekId).set(Object.assign({
+        week_id:             weekId,
+        week_ending:         fridayOfWeek(todayPT),
+        updated_at:          firebase.firestore.FieldValue.serverTimestamp(),
+        updated_by_uid:      currentUser.uid,
+        updated_by_email:    currentUser.email,
+        // First-write timestamps preserved by merge:true if already set.
+        created_at:          firebase.firestore.FieldValue.serverTimestamp(),
+        created_by_uid:      currentUser.uid,
+        created_by_email:    currentUser.email
+      }, fields), { merge: true });
       okEl.textContent = "Saved.";
       okEl.hidden = false;
-      $("improvement-idea").value = "";
       refreshAll();
     } catch (err) {
       errEl.textContent = "Couldn't save: " + (err.message || err);
@@ -924,7 +1336,24 @@
     $("manager-reflection-form").addEventListener("submit", submitReflection);
     $("manager-improvement-form").addEventListener("submit", submitImprovement);
     $("manager-hiring-form").addEventListener("submit", submitHiring);
+    const weeklyForm = $("manager-weekly-form");
+    if (weeklyForm) weeklyForm.addEventListener("submit", submitWeeklyReview);
     wireBottleneckChoices();
+
+    // Phase 1B — pipeline action delegation. One listener on the
+    // pipeline section catches every per-card button click and routes
+    // to applyImprovementAction(id, action).
+    const pipeline = $("manager-improvements");
+    if (pipeline) {
+      pipeline.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-improvement-action]");
+        if (!btn) return;
+        const id     = btn.getAttribute("data-id");
+        const action = btn.getAttribute("data-improvement-action");
+        if (!id || !action) return;
+        applyImprovementAction(id, action);
+      });
+    }
   }
 
   function wireSignIn() {

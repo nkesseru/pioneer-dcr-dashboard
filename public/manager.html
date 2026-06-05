@@ -618,6 +618,234 @@
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 10px;
     }
+
+    /* ---------- Phase 1B — Scorecard strip ---------- */
+    .mc-scorecard {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-scorecard { grid-template-columns: repeat(5, 1fr); gap: 8px; } }
+    .mc-scorecard-pill {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-left-width: 3px;
+      border-radius: var(--mc-radius-md);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .mc-scorecard-pill[data-tier="healthy"]   { border-left-color: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="attention"] { border-left-color: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="critical"]  { border-left-color: var(--mc-critical); }
+    .mc-scorecard-eyebrow {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-scorecard-status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .mc-scorecard-status .mc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .mc-scorecard-pill[data-tier="healthy"]   .mc-scorecard-status { color: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="healthy"]   .mc-dot { background: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="attention"] .mc-scorecard-status { color: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="attention"] .mc-dot { background: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="critical"]  .mc-scorecard-status { color: var(--mc-critical); }
+    .mc-scorecard-pill[data-tier="critical"]  .mc-dot { background: var(--mc-critical); }
+
+    /* ---------- Phase 1B — Improvement Pipeline ---------- */
+    .mc-pipeline-counts {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .mc-pipeline-count {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .mc-pipeline-count[data-status="submitted"]   { border-top: 3px solid #94a3b8; }
+    .mc-pipeline-count[data-status="approved"]    { border-top: 3px solid #2563eb; }
+    .mc-pipeline-count[data-status="in_progress"] { border-top: 3px solid #d97706; }
+    .mc-pipeline-count[data-status="implemented"] { border-top: 3px solid var(--mc-healthy); }
+    .mc-pipeline-count[data-status="rejected"]    { border-top: 3px solid var(--mc-critical); }
+    .mc-pipeline-count-value {
+      display: block;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.0;
+    }
+    .mc-pipeline-count-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-top: 6px;
+    }
+    .mc-pipeline-group {
+      margin-bottom: 14px;
+    }
+    .mc-pipeline-group:last-child { margin-bottom: 0; }
+    .mc-pipeline-group summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink);
+    }
+    .mc-pipeline-group summary::-webkit-details-marker { display: none; }
+    .mc-pipeline-group summary::before {
+      content: "▸ ";
+      color: var(--mc-ink-soft);
+      margin-right: 8px;
+      display: inline-block;
+      transition: transform 120ms;
+    }
+    .mc-pipeline-group[open] summary::before { transform: rotate(90deg); }
+    .mc-pipeline-group[data-status="submitted"]   summary { border-left: 3px solid #94a3b8; }
+    .mc-pipeline-group[data-status="approved"]    summary { border-left: 3px solid #2563eb; }
+    .mc-pipeline-group[data-status="in_progress"] summary { border-left: 3px solid #d97706; }
+    .mc-pipeline-group[data-status="implemented"] summary { border-left: 3px solid var(--mc-healthy); }
+    .mc-pipeline-group[data-status="rejected"]    summary { border-left: 3px solid var(--mc-critical); }
+    .mc-pipeline-cards {
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mc-card {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mc-card-title {
+      margin: 0;
+      font-size: 14.5px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      line-height: 1.3;
+    }
+    .mc-card-desc {
+      margin: 0;
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+      line-height: 1.4;
+    }
+    .mc-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 11.5px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-card-meta-label {
+      font-weight: 700;
+      color: var(--mc-ink-muted);
+      margin-right: 3px;
+      text-transform: uppercase;
+      font-size: 10.5px;
+      letter-spacing: 0.6px;
+    }
+    .mc-card-impact {
+      margin: 4px 0 0;
+      padding: 8px 10px;
+      background: var(--mc-healthy-soft);
+      border-left: 3px solid var(--mc-healthy);
+      border-radius: 6px;
+      font-size: 12.5px;
+      color: var(--mc-ink-muted);
+      line-height: 1.45;
+    }
+    .mc-card-impact strong { color: var(--mc-healthy); display: block; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.5px; }
+    .mc-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .mc-card-action {
+      appearance: none;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      color: var(--mc-ink-muted);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+    }
+    .mc-card-action:hover { background: #eef2f7; color: var(--mc-ink); }
+    .mc-card-action.is-primary {
+      background: var(--mc-accent);
+      color: #fff;
+      border-color: var(--mc-accent);
+    }
+    .mc-card-action.is-primary:hover { background: var(--mc-accent-2); color: #fff; }
+    .mc-card-action.is-success {
+      background: var(--mc-healthy);
+      color: #fff;
+      border-color: var(--mc-healthy);
+    }
+    .mc-card-action.is-success:hover { background: #065f46; }
+    .mc-card-action.is-danger {
+      background: var(--mc-critical-soft);
+      color: var(--mc-critical);
+      border-color: rgba(220,38,38,0.22);
+    }
+    .mc-card-action.is-danger:hover { background: var(--mc-critical); color: #fff; border-color: var(--mc-critical); }
+
+    /* ---------- Phase 1B — Weekly Review ---------- */
+    .mc-week-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(37,99,235,0.10);
+      border: 1px solid rgba(37,99,235,0.25);
+      color: var(--mc-accent-2);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .mc-week-banner::before {
+      content: "📅";
+      font-size: 16px;
+    }
   </style>
 </head>
 <body class="manager-page">
@@ -683,6 +911,30 @@
         </div>
         <p class="mc-priorities-title">Top Priorities</p>
         <div id="manager-action-list"><p class="mc-priorities-empty">Loading…</p></div>
+      </section>
+
+      <!-- ====== Office Manager Scorecard (Phase 1B) ====== -->
+      <section class="mc-scorecard" id="manager-scorecard" aria-label="Office Manager Scorecard">
+        <div class="mc-scorecard-pill" data-scorecard="hiring"   data-tier="attention">
+          <span class="mc-scorecard-eyebrow">Hiring</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="staffing" data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Staffing</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="customer" data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Customer</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="admin"    data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Admin</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="improvement" data-tier="attention">
+          <span class="mc-scorecard-eyebrow">Improvement</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
       </section>
 
       <!-- ====== Today's Mission + This Week's Wins ====== -->
@@ -819,38 +1071,140 @@
         </section>
       </div>
 
-      <!-- ====== Your Improvements ====== -->
+      <!-- ====== Improvement Pipeline (Phase 1B) ====== -->
       <section class="mc-section" id="manager-improvements">
         <div class="mc-section-head">
-          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Your Improvements</span>
-          <h2>Evidence your ideas matter</h2>
-          <p>Every idea you capture lands here. Approval + implementation tracking ship next.</p>
+          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Improvement Pipeline</span>
+          <h2>Observe → Think → Improve → Implement → Measure</h2>
+          <p>Every idea has a status, an owner, and an outcome. Nothing disappears.</p>
         </div>
+
+        <!-- Metrics: Submitted · Approved · Implemented · Rate -->
         <div class="mc-improvement-metrics" id="manager-improvement-metrics">
-          <div class="mc-im-metric">
+          <div class="mc-im-metric" data-metric="submitted">
             <span class="mc-im-metric-value" id="mc-im-submitted">—</span>
             <span class="mc-im-metric-label">Submitted</span>
           </div>
-          <div class="mc-im-metric is-placeholder">
-            <span class="mc-im-metric-value">—</span>
+          <div class="mc-im-metric" data-metric="approved">
+            <span class="mc-im-metric-value" id="mc-im-approved">—</span>
             <span class="mc-im-metric-label">Approved</span>
           </div>
-          <div class="mc-im-metric is-placeholder">
-            <span class="mc-im-metric-value">—</span>
+          <div class="mc-im-metric" data-metric="implemented">
+            <span class="mc-im-metric-value" id="mc-im-implemented">—</span>
             <span class="mc-im-metric-label">Implemented</span>
           </div>
+          <div class="mc-im-metric" data-metric="rate">
+            <span class="mc-im-metric-value" id="mc-im-rate">—</span>
+            <span class="mc-im-metric-label">Implementation Rate</span>
+          </div>
         </div>
-        <form id="manager-improvement-form">
+
+        <!-- Quick capture -->
+        <form id="manager-improvement-form" style="margin-bottom:18px;">
           <div class="mc-field-group">
             <span class="mc-field-eyebrow">Quick capture</span>
-            <label class="mc-field-question" for="improvement-idea">What could Pioneer do better?</label>
-            <textarea id="improvement-idea" placeholder="A small or big improvement…" required></textarea>
+            <label class="mc-field-question" for="improvement-title">Title</label>
+            <input type="text" id="improvement-title" placeholder="One-line summary" required />
+          </div>
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="improvement-idea">Description</label>
+            <textarea id="improvement-idea" placeholder="What's the idea? Why does it matter? Who benefits?" required></textarea>
           </div>
           <p class="mc-form-err" id="manager-improvement-err" hidden></p>
           <p class="mc-form-ok"  id="manager-improvement-ok"  hidden></p>
-          <button type="submit" class="mc-btn" id="manager-improvement-submit">Save idea</button>
+          <button type="submit" class="mc-btn" id="manager-improvement-submit">Submit idea</button>
         </form>
-        <div class="mc-history" id="manager-improvement-history"></div>
+
+        <!-- Status-count strip -->
+        <div class="mc-pipeline-counts" id="manager-pipeline-counts">
+          <div class="mc-pipeline-count" data-status="submitted">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-submitted">—</span>
+            <span class="mc-pipeline-count-label">Submitted</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="approved">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-approved">—</span>
+            <span class="mc-pipeline-count-label">Approved</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="in_progress">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-in_progress">—</span>
+            <span class="mc-pipeline-count-label">In Progress</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="implemented">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-implemented">—</span>
+            <span class="mc-pipeline-count-label">Implemented</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="rejected">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-rejected">—</span>
+            <span class="mc-pipeline-count-label">Rejected</span>
+          </div>
+        </div>
+
+        <!-- Collapsible status groups holding cards -->
+        <div id="manager-pipeline-groups">
+          <details class="mc-pipeline-group" data-status="submitted" open>
+            <summary><span>Submitted · review needed</span><span id="mc-pipe-h-submitted">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-submitted"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="approved" open>
+            <summary><span>Approved · awaiting work</span><span id="mc-pipe-h-approved">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-approved"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="in_progress" open>
+            <summary><span>In Progress · active work</span><span id="mc-pipe-h-in_progress">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-in_progress"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="implemented">
+            <summary><span>Implemented · evidence of impact</span><span id="mc-pipe-h-implemented">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-implemented"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="rejected">
+            <summary><span>Rejected · with reason</span><span id="mc-pipe-h-rejected">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-rejected"></div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ====== Weekly Office Manager Review (Phase 1B) ====== -->
+      <section class="mc-section" id="manager-weekly-review">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Weekly Review</span>
+          <h2>Management thinking, captured and searchable</h2>
+          <p>Five prompts. Prompted Fridays. Permanent record. Newest first below.</p>
+        </div>
+        <div class="mc-week-banner" id="manager-weekly-banner" hidden>
+          It's Friday — record this week's review.
+        </div>
+        <form id="manager-weekly-form">
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Biggest Win</span>
+            <label class="mc-field-question" for="weekly-biggest-win">What went well this week?</label>
+            <textarea id="weekly-biggest-win" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Biggest Risk</span>
+            <label class="mc-field-question" for="weekly-biggest-risk">What concerns you most?</label>
+            <textarea id="weekly-biggest-risk" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Trend Observed</span>
+            <label class="mc-field-question" for="weekly-trend">What pattern are you noticing?</label>
+            <textarea id="weekly-trend" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Improvement Proposal</span>
+            <label class="mc-field-question" for="weekly-proposal">What should Pioneer improve next?</label>
+            <textarea id="weekly-proposal" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Where Are You Stuck?</span>
+            <label class="mc-field-question" for="weekly-stuck">What decision, approval, or resource are you waiting on?</label>
+            <textarea id="weekly-stuck" required></textarea>
+          </div>
+          <p class="mc-form-err" id="manager-weekly-err" hidden></p>
+          <p class="mc-form-ok"  id="manager-weekly-ok"  hidden></p>
+          <button type="submit" class="mc-btn" id="manager-weekly-submit">Save this week's review</button>
+        </form>
+        <div class="mc-history" id="manager-weekly-history"></div>
       </section>
 
     </div>
@@ -861,6 +1215,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="manager.js?v=20260605-phase1a1-cockpit"></script>
+  <script src="manager.js?v=20260605-phase1b-pipeline"></script>
 </body>
 </html>
