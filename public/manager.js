@@ -528,13 +528,18 @@
     return "submitted";
   }
 
+  // Phase 1B hotfix — per-status counts, matching the spec:
+  //   Submitted   = count(status="submitted")
+  //   Approved    = count(status="approved")
+  //   Implemented = count(status="implemented")
+  //   Rate        = implemented / approved (per-status; "—" if approved is 0)
   function renderImprovementMetrics(items) {
-    const submitted = items.length;
-    // "Approved" per spec means anything past Submitted (Approved + In Progress + Implemented).
-    const approved   = items.filter(i =>
-      ["approved","in_progress","implemented"].indexOf(i.status) >= 0).length;
+    const submitted   = items.filter(i => i.status === "submitted").length;
+    const approved    = items.filter(i => i.status === "approved").length;
     const implemented = items.filter(i => i.status === "implemented").length;
-    const rate = approved > 0 ? Math.round((implemented / approved) * 100) : null;
+    const rate = approved > 0
+      ? Math.round((implemented / approved) * 100)
+      : null;
     $("mc-im-submitted").textContent   = String(submitted);
     $("mc-im-approved").textContent    = String(approved);
     $("mc-im-implemented").textContent = String(implemented);
@@ -1005,10 +1010,10 @@
     }
   }
 
-  // ---- Your Improvements metrics --------------------------------
-  function renderImprovementMetrics(list) {
-    $("mc-im-submitted").textContent = String(list.length);
-  }
+  // (Phase 1A.1 placeholder renderImprovementMetrics stub removed in
+  // Phase 1B hotfix — the full-featured version lives above the
+  // Pipeline renderer and was being overwritten by this duplicate
+  // declaration, leaving the Approved / Implemented / Rate tiles dark.)
 
   function renderBottleneckHistory(list, todayDoc) {
     const root = $("manager-bottleneck-history");
