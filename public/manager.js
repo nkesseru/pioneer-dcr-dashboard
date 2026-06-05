@@ -159,7 +159,7 @@
     const g = $("manager-greeting");
     if (g) {
       const first = (currentUser.displayName || "").split(/\s+/)[0] || (currentUser.email || "").split("@")[0];
-      g.textContent = "Hi, " + (first || "Manager");
+      g.textContent = "Welcome, " + (first || "Manager") + ".";
     }
     const today = $("manager-today-label");
     if (today) today.textContent = fmtTodayLong();
@@ -259,7 +259,8 @@
   }
 
   function classifyAndRender(snap) {
-    // ---- ACTION REQUIRED ----
+    // ---- Same derived signals as before — UI shape is the only thing
+    // changing in Phase 1A.1. ----
     const sessions = (snap.sessions || []).filter(s => !isQaTestSession(s));
     const openShifts = (snap.openShifts || []).filter(s => (s.status || "open") !== "closed");
     const openCallOuts = (snap.callOuts || []).filter(c => {
@@ -284,8 +285,6 @@
       return status !== "closed" && status !== "resolved";
     });
 
-    // Repeat customer concerns — same customer_slug with >= 2 dcr_issues
-    // in the last 30 days.
     const recentIssues = (snap.dcrIssues || []).filter(i =>
       tsToMs(i.created_at) >= snap.thirtyDaysAgo);
     const concernsByCustomer = {};
@@ -296,283 +295,372 @@
     const repeatConcerns = Object.keys(concernsByCustomer).filter(k =>
       concernsByCustomer[k] >= 2);
 
-    // Today's bottleneck / reflection completion status
     const todayKey = currentUser.uid + "__" + snap.todayPT;
     const todayBottleneck = (snap.omBottlenecks || []).find(b => b._id === todayKey);
     const todayReflection = (snap.omReflections || []).find(r => r._id === todayKey);
 
+    // Items carry a `mission` verb-phrase so the Today's Mission
+    // generator can rephrase the same signal as an imperative.
     const buckets = { critical: [], attention: [], healthy: [] };
 
-    // Critical
     if (pendingTimeAdj.length > 0) {
       buckets.critical.push({
+        tier: "critical",
         label: "Time adjustment requests waiting on you",
         count: pendingTimeAdj.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Review " + pendingTimeAdj.length + " pending payroll exception" + (pendingTimeAdj.length === 1 ? "" : "s")
       });
     }
     if (openCallOuts.length > 0) {
       buckets.critical.push({
+        tier: "critical",
         label: "Recent call-outs not yet resolved",
         count: openCallOuts.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Resolve " + openCallOuts.length + " recent call-out" + (openCallOuts.length === 1 ? "" : "s")
       });
     }
     if (missingPunches.length > 0) {
       buckets.critical.push({
+        tier: "critical",
         label: "Completed sessions missing a clock-out punch",
         count: missingPunches.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Fix " + missingPunches.length + " missing clock-out" + (missingPunches.length === 1 ? "" : "s")
       });
     }
     if (activePayrollExports.length > 0) {
       buckets.critical.push({
+        tier: "critical",
         label: "Active payroll exports awaiting action",
         count: activePayrollExports.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Close out " + activePayrollExports.length + " active payroll export" + (activePayrollExports.length === 1 ? "" : "s")
       });
     }
-
-    // Attention
     if (missingDcrSessions.length > 0) {
       buckets.attention.push({
+        tier: "attention",
         label: "Completed shifts without a DCR",
         count: missingDcrSessions.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Chase " + missingDcrSessions.length + " missing DCR" + (missingDcrSessions.length === 1 ? "" : "s")
       });
     }
     if (openDcrIssues.length > 0) {
       buckets.attention.push({
+        tier: "attention",
         label: "Open building concerns from DCRs",
         count: openDcrIssues.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Review " + openDcrIssues.length + " open building concern" + (openDcrIssues.length === 1 ? "" : "s")
       });
     }
     if (openSupply.length > 0) {
       buckets.attention.push({
+        tier: "attention",
         label: "Open supply requests",
         count: openSupply.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Resolve " + openSupply.length + " open supply request" + (openSupply.length === 1 ? "" : "s")
       });
     }
     if (repeatConcerns.length > 0) {
       buckets.attention.push({
-        label: "Customers with repeat concerns (30 d)",
+        tier: "attention",
+        label: "Customers with repeat concerns (30d)",
         count: repeatConcerns.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Reach out to " + repeatConcerns.length + " customer" + (repeatConcerns.length === 1 ? "" : "s") + " with repeat issues"
       });
     }
     if (openShifts.length > 0) {
       buckets.attention.push({
+        tier: "attention",
         label: "Open shifts on the board",
         count: openShifts.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Cover " + openShifts.length + " open shift" + (openShifts.length === 1 ? "" : "s")
       });
     }
     if (openEmployeeIssues.length > 0) {
       buckets.attention.push({
+        tier: "attention",
         label: "Open employee concerns / improvements",
         count: openEmployeeIssues.length,
-        link: "/admin"
+        link: "/admin",
+        mission: "Triage " + openEmployeeIssues.length + " employee concern" + (openEmployeeIssues.length === 1 ? "" : "s")
       });
     }
     if (!todayBottleneck) {
       buckets.attention.push({
+        tier: "attention",
         label: "Today's bottleneck — not recorded yet",
         count: 1,
-        link: "#manager-bottlenecks"
+        link: "#manager-bottlenecks",
+        mission: "Record today's bottleneck"
       });
     }
     if (!todayReflection) {
       buckets.attention.push({
+        tier: "attention",
         label: "Today's reflection — not submitted yet",
         count: 1,
-        link: "#manager-reflection"
+        link: "#manager-reflection",
+        mission: "Submit today's reflection"
       });
     }
 
-    // Healthy ribbon (just what's clean)
+    // Wins (Healthy)
     if (pendingTimeAdj.length === 0)         buckets.healthy.push({ label: "No payroll exceptions pending" });
     if (openCallOuts.length === 0)           buckets.healthy.push({ label: "No open call-outs in last 7 days" });
     if (missingPunches.length === 0)         buckets.healthy.push({ label: "All recent sessions clocked out" });
     if (missingDcrSessions.length === 0)     buckets.healthy.push({ label: "All completed shifts have DCRs" });
     if (openSupply.length === 0)             buckets.healthy.push({ label: "All supply requests closed" });
     if (openDcrIssues.length === 0)          buckets.healthy.push({ label: "No open building concerns" });
+    if (openShifts.length === 0)             buckets.healthy.push({ label: "No open shifts on the board" });
     if (todayBottleneck && todayReflection)  buckets.healthy.push({ label: "Today's reflection submitted" });
 
     renderActionRequired(buckets);
+    renderMission(buckets);
+    renderWins(buckets.healthy);
 
-    // ---- HIRING HEALTH ----
-    renderHiring(snap.omWeek);
-
-    // ---- STAFFING HEALTH ----
-    renderStaffing({
+    // Health cards (verdict-style)
+    renderStaffingCard({
       openShifts:     openShifts.length,
       callOuts:       openCallOuts.length,
       missingPunches: missingPunches.length,
       pendingAdj:     pendingTimeAdj.length
     });
-
-    // ---- CUSTOMER HEALTH ----
-    renderCustomer({
+    renderCustomerCard({
       openConcerns: openDcrIssues.length,
       openSupply:   openSupply.length,
       repeatCount:  repeatConcerns.length,
       missingDcr:   missingDcrSessions.length
     });
-
-    // ---- ADMIN HEALTH ----
     const onboardingProxy = (snap.techs || [])
       .filter(t => t.active !== false && !t.uid).length;
-    renderAdmin({
+    renderAdminCard({
       activeExports:  activePayrollExports.length,
       pendingApprov:  pendingTimeAdj.length,
       onboardingTodo: onboardingProxy,
       employeeIssues: openEmployeeIssues.length
     });
+    renderHiringCard(snap.omWeek);
 
-    // ---- BOTTLENECK history ----
     renderBottleneckHistory(snap.omBottlenecks || [], todayBottleneck);
-
-    // ---- REFLECTION history ----
     renderReflectionHistory(snap.omReflections || [], todayReflection);
-
-    // ---- IMPROVEMENTS history ----
+    renderImprovementMetrics(snap.omImprovements || []);
     renderImprovementHistory(snap.omImprovements || []);
 
-    // ---- Failed-read warnings (silent — only logged) ----
     if (snap.failedReads && snap.failedReads.length) {
       console.warn("[manager] read failures:", snap.failedReads);
     }
   }
 
-  /* ---------- renderers ---------- */
+  /* ---------- renderers (Phase 1A.1 cockpit) ---------- */
 
+  // Big counter tiles + top-priorities list. The numbers up top are the
+  // primary visual signal; the priorities list gives the manager the
+  // next 5 actionable rows in priority order (Critical first, then
+  // Attention).
   function renderActionRequired(buckets) {
-    const root = $("manager-action-list");
-    const sub  = $("manager-action-sub");
     const counts = {
       critical:  buckets.critical.length,
       attention: buckets.attention.length,
       healthy:   buckets.healthy.length
     };
-    sub.textContent = counts.critical + " critical · " + counts.attention + " attention · " + counts.healthy + " healthy";
-    if (counts.critical + counts.attention + counts.healthy === 0) {
-      root.innerHTML = '<p class="mgr-empty">All clear — no signals to surface.</p>';
+    $("mc-counter-critical").textContent  = String(counts.critical);
+    $("mc-counter-attention").textContent = String(counts.attention);
+    $("mc-counter-healthy").textContent   = String(counts.healthy);
+    document.querySelector('.mc-counter[data-tier="critical"]').setAttribute("data-zero", counts.critical === 0 ? "true" : "false");
+    document.querySelector('.mc-counter[data-tier="attention"]').setAttribute("data-zero", counts.attention === 0 ? "true" : "false");
+    document.querySelector('.mc-counter[data-tier="healthy"]').setAttribute("data-zero", counts.healthy === 0 ? "true" : "false");
+
+    const sub = $("manager-action-sub");
+    if (counts.critical > 0) {
+      sub.textContent = counts.critical + " critical signal" + (counts.critical === 1 ? "" : "s") + " demand action.";
+    } else if (counts.attention > 0) {
+      sub.textContent = "Nothing critical. Tighten the " + counts.attention + " attention item" + (counts.attention === 1 ? "" : "s") + ".";
+    } else {
+      sub.textContent = "All clear. Take the win.";
+    }
+
+    // Priorities = first 5 of Critical+Attention combined
+    const priority = buckets.critical.concat(buckets.attention).slice(0, 5);
+    const root = $("manager-action-list");
+    if (priority.length === 0) {
+      root.innerHTML = '<p class="mc-priorities-empty">Nothing requires attention right now.</p>';
       return;
     }
-    function renderBucket(tier, label, items) {
-      if (!items.length) return "";
-      const itemsHtml = items.map(it => {
-        const linkHtml = it.link
-          ? '<a href="' + escapeHtml(it.link) + '">Open →</a>'
-          : '';
-        const countHtml = (typeof it.count === "number" && it.count > 1)
-          ? '<span class="mgr-action-count">' + escapeHtml(String(it.count)) + '</span>'
-          : '';
-        return (
-          '<div class="mgr-action-item" data-tier="' + tier + '">' +
-            '<span class="mgr-action-label">' + escapeHtml(it.label) + '</span>' +
-            '<span>' + countHtml + linkHtml + '</span>' +
-          '</div>'
-        );
-      }).join("");
+    root.innerHTML = priority.map(it => {
+      const link = it.link ? '<a href="' + escapeHtml(it.link) + '">Open →</a>' : '';
+      const count = (typeof it.count === "number" && it.count > 1)
+        ? '<span class="mc-priority-count">' + escapeHtml(String(it.count)) + '</span>'
+        : '';
       return (
-        '<div class="mgr-action-bucket" data-tier="' + tier + '">' +
-          '<div class="mgr-action-bucket-head"><span class="mgr-action-dot"></span>' + escapeHtml(label) + '</div>' +
-          itemsHtml +
+        '<div class="mc-priority-item" data-tier="' + escapeHtml(it.tier) + '">' +
+          '<span>' + escapeHtml(it.label) + '</span>' +
+          '<span>' + count + link + '</span>' +
         '</div>'
       );
-    }
-    root.innerHTML =
-      renderBucket("critical",  "Critical",       buckets.critical) +
-      renderBucket("attention", "Attention Needed", buckets.attention) +
-      renderBucket("healthy",   "Healthy",        buckets.healthy);
+    }).join("");
   }
 
-  function renderHiring(omWeek) {
-    const root = $("manager-hiring-display");
+  // Today's Mission — rule-based generation from Action Required items.
+  // Takes the top 3 Critical + Attention rows and renders them as a
+  // numbered checklist. Always appends "Submit today's reflection" as
+  // the final item when not already implicit, because reflection is the
+  // success criterion the spec cares about.
+  function renderMission(buckets) {
+    const root  = $("manager-mission-list");
+    const empty = $("manager-mission-empty");
+    const items = buckets.critical.concat(buckets.attention).slice(0, 5);
+    if (items.length === 0) {
+      root.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    root.innerHTML = items.map(it => {
+      return '<li>' + escapeHtml(it.mission || it.label) + '</li>';
+    }).join("");
+  }
+
+  function renderWins(healthy) {
+    const root  = $("manager-wins-list");
+    const empty = $("manager-wins-empty");
+    if (!healthy.length) {
+      root.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    root.innerHTML = healthy.map(h =>
+      '<li>' + escapeHtml(h.label) + '</li>'
+    ).join("");
+  }
+
+  // ---- Health card renderer ---------------------------------------
+  // Each card carries a status verdict (Stable / Attention / Action
+  // Needed) + 3-4 short stat lines. Worst-of-stats wins the verdict
+  // tier. Per-line `tier` colors the number for at-a-glance scanning.
+  function verdictForStats(stats) {
+    let tier = "healthy";
+    stats.forEach(s => {
+      if (s.tier === "critical") tier = "critical";
+      else if (s.tier === "attention" && tier !== "critical") tier = "attention";
+    });
+    return tier;
+  }
+  function verdictLabel(tier) {
+    if (tier === "critical")  return "Action Needed";
+    if (tier === "attention") return "Attention";
+    return "Stable";
+  }
+  function statTier(value, attentionThreshold, criticalThreshold) {
+    if (criticalThreshold != null && value >= criticalThreshold) return "critical";
+    if (attentionThreshold != null && value >= attentionThreshold) return "attention";
+    return "healthy";
+  }
+  function renderHealthCard(rootId, stats) {
+    const tier = verdictForStats(stats);
+    const verdict =
+      '<span class="mc-health-verdict" data-tier="' + tier + '"><span class="mc-dot"></span>' +
+        escapeHtml(verdictLabel(tier)) + '</span>';
+    const statsHtml =
+      '<div class="mc-health-stats">' +
+        stats.map(s =>
+          '<div class="mc-health-stat" data-tier="' + escapeHtml(s.tier) + '">' +
+            '<span>' + escapeHtml(s.label) + '</span>' +
+            '<strong>' + escapeHtml(String(s.value)) + '</strong>' +
+          '</div>'
+        ).join("") +
+      '</div>';
+    $(rootId).innerHTML = verdict + statsHtml;
+  }
+
+  function renderStaffingCard(s) {
+    renderHealthCard("manager-staffing-display", [
+      { label: "Open shifts",            value: s.openShifts,     tier: statTier(s.openShifts, 1) },
+      { label: "Recent call-outs",       value: s.callOuts,       tier: statTier(s.callOuts, 1) },
+      { label: "Missed punches",         value: s.missingPunches, tier: statTier(s.missingPunches, 1, 1) },
+      { label: "Pending corrections",    value: s.pendingAdj,     tier: statTier(s.pendingAdj, 1, 1) }
+    ]);
+  }
+  function renderCustomerCard(c) {
+    renderHealthCard("manager-customer-display", [
+      { label: "Open concerns",          value: c.openConcerns,  tier: statTier(c.openConcerns, 1) },
+      { label: "Open supply requests",   value: c.openSupply,    tier: statTier(c.openSupply, 6) },
+      { label: "Repeat customers (30d)", value: c.repeatCount,   tier: statTier(c.repeatCount, 1) },
+      { label: "Shifts w/o DCR",         value: c.missingDcr,    tier: statTier(c.missingDcr, 1) }
+    ]);
+  }
+  function renderAdminCard(a) {
+    renderHealthCard("manager-admin-display", [
+      { label: "Active payroll exports", value: a.activeExports,  tier: statTier(a.activeExports, 1, 1) },
+      { label: "Pending approvals",      value: a.pendingApprov,  tier: statTier(a.pendingApprov, 1, 1) },
+      { label: "Onboarding incomplete",  value: a.onboardingTodo, tier: statTier(a.onboardingTodo, 1) },
+      { label: "Employee concerns",      value: a.employeeIssues, tier: statTier(a.employeeIssues, 1) }
+    ]);
+  }
+  function renderHiringCard(omWeek) {
     if (!omWeek || !omWeek.hiring) {
-      root.innerHTML = '<p class="mgr-empty">No hiring numbers recorded for this week yet. Expand the form below to add them.</p>';
-      // Clear form
       $("hiring-applicants-7d").value = "";
       $("hiring-applicants-30d").value = "";
       $("hiring-interviews-sched").value = "";
       $("hiring-interviews-done").value = "";
       $("hiring-working-interviews").value = "";
       $("hiring-hires").value = "";
+      $("manager-hiring-display").innerHTML =
+        '<span class="mc-health-verdict" data-tier="attention"><span class="mc-dot"></span>No data yet</span>' +
+        '<p class="mc-empty" style="margin:8px 0 0;">Open the form below to add this week\'s numbers.</p>';
       return;
     }
     const h = omWeek.hiring;
-    // Pre-populate form
     $("hiring-applicants-7d").value         = h.applicants_7d ?? "";
     $("hiring-applicants-30d").value        = h.applicants_30d ?? "";
     $("hiring-interviews-sched").value      = h.interviews_scheduled ?? "";
     $("hiring-interviews-done").value       = h.interviews_completed ?? "";
     $("hiring-working-interviews").value    = h.working_interviews ?? "";
     $("hiring-hires").value                 = h.hires ?? "";
-    root.innerHTML =
-      '<div class="mgr-metric-grid">' +
-        metricHtml("Applicants (7d)",   h.applicants_7d) +
-        metricHtml("Applicants (30d)",  h.applicants_30d) +
-        metricHtml("Interviews scheduled", h.interviews_scheduled) +
-        metricHtml("Interviews completed", h.interviews_completed) +
-        metricHtml("Working interviews",   h.working_interviews) +
-        metricHtml("Hires",                h.hires, h.hires > 0 ? "healthy" : null) +
-      '</div>' +
-      '<p style="margin:10px 0 0;font-size:11.5px;color:#64748b;">Saved by ' +
-        escapeHtml(omWeek.updated_by_email || "—") + ' · ' +
-        escapeHtml(fmtPacificDateTime(omWeek.updated_at)) + '</p>';
+    // Verdict: healthy if hires > 0 OR working_interviews > 0; attention
+    // if applicants logged but no movement; stable otherwise.
+    const hires = Number(h.hires || 0);
+    const working = Number(h.working_interviews || 0);
+    const apps7 = Number(h.applicants_7d || 0);
+    let tier = "healthy";
+    if (hires === 0 && working === 0 && apps7 === 0) tier = "attention";
+    renderHealthCard("manager-hiring-display", [
+      { label: "Applicants (7d)",    value: h.applicants_7d ?? 0,    tier: statTier(h.applicants_7d ?? 0, null) },
+      { label: "Interviews sched.",  value: h.interviews_scheduled ?? 0, tier: "healthy" },
+      { label: "Working interviews", value: h.working_interviews ?? 0,   tier: "healthy" },
+      { label: "Hires",              value: h.hires ?? 0,                tier: "healthy" }
+    ]);
+    // Force-replace verdict pill if hires move us positive — verdictForStats
+    // above only knows about stat-level tiers; hiring deserves its own
+    // positive verdict.
+    const display = $("manager-hiring-display");
+    const oldVerdict = display.querySelector(".mc-health-verdict");
+    if (oldVerdict) {
+      oldVerdict.setAttribute("data-tier", tier);
+      oldVerdict.innerHTML = '<span class="mc-dot"></span>' +
+        (tier === "healthy" ? "Filling pipeline" : "Needs entry");
+    }
   }
 
-  function renderStaffing(s) {
-    $("manager-staffing-display").innerHTML =
-      '<div class="mgr-metric-grid">' +
-        metricHtml("Open shifts",            s.openShifts,     s.openShifts > 0  ? "attention" : "healthy") +
-        metricHtml("Recent call-outs",       s.callOuts,       s.callOuts > 0    ? "attention" : "healthy") +
-        metricHtml("Missed punches",         s.missingPunches, s.missingPunches > 0 ? "critical" : "healthy") +
-        metricHtml("Pending time corrections", s.pendingAdj,   s.pendingAdj > 0  ? "critical" : "healthy") +
-      '</div>';
-  }
-
-  function renderCustomer(c) {
-    $("manager-customer-display").innerHTML =
-      '<div class="mgr-metric-grid">' +
-        metricHtml("Open building concerns", c.openConcerns,  c.openConcerns > 0 ? "attention" : "healthy") +
-        metricHtml("Open supply requests",   c.openSupply,    c.openSupply > 5   ? "attention" : (c.openSupply > 0 ? null : "healthy")) +
-        metricHtml("Customers w/ repeat concerns (30d)", c.repeatCount, c.repeatCount > 0 ? "attention" : "healthy") +
-        metricHtml("Completed shifts w/o DCR", c.missingDcr,  c.missingDcr > 0   ? "attention" : "healthy") +
-      '</div>';
-  }
-
-  function renderAdmin(a) {
-    $("manager-admin-display").innerHTML =
-      '<div class="mgr-metric-grid">' +
-        metricHtml("Active payroll exports", a.activeExports, a.activeExports > 0 ? "critical" : "healthy") +
-        metricHtml("Pending approvals",      a.pendingApprov, a.pendingApprov > 0 ? "critical" : "healthy") +
-        metricHtml("Onboarding incomplete (techs w/o sign-in)", a.onboardingTodo,
-          a.onboardingTodo > 0 ? "attention" : "healthy") +
-        metricHtml("Open employee concerns", a.employeeIssues, a.employeeIssues > 0 ? "attention" : "healthy") +
-      '</div>';
-  }
-
-  function metricHtml(label, value, tone) {
-    const v = (value == null) ? "—" : String(value);
-    const cls = tone ? (" is-" + tone) : "";
-    return (
-      '<div class="mgr-metric' + cls + '">' +
-        '<span class="mgr-metric-label">' + escapeHtml(label) + '</span>' +
-        '<span class="mgr-metric-value">' + escapeHtml(v) + '</span>' +
-      '</div>'
-    );
+  // ---- Your Improvements metrics --------------------------------
+  function renderImprovementMetrics(list) {
+    $("mc-im-submitted").textContent = String(list.length);
   }
 
   function renderBottleneckHistory(list, todayDoc) {
     const root = $("manager-bottleneck-history");
     if (!list.length) {
-      root.innerHTML = '<h3>History</h3><p class="mgr-empty">No bottlenecks recorded yet.</p>';
+      root.innerHTML = '<p class="mc-history-title">History</p><p class="mc-empty">No bottlenecks recorded yet.</p>';
     } else {
-      root.innerHTML = '<h3>Last 14 bottlenecks</h3>' + list.map(b => {
+      root.innerHTML = '<p class="mc-history-title">Last 14 bottlenecks</p>' + list.map(b => {
         const choiceLabel = ({
           april: "Waiting on April",
           customer: "Waiting on Customer",
@@ -580,8 +668,8 @@
           nobody: "Waiting on Nobody"
         }[b.choice] || b.choice || "—");
         return (
-          '<div class="mgr-history-item">' +
-            '<div class="mgr-history-when">' + escapeHtml(fmtPacificDateTime(b.created_at)) +
+          '<div class="mc-history-item">' +
+            '<div class="mc-history-when">' + escapeHtml(fmtPacificDateTime(b.created_at)) +
               " · " + escapeHtml(b.created_by_email || "") + '</div>' +
             '<div><strong>' + escapeHtml(choiceLabel) + '</strong>' +
               (b.note ? ' — ' + escapeHtml(b.note) : '') + '</div>' +
@@ -589,7 +677,6 @@
         );
       }).join("");
     }
-    // Highlight today's choice if any
     if (todayDoc) {
       document.querySelectorAll("[data-bottleneck]").forEach(btn => {
         btn.classList.toggle("is-active", btn.getAttribute("data-bottleneck") === todayDoc.choice);
@@ -606,16 +693,16 @@
     const root = $("manager-reflection-history");
     const sub  = $("manager-reflection-sub");
     if (!list.length) {
-      root.innerHTML = '<h3>History</h3><p class="mgr-empty">No reflections submitted yet.</p>';
+      root.innerHTML = '<p class="mc-history-title">History</p><p class="mc-empty">No reflections submitted yet.</p>';
     } else {
-      root.innerHTML = '<h3>Last 14 reflections</h3>' + list.map(r => {
+      root.innerHTML = '<p class="mc-history-title">Last 14 reflections</p>' + list.map(r => {
         return (
-          '<div class="mgr-history-item">' +
-            '<div class="mgr-history-when">' + escapeHtml(fmtPacificDateTime(r.created_at)) +
+          '<div class="mc-history-item">' +
+            '<div class="mc-history-when">' + escapeHtml(fmtPacificDateTime(r.created_at)) +
               " · " + escapeHtml(r.created_by_email || "") + '</div>' +
-            (r.what_noticed ? '<div><strong>Noticed:</strong> ' + escapeHtml(r.what_noticed) + '</div>' : '') +
-            (r.what_concerns ? '<div><strong>Concerns:</strong> ' + escapeHtml(r.what_concerns) + '</div>' : '') +
-            (r.what_improve  ? '<div><strong>Improve:</strong> '  + escapeHtml(r.what_improve)  + '</div>' : '') +
+            (r.what_noticed ? '<div><strong>Observation:</strong> ' + escapeHtml(r.what_noticed) + '</div>' : '') +
+            (r.what_concerns ? '<div><strong>Concern:</strong> ' + escapeHtml(r.what_concerns) + '</div>' : '') +
+            (r.what_improve  ? '<div><strong>Opportunity:</strong> '  + escapeHtml(r.what_improve)  + '</div>' : '') +
           '</div>'
         );
       }).join("");
@@ -627,7 +714,7 @@
       $("reflection-improve").value  = todayDoc.what_improve  || "";
       $("manager-reflection-submit").textContent = "Update today's reflection";
     } else {
-      sub.textContent = "Required before end of day";
+      sub.textContent = "Leadership thinking. Three minutes.";
       $("manager-reflection-submit").textContent = "Submit today's reflection";
     }
   }
@@ -635,13 +722,13 @@
   function renderImprovementHistory(list) {
     const root = $("manager-improvement-history");
     if (!list.length) {
-      root.innerHTML = '<h3>Recent ideas</h3><p class="mgr-empty">No improvement ideas yet.</p>';
+      root.innerHTML = '<p class="mc-history-title">Recent ideas</p><p class="mc-empty">No improvement ideas yet. Drop one above.</p>';
       return;
     }
-    root.innerHTML = '<h3>Recent ideas</h3>' + list.map(i => {
+    root.innerHTML = '<p class="mc-history-title">Recent ideas</p>' + list.map(i => {
       return (
-        '<div class="mgr-history-item">' +
-          '<div class="mgr-history-when">' + escapeHtml(fmtPacificDateTime(i.created_at)) +
+        '<div class="mc-history-item">' +
+          '<div class="mc-history-when">' + escapeHtml(fmtPacificDateTime(i.created_at)) +
             " · " + escapeHtml(i.created_by_email || "") + '</div>' +
           '<div>' + escapeHtml(i.idea || "") + '</div>' +
         '</div>'

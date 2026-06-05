@@ -8,329 +8,622 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/admin.css" />
   <style>
-    /* ---- Phase 1A Office Manager Mission Control — page-local styles ----
-       Inline so the page ships standalone without touching the shared
-       admin.css. Desktop-first (1024+); shrinks gracefully on tablet. */
+    /* ============================================================
+       Phase 1A.1 — Office Manager Mission Control · cockpit theme
+       Desktop-first. Inline so the page ships without touching the
+       shared admin.css.
+       ============================================================ */
+
+    :root {
+      --mc-bg:            #eef2f7;
+      --mc-ink:           #0b1220;
+      --mc-ink-muted:     #475569;
+      --mc-ink-soft:      #64748b;
+      --mc-surface:       #ffffff;
+      --mc-surface-soft:  #f8fafc;
+      --mc-border:        #e2e8f0;
+      --mc-border-soft:   #eef2f7;
+      --mc-night:         #0b1220;
+      --mc-night-2:       #131d35;
+      --mc-night-3:       #1d2942;
+      --mc-night-text:    #e2e8f0;
+      --mc-night-muted:   #94a3b8;
+      --mc-night-dim:     #64748b;
+      --mc-critical:      #dc2626;
+      --mc-critical-soft: #fef2f2;
+      --mc-attention:     #d97706;
+      --mc-attention-soft:#fffbeb;
+      --mc-healthy:       #047857;
+      --mc-healthy-soft:  #ecfdf5;
+      --mc-accent:        #2563eb;
+      --mc-accent-2:      #1d4ed8;
+      --mc-radius-lg:     16px;
+      --mc-radius-md:     12px;
+      --mc-radius-sm:     8px;
+    }
+
     body.manager-page {
-      background: #f6f8fb;
-      color: #0f172a;
+      background: var(--mc-bg);
+      color: var(--mc-ink);
+      font-feature-settings: "ss01" 1, "tnum" 1;
     }
     .manager-main {
-      max-width: 1280px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 24px 28px 80px;
+      padding: 20px 24px 80px;
     }
-    .manager-hero {
-      background: linear-gradient(180deg, #0f172a 0%, #15233f 100%);
-      color: #fff;
-      padding: 26px 30px;
-      border-radius: 14px;
-      margin-bottom: 22px;
+
+    /* ---------- HERO ---------- */
+    .mc-hero {
+      background:
+        radial-gradient(120% 180% at 100% 0%, rgba(37,99,235,0.30) 0%, rgba(37,99,235,0) 60%),
+        linear-gradient(180deg, var(--mc-night-2) 0%, var(--mc-night) 100%);
+      color: var(--mc-night-text);
+      padding: 22px 28px;
+      border-radius: var(--mc-radius-lg);
+      margin-bottom: 16px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: flex-end;
       gap: 16px;
-      flex-wrap: wrap;
     }
-    .manager-hero h1 {
-      margin: 0;
-      font-size: 26px;
+    .mc-hero-eyebrow {
+      display: block;
+      font-size: 11px;
       font-weight: 800;
-      letter-spacing: -0.2px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 6px;
     }
-    .manager-hero p {
-      margin: 6px 0 0;
-      font-size: 14px;
-      color: #a8c0e1;
+    .mc-hero h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #fff;
     }
-    .manager-hero-right {
+    .mc-hero-sub {
+      margin: 4px 0 0;
+      font-size: 13.5px;
+      color: var(--mc-night-muted);
+    }
+    .mc-hero-right {
+      text-align: right;
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
       gap: 6px;
-      font-size: 13px;
-      color: #a8c0e1;
+      align-items: flex-end;
     }
-    .manager-hero-right strong { color: #fff; }
-    .manager-hero-link {
+    .mc-hero-right strong { color: #fff; font-weight: 700; }
+    .mc-hero-date {
+      font-size: 13px;
+      color: var(--mc-night-muted);
+    }
+    .mc-hero-link {
       appearance: none;
       background: rgba(255,255,255,0.08);
       color: #fff;
       border: 1px solid rgba(255,255,255,0.18);
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 13px;
+      padding: 7px 14px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
     }
-    .manager-hero-link:hover { background: rgba(255,255,255,0.16); }
+    .mc-hero-link:hover { background: rgba(255,255,255,0.16); }
 
-    .mgr-section {
-      background: #fff;
-      border: 1px solid #e2e6ee;
-      border-radius: 14px;
-      padding: 20px 22px;
-      margin-bottom: 18px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    /* ---------- ACTION REQUIRED (the cockpit centerpiece) ---------- */
+    .mc-action-required {
+      background:
+        radial-gradient(120% 200% at 0% 0%, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0) 50%),
+        linear-gradient(180deg, var(--mc-night-3) 0%, var(--mc-night-2) 100%);
+      color: var(--mc-night-text);
+      border-radius: var(--mc-radius-lg);
+      padding: 26px 28px;
+      margin-bottom: 16px;
+      box-shadow: 0 16px 32px -16px rgba(11,18,32,0.5);
     }
-    .mgr-section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .mgr-section-head h2 {
-      margin: 0;
-      font-size: 17px;
+    .mc-section-eyebrow {
+      display: block;
+      font-size: 11px;
       font-weight: 800;
-      color: #0f172a;
-      letter-spacing: -0.1px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 4px;
     }
-    .mgr-section-sub {
-      margin: 0;
-      font-size: 12.5px;
-      color: #64748b;
-    }
-    .mgr-grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-      margin-bottom: 18px;
-    }
-    @media (max-width: 900px) {
-      .mgr-grid-2 { grid-template-columns: 1fr; }
+    .mc-action-required h2 {
+      margin: 0 0 18px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.2px;
     }
 
-    /* Action Required */
-    .mgr-action-bucket {
-      margin-bottom: 14px;
+    .mc-counters {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
     }
-    .mgr-action-bucket:last-child { margin-bottom: 0; }
-    .mgr-action-bucket-head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
+    .mc-counter {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-left-width: 4px;
+      border-radius: var(--mc-radius-md);
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mc-counter[data-tier="critical"]  { border-left-color: var(--mc-critical);  background:
+      linear-gradient(180deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.04) 100%); }
+    .mc-counter[data-tier="attention"] { border-left-color: var(--mc-attention); background:
+      linear-gradient(180deg, rgba(217,119,6,0.18) 0%, rgba(217,119,6,0.04) 100%); }
+    .mc-counter[data-tier="healthy"]   { border-left-color: var(--mc-healthy);   background:
+      linear-gradient(180deg, rgba(4,120,87,0.18) 0%, rgba(4,120,87,0.04) 100%); }
+
+    .mc-counter-number {
+      display: block;
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1.0;
+      letter-spacing: -1px;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-counter-label {
+      display: block;
       font-size: 12px;
       font-weight: 800;
-      letter-spacing: 0.6px;
+      letter-spacing: 1px;
       text-transform: uppercase;
+      margin-top: 8px;
     }
-    .mgr-action-bucket[data-tier="critical"]  .mgr-action-bucket-head { color: #991b1b; }
-    .mgr-action-bucket[data-tier="attention"] .mgr-action-bucket-head { color: #92400e; }
-    .mgr-action-bucket[data-tier="healthy"]   .mgr-action-bucket-head { color: #065f46; }
-    .mgr-action-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+    .mc-counter[data-tier="critical"]  .mc-counter-label { color: #fecaca; }
+    .mc-counter[data-tier="attention"] .mc-counter-label { color: #fde68a; }
+    .mc-counter[data-tier="healthy"]   .mc-counter-label { color: #a7f3d0; }
+    .mc-counter[data-tier="critical"][data-zero="true"]  .mc-counter-number { color: rgba(255,255,255,0.45); }
+    .mc-counter[data-tier="attention"][data-zero="true"] .mc-counter-number { color: rgba(255,255,255,0.45); }
+
+    .mc-priorities-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      margin: 4px 0 10px;
     }
-    .mgr-action-bucket[data-tier="critical"]  .mgr-action-dot { background: #ef4444; }
-    .mgr-action-bucket[data-tier="attention"] .mgr-action-dot { background: #facc15; }
-    .mgr-action-bucket[data-tier="healthy"]   .mgr-action-dot { background: #22c55e; }
-    .mgr-action-item {
+    .mc-priority-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 10px 12px;
-      background: #f8fafc;
-      border: 1px solid #e2e6ee;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
       border-radius: 10px;
       margin-bottom: 6px;
       font-size: 13.5px;
+      color: var(--mc-night-text);
     }
-    .mgr-action-item:last-child { margin-bottom: 0; }
-    .mgr-action-item[data-tier="critical"]  { border-left: 3px solid #ef4444; }
-    .mgr-action-item[data-tier="attention"] { border-left: 3px solid #facc15; }
-    .mgr-action-item[data-tier="healthy"]   { border-left: 3px solid #22c55e; background: #f0fdf4; }
-    .mgr-action-item .mgr-action-label { color: #0f172a; }
-    .mgr-action-item .mgr-action-count { font-weight: 800; color: #0f172a; margin-right: 12px; }
-    .mgr-action-item a {
+    .mc-priority-item:last-child { margin-bottom: 0; }
+    .mc-priority-item[data-tier="critical"]  { border-left: 3px solid var(--mc-critical); }
+    .mc-priority-item[data-tier="attention"] { border-left: 3px solid var(--mc-attention); }
+    .mc-priority-item[data-tier="healthy"]   { border-left: 3px solid var(--mc-healthy); }
+    .mc-priority-item .mc-priority-count {
+      font-weight: 800;
+      color: #fff;
+      margin-right: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-priority-item a {
+      color: #93c5fd;
+      text-decoration: none;
       font-size: 12.5px;
       font-weight: 600;
-      color: #2f6dd6;
-      text-decoration: none;
     }
-    .mgr-action-item a:hover { text-decoration: underline; }
-
-    /* Metric tiles */
-    .mgr-metric-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 10px;
-    }
-    .mgr-metric {
-      background: #f8fafc;
-      border: 1px solid #e2e6ee;
+    .mc-priority-item a:hover { color: #bfdbfe; text-decoration: underline; }
+    .mc-priorities-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-night-muted);
+      font-size: 13px;
+      background: rgba(255,255,255,0.04);
       border-radius: 10px;
-      padding: 12px 14px;
     }
-    .mgr-metric-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: #64748b;
-      margin-bottom: 4px;
-    }
-    .mgr-metric-value {
-      display: block;
-      font-size: 22px;
-      font-weight: 800;
-      color: #0f172a;
-    }
-    .mgr-metric-sub {
-      display: block;
-      font-size: 11.5px;
-      color: #64748b;
-      margin-top: 2px;
-    }
-    .mgr-metric.is-attention { border-color: #fcd34d; background: #fffbeb; }
-    .mgr-metric.is-critical  { border-color: #fecaca; background: #fef2f2; }
-    .mgr-metric.is-healthy   { border-color: #bbf7d0; background: #f0fdf4; }
 
-    /* Forms */
-    .mgr-form-row {
+    /* ---------- TODAY'S MISSION + WINS row ---------- */
+    .mc-row-2 {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .mc-section {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-lg);
+      padding: 20px 22px;
+      box-shadow: 0 1px 2px rgba(11,18,32,0.04);
+    }
+    .mc-section-head {
+      margin-bottom: 14px;
+    }
+    .mc-section-head h2 {
+      margin: 4px 0 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.1px;
+      color: var(--mc-ink);
+    }
+    .mc-section-head p {
+      margin: 4px 0 0;
+      font-size: 12.5px;
+      color: var(--mc-ink-soft);
+    }
+
+    .mc-mission-list {
+      counter-reset: mission;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .mc-mission-list li {
+      counter-increment: mission;
+      position: relative;
+      padding: 12px 14px 12px 48px;
+      margin-bottom: 8px;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-left: 3px solid var(--mc-accent);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--mc-ink);
+      font-weight: 600;
+    }
+    .mc-mission-list li:last-child { margin-bottom: 0; }
+    .mc-mission-list li::before {
+      content: counter(mission);
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--mc-accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mc-mission-list li.is-done {
+      background: var(--mc-healthy-soft);
+      border-left-color: var(--mc-healthy);
+      color: var(--mc-healthy);
+      text-decoration: line-through;
+    }
+    .mc-mission-list li.is-done::before {
+      background: var(--mc-healthy);
+      content: "✓";
+    }
+    .mc-mission-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+      background: var(--mc-surface-soft);
+      border-radius: 10px;
+    }
+
+    .mc-wins-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mc-wins-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      margin-bottom: 6px;
+      background: var(--mc-healthy-soft);
+      border: 1px solid rgba(4,120,87,0.18);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--mc-healthy);
+      font-weight: 600;
+    }
+    .mc-wins-list li:last-child { margin-bottom: 0; }
+    .mc-wins-list li::before {
+      content: "✓";
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--mc-healthy);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mc-wins-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+      background: var(--mc-surface-soft);
+      border-radius: 10px;
+    }
+
+    /* ---------- HEALTH ROW ---------- */
+    .mc-row-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-row-4 { grid-template-columns: repeat(2, 1fr); } }
+    .mc-health-card {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 16px 18px;
       display: flex;
       flex-direction: column;
-      margin-bottom: 12px;
-    }
-    .mgr-form-row label {
-      font-size: 13px;
-      font-weight: 700;
-      color: #1e293b;
-      margin-bottom: 6px;
-    }
-    .mgr-form-row input,
-    .mgr-form-row select,
-    .mgr-form-row textarea {
-      font: inherit;
-      font-size: 14px;
-      padding: 9px 11px;
-      border: 1px solid #c9d4ec;
-      border-radius: 8px;
-      background: #fff;
-      color: #0f172a;
-    }
-    .mgr-form-row textarea {
-      min-height: 70px;
-      resize: vertical;
-    }
-    .mgr-form-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 10px;
     }
-    .mgr-btn {
+    .mc-health-card-eyebrow {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-health-verdict {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      width: fit-content;
+    }
+    .mc-health-verdict[data-tier="healthy"]   { background: var(--mc-healthy-soft);   color: var(--mc-healthy);   border: 1px solid rgba(4,120,87,0.18); }
+    .mc-health-verdict[data-tier="attention"] { background: var(--mc-attention-soft); color: var(--mc-attention); border: 1px solid rgba(217,119,6,0.22); }
+    .mc-health-verdict[data-tier="critical"]  { background: var(--mc-critical-soft);  color: var(--mc-critical);  border: 1px solid rgba(220,38,38,0.22); }
+    .mc-health-verdict .mc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .mc-health-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .mc-health-stat {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+    }
+    .mc-health-stat strong {
+      color: var(--mc-ink);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-health-stat[data-tier="critical"]  strong { color: var(--mc-critical); }
+    .mc-health-stat[data-tier="attention"] strong { color: var(--mc-attention); }
+
+    /* ---------- BOTTLENECK + REFLECTION + IMPROVEMENTS ---------- */
+    .mc-row-2-eq {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-row-2-eq { grid-template-columns: 1fr; } }
+
+    .mc-field-group {
+      margin-bottom: 14px;
+    }
+    .mc-field-eyebrow {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-bottom: 2px;
+    }
+    .mc-field-question {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mc-ink);
+      margin-bottom: 6px;
+    }
+    .mc-field-group textarea,
+    .mc-field-group input,
+    .mc-field-group select {
+      font: inherit;
+      font-size: 14px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-sm);
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+    }
+    .mc-field-group textarea {
+      min-height: 70px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    .mc-field-group textarea:focus,
+    .mc-field-group input:focus {
+      outline: 2px solid rgba(37,99,235,0.2);
+      border-color: var(--mc-accent);
+    }
+
+    .mc-btn {
       appearance: none;
-      background: #2f6dd6;
+      background: var(--mc-accent);
       color: #fff;
       border: none;
       padding: 10px 18px;
-      border-radius: 8px;
+      border-radius: var(--mc-radius-sm);
       font-size: 14px;
       font-weight: 700;
       cursor: pointer;
     }
-    .mgr-btn:hover { background: #275bb3; }
-    .mgr-btn[disabled] { background: #94a3b8; cursor: not-allowed; }
-    .mgr-btn-secondary {
-      background: #f4f6fb;
-      color: #1e293b;
-      border: 1px solid #c9d4ec;
-    }
-    .mgr-btn-secondary:hover { background: #e2e8f0; }
+    .mc-btn:hover { background: var(--mc-accent-2); }
+    .mc-btn[disabled] { background: #94a3b8; cursor: not-allowed; }
 
-    .mgr-radio-row {
+    .mc-radio-row {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
-    .mgr-radio {
+    .mc-radio {
       appearance: none;
-      background: #f4f6fb;
-      border: 1px solid #c9d4ec;
-      color: #1e293b;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      color: var(--mc-ink);
       padding: 9px 14px;
-      border-radius: 8px;
-      font-size: 13.5px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
     }
-    .mgr-radio.is-active { background: #2f6dd6; color: #fff; border-color: #2f6dd6; }
-    .mgr-radio:hover:not(.is-active) { background: #e2e8f0; }
+    .mc-radio.is-active { background: var(--mc-night); color: #fff; border-color: var(--mc-night); }
+    .mc-radio:hover:not(.is-active) { background: #eef2f7; }
 
-    .mgr-form-err {
+    .mc-form-err {
       margin: 0 0 10px;
       padding: 8px 12px;
-      background: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-      border-radius: 8px;
+      background: var(--mc-critical-soft);
+      color: var(--mc-critical);
+      border: 1px solid rgba(220,38,38,0.22);
+      border-radius: var(--mc-radius-sm);
       font-size: 13px;
     }
-    .mgr-form-ok {
+    .mc-form-ok {
       margin: 0 0 10px;
       padding: 8px 12px;
-      background: #d1fae5;
-      color: #065f46;
-      border: 1px solid #6ee7b7;
-      border-radius: 8px;
+      background: var(--mc-healthy-soft);
+      color: var(--mc-healthy);
+      border: 1px solid rgba(4,120,87,0.22);
+      border-radius: var(--mc-radius-sm);
       font-size: 13px;
     }
 
-    .mgr-history {
+    .mc-history {
       margin-top: 14px;
       padding-top: 14px;
-      border-top: 1px solid #e2e6ee;
+      border-top: 1px solid var(--mc-border-soft);
     }
-    .mgr-history h3 {
-      margin: 0 0 8px;
-      font-size: 12px;
+    .mc-history-title {
+      font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.5px;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
-      color: #64748b;
+      color: var(--mc-ink-soft);
+      margin: 0 0 8px;
     }
-    .mgr-history-item {
+    .mc-history-item {
       padding: 8px 0;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--mc-border-soft);
       font-size: 13px;
-      color: #334155;
+      color: var(--mc-ink-muted);
     }
-    .mgr-history-item:last-child { border-bottom: none; }
-    .mgr-history-item .mgr-history-when {
+    .mc-history-item:last-child { border-bottom: none; }
+    .mc-history-when {
       font-size: 11.5px;
-      color: #64748b;
+      color: var(--mc-ink-soft);
       margin-bottom: 2px;
     }
+    .mc-history-item strong { color: var(--mc-ink); }
 
-    .mgr-empty {
+    .mc-empty {
       padding: 14px;
       text-align: center;
-      color: #64748b;
+      color: var(--mc-ink-soft);
       font-size: 13px;
-      background: #f8fafc;
+      background: var(--mc-surface-soft);
       border-radius: 10px;
     }
-
-    .mgr-loading {
+    .mc-loading {
       padding: 20px;
       text-align: center;
-      color: #64748b;
+      color: var(--mc-ink-soft);
       font-size: 13px;
+    }
+
+    /* Your Improvements metrics */
+    .mc-improvement-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .mc-im-metric {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .mc-im-metric-value {
+      display: block;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.0;
+    }
+    .mc-im-metric-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-top: 6px;
+    }
+    .mc-im-metric.is-placeholder .mc-im-metric-value {
+      color: var(--mc-ink-soft);
+    }
+    .mc-im-metric.is-placeholder .mc-im-metric-label::after {
+      content: " · soon";
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: #94a3b8;
+      text-transform: none;
+    }
+
+    .mc-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
     }
   </style>
 </head>
 <body class="manager-page">
   <main class="manager-main">
 
-    <!-- ============== Auth screens (mutually exclusive) ============== -->
-
+    <!-- ============== Auth screens ============== -->
     <section class="card auth-screen" id="auth-checking">
       <div class="auth-icon"><div class="auth-spinner" aria-hidden="true"></div></div>
       <p class="auth-title">Checking access…</p>
@@ -339,9 +632,7 @@
 
     <section class="card auth-screen" id="auth-signin" hidden>
       <p class="auth-title">Manager Dashboard sign-in</p>
-      <p class="auth-sub">
-        Sign in with your <strong>@pioneercomclean.com</strong> Google account.
-      </p>
+      <p class="auth-sub">Sign in with your <strong>@pioneercomclean.com</strong> Google account.</p>
       <button class="auth-google-btn" id="signin-btn" type="button">
         <span>Sign in with Google</span>
       </button>
@@ -353,187 +644,223 @@
         <code id="auth-denied-email" class="auth-denied-email">—</code> isn't on
         the Pioneer admin allowlist.
       </p>
-      <button class="auth-google-btn auth-google-btn--secondary" type="button" data-signout>
-        Sign out
-      </button>
+      <button class="auth-google-btn auth-google-btn--secondary" type="button" data-signout>Sign out</button>
     </section>
 
     <!-- ============== Authorized content ============== -->
-
     <div id="auth-content" hidden>
 
-      <header class="manager-hero">
+      <!-- ====== Hero ====== -->
+      <header class="mc-hero">
         <div>
-          <h1>Office Manager Mission Control</h1>
-          <p>Priorities first. Action before reporting. Reflection before automation.</p>
+          <span class="mc-hero-eyebrow">Mission Control</span>
+          <h1 id="manager-greeting">Welcome.</h1>
+          <p class="mc-hero-sub">Here's how to win today.</p>
         </div>
-        <div class="manager-hero-right">
-          <span><strong id="manager-greeting">—</strong></span>
-          <span id="manager-today-label">—</span>
-          <a class="manager-hero-link" href="/admin">/admin (operational)</a>
+        <div class="mc-hero-right">
+          <span class="mc-hero-date" id="manager-today-label">—</span>
+          <a class="mc-hero-link" href="/admin">/admin (operational)</a>
         </div>
       </header>
 
-      <!-- ============== ACTION REQUIRED ============== -->
-      <section class="mgr-section" id="manager-action-required">
-        <div class="mgr-section-head">
-          <h2>Action Required</h2>
-          <p class="mgr-section-sub" id="manager-action-sub">Loading…</p>
+      <!-- ====== Action Required (cockpit centerpiece) ====== -->
+      <section class="mc-action-required" id="manager-action-required">
+        <span class="mc-section-eyebrow">Action Required</span>
+        <h2 id="manager-action-sub">Loading…</h2>
+        <div class="mc-counters" id="manager-action-counts">
+          <div class="mc-counter" data-tier="critical" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-critical">—</span>
+            <span class="mc-counter-label">Critical</span>
+          </div>
+          <div class="mc-counter" data-tier="attention" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-attention">—</span>
+            <span class="mc-counter-label">Attention Needed</span>
+          </div>
+          <div class="mc-counter" data-tier="healthy" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-healthy">—</span>
+            <span class="mc-counter-label">Healthy</span>
+          </div>
         </div>
-        <div id="manager-action-list" class="mgr-loading">Loading…</div>
+        <p class="mc-priorities-title">Top Priorities</p>
+        <div id="manager-action-list"><p class="mc-priorities-empty">Loading…</p></div>
       </section>
 
-      <!-- ============== Health row (2x2 on desktop) ============== -->
-      <div class="mgr-grid-2">
-
-        <!-- HIRING HEALTH -->
-        <section class="mgr-section" id="manager-hiring-health">
-          <div class="mgr-section-head">
-            <h2>Hiring Health</h2>
-            <p class="mgr-section-sub">Manual entry — future GHL sync</p>
+      <!-- ====== Today's Mission + This Week's Wins ====== -->
+      <div class="mc-row-2">
+        <section class="mc-section" id="manager-mission">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Today's Mission</span>
+            <h2>What success looks like today</h2>
+            <p>A short list — generated from what's open right now.</p>
           </div>
-          <div id="manager-hiring-display" class="mgr-loading">Loading…</div>
-          <details style="margin-top:14px;">
-            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;">Update this week's hiring numbers</summary>
-            <form id="manager-hiring-form" style="margin-top:12px;">
-              <div class="mgr-form-grid">
-                <div class="mgr-form-row">
-                  <label for="hiring-applicants-7d">Applicants (7d)</label>
-                  <input type="number" id="hiring-applicants-7d" min="0" />
-                </div>
-                <div class="mgr-form-row">
-                  <label for="hiring-applicants-30d">Applicants (30d)</label>
-                  <input type="number" id="hiring-applicants-30d" min="0" />
-                </div>
-                <div class="mgr-form-row">
-                  <label for="hiring-interviews-sched">Interviews scheduled</label>
-                  <input type="number" id="hiring-interviews-sched" min="0" />
-                </div>
-                <div class="mgr-form-row">
-                  <label for="hiring-interviews-done">Interviews completed</label>
-                  <input type="number" id="hiring-interviews-done" min="0" />
-                </div>
-                <div class="mgr-form-row">
-                  <label for="hiring-working-interviews">Working interviews</label>
-                  <input type="number" id="hiring-working-interviews" min="0" />
-                </div>
-                <div class="mgr-form-row">
-                  <label for="hiring-hires">Hires</label>
-                  <input type="number" id="hiring-hires" min="0" />
-                </div>
-              </div>
-              <p class="mgr-form-err" id="manager-hiring-err" hidden></p>
-              <p class="mgr-form-ok"  id="manager-hiring-ok"  hidden></p>
-              <button type="submit" class="mgr-btn" id="manager-hiring-submit">Save week</button>
-            </form>
-          </details>
+          <ol class="mc-mission-list" id="manager-mission-list"></ol>
+          <p class="mc-mission-empty" id="manager-mission-empty" hidden>Nothing on the board — take the win.</p>
         </section>
 
-        <!-- STAFFING HEALTH -->
-        <section class="mgr-section" id="manager-staffing-health">
-          <div class="mgr-section-head">
-            <h2>Staffing Health</h2>
-            <p class="mgr-section-sub">From PioneerOps · live</p>
+        <section class="mc-section" id="manager-wins">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow" style="color:var(--mc-healthy);">This Week's Wins</span>
+            <h2>What's working</h2>
+            <p>Evidence of good operations.</p>
           </div>
-          <div id="manager-staffing-display" class="mgr-loading">Loading…</div>
-        </section>
-
-        <!-- CUSTOMER HEALTH -->
-        <section class="mgr-section" id="manager-customer-health">
-          <div class="mgr-section-head">
-            <h2>Customer Health</h2>
-            <p class="mgr-section-sub">From PioneerOps · live</p>
-          </div>
-          <div id="manager-customer-display" class="mgr-loading">Loading…</div>
-        </section>
-
-        <!-- ADMIN HEALTH -->
-        <section class="mgr-section" id="manager-admin-health">
-          <div class="mgr-section-head">
-            <h2>Admin Health</h2>
-            <p class="mgr-section-sub">Payroll · approvals · onboarding · employee issues</p>
-          </div>
-          <div id="manager-admin-display" class="mgr-loading">Loading…</div>
+          <ul class="mc-wins-list" id="manager-wins-list"></ul>
+          <p class="mc-wins-empty" id="manager-wins-empty" hidden>No wins to call out yet — the day is young.</p>
         </section>
       </div>
 
-      <!-- ============== BOTTLENECKS ============== -->
-      <section class="mgr-section" id="manager-bottlenecks">
-        <div class="mgr-section-head">
-          <h2>Bottlenecks</h2>
-          <p class="mgr-section-sub">What decision are you waiting on?</p>
-        </div>
-        <form id="manager-bottleneck-form">
-          <div class="mgr-radio-row" id="manager-bottleneck-choices">
-            <button type="button" class="mgr-radio" data-bottleneck="april">Waiting on April</button>
-            <button type="button" class="mgr-radio" data-bottleneck="customer">Waiting on Customer</button>
-            <button type="button" class="mgr-radio" data-bottleneck="vendor">Waiting on Vendor</button>
-            <button type="button" class="mgr-radio" data-bottleneck="nobody">Waiting on Nobody</button>
-          </div>
-          <div class="mgr-form-row">
-            <label for="manager-bottleneck-note">Optional note</label>
-            <textarea id="manager-bottleneck-note" placeholder="What's the decision? (optional)"></textarea>
-          </div>
-          <p class="mgr-form-err" id="manager-bottleneck-err" hidden></p>
-          <p class="mgr-form-ok"  id="manager-bottleneck-ok"  hidden></p>
-          <button type="submit" class="mgr-btn" id="manager-bottleneck-submit">Record today's bottleneck</button>
-        </form>
-        <div class="mgr-history" id="manager-bottleneck-history"></div>
-      </section>
+      <!-- ====== Health row (4 status cards) ====== -->
+      <div class="mc-row-4">
+        <section class="mc-health-card" id="manager-staffing-health">
+          <span class="mc-health-card-eyebrow">Staffing Health</span>
+          <div id="manager-staffing-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-customer-health">
+          <span class="mc-health-card-eyebrow">Customer Health</span>
+          <div id="manager-customer-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-admin-health">
+          <span class="mc-health-card-eyebrow">Admin Health</span>
+          <div id="manager-admin-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-hiring-health">
+          <span class="mc-health-card-eyebrow">Hiring Health</span>
+          <div id="manager-hiring-display" class="mc-loading">Loading…</div>
+          <details style="margin-top:4px;">
+            <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:1.0px;text-transform:uppercase;color:var(--mc-ink-soft);">Update this week's numbers</summary>
+            <form id="manager-hiring-form" style="margin-top:10px;">
+              <div class="mc-form-grid">
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-applicants-7d">Applicants (7d)</label>
+                  <input type="number" id="hiring-applicants-7d" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-applicants-30d">Applicants (30d)</label>
+                  <input type="number" id="hiring-applicants-30d" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-interviews-sched">Interviews sched.</label>
+                  <input type="number" id="hiring-interviews-sched" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-interviews-done">Completed</label>
+                  <input type="number" id="hiring-interviews-done" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-working-interviews">Working int.</label>
+                  <input type="number" id="hiring-working-interviews" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-hires">Hires</label>
+                  <input type="number" id="hiring-hires" min="0" />
+                </div>
+              </div>
+              <p class="mc-form-err" id="manager-hiring-err" hidden></p>
+              <p class="mc-form-ok"  id="manager-hiring-ok"  hidden></p>
+              <button type="submit" class="mc-btn" id="manager-hiring-submit" style="margin-top:8px;">Save week</button>
+            </form>
+          </details>
+        </section>
+      </div>
 
-      <!-- ============== DAILY REFLECTION ============== -->
-      <section class="mgr-section" id="manager-reflection">
-        <div class="mgr-section-head">
-          <h2>Daily Reflection</h2>
-          <p class="mgr-section-sub" id="manager-reflection-sub">Required before end of day</p>
-        </div>
-        <form id="manager-reflection-form">
-          <div class="mgr-form-row">
-            <label for="reflection-noticed">What did you notice today?</label>
-            <textarea id="reflection-noticed" required></textarea>
-          </div>
-          <div class="mgr-form-row">
-            <label for="reflection-concerns">What concerns you?</label>
-            <textarea id="reflection-concerns" required></textarea>
-          </div>
-          <div class="mgr-form-row">
-            <label for="reflection-improve">What should Pioneer improve?</label>
-            <textarea id="reflection-improve" required></textarea>
-          </div>
-          <p class="mgr-form-err" id="manager-reflection-err" hidden></p>
-          <p class="mgr-form-ok"  id="manager-reflection-ok"  hidden></p>
-          <button type="submit" class="mgr-btn" id="manager-reflection-submit">Submit today's reflection</button>
-        </form>
-        <div class="mgr-history" id="manager-reflection-history"></div>
-      </section>
+      <!-- ====== Bottlenecks + Daily Reflection ====== -->
+      <div class="mc-row-2-eq">
 
-      <!-- ============== IMPROVEMENTS quick capture ============== -->
-      <section class="mgr-section" id="manager-improvements">
-        <div class="mgr-section-head">
-          <h2>Improvement Ideas</h2>
-          <p class="mgr-section-sub">Drop anytime — not tied to end-of-day</p>
+        <section class="mc-section" id="manager-bottlenecks">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow">Bottlenecks</span>
+            <h2>What decision are you waiting on?</h2>
+            <p>One tap. Captures where the bottleneck lives so it can be fixed.</p>
+          </div>
+          <form id="manager-bottleneck-form">
+            <div class="mc-radio-row" id="manager-bottleneck-choices">
+              <button type="button" class="mc-radio" data-bottleneck="april">Waiting on April</button>
+              <button type="button" class="mc-radio" data-bottleneck="customer">Waiting on Customer</button>
+              <button type="button" class="mc-radio" data-bottleneck="vendor">Waiting on Vendor</button>
+              <button type="button" class="mc-radio" data-bottleneck="nobody">Waiting on Nobody</button>
+            </div>
+            <div class="mc-field-group">
+              <label class="mc-field-question" for="manager-bottleneck-note">Optional context</label>
+              <textarea id="manager-bottleneck-note" placeholder="What decision is stuck? (optional)"></textarea>
+            </div>
+            <p class="mc-form-err" id="manager-bottleneck-err" hidden></p>
+            <p class="mc-form-ok"  id="manager-bottleneck-ok"  hidden></p>
+            <button type="submit" class="mc-btn" id="manager-bottleneck-submit">Record today's bottleneck</button>
+          </form>
+          <div class="mc-history" id="manager-bottleneck-history"></div>
+        </section>
+
+        <section class="mc-section" id="manager-reflection">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow">Daily Reflection</span>
+            <h2 id="manager-reflection-sub">Leadership thinking. Three minutes.</h2>
+            <p>What you noticed, what worries you, where Pioneer can be sharper.</p>
+          </div>
+          <form id="manager-reflection-form">
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Observation</span>
+              <label class="mc-field-question" for="reflection-noticed">What surprised you today?</label>
+              <textarea id="reflection-noticed" required></textarea>
+            </div>
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Concern</span>
+              <label class="mc-field-question" for="reflection-concerns">What could become a problem?</label>
+              <textarea id="reflection-concerns" required></textarea>
+            </div>
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Opportunity</span>
+              <label class="mc-field-question" for="reflection-improve">What could make Pioneer better?</label>
+              <textarea id="reflection-improve" required></textarea>
+            </div>
+            <p class="mc-form-err" id="manager-reflection-err" hidden></p>
+            <p class="mc-form-ok"  id="manager-reflection-ok"  hidden></p>
+            <button type="submit" class="mc-btn" id="manager-reflection-submit">Submit today's reflection</button>
+          </form>
+          <div class="mc-history" id="manager-reflection-history"></div>
+        </section>
+      </div>
+
+      <!-- ====== Your Improvements ====== -->
+      <section class="mc-section" id="manager-improvements">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Your Improvements</span>
+          <h2>Evidence your ideas matter</h2>
+          <p>Every idea you capture lands here. Approval + implementation tracking ship next.</p>
+        </div>
+        <div class="mc-improvement-metrics" id="manager-improvement-metrics">
+          <div class="mc-im-metric">
+            <span class="mc-im-metric-value" id="mc-im-submitted">—</span>
+            <span class="mc-im-metric-label">Submitted</span>
+          </div>
+          <div class="mc-im-metric is-placeholder">
+            <span class="mc-im-metric-value">—</span>
+            <span class="mc-im-metric-label">Approved</span>
+          </div>
+          <div class="mc-im-metric is-placeholder">
+            <span class="mc-im-metric-value">—</span>
+            <span class="mc-im-metric-label">Implemented</span>
+          </div>
         </div>
         <form id="manager-improvement-form">
-          <div class="mgr-form-row">
-            <label for="improvement-idea">Idea</label>
-            <textarea id="improvement-idea" placeholder="A small or big way Pioneer could improve…" required></textarea>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Quick capture</span>
+            <label class="mc-field-question" for="improvement-idea">What could Pioneer do better?</label>
+            <textarea id="improvement-idea" placeholder="A small or big improvement…" required></textarea>
           </div>
-          <p class="mgr-form-err" id="manager-improvement-err" hidden></p>
-          <p class="mgr-form-ok"  id="manager-improvement-ok"  hidden></p>
-          <button type="submit" class="mgr-btn" id="manager-improvement-submit">Save idea</button>
+          <p class="mc-form-err" id="manager-improvement-err" hidden></p>
+          <p class="mc-form-ok"  id="manager-improvement-ok"  hidden></p>
+          <button type="submit" class="mc-btn" id="manager-improvement-submit">Save idea</button>
         </form>
-        <div class="mgr-history" id="manager-improvement-history"></div>
+        <div class="mc-history" id="manager-improvement-history"></div>
       </section>
 
     </div>
   </main>
 
-  <!-- Firebase + page modules -->
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="manager.js?v=20260605-phase1a-mvp"></script>
+  <script src="manager.js?v=20260605-phase1a1-cockpit"></script>
 </body>
 </html>
