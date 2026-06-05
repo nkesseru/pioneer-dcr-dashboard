@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1024" />
+  <title>Office Manager Mission Control · Pioneer</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/admin.css" />
+  <style>
+    /* ---- Phase 1A Office Manager Mission Control — page-local styles ----
+       Inline so the page ships standalone without touching the shared
+       admin.css. Desktop-first (1024+); shrinks gracefully on tablet. */
+    body.manager-page {
+      background: #f6f8fb;
+      color: #0f172a;
+    }
+    .manager-main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 28px 80px;
+    }
+    .manager-hero {
+      background: linear-gradient(180deg, #0f172a 0%, #15233f 100%);
+      color: #fff;
+      padding: 26px 30px;
+      border-radius: 14px;
+      margin-bottom: 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .manager-hero h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+    }
+    .manager-hero p {
+      margin: 6px 0 0;
+      font-size: 14px;
+      color: #a8c0e1;
+    }
+    .manager-hero-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      font-size: 13px;
+      color: #a8c0e1;
+    }
+    .manager-hero-right strong { color: #fff; }
+    .manager-hero-link {
+      appearance: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .manager-hero-link:hover { background: rgba(255,255,255,0.16); }
+
+    .mgr-section {
+      background: #fff;
+      border: 1px solid #e2e6ee;
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+    }
+    .mgr-section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .mgr-section-head h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.1px;
+    }
+    .mgr-section-sub {
+      margin: 0;
+      font-size: 12.5px;
+      color: #64748b;
+    }
+    .mgr-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 900px) {
+      .mgr-grid-2 { grid-template-columns: 1fr; }
+    }
+
+    /* Action Required */
+    .mgr-action-bucket {
+      margin-bottom: 14px;
+    }
+    .mgr-action-bucket:last-child { margin-bottom: 0; }
+    .mgr-action-bucket-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .mgr-action-bucket[data-tier="critical"]  .mgr-action-bucket-head { color: #991b1b; }
+    .mgr-action-bucket[data-tier="attention"] .mgr-action-bucket-head { color: #92400e; }
+    .mgr-action-bucket[data-tier="healthy"]   .mgr-action-bucket-head { color: #065f46; }
+    .mgr-action-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .mgr-action-bucket[data-tier="critical"]  .mgr-action-dot { background: #ef4444; }
+    .mgr-action-bucket[data-tier="attention"] .mgr-action-dot { background: #facc15; }
+    .mgr-action-bucket[data-tier="healthy"]   .mgr-action-dot { background: #22c55e; }
+    .mgr-action-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e6ee;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      font-size: 13.5px;
+    }
+    .mgr-action-item:last-child { margin-bottom: 0; }
+    .mgr-action-item[data-tier="critical"]  { border-left: 3px solid #ef4444; }
+    .mgr-action-item[data-tier="attention"] { border-left: 3px solid #facc15; }
+    .mgr-action-item[data-tier="healthy"]   { border-left: 3px solid #22c55e; background: #f0fdf4; }
+    .mgr-action-item .mgr-action-label { color: #0f172a; }
+    .mgr-action-item .mgr-action-count { font-weight: 800; color: #0f172a; margin-right: 12px; }
+    .mgr-action-item a {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #2f6dd6;
+      text-decoration: none;
+    }
+    .mgr-action-item a:hover { text-decoration: underline; }
+
+    /* Metric tiles */
+    .mgr-metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .mgr-metric {
+      background: #f8fafc;
+      border: 1px solid #e2e6ee;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .mgr-metric-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .mgr-metric-value {
+      display: block;
+      font-size: 22px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .mgr-metric-sub {
+      display: block;
+      font-size: 11.5px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .mgr-metric.is-attention { border-color: #fcd34d; background: #fffbeb; }
+    .mgr-metric.is-critical  { border-color: #fecaca; background: #fef2f2; }
+    .mgr-metric.is-healthy   { border-color: #bbf7d0; background: #f0fdf4; }
+
+    /* Forms */
+    .mgr-form-row {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 12px;
+    }
+    .mgr-form-row label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 6px;
+    }
+    .mgr-form-row input,
+    .mgr-form-row select,
+    .mgr-form-row textarea {
+      font: inherit;
+      font-size: 14px;
+      padding: 9px 11px;
+      border: 1px solid #c9d4ec;
+      border-radius: 8px;
+      background: #fff;
+      color: #0f172a;
+    }
+    .mgr-form-row textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+    .mgr-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }
+    .mgr-btn {
+      appearance: none;
+      background: #2f6dd6;
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mgr-btn:hover { background: #275bb3; }
+    .mgr-btn[disabled] { background: #94a3b8; cursor: not-allowed; }
+    .mgr-btn-secondary {
+      background: #f4f6fb;
+      color: #1e293b;
+      border: 1px solid #c9d4ec;
+    }
+    .mgr-btn-secondary:hover { background: #e2e8f0; }
+
+    .mgr-radio-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .mgr-radio {
+      appearance: none;
+      background: #f4f6fb;
+      border: 1px solid #c9d4ec;
+      color: #1e293b;
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mgr-radio.is-active { background: #2f6dd6; color: #fff; border-color: #2f6dd6; }
+    .mgr-radio:hover:not(.is-active) { background: #e2e8f0; }
+
+    .mgr-form-err {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .mgr-form-ok {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .mgr-history {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #e2e6ee;
+    }
+    .mgr-history h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .mgr-history-item {
+      padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      color: #334155;
+    }
+    .mgr-history-item:last-child { border-bottom: none; }
+    .mgr-history-item .mgr-history-when {
+      font-size: 11.5px;
+      color: #64748b;
+      margin-bottom: 2px;
+    }
+
+    .mgr-empty {
+      padding: 14px;
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+      background: #f8fafc;
+      border-radius: 10px;
+    }
+
+    .mgr-loading {
+      padding: 20px;
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body class="manager-page">
+  <main class="manager-main">
+
+    <!-- ============== Auth screens (mutually exclusive) ============== -->
+
+    <section class="card auth-screen" id="auth-checking">
+      <div class="auth-icon"><div class="auth-spinner" aria-hidden="true"></div></div>
+      <p class="auth-title">Checking access…</p>
+      <p class="auth-sub">One sec.</p>
+    </section>
+
+    <section class="card auth-screen" id="auth-signin" hidden>
+      <p class="auth-title">Manager Dashboard sign-in</p>
+      <p class="auth-sub">
+        Sign in with your <strong>@pioneercomclean.com</strong> Google account.
+      </p>
+      <button class="auth-google-btn" id="signin-btn" type="button">
+        <span>Sign in with Google</span>
+      </button>
+    </section>
+
+    <section class="card auth-screen" id="auth-denied" hidden>
+      <p class="auth-title">Access not authorized</p>
+      <p class="auth-sub">
+        <code id="auth-denied-email" class="auth-denied-email">—</code> isn't on
+        the Pioneer admin allowlist.
+      </p>
+      <button class="auth-google-btn auth-google-btn--secondary" type="button" data-signout>
+        Sign out
+      </button>
+    </section>
+
+    <!-- ============== Authorized content ============== -->
+
+    <div id="auth-content" hidden>
+
+      <header class="manager-hero">
+        <div>
+          <h1>Office Manager Mission Control</h1>
+          <p>Priorities first. Action before reporting. Reflection before automation.</p>
+        </div>
+        <div class="manager-hero-right">
+          <span><strong id="manager-greeting">—</strong></span>
+          <span id="manager-today-label">—</span>
+          <a class="manager-hero-link" href="/admin">/admin (operational)</a>
+        </div>
+      </header>
+
+      <!-- ============== ACTION REQUIRED ============== -->
+      <section class="mgr-section" id="manager-action-required">
+        <div class="mgr-section-head">
+          <h2>Action Required</h2>
+          <p class="mgr-section-sub" id="manager-action-sub">Loading…</p>
+        </div>
+        <div id="manager-action-list" class="mgr-loading">Loading…</div>
+      </section>
+
+      <!-- ============== Health row (2x2 on desktop) ============== -->
+      <div class="mgr-grid-2">
+
+        <!-- HIRING HEALTH -->
+        <section class="mgr-section" id="manager-hiring-health">
+          <div class="mgr-section-head">
+            <h2>Hiring Health</h2>
+            <p class="mgr-section-sub">Manual entry — future GHL sync</p>
+          </div>
+          <div id="manager-hiring-display" class="mgr-loading">Loading…</div>
+          <details style="margin-top:14px;">
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;">Update this week's hiring numbers</summary>
+            <form id="manager-hiring-form" style="margin-top:12px;">
+              <div class="mgr-form-grid">
+                <div class="mgr-form-row">
+                  <label for="hiring-applicants-7d">Applicants (7d)</label>
+                  <input type="number" id="hiring-applicants-7d" min="0" />
+                </div>
+                <div class="mgr-form-row">
+                  <label for="hiring-applicants-30d">Applicants (30d)</label>
+                  <input type="number" id="hiring-applicants-30d" min="0" />
+                </div>
+                <div class="mgr-form-row">
+                  <label for="hiring-interviews-sched">Interviews scheduled</label>
+                  <input type="number" id="hiring-interviews-sched" min="0" />
+                </div>
+                <div class="mgr-form-row">
+                  <label for="hiring-interviews-done">Interviews completed</label>
+                  <input type="number" id="hiring-interviews-done" min="0" />
+                </div>
+                <div class="mgr-form-row">
+                  <label for="hiring-working-interviews">Working interviews</label>
+                  <input type="number" id="hiring-working-interviews" min="0" />
+                </div>
+                <div class="mgr-form-row">
+                  <label for="hiring-hires">Hires</label>
+                  <input type="number" id="hiring-hires" min="0" />
+                </div>
+              </div>
+              <p class="mgr-form-err" id="manager-hiring-err" hidden></p>
+              <p class="mgr-form-ok"  id="manager-hiring-ok"  hidden></p>
+              <button type="submit" class="mgr-btn" id="manager-hiring-submit">Save week</button>
+            </form>
+          </details>
+        </section>
+
+        <!-- STAFFING HEALTH -->
+        <section class="mgr-section" id="manager-staffing-health">
+          <div class="mgr-section-head">
+            <h2>Staffing Health</h2>
+            <p class="mgr-section-sub">From PioneerOps · live</p>
+          </div>
+          <div id="manager-staffing-display" class="mgr-loading">Loading…</div>
+        </section>
+
+        <!-- CUSTOMER HEALTH -->
+        <section class="mgr-section" id="manager-customer-health">
+          <div class="mgr-section-head">
+            <h2>Customer Health</h2>
+            <p class="mgr-section-sub">From PioneerOps · live</p>
+          </div>
+          <div id="manager-customer-display" class="mgr-loading">Loading…</div>
+        </section>
+
+        <!-- ADMIN HEALTH -->
+        <section class="mgr-section" id="manager-admin-health">
+          <div class="mgr-section-head">
+            <h2>Admin Health</h2>
+            <p class="mgr-section-sub">Payroll · approvals · onboarding · employee issues</p>
+          </div>
+          <div id="manager-admin-display" class="mgr-loading">Loading…</div>
+        </section>
+      </div>
+
+      <!-- ============== BOTTLENECKS ============== -->
+      <section class="mgr-section" id="manager-bottlenecks">
+        <div class="mgr-section-head">
+          <h2>Bottlenecks</h2>
+          <p class="mgr-section-sub">What decision are you waiting on?</p>
+        </div>
+        <form id="manager-bottleneck-form">
+          <div class="mgr-radio-row" id="manager-bottleneck-choices">
+            <button type="button" class="mgr-radio" data-bottleneck="april">Waiting on April</button>
+            <button type="button" class="mgr-radio" data-bottleneck="customer">Waiting on Customer</button>
+            <button type="button" class="mgr-radio" data-bottleneck="vendor">Waiting on Vendor</button>
+            <button type="button" class="mgr-radio" data-bottleneck="nobody">Waiting on Nobody</button>
+          </div>
+          <div class="mgr-form-row">
+            <label for="manager-bottleneck-note">Optional note</label>
+            <textarea id="manager-bottleneck-note" placeholder="What's the decision? (optional)"></textarea>
+          </div>
+          <p class="mgr-form-err" id="manager-bottleneck-err" hidden></p>
+          <p class="mgr-form-ok"  id="manager-bottleneck-ok"  hidden></p>
+          <button type="submit" class="mgr-btn" id="manager-bottleneck-submit">Record today's bottleneck</button>
+        </form>
+        <div class="mgr-history" id="manager-bottleneck-history"></div>
+      </section>
+
+      <!-- ============== DAILY REFLECTION ============== -->
+      <section class="mgr-section" id="manager-reflection">
+        <div class="mgr-section-head">
+          <h2>Daily Reflection</h2>
+          <p class="mgr-section-sub" id="manager-reflection-sub">Required before end of day</p>
+        </div>
+        <form id="manager-reflection-form">
+          <div class="mgr-form-row">
+            <label for="reflection-noticed">What did you notice today?</label>
+            <textarea id="reflection-noticed" required></textarea>
+          </div>
+          <div class="mgr-form-row">
+            <label for="reflection-concerns">What concerns you?</label>
+            <textarea id="reflection-concerns" required></textarea>
+          </div>
+          <div class="mgr-form-row">
+            <label for="reflection-improve">What should Pioneer improve?</label>
+            <textarea id="reflection-improve" required></textarea>
+          </div>
+          <p class="mgr-form-err" id="manager-reflection-err" hidden></p>
+          <p class="mgr-form-ok"  id="manager-reflection-ok"  hidden></p>
+          <button type="submit" class="mgr-btn" id="manager-reflection-submit">Submit today's reflection</button>
+        </form>
+        <div class="mgr-history" id="manager-reflection-history"></div>
+      </section>
+
+      <!-- ============== IMPROVEMENTS quick capture ============== -->
+      <section class="mgr-section" id="manager-improvements">
+        <div class="mgr-section-head">
+          <h2>Improvement Ideas</h2>
+          <p class="mgr-section-sub">Drop anytime — not tied to end-of-day</p>
+        </div>
+        <form id="manager-improvement-form">
+          <div class="mgr-form-row">
+            <label for="improvement-idea">Idea</label>
+            <textarea id="improvement-idea" placeholder="A small or big way Pioneer could improve…" required></textarea>
+          </div>
+          <p class="mgr-form-err" id="manager-improvement-err" hidden></p>
+          <p class="mgr-form-ok"  id="manager-improvement-ok"  hidden></p>
+          <button type="submit" class="mgr-btn" id="manager-improvement-submit">Save idea</button>
+        </form>
+        <div class="mgr-history" id="manager-improvement-history"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Firebase + page modules -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="manager.js?v=20260605-phase1a-mvp"></script>
+</body>
+</html>

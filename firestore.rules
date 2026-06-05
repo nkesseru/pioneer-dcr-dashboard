@@ -1264,6 +1264,57 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 1A — Office Manager Mission Control.
+    // ====================================================================
+    // Four append-leaning collections that store the Office Manager's
+    // management-side observations + decisions. All admin-only because
+    // these are management records, not operational data:
+    //
+    //   office_manager_reflections   — daily three-question reflection
+    //                                  (what noticed / what concerns /
+    //                                   what improve). One per manager
+    //                                   per day; idempotent doc id =
+    //                                   `<uid>__<YYYY-MM-DD>`.
+    //   office_manager_bottlenecks   — "what decision are you waiting
+    //                                  on?" single-choice poll. Doc id
+    //                                  = `<uid>__<YYYY-MM-DD>`.
+    //   office_manager_weekly_reviews — manual-entry hiring metrics for
+    //                                  the week (Phase 1A) + future
+    //                                  weekly aggregates. Doc id =
+    //                                  ISO week tag e.g. "2026-W23".
+    //   office_manager_improvements  — free-form improvement ideas
+    //                                  (separate channel from the
+    //                                  weekly reflection). Auto-id.
+    //
+    // Updates are admin-only. Deletes denied across the board so the
+    // management record stays auditable. Cloud Functions (Admin SDK)
+    // bypass these rules entirely for future automated aggregation.
+    match /office_manager_reflections/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_bottlenecks/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_weekly_reviews/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_improvements/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
     // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"
