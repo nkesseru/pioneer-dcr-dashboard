@@ -828,6 +828,60 @@
     }
     .mc-card-action.is-danger:hover { background: var(--mc-critical); color: #fff; border-color: var(--mc-critical); }
 
+    /* ---------- Phase 2A.1 — Hiring Health additions ---------- */
+    .mc-source-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 999px;
+      width: fit-content;
+    }
+    .mc-source-pill[data-source="live_ghl"] {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid rgba(4,120,87,0.22);
+    }
+    .mc-source-pill[data-source="manual"] {
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+    .mc-source-pill[data-source="none"] {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid rgba(220,38,38,0.22);
+    }
+    .mc-source-pill .mc-source-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .mc-source-pill .mc-source-asof {
+      font-weight: 600;
+      opacity: 0.7;
+      letter-spacing: 0.2px;
+      text-transform: none;
+    }
+    .mc-conversions {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--mc-border);
+    }
+    .mc-conversions-title {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-bottom: 4px;
+    }
+
     /* ---------- Phase 1B — Weekly Review ---------- */
     .mc-week-banner {
       display: flex;
@@ -1215,6 +1269,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="manager.js?v=20260605-phase1b-hotfix-kpi"></script>
+  <script src="manager.js?v=20260605-phase2a1-hiring-foundation"></script>
 </body>
 </html>

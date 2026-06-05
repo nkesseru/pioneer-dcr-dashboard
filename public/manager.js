@@ -227,7 +227,15 @@
       // 13. office_manager_weekly_reviews — recent 12 entries (newest first
       // by updated_at; week_ending used only for display label).
       safe("om_weeks", db.collection("office_manager_weekly_reviews")
-        .orderBy("updated_at", "desc").limit(12).get())
+        .orderBy("updated_at", "desc").limit(12).get()),
+      // 14. Phase 2A.1 — office_manager_hiring_snapshots — most recent
+      // 30 snapshot docs. Each doc is a rollup for a snapshotDate. Read
+      // is single-field-indexed (snapshot_date desc) so it stays
+      // index-free. Collection may be empty for the entire Phase 2A.1
+      // window — that's fine; manager.js falls back to manual entry.
+      safe("om_hiring_snapshots", db.collection("office_manager_hiring_snapshots")
+        .orderBy("snapshot_date", "desc").limit(30).get()
+        .catch(() => ({ docs: [] })))
     ]);
 
     function docs(idx) {
@@ -255,6 +263,7 @@
       omImprovements:   docs(11),
       omWeek:           docs(12),
       omWeeks:          docs(13),
+      omHiringSnapshots:docs(14) || [],
       failedReads:      reads.filter(r => !r.ok).map(r => r.label + ": " + r.err)
     };
   }
@@ -456,7 +465,10 @@
       onboardingTodo: onboardingProxy,
       employeeIssues: openEmployeeIssues.length
     });
-    renderHiringCard(snap.omWeek);
+    // Phase 2A.1 — pick hiring source (live GHL snapshot or manual fallback)
+    // once so both the card AND the scorecard verdict use the same data.
+    const pickedHiring = pickHiringSource(snap.omHiringSnapshots || [], snap.omWeek);
+    renderHiringCard(pickedHiring);
 
     renderBottleneckHistory(snap.omBottlenecks || [], todayBottleneck);
     renderReflectionHistory(snap.omReflections || [], todayReflection);
@@ -466,7 +478,10 @@
     renderImprovementMetrics(improvements);
     renderImprovementPipeline(improvements);
     renderScorecard({
-      hiring:    (snap.omWeek && snap.omWeek.hiring) ? "healthy" : "attention",
+      // Phase 2A.1 — Hiring scorecard verdict now uses the real
+      // hiringVerdict() logic against whichever source pickHiringSource
+      // resolved (live GHL when available; manual fallback otherwise).
+      hiring:    hiringVerdict(pickedHiring),
       staffing:  worstStaffingTier({
         openShifts: openShifts.length, callOuts: openCallOuts.length,
         missingPunches: missingPunches.length, pendingAdj: pendingTimeAdj.length
@@ -965,49 +980,186 @@
       { label: "Employee concerns",      value: a.employeeIssues, tier: statTier(a.employeeIssues, 1) }
     ]);
   }
-  function renderHiringCard(omWeek) {
-    if (!omWeek || !omWeek.hiring) {
-      $("hiring-applicants-7d").value = "";
-      $("hiring-applicants-30d").value = "";
-      $("hiring-interviews-sched").value = "";
-      $("hiring-interviews-done").value = "";
-      $("hiring-working-interviews").value = "";
-      $("hiring-hires").value = "";
+  // ============================================================
+  // Phase 2A.1 — Hiring funnel source selection + verdict + conversions
+  // ============================================================
+  // The Hiring Health card now consumes either a snapshot doc from
+  // office_manager_hiring_snapshots (Phase 2A.2 will populate this via
+  // a GHL scheduled sync) OR the legacy manual-entry object on
+  // office_manager_weekly_reviews/{isoWeek}.hiring. Snapshot wins when
+  // a fresh one (≤ 7 days old) exists. Manual entry remains the
+  // fallback and is never disabled by this change.
+
+  // Returns { source, data, asOf, sourceLabel } where:
+  //   source      = "live_ghl" | "manual" | "none"
+  //   data        = normalized 6-field hiring object (or null when none)
+  //   asOf        = ISO date string of the underlying record, or null
+  //   sourceLabel = display string for the data-source pill
+  function pickHiringSource(snapshots, omWeek) {
+    const fresh = (snapshots || []).find(s => {
+      // snapshot_date is YYYY-MM-DD; consider any snapshot within 7 days
+      // of today "fresh enough" to outrank manual entry.
+      const d = s && s.snapshot_date;
+      if (!d) return false;
+      const ms = Date.parse(d + "T00:00:00Z");
+      if (!Number.isFinite(ms)) return false;
+      return (Date.now() - ms) <= 7 * 86400000;
+    });
+    if (fresh) {
+      return {
+        source:      "live_ghl",
+        data:        normalizeHiringSnapshot(fresh),
+        asOf:        fresh.snapshot_date,
+        sourceLabel: "Live GHL"
+      };
+    }
+    if (omWeek && omWeek.hiring) {
+      return {
+        source:      "manual",
+        data:        normalizeHiringManual(omWeek.hiring),
+        asOf:        omWeek.week_id || null,
+        sourceLabel: "Manual"
+      };
+    }
+    return { source: "none", data: null, asOf: null, sourceLabel: "No data yet" };
+  }
+
+  function normalizeHiringSnapshot(s) {
+    return {
+      applicants_7d:        numOrNull(s.applicants_7d),
+      applicants_30d:       numOrNull(s.applicants_30d ?? s.applicants),
+      interviews_scheduled: numOrNull(s.interviews_scheduled),
+      interviews_completed: numOrNull(s.interviews_completed),
+      working_interviews:   numOrNull(s.working_interviews),
+      hires:                numOrNull(s.hires)
+    };
+  }
+  function normalizeHiringManual(h) {
+    return {
+      applicants_7d:        numOrNull(h.applicants_7d),
+      applicants_30d:       numOrNull(h.applicants_30d),
+      interviews_scheduled: numOrNull(h.interviews_scheduled),
+      interviews_completed: numOrNull(h.interviews_completed),
+      working_interviews:   numOrNull(h.working_interviews),
+      hires:                numOrNull(h.hires)
+    };
+  }
+  function numOrNull(v) {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function pctOrDash(numerator, denominator) {
+    if (!denominator || denominator <= 0) return "—";
+    if (numerator == null) return "—";
+    return Math.round((numerator / denominator) * 100) + "%";
+  }
+
+  // Verdict rules — per Phase 2A.1 spec:
+  //   RED      — critically low applicant flow (7d == 0) OR zero working
+  //              interviews when hires are also zero (funnel dead).
+  //   YELLOW   — slightly below target: applicants_7d < 3, OR working
+  //              interviews drop to zero while hires are zero, OR no
+  //              hires landed in the current window.
+  //   GREEN    — applicants_7d ≥ 3 AND working_interviews ≥ 1 (active
+  //              funnel that's moving).
+  // Targets are conservative defaults; can be tuned when targets are
+  // formally defined.
+  function hiringVerdict(picked) {
+    if (!picked || picked.source === "none" || !picked.data) return "attention";
+    const h = picked.data;
+    const apps7   = h.applicants_7d   == null ? 0 : h.applicants_7d;
+    const working = h.working_interviews == null ? 0 : h.working_interviews;
+    const hires   = h.hires           == null ? 0 : h.hires;
+    if (apps7 === 0) return "critical";
+    if (working === 0 && hires === 0) return "critical";
+    if (apps7 < 3) return "attention";
+    if (working === 0 && hires < 1) return "attention";
+    if (hires === 0 && working === 0) return "attention";
+    return "healthy";
+  }
+  function hiringVerdictLabel(tier) {
+    if (tier === "healthy")   return "Filling pipeline";
+    if (tier === "attention") return "Needs attention";
+    if (tier === "critical")  return "Critically low";
+    return "—";
+  }
+
+  function renderHiringCard(picked) {
+    const tier = hiringVerdict(picked);
+    const h = picked.data;
+
+    // Always pre-populate the manual entry form when data is from manual
+    // entry (so an admin can edit), and ALSO pre-populate when source is
+    // "live_ghl" so the office can override with manual numbers if the
+    // sync ever ships bad data. Form remains the fallback regardless.
+    $("hiring-applicants-7d").value      = (h && h.applicants_7d        != null) ? h.applicants_7d : "";
+    $("hiring-applicants-30d").value     = (h && h.applicants_30d       != null) ? h.applicants_30d : "";
+    $("hiring-interviews-sched").value   = (h && h.interviews_scheduled != null) ? h.interviews_scheduled : "";
+    $("hiring-interviews-done").value    = (h && h.interviews_completed != null) ? h.interviews_completed : "";
+    $("hiring-working-interviews").value = (h && h.working_interviews   != null) ? h.working_interviews : "";
+    $("hiring-hires").value              = (h && h.hires                != null) ? h.hires : "";
+
+    if (picked.source === "none") {
       $("manager-hiring-display").innerHTML =
-        '<span class="mc-health-verdict" data-tier="attention"><span class="mc-dot"></span>No data yet</span>' +
+        sourcePillHtml(picked) +
+        '<span class="mc-health-verdict" data-tier="attention" style="margin-top:8px;"><span class="mc-dot"></span>' +
+          hiringVerdictLabel("attention") + '</span>' +
         '<p class="mc-empty" style="margin:8px 0 0;">Open the form below to add this week\'s numbers.</p>';
       return;
     }
-    const h = omWeek.hiring;
-    $("hiring-applicants-7d").value         = h.applicants_7d ?? "";
-    $("hiring-applicants-30d").value        = h.applicants_30d ?? "";
-    $("hiring-interviews-sched").value      = h.interviews_scheduled ?? "";
-    $("hiring-interviews-done").value       = h.interviews_completed ?? "";
-    $("hiring-working-interviews").value    = h.working_interviews ?? "";
-    $("hiring-hires").value                 = h.hires ?? "";
-    // Verdict: healthy if hires > 0 OR working_interviews > 0; attention
-    // if applicants logged but no movement; stable otherwise.
-    const hires = Number(h.hires || 0);
-    const working = Number(h.working_interviews || 0);
-    const apps7 = Number(h.applicants_7d || 0);
-    let tier = "healthy";
-    if (hires === 0 && working === 0 && apps7 === 0) tier = "attention";
-    renderHealthCard("manager-hiring-display", [
-      { label: "Applicants (7d)",    value: h.applicants_7d ?? 0,    tier: statTier(h.applicants_7d ?? 0, null) },
-      { label: "Interviews sched.",  value: h.interviews_scheduled ?? 0, tier: "healthy" },
-      { label: "Working interviews", value: h.working_interviews ?? 0,   tier: "healthy" },
-      { label: "Hires",              value: h.hires ?? 0,                tier: "healthy" }
-    ]);
-    // Force-replace verdict pill if hires move us positive — verdictForStats
-    // above only knows about stat-level tiers; hiring deserves its own
-    // positive verdict.
-    const display = $("manager-hiring-display");
-    const oldVerdict = display.querySelector(".mc-health-verdict");
-    if (oldVerdict) {
-      oldVerdict.setAttribute("data-tier", tier);
-      oldVerdict.innerHTML = '<span class="mc-dot"></span>' +
-        (tier === "healthy" ? "Filling pipeline" : "Needs entry");
-    }
+
+    // Stats — show all 6 metrics from the spec.
+    const stats = [
+      { label: "Applicants (7d)",      value: h.applicants_7d        ?? 0 },
+      { label: "Applicants (30d)",     value: h.applicants_30d       ?? 0 },
+      { label: "Interviews scheduled", value: h.interviews_scheduled ?? 0 },
+      { label: "Interviews completed", value: h.interviews_completed ?? 0 },
+      { label: "Working interviews",   value: h.working_interviews   ?? 0 },
+      { label: "Hires",                value: h.hires                ?? 0 }
+    ];
+    const conversions = [
+      { label: "Applicant → Interview",         value: pctOrDash(h.interviews_scheduled, h.applicants_30d) },
+      { label: "Interview → Working Interview", value: pctOrDash(h.working_interviews, h.interviews_completed) },
+      { label: "Working Interview → Hire",      value: pctOrDash(h.hires, h.working_interviews) }
+    ];
+
+    const statsHtml =
+      '<div class="mc-health-stats">' +
+        stats.map(s =>
+          '<div class="mc-health-stat">' +
+            '<span>' + escapeHtml(s.label) + '</span>' +
+            '<strong>' + escapeHtml(String(s.value)) + '</strong>' +
+          '</div>'
+        ).join("") +
+      '</div>';
+
+    const convHtml =
+      '<div class="mc-conversions">' +
+        '<div class="mc-conversions-title">Conversions</div>' +
+        conversions.map(c =>
+          '<div class="mc-health-stat">' +
+            '<span>' + escapeHtml(c.label) + '</span>' +
+            '<strong>' + escapeHtml(c.value) + '</strong>' +
+          '</div>'
+        ).join("") +
+      '</div>';
+
+    $("manager-hiring-display").innerHTML =
+      sourcePillHtml(picked) +
+      '<span class="mc-health-verdict" data-tier="' + tier + '" style="margin-top:8px;">' +
+        '<span class="mc-dot"></span>' + escapeHtml(hiringVerdictLabel(tier)) +
+      '</span>' +
+      statsHtml +
+      convHtml;
+  }
+
+  function sourcePillHtml(picked) {
+    return '<span class="mc-source-pill" data-source="' + escapeHtml(picked.source) + '">' +
+             '<span class="mc-source-dot"></span>' +
+             '<span class="mc-source-label">' + escapeHtml(picked.sourceLabel) + '</span>' +
+             (picked.asOf ? '<span class="mc-source-asof"> · ' + escapeHtml(picked.asOf) + '</span>' : '') +
+           '</span>';
   }
 
   // (Phase 1A.1 placeholder renderImprovementMetrics stub removed in

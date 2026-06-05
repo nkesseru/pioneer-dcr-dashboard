@@ -1315,6 +1315,42 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 2A.1 — Hiring funnel intelligence foundation.
+    // ====================================================================
+    // Two collections that will hold synced GHL (or manually-imported)
+    // hiring funnel data. Phase 2A.1 ships the schema + admin rules
+    // only — no writer yet. Phase 2A.2 will add syncGhlHiringV1.
+    //
+    //   office_manager_hiring_snapshots — one doc per snapshot date
+    //                                     (typically YYYY-MM-DD). Holds
+    //                                     rollup counts for a period.
+    //                                     The manager dashboard reads
+    //                                     the most recent snapshot for
+    //                                     the current week + last 30 d.
+    //
+    //   office_manager_hiring_events    — append-only candidate-level
+    //                                     event log from GHL webhooks
+    //                                     (Phase 2A.3 if needed). Phase
+    //                                     2A.1 declares the rules so
+    //                                     ingestion can begin later
+    //                                     without a rule deploy.
+    //
+    // Both collections are admin-only CRUD, no deletes — same shape as
+    // every other office_manager_* collection.
+    match /office_manager_hiring_snapshots/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_hiring_events/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
     // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"
