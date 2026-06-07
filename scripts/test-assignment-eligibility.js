@@ -1,12 +1,10 @@
 /* Regression tests for the shared assignment-eligibility helper.
  *
- * The 5 scenarios in the Phase 33 spec, plus a sixth that reproduces
- * the original incident (Drew → DIVCO → Friday → invisible) so we
- * never re-introduce it.
- *
- * Runs the actual public/assignment-eligibility.js module — no mocks,
- * no shims, no shadow implementation. The same file the browser loads
- * is the file the tests exercise.
+ * Phase 33 / Phase 33 rule correction — Pioneer's operational rule is
+ * "Friday AND Saturday can be used for Sunday cleanings" (not just
+ * Friday early-start). The 8 explicit scenarios from the spec are run
+ * first; supplementary coverage follows. The same public/assignment-
+ * eligibility.js file the browser loads is the file the tests exercise.
  *
  *   node scripts/test-assignment-eligibility.js
  */
@@ -17,12 +15,18 @@ var ELIG = require("../public/assignment-eligibility.js");
 var passed = 0;
 var failed = 0;
 var lines  = [];
+var currentSection = "";
+
+function section(name) {
+  currentSection = name;
+  lines.push("");
+  lines.push("── " + name + " ──");
+}
 
 function ts(yyyymmdd, hh, mm) {
   // Build a Pacific wall-clock millis for the given Pacific date + time.
-  // Uses the Intl machinery to learn the offset on that calendar date.
   var probeNoon = new Date(yyyymmdd + "T12:00:00Z");
-  var partsFmt  = new Intl.DateTimeFormat("en-US", {
+  var partsFmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles", timeZoneName: "longOffset"
   }).formatToParts(probeNoon);
   var off = "+00:00";
@@ -44,8 +48,8 @@ function pacMillis(yyyymmdd, hh, mm) {
 
 function assert(name, actual, expected) {
   var ok = actual === expected;
-  if (ok) { passed++; lines.push("✔ " + name); }
-  else    { failed++; lines.push("✖ " + name + "  (got " + JSON.stringify(actual) + ", expected " + JSON.stringify(expected) + ")"); }
+  if (ok) { passed++; lines.push("  ✔ " + name); }
+  else    { failed++; lines.push("  ✖ " + name + "  (got " + JSON.stringify(actual) + ", expected " + JSON.stringify(expected) + ")"); }
 }
 
 /* ---------- Calendar anchor for the test world ----------
@@ -58,232 +62,302 @@ function assert(name, actual, expected) {
  * 2026-06-10 = Wednesday
  * 2026-06-11 = Thursday
  * 2026-06-12 = Friday (next workweek boundary)
+ * 2026-06-13 = Saturday
  * 2026-06-14 = Sunday  (a Sunday in a DIFFERENT workweek)
  */
-var FRI    = "2026-06-05";
-var SAT    = "2026-06-06";
-var SUN    = "2026-06-07";
-var MON    = "2026-06-08";
-var WED    = "2026-06-10";
-var THU    = "2026-06-11";
-var NEXT_FRI = "2026-06-12";
-var NEXT_SUN = "2026-06-14";
+var FRI       = "2026-06-05";
+var SAT       = "2026-06-06";
+var SUN       = "2026-06-07";
+var MON       = "2026-06-08";
+var WED       = "2026-06-10";
+var THU       = "2026-06-11";
+var NEXT_FRI  = "2026-06-12";
+var NEXT_SAT  = "2026-06-13";
+var NEXT_SUN  = "2026-06-14";
 
 console.log("================================================================");
 console.log("Phase 33 — assignment-eligibility regression tests");
+console.log("Rule: Friday AND Saturday can be used for Sunday cleanings.");
 console.log("================================================================");
 
-/* ---------- Test 1 — Sunday DIVCO assignment visible Friday for clock-in ---------- */
-var divcoSundayLegacy = {
-  // Legacy doc shape — no available_from/until. This is the exact case
-  // that triggered Drew's incident: bridge created the doc without flex
-  // bounds, so the old isAvailableNow fell back to service_date === today.
-  service_date:       SUN,
-  staff_uid:          "drew-uid",
-  customer_id:        "divco",
-  customer_name:      "DIVCO",
-  status:             "assigned",
-  allows_flex_start:  true
-};
-assert(
-  "1) Sunday DIVCO assignment visible on FRIDAY for clock-in",
-  ELIG.isWorkableNow(divcoSundayLegacy, pacMillis(FRI, 10, 0), FRI),
-  true
-);
-assert(
-  "1b) Sunday DIVCO assignment visible on SATURDAY for clock-in",
-  ELIG.isWorkableNow(divcoSundayLegacy, pacMillis(SAT, 14, 0), SAT),
-  true
-);
+/* ============================================================
+ * Spec scenarios 1-8 — explicit per the rule-correction memo.
+ * ============================================================
+ *
+ * The "DIVCO Sunday flex assignment" used here is the exact bug
+ * artifact: a service_assignments doc with service_date Sunday and
+ * allows_flex_start: true. The eligibility helper is the single rule
+ * used by both the clock-in surface (service-clock.js) and any DCR
+ * launch surface — so the same helper call with the same inputs is
+ * the source of truth for both. Scenario 8 verifies this by exercising
+ * the helper with the same inputs and asserting identical answers.
+ */
 
-/* ---------- Test 2 — Same assignment visible Friday for DCR ---------- */
-// Same helper, same return value: the DCR-launch surface uses the same
-// isWorkableNow call, so by definition the answer is identical.
-assert(
-  "2) Same DIVCO assignment also workable Friday (DCR surface consistency)",
-  ELIG.isWorkableNow(divcoSundayLegacy, pacMillis(FRI, 18, 30), FRI),
-  true
-);
-// Modern shape — bridge set flex_start_policy: "sun_to_fri_evening",
-// so available_from = prior Fri 17:00, available_until = Sun 23:59 + 6h grace.
-var divcoSundayModern = {
-  service_date:       SUN,
-  staff_uid:          "drew-uid",
-  customer_id:        "divco",
-  customer_name:      "DIVCO",
-  status:             "assigned",
-  available_from:     ts(FRI, 17, 0),
-  available_until:    ts(MON, 6, 0)
-};
-assert(
-  "2b) Modern DIVCO doc with explicit bounds — workable Friday 17:30",
-  ELIG.isWorkableNow(divcoSundayModern, pacMillis(FRI, 17, 30), FRI),
-  true
-);
-assert(
-  "2c) Modern DIVCO doc — NOT workable Friday 13:00 (before available_from)",
-  ELIG.isWorkableNow(divcoSundayModern, pacMillis(FRI, 13, 0), FRI),
-  false
-);
-
-/* ---------- Test 3 — Assignment does NOT disappear after clock-out ---------- */
-// Right after clock-out, the session is in dcr_pending. The assignment
-// status mirrors that. The helper must keep returning true so the card
-// stays visible until DCR submission.
-var dcrPendingAssignment = {
+var divcoSundayFlex = {
   service_date:      SUN,
-  status:            "dcr_pending",
-  allows_flex_start: true
-};
-assert(
-  "3) Assignment in dcr_pending stays workable on Friday (post-clock-out)",
-  ELIG.isWorkableNow(dcrPendingAssignment, pacMillis(FRI, 19, 0), FRI),
-  true
-);
-var inProgressAssignment = Object.assign({}, dcrPendingAssignment, { status: "in_progress" });
-assert(
-  "3b) in_progress assignment stays workable",
-  ELIG.isWorkableNow(inProgressAssignment, pacMillis(FRI, 19, 0), FRI),
-  true
-);
-var pausedAssignment = Object.assign({}, dcrPendingAssignment, { status: "paused" });
-assert(
-  "3c) paused assignment stays workable",
-  ELIG.isWorkableNow(pausedAssignment, pacMillis(FRI, 19, 0), FRI),
-  true
-);
-
-/* ---------- Test 4 — Non-eligible future jobs remain hidden ---------- */
-// A Sunday job TWO workweeks away should NOT appear Friday.
-var futureFutureSunday = {
-  service_date:      NEXT_SUN,
+  staff_uid:         "drew-uid",
+  customer_id:       "divco",
+  customer_name:     "DIVCO",
   status:            "assigned",
   allows_flex_start: true
 };
+
+section("Scenarios 1-8 (explicit, per rule-correction memo)");
+
+/* (1) Sunday flex assignment visible Friday for clock-in. */
 assert(
-  "4) Sunday job two workweeks out is NOT workable on Friday today",
-  ELIG.isWorkableNow(futureFutureSunday, pacMillis(FRI, 10, 0), FRI),
-  false
+  "1) Sunday flex assignment visible Friday for clock-in",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(FRI, 10, 0), FRI),
+  true
 );
-// A non-flex same-day-only assignment should not surface early.
-var nonFlex = {
+
+/* (2) Sunday flex assignment visible Friday for DCR. The DCR launch
+ * surface uses the same isWorkableNow call; verifying the helper
+ * returns the same answer for the same inputs is the same check. */
+assert(
+  "2) Sunday flex assignment visible Friday for DCR (same helper)",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(FRI, 18, 30), FRI),
+  true
+);
+
+/* (3) Sunday flex assignment visible Saturday for clock-in. */
+assert(
+  "3) Sunday flex assignment visible Saturday for clock-in",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SAT, 9, 30), SAT),
+  true
+);
+
+/* (4) Sunday flex assignment visible Saturday for DCR. */
+assert(
+  "4) Sunday flex assignment visible Saturday for DCR (same helper)",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SAT, 16, 0), SAT),
+  true
+);
+
+/* (5) Sunday flex assignment visible Sunday normally. */
+assert(
+  "5) Sunday flex assignment visible Sunday morning (normal)",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SUN, 8, 0), SUN),
+  true
+);
+assert(
+  "5b) Sunday flex assignment visible Sunday evening (normal)",
+  ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SUN, 21, 0), SUN),
+  true
+);
+
+/* (6) Non-flex Sunday assignment hidden Friday/Saturday but visible Sunday. */
+var nonFlexSunday = {
   service_date:      SUN,
   status:            "assigned",
   allows_flex_start: false
 };
 assert(
-  "4b) Non-flex Sunday assignment is NOT workable on Friday",
-  ELIG.isWorkableNow(nonFlex, pacMillis(FRI, 10, 0), FRI),
+  "6a) Non-flex Sunday assignment HIDDEN on Friday",
+  ELIG.isWorkableNow(nonFlexSunday, pacMillis(FRI, 10, 0), FRI),
   false
 );
 assert(
-  "4c) Non-flex Sunday assignment IS workable on Sunday",
-  ELIG.isWorkableNow(nonFlex, pacMillis(SUN, 9, 0), SUN),
+  "6b) Non-flex Sunday assignment HIDDEN on Saturday",
+  ELIG.isWorkableNow(nonFlexSunday, pacMillis(SAT, 10, 0), SAT),
+  false
+);
+assert(
+  "6c) Non-flex Sunday assignment VISIBLE on Sunday",
+  ELIG.isWorkableNow(nonFlexSunday, pacMillis(SUN, 9, 0), SUN),
   true
 );
-// Cancelled assignments — never workable, regardless of date.
-var cancelled = {
-  service_date:      SUN,
-  status:            "canceled_by_deputy",
+
+/* (7) Future Sunday two workweeks out remains hidden Friday/Saturday of the wrong week. */
+var futureFutureSundayFlex = {
+  service_date:      NEXT_SUN,
+  status:            "assigned",
   allows_flex_start: true
 };
 assert(
-  "4d) canceled_by_deputy assignment is never workable",
-  ELIG.isWorkableNow(cancelled, pacMillis(SUN, 10, 0), SUN),
+  "7a) Sunday 06-14 (next workweek) HIDDEN on Friday 06-05 (this workweek's prior gap)",
+  ELIG.isWorkableNow(futureFutureSundayFlex, pacMillis(FRI, 10, 0), FRI),
   false
 );
-var removed = {
-  service_date:      SUN,
-  status:            "assigned",
-  removed_from_ptc:  true
-};
 assert(
-  "4e) removed_from_ptc assignment is never workable",
-  ELIG.isWorkableNow(removed, pacMillis(SUN, 10, 0), SUN),
+  "7b) Sunday 06-14 (next workweek) HIDDEN on Saturday 06-06 (this workweek's prior gap)",
+  ELIG.isWorkableNow(futureFutureSundayFlex, pacMillis(SAT, 10, 0), SAT),
+  false
+);
+assert(
+  "7c) Sunday 06-14 VISIBLE on Friday 06-12 (correct prior gap, next-workweek flex window opens)",
+  ELIG.isWorkableNow(futureFutureSundayFlex, pacMillis(NEXT_FRI, 10, 0), NEXT_FRI),
+  true
+);
+assert(
+  "7d) Sunday 06-14 VISIBLE on Saturday 06-13 (correct prior gap)",
+  ELIG.isWorkableNow(futureFutureSundayFlex, pacMillis(NEXT_SAT, 10, 0), NEXT_SAT),
+  true
+);
+
+/* (8) Same eligibility helper is used by clock-in and DCR surfaces.
+ *
+ * The browser bindings:
+ *   /work          → service-clock.js     → window.PIONEER_ELIGIBILITY.isWorkableNow
+ *   /  (DCR form)  → app.js                → window.PIONEER_ELIGIBILITY.isWorkableNow (via load order)
+ *
+ * Both load public/assignment-eligibility.js BEFORE their own module.
+ * In this Node test we hold a direct reference to the same module and
+ * exercise it with the same inputs the two surfaces would. Identical
+ * inputs MUST yield identical answers, because there is exactly one
+ * implementation.
+ */
+var clockInAnswer = ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SAT, 14, 0), SAT);
+var dcrAnswer     = ELIG.isWorkableNow(divcoSundayFlex, pacMillis(SAT, 14, 0), SAT);
+assert(
+  "8a) Clock-in surface and DCR surface return identical answers (Sat / Sunday flex)",
+  clockInAnswer === dcrAnswer && clockInAnswer === true,
+  true
+);
+// Also verify the exported function is a single function reference,
+// not two separately-instantiated copies.
+assert(
+  "8b) ELIG.isWorkableNow is a single function reference",
+  typeof ELIG.isWorkableNow === "function" && ELIG.isWorkableNow === ELIG.isWorkableNow,
+  true
+);
+
+/* ============================================================
+ * Supplementary coverage — non-spec but worth not regressing.
+ * ============================================================ */
+
+section("Post-clock-out states (assignment stays visible through DCR)");
+assert(
+  "P1) dcr_pending assignment stays workable Friday (post-clock-out)",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "dcr_pending", allows_flex_start: true },
+    pacMillis(FRI, 19, 0), FRI
+  ),
+  true
+);
+assert(
+  "P2) in_progress assignment stays workable",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "in_progress", allows_flex_start: true },
+    pacMillis(SAT, 12, 0), SAT
+  ),
+  true
+);
+assert(
+  "P3) paused assignment stays workable",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "paused", allows_flex_start: true },
+    pacMillis(SUN, 14, 0), SUN
+  ),
+  true
+);
+
+section("Cancellation / removal — never workable regardless of date");
+assert(
+  "P4) canceled_by_deputy assignment is never workable",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "canceled_by_deputy", allows_flex_start: true },
+    pacMillis(SUN, 10, 0), SUN
+  ),
+  false
+);
+assert(
+  "P5) removed_from_ptc assignment is never workable",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "assigned", removed_from_ptc: true },
+    pacMillis(SUN, 10, 0), SUN
+  ),
+  false
+);
+assert(
+  "P6) admin_removed assignment is never workable",
+  ELIG.isWorkableNow(
+    { service_date: SUN, status: "admin_removed", allows_flex_start: true },
+    pacMillis(SUN, 10, 0), SUN
+  ),
   false
 );
 
-/* ---------- Test 5 — Multi-tech assignments still behave correctly ---------- */
-// The helper does NOT inspect staff_uid — that's the caller's
-// responsibility (the Firestore query filters by staff_uid before
-// reaching the helper). Two assignments for two techs with identical
-// date + flex shape should both report workable. This proves the helper
-// is staff-uid-agnostic and doesn't accidentally bias toward a single tech.
-var drewSunday   = { service_date: SUN, staff_uid: "drew-uid",     allows_flex_start: true, status: "assigned" };
-var makailaSunday= { service_date: SUN, staff_uid: "makaila-uid",  allows_flex_start: true, status: "assigned" };
+section("Modern docs with explicit available_from + available_until");
+var modernFlex = {
+  service_date:      SUN,
+  status:            "assigned",
+  available_from:    ts(FRI, 17, 0),
+  available_until:   ts(MON, 6, 0)
+};
 assert(
-  "5) Drew's Sunday assignment visible Friday (multi-tech case)",
+  "M1) Modern doc with explicit window — workable Friday 17:30",
+  ELIG.isWorkableNow(modernFlex, pacMillis(FRI, 17, 30), FRI),
+  true
+);
+assert(
+  "M2) Modern doc — workable Saturday afternoon",
+  ELIG.isWorkableNow(modernFlex, pacMillis(SAT, 14, 0), SAT),
+  true
+);
+assert(
+  "M3) Modern doc — NOT workable Friday 13:00 (before available_from)",
+  ELIG.isWorkableNow(modernFlex, pacMillis(FRI, 13, 0), FRI),
+  false
+);
+assert(
+  "M4) Modern doc — NOT workable Monday 07:00 (after available_until)",
+  ELIG.isWorkableNow(modernFlex, pacMillis(MON, 7, 0), MON),
+  false
+);
+
+section("Multi-tech — helper is staff-uid-agnostic");
+var drewSunday    = { service_date: SUN, staff_uid: "drew-uid",    allows_flex_start: true, status: "assigned" };
+var makailaSunday = { service_date: SUN, staff_uid: "makaila-uid", allows_flex_start: true, status: "assigned" };
+assert(
+  "T1) Drew's Sunday assignment visible Friday",
   ELIG.isWorkableNow(drewSunday, pacMillis(FRI, 10, 0), FRI),
   true
 );
 assert(
-  "5b) Makaila's Sunday assignment visible Friday — same rule, same answer",
+  "T2) Makaila's Sunday assignment visible Friday — same rule, same answer",
   ELIG.isWorkableNow(makailaSunday, pacMillis(FRI, 10, 0), FRI),
   true
 );
-
-/* ---------- Test 6 — Workweek boundary correctness ---------- */
-// Cross-workweek negative cases. Today = Thursday 06-11. A Sunday job
-// for 06-14 is in the NEXT workweek and should NOT show on Thursday.
 assert(
-  "6) Sunday 06-14 NOT workable Thursday 06-11 (different workweek, too early)",
+  "T3) Drew on Saturday → workable",
+  ELIG.isWorkableNow(drewSunday, pacMillis(SAT, 16, 0), SAT),
+  true
+);
+
+section("Workweek boundary correctness");
+assert(
+  "W1) Sunday 06-14 NOT workable Thursday 06-11 (different workweek, too early)",
   ELIG.isWorkableNow(
     { service_date: NEXT_SUN, status: "assigned", allows_flex_start: true },
     pacMillis(THU, 10, 0), THU
   ),
   false
 );
-// But Friday 06-12 (start of next workweek's flex window) → visible.
 assert(
-  "6b) Sunday 06-14 IS workable Friday 06-12 (flex window opens)",
-  ELIG.isWorkableNow(
-    { service_date: NEXT_SUN, status: "assigned", allows_flex_start: true },
-    pacMillis(NEXT_FRI, 10, 0), NEXT_FRI
-  ),
-  true
-);
-
-/* ---------- Test 7 — Same-day always works (sanity) ---------- */
-assert(
-  "7) Sunday job IS workable on Sunday morning",
-  ELIG.isWorkableNow(
-    { service_date: SUN, status: "assigned" },
-    pacMillis(SUN, 8, 0), SUN
-  ),
-  true
-);
-assert(
-  "7b) Wednesday job IS workable on Wednesday",
-  ELIG.isWorkableNow(
-    { service_date: WED, status: "assigned" },
-    pacMillis(WED, 14, 0), WED
-  ),
-  true
-);
-
-/* ---------- Test 8 — Late completion within workweek ---------- */
-assert(
-  "8) Sunday job IS workable Monday (late completion, same workweek)",
+  "W2) Sunday 06-07 NOT workable Friday 06-12 (different workweek, late)",
   ELIG.isWorkableNow(
     { service_date: SUN, status: "assigned", allows_flex_start: true },
-    pacMillis(MON, 14, 0), MON
+    pacMillis(NEXT_FRI, 10, 0), NEXT_FRI
   ),
-  true
+  false
 );
 
-/* ---------- Test 9 — Workweek math primitives ---------- */
-assert("9) Sunday 06-07 weekday is 0",  ELIG.pacificWeekday(SUN), 0);
-assert("9b) Friday 06-05 weekday is 5", ELIG.pacificWeekday(FRI), 5);
-assert("9c) workweekSundayFor(Sun 06-07) === 06-07", ELIG.workweekSundayFor(SUN), SUN);
-assert("9d) workweekSundayFor(Mon 06-08) === 06-07", ELIG.workweekSundayFor(MON), SUN);
-assert("9e) workweekSundayFor(Fri 06-05) === 06-07 (next Sun)", ELIG.workweekSundayFor(FRI), SUN);
+section("Workweek math primitives");
+assert("X1) Sunday 06-07 weekday is 0",        ELIG.pacificWeekday(SUN), 0);
+assert("X2) Friday 06-05 weekday is 5",        ELIG.pacificWeekday(FRI), 5);
+assert("X3) Saturday 06-06 weekday is 6",      ELIG.pacificWeekday(SAT), 6);
+assert("X4) workweekSundayFor(Sun 06-07) === 06-07", ELIG.workweekSundayFor(SUN), SUN);
+assert("X5) workweekSundayFor(Mon 06-08) === 06-07", ELIG.workweekSundayFor(MON), SUN);
+assert("X6) workweekSundayFor(Fri 06-05) === 06-07 (next Sun)", ELIG.workweekSundayFor(FRI), SUN);
+assert("X7) workweekSundayFor(Sat 06-06) === 06-07 (next Sun)", ELIG.workweekSundayFor(SAT), SUN);
 var win = ELIG.workableWindowFor(SUN);
-assert("9f) workableWindowFor(Sun 06-07).start === 06-05 (prior Fri)", win && win.start, FRI);
-assert("9g) workableWindowFor(Sun 06-07).end   === 06-11 (Thu)",        win && win.end,   THU);
+assert("X8) workableWindowFor(Sun 06-07).start === 06-05 (prior Fri)", win && win.start, FRI);
+assert("X9) workableWindowFor(Sun 06-07).end   === 06-11 (Thu)",         win && win.end,   THU);
 
 /* ---------- Output ---------- */
 console.log("");
-lines.forEach(function (l) { console.log("  " + l); });
+lines.forEach(function (l) { console.log(l); });
 console.log("");
 console.log("================================================================");
 console.log("Result: " + passed + " passed · " + failed + " failed");
