@@ -115,16 +115,27 @@
     } catch (_e) { return yyyyMmDd; }
   }
 
-  // Phase 1b.2 availability filter.
+  // Assignment eligibility — delegated to the shared module so /work,
+  // /index (DCR form), and any future tech surface use the same rule.
+  // Function name preserved so existing call sites stay unchanged. See
+  // public/assignment-eligibility.js for the single source of truth.
   //
-  // Modern docs carry available_from + available_until (Firestore
-  // Timestamps). Both bounds present → tech can clock in iff now is
-  // inside the window. One bound present → use it AND fall back to
-  // service_date == today for the missing bound. Neither bound
-  // present → legacy doc; today-only behavior preserved.
+  // The shared module's workweek-aware fallback fixes the original
+  // bug here (Sunday flex jobs invisible Friday/Saturday) because the
+  // legacy path required service_date === todayPT even when the flex
+  // policy said earlier work was allowed.
   function isAvailableNow(a, todayPT, nowMs) {
-    const hasFrom  = !!(a.available_from  && typeof a.available_from.toMillis  === "function");
-    const hasUntil = !!(a.available_until && typeof a.available_until.toMillis === "function");
+    if (window.PIONEER_ELIGIBILITY && window.PIONEER_ELIGIBILITY.isWorkableNow) {
+      return window.PIONEER_ELIGIBILITY.isWorkableNow(a, nowMs, todayPT);
+    }
+    // Defensive fallback if the shared module failed to load — keep
+    // the original strict behavior rather than crash. logged in the
+    // console so the missing script tag is obvious.
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("[service-clock] PIONEER_ELIGIBILITY missing; falling back to legacy isAvailableNow");
+    }
+    var hasFrom  = !!(a.available_from  && typeof a.available_from.toMillis  === "function");
+    var hasUntil = !!(a.available_until && typeof a.available_until.toMillis === "function");
     if (hasFrom && hasUntil) {
       return a.available_from.toMillis()  <= nowMs &&
              a.available_until.toMillis() >= nowMs;
@@ -135,7 +146,7 @@
     if (!hasFrom && hasUntil) {
       return a.available_until.toMillis() >= nowMs && a.service_date === todayPT;
     }
-    return a.service_date === todayPT;  // legacy doc
+    return a.service_date === todayPT;
   }
 
   // Phase 1c.1 — hero greeting card helpers.
