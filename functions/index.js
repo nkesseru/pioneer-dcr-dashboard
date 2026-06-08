@@ -27,6 +27,7 @@ const crypto = require("crypto");
 // only declares the secrets + wraps it in an onRequest endpoint at the
 // bottom of the file (search "generateAndSendDcrEmailV1").
 const dcrEmail = require("./dcrEmail");
+const ghlHiringSync = require("./ghlHiringSync");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -8041,5 +8042,105 @@ exports.setTechAuthDisabledV1 = onRequest({ cors: false, timeoutSeconds: 30 }, a
       error: "Couldn't update auth user. " + ((err && err.message) || "unknown"),
       code:  (err && err.code) || null
     });
+  }
+});
+
+/* ============================================================================
+ * Phase 2A.2 — GHL Hiring Sync (Applicant Tracking pipeline → Firestore)
+ *
+ * Two endpoints share a single core in ./ghlHiringSync:
+ *   • syncGhlHiringV1     — scheduled, daily at 06:30 PT (post-overnight,
+ *                           pre-business-hours so the /manager card opens
+ *                           with fresh data).
+ *   • refreshGhlHiringV1  — admin POST, runs the same sync on demand
+ *                           (powers a future "Sync GHL Now" button + the
+ *                           local test script).
+ *
+ * Token lives in the GHL_PRIVATE_INTEGRATION_TOKEN secret. Never returned
+ * to the client; never logged. If the secret is unset both endpoints
+ * short-circuit with skipped:true so the scheduler stays green during the
+ * first deploy.
+ *
+ * Setup (one-time, Nick):
+ *   firebase functions:secrets:set GHL_PRIVATE_INTEGRATION_TOKEN
+ *   firebase deploy --only functions:syncGhlHiringV1,functions:refreshGhlHiringV1
+ *
+ * Manual local run (uses serviceAccountKey + env var):
+ *   GHL_PRIVATE_INTEGRATION_TOKEN=... node scripts/run-ghl-hiring-sync.js
+ * ========================================================================== */
+
+const GHL_PRIVATE_INTEGRATION_TOKEN = defineSecret("GHL_PRIVATE_INTEGRATION_TOKEN");
+
+exports.syncGhlHiringV1 = onSchedule({
+  schedule:       "30 6 * * *",            // 06:30 daily
+  timeZone:       "America/Los_Angeles",
+  timeoutSeconds: 120,
+  secrets:        [GHL_PRIVATE_INTEGRATION_TOKEN]
+}, async (event) => {
+  try {
+    const token = GHL_PRIVATE_INTEGRATION_TOKEN.value();
+    const result = await ghlHiringSync.runSync({
+      token:     token,
+      db:        db,
+      invokedBy: "scheduled"
+    });
+    if (result.skipped) {
+      logger.warn("[ghlSync] scheduled run skipped", { reason: result.reason });
+    } else {
+      logger.info("[ghlSync] scheduled run ok", result);
+    }
+  } catch (err) {
+    logger.error("[ghlSync] scheduled run failed", { error: err && err.message });
+  }
+});
+
+exports.refreshGhlHiringV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120,
+  secrets:        [GHL_PRIVATE_INTEGRATION_TOKEN]
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshGhlHiringV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  try {
+    const token = GHL_PRIVATE_INTEGRATION_TOKEN.value();
+    const result = await ghlHiringSync.runSync({
+      token:     token,
+      db:        db,
+      invokedBy: "manual:" + staff.email
+    });
+    if (result.skipped) {
+      res.status(503).json({
+        ok: false,
+        error: "GHL token not configured. Set GHL_PRIVATE_INTEGRATION_TOKEN secret.",
+        reason: result.reason
+      });
+      return;
+    }
+    res.json({ ok: true, result: result });
+  } catch (err) {
+    logger.error("[ghlSync] manual run failed", {
+      caller: staff.email, error: err && err.message
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "unknown" });
   }
 });
