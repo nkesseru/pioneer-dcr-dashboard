@@ -631,33 +631,74 @@
       "#mission-control .mc-supp-table td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);}",
       "#mission-control .mc-supp-reactivate{appearance:none;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;}",
       "#mission-control .mc-supp-reactivate:hover{background:rgba(255,255,255,0.18);}",
-      // ---- Phase 33B — compact alert cards ----
-      // Reduce padding ~45%, single-row layout, smaller inline buttons,
-      // collapsible details panel. Overrides the verbose Phase 33A
-      // styles for cards marked .is-compact.
-      "#mission-control .mc-items{gap:6px;}",
-      "#mission-control .mc-item.is-compact{padding:8px 12px;gap:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;}",
-      "#mission-control .mc-item.is-compact .mc-item-row-head{display:flex;align-items:center;gap:8px;min-width:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-severity-pill{font-size:9.5px;font-weight:800;letter-spacing:0.8px;padding:2px 7px;border-radius:999px;flex-shrink:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-severity-pill[data-severity='RED']{background:rgba(239,68,68,0.22);color:#fecaca;border:1px solid rgba(239,68,68,0.45);}",
-      "#mission-control .mc-item.is-compact .mc-item-severity-pill[data-severity='YELLOW']{background:rgba(250,204,21,0.18);color:#fde68a;border:1px solid rgba(250,204,21,0.40);}",
-      "#mission-control .mc-item.is-compact .mc-item-title-compact{font-size:11.5px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:#cdd9ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
-      "#mission-control .mc-item.is-compact .mc-item-row-body{display:flex;align-items:baseline;gap:4px;min-width:0;font-size:13.5px;line-height:1.3;overflow:hidden;}",
-      "#mission-control .mc-item.is-compact .mc-item-entity-compact{font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;max-width:240px;}",
-      "#mission-control .mc-item.is-compact .mc-item-context-compact{color:#a8c0e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-actions{margin-top:0;display:flex;flex-wrap:nowrap;gap:4px;align-items:center;justify-self:end;}",
-      "#mission-control .mc-item.is-compact .mc-item-btn{padding:4px 10px;font-size:11.5px;border-radius:6px;line-height:1.2;}",
-      "#mission-control .mc-item.is-compact .mc-item-details{margin-top:8px;padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;}",
-      "#mission-control .mc-item.is-compact .mc-item-details p{margin:0 0 6px;}",
-      "#mission-control .mc-item.is-compact .mc-item-details p:last-child{margin:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-details .mc-item-reason{font-size:12.5px;color:#cdd9ec;line-height:1.45;}",
-      "#mission-control .mc-item.is-compact .mc-item-details .mc-item-fix{font-size:12.5px;color:#fff;}",
-      "#mission-control .mc-item.is-compact[data-expanded='true'] .mc-item-details-btn{background:rgba(255,255,255,0.16);color:#fff;}",
-      "#mission-control .mc-item.is-compact .mc-item-confirm-bar{padding:0;}",
-      "#mission-control .mc-item.is-compact .mc-item-confirm-bar .mc-item-confirm-label{font-size:11.5px;}",
-      // Narrow-desktop fallback: wrap the row's body+actions onto a 2nd line if needed
-      "@media (max-width:1100px){#mission-control .mc-item.is-compact .mc-item-row{grid-template-columns:auto 1fr;grid-auto-flow:row;}#mission-control .mc-item.is-compact .mc-item-actions{grid-column:1 / span 2;justify-self:start;flex-wrap:wrap;}}"
+      /* ---------- Phase 33C — Inbox mode ----------
+       *
+       * Severity sections (Critical / Attention / Healthy collapsible),
+       * grouped inbox rows (one per category+entity), in-row Open +
+       * Details buttons, expandable per-row details with subitems and
+       * group-level actions. Replaces Phase 33B compact-card styles. */
+      "#mission-control .mc-inbox-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:8px 0 12px;}",
+      "#mission-control .mc-inbox-count{padding:10px 14px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:2px;}",
+      "#mission-control .mc-inbox-count[data-severity='RED']{border-left:3px solid #ef4444;}",
+      "#mission-control .mc-inbox-count[data-severity='YELLOW']{border-left:3px solid #facc15;}",
+      "#mission-control .mc-inbox-count[data-severity='GREEN']{border-left:3px solid #22c55e;}",
+      "#mission-control .mc-inbox-count.is-dim{opacity:0.6;}",
+      "#mission-control .mc-inbox-count-label{font-size:10.5px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:#a8c0e1;}",
+      "#mission-control .mc-inbox-count-value{font-size:22px;font-weight:800;color:#fff;line-height:1;}",
+      "#mission-control .mc-inbox-priorities-wrap{margin:0 0 14px;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;}",
+      "#mission-control .mc-inbox-priorities-label{font-size:10.5px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:#7ea3d6;margin-bottom:6px;}",
+      "#mission-control .mc-inbox-priorities{margin:0;padding-left:20px;color:#e6edf7;font-size:13.5px;line-height:1.55;}",
+      "#mission-control .mc-inbox-priorities li{margin:2px 0;}",
+      "#mission-control .mc-inbox-priorities.is-clean{padding:0;list-style:none;color:#bbf7d0;font-size:13.5px;}",
+      "#mission-control .mc-inbox-section{margin-bottom:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;}",
+      "#mission-control .mc-inbox-section summary{cursor:pointer;list-style:none;padding:8px 14px;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.03);}",
+      "#mission-control .mc-inbox-section summary::-webkit-details-marker{display:none;}",
+      "#mission-control .mc-inbox-section summary::before{content:'▸';color:#7ea3d6;font-size:11px;margin-right:6px;transition:transform 120ms;}",
+      "#mission-control .mc-inbox-section[open] summary::before{transform:rotate(90deg);}",
+      "#mission-control .mc-inbox-sev-pill{font-size:10px;font-weight:800;letter-spacing:1px;padding:3px 8px;border-radius:999px;}",
+      "#mission-control .mc-inbox-sev-pill[data-severity='RED']{background:rgba(239,68,68,0.22);color:#fecaca;border:1px solid rgba(239,68,68,0.45);}",
+      "#mission-control .mc-inbox-sev-pill[data-severity='YELLOW']{background:rgba(250,204,21,0.18);color:#fde68a;border:1px solid rgba(250,204,21,0.40);}",
+      "#mission-control .mc-inbox-sev-pill[data-severity='GREEN']{background:rgba(34,197,94,0.18);color:#bbf7d0;border:1px solid rgba(34,197,94,0.40);}",
+      "#mission-control .mc-inbox-sev-count{font-size:11.5px;font-weight:600;color:#a8c0e1;}",
+      "#mission-control .mc-inbox-empty{margin:10px 14px;font-size:12.5px;color:#a8c0e1;}",
+      "#mission-control .mc-inbox-healthy{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;}",
+      "#mission-control .mc-inbox-healthy-chip{font-size:11.5px;color:#bbf7d0;background:rgba(34,197,94,0.16);border:1px solid rgba(34,197,94,0.30);border-radius:999px;padding:3px 10px;}",
+      /* ---- Inbox row ---- */
+      "#mission-control .mc-inbox-row{padding:6px 14px;border-top:1px solid rgba(255,255,255,0.05);}",
+      "#mission-control .mc-inbox-row:first-of-type{border-top:none;}",
+      "#mission-control .mc-inbox-row-line{display:flex;align-items:center;gap:6px;min-width:0;font-size:13.5px;line-height:1.3;}",
+      "#mission-control .mc-inbox-sev-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}",
+      "#mission-control .mc-inbox-sev-dot[data-severity='RED']{background:#ef4444;}",
+      "#mission-control .mc-inbox-sev-dot[data-severity='YELLOW']{background:#facc15;}",
+      "#mission-control .mc-inbox-row-entity{font-weight:700;color:#fff;flex-shrink:0;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+      "#mission-control .mc-inbox-row-headline{color:#cdd9ec;flex-shrink:0;}",
+      "#mission-control .mc-inbox-row-headline strong{color:#fff;}",
+      "#mission-control .mc-inbox-row-summary{color:#94a3b8;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;}",
+      "#mission-control .mc-inbox-row-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0;}",
+      /* ---- Buttons ---- */
+      "#mission-control .mc-inbox-btn{appearance:none;background:transparent;border:1px solid rgba(255,255,255,0.18);color:#cdd9ec;padding:3px 9px;font-size:11.5px;font-weight:600;border-radius:6px;cursor:pointer;line-height:1.2;}",
+      "#mission-control .mc-inbox-btn:hover{background:rgba(255,255,255,0.10);color:#fff;}",
+      "#mission-control .mc-inbox-btn-primary{background:rgba(59,123,224,0.85);color:#fff;border-color:#3b7be0;}",
+      "#mission-control .mc-inbox-btn-primary:hover{background:#3b7be0;}",
+      "#mission-control .mc-inbox-btn-danger{border-color:rgba(239,68,68,0.5);color:#fecaca;background:rgba(239,68,68,0.18);}",
+      "#mission-control .mc-inbox-btn-danger:hover{background:rgba(239,68,68,0.32);color:#fff;}",
+      "#mission-control .mc-inbox-btn-suppress{border-color:rgba(250,204,21,0.40);color:#fde68a;}",
+      "#mission-control .mc-inbox-btn-suppress:hover{background:rgba(250,204,21,0.18);color:#fff;}",
+      "#mission-control .mc-inbox-btn-mini{padding:2px 7px;font-size:10.5px;}",
+      "#mission-control .mc-inbox-row[data-expanded='true']{background:rgba(255,255,255,0.03);}",
+      /* ---- Row details + subitems ---- */
+      "#mission-control .mc-inbox-row-details{padding:10px 14px 14px;border-top:1px dashed rgba(255,255,255,0.10);margin-top:6px;}",
+      "#mission-control .mc-inbox-row-details-intro{margin:0 0 8px;font-size:12px;color:#a8c0e1;font-style:italic;}",
+      "#mission-control .mc-inbox-subitem{padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px;}",
+      "#mission-control .mc-inbox-subitem:last-child{margin-bottom:8px;}",
+      "#mission-control .mc-inbox-subitem-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}",
+      "#mission-control .mc-inbox-subitem-ctx{font-size:12.5px;color:#cdd9ec;font-weight:600;flex:1 1 auto;min-width:0;}",
+      "#mission-control .mc-inbox-subitem-reason{margin:4px 0 0;font-size:12px;color:#a8c0e1;line-height:1.45;}",
+      "#mission-control .mc-inbox-subitem-fix{margin:4px 0 0;font-size:12px;color:#e6edf7;}",
+      "#mission-control .mc-inbox-fix-label{font-weight:800;letter-spacing:0.6px;color:#fde68a;margin-right:6px;font-size:10.5px;}",
+      "#mission-control .mc-inbox-group-actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:4px;margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);}",
+      "#mission-control .mc-confirm-bar{margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}",
+      "#mission-control .mc-confirm-label{font-size:12px;color:#cdd9ec;margin-right:4px;}"
     ].join("\n");
     const tag = document.createElement("style");
     tag.setAttribute("data-pioneer", "mission-control-styles");
@@ -692,12 +733,103 @@
     "time-adjustment":              8
   };
 
+  /* ---------- Phase 33C — Inbox Mode helpers ---------- */
+
+  // Group items by category + entity. A "group" is what the inbox row
+  // represents — e.g., all 4 "blocked-shift-bridge-skipped" alerts for
+  // Gene F. collapse into one row. Aggregate alerts (entityType ===
+  // "aggregate") naturally collapse to a single-item group already.
+  function groupByEntity(items) {
+    const groupsByKey = {};
+    const orderedKeys = [];
+    items.forEach(it => {
+      const key = it.category + "::" + (it.entityType || "any") + "::" + (it.entityId || "any");
+      if (!groupsByKey[key]) {
+        groupsByKey[key] = {
+          groupKey:    key,
+          severity:    it.severity,
+          category:    it.category,
+          title:       it.title,
+          entityType:  it.entityType,
+          entityId:    it.entityId,
+          entityName:  it.entityName || it.subject || "(unknown)",
+          actionLabel: it.actionLabel,
+          actionRoute: it.actionRoute,
+          items:       []
+        };
+        orderedKeys.push(key);
+      }
+      groupsByKey[key].items.push(it);
+    });
+    return orderedKeys.map(k => groupsByKey[k]);
+  }
+
+  // Derive top N priorities for the "Top priorities" banner. Sorts by
+  // severity (RED first) then by group count desc. Returns formatted
+  // human strings. Uses the existing category copy — no AI.
+  function deriveTopPriorities(groups, max) {
+    const sorted = groups.slice().sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "RED" ? -1 : 1;
+      if (b.items.length !== a.items.length) return b.items.length - a.items.length;
+      return 0;
+    });
+    return sorted.slice(0, max).map(g => formatPriorityLine(g));
+  }
+  function formatPriorityLine(g) {
+    // Aggregate categories — their subject already reads naturally.
+    if (g.entityType === "aggregate") {
+      const first = g.items[0] || {};
+      return first.title + (first.subject ? " — " + first.subject : "");
+    }
+    const n = g.items.length;
+    const noun = humanCategoryNoun(g.category, n);
+    return g.entityName + " has " + n + " " + noun + ".";
+  }
+  function humanCategoryNoun(category, count) {
+    const map = {
+      "blocked-shift-bridge-skipped": "blocked shift",
+      "blocked-shift-noemail":        "blocked shift (missing email)",
+      "blocked-shift-no-tech-doc":    "blocked shift (no tech record)",
+      "blocked-shift-tech-archived":  "blocked shift (tech archived)",
+      "unmapped-customer":            "unmapped customer shift",
+      "missed-shift":                 "missed shift",
+      "stuck-clock":                  "stuck clock-in",
+      "missing-dcr":                  "missing DCR",
+      "paused-shift":                 "paused shift",
+      "time-adjustment":              "pending time-adjustment request"
+    };
+    const base = map[category] || category.replace(/-/g, " ");
+    return count === 1 ? base : base + "s";
+  }
+
+  function summarizeGroupContexts(g, maxNames) {
+    // For the collapsed inbox row, show a short comma list of context
+    // markers (customer names / dates / etc.) to give scanability without
+    // expanding. Aggregates use their subject text directly.
+    if (g.entityType === "aggregate") {
+      return (g.items[0] && g.items[0].subject) || "";
+    }
+    const ctx = g.items.map(it => extractRowSummary(it)).filter(Boolean);
+    const cap = maxNames || 3;
+    const head = ctx.slice(0, cap).join(", ");
+    const rest = ctx.length - cap;
+    return rest > 0 ? head + ", +" + rest + " more" : head;
+  }
+  function extractRowSummary(item) {
+    // Prefer the customer-name slice from context ("Vehr's · Tonight 1:30 PM" → "Vehr's")
+    if (item.context) {
+      const firstSeg = String(item.context).split(" · ")[0];
+      if (firstSeg) return firstSeg;
+    }
+    return item.subject || "";
+  }
+
   function render(model, opsWindow, snap) {
     ensureStyles();
     const root = $("mission-control");
     if (!root) return;
 
-    // ---- Phase 33A — noise control filter (dismissed + suppressed) ----
+    // ---- Phase 33A — noise control filter (unchanged) ----
     const dismissals  = (snap && snap.dismissals)   || [];
     const suppressions= (snap && snap.suppressions) || [];
     const nowMs = (snap && snap.now) || Date.now();
@@ -714,102 +846,127 @@
     });
 
     const items = visibleAfterFilter.sort((a, b) => {
-      // RED first, then YELLOW. Within severity, stable category sort.
       if (a.severity !== b.severity) return a.severity === "RED" ? -1 : 1;
       return String(a.category).localeCompare(String(b.category));
     });
-    const redCount = items.filter(i => i.severity === "RED").length;
-    const yellowCount = items.filter(i => i.severity === "YELLOW").length;
-    const totalActions = items.length;
-    const hiddenCount = hiddenByDismissal.length + hiddenBySuppression.length;
+    const totalAlerts  = items.length;
+    const hiddenCount  = hiddenByDismissal.length + hiddenBySuppression.length;
+    const healthyCount = (model.healthy || []).length;
 
-    // Group by category so caps + "and N more" work.
-    const byCategory = {};
-    items.forEach(i => {
-      (byCategory[i.category] = byCategory[i.category] || []).push(i);
-    });
-    // Preserve sort order — iterate items, take the first N per category.
-    const renderedKeys = {};
-    const overflow = {};
-    const visibleItems = [];
-    items.forEach(i => {
-      const cap = CATEGORY_CAP[i.category] || 100;
-      const shown = renderedKeys[i.category] || 0;
-      if (shown < cap) {
-        visibleItems.push(i);
-        renderedKeys[i.category] = shown + 1;
-      } else {
-        overflow[i.category] = (overflow[i.category] || 0) + 1;
-      }
-    });
+    /* ---- Phase 33C — group + split by severity ---- */
+    const allGroups   = groupByEntity(items);
+    const redGroups   = allGroups.filter(g => g.severity === "RED");
+    const yellowGroups= allGroups.filter(g => g.severity === "YELLOW");
+    const topPriorities = deriveTopPriorities(allGroups, 3);
 
-    const hiddenSuffix = hiddenCount > 0
-      ? ' <span class="mc-action-banner-hidden">· ' + hiddenCount + ' hidden by dismissals/suppressions</span>'
-      : "";
-    const banner = totalActions === 0
-      ? '<div class="mc-action-banner is-clean">✓&nbsp;<span>All clear — no action items.' + hiddenSuffix + '</span></div>'
-      : '<div class="mc-action-banner is-attn"><span class="mc-action-banner-count">' + totalActions + '</span>'
-        + '<span>Action Required · ' + redCount + ' red, ' + yellowCount + ' yellow' + hiddenSuffix + '</span></div>';
+    const redCount    = redGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const yellowCount = yellowGroups.reduce((acc, g) => acc + g.items.length, 0);
 
-    const overflowNotes = Object.keys(overflow).map(cat => {
-      return '<p class="mc-overflow">+ ' + overflow[cat] + ' more ' + escapeHtml(cat.replace(/-/g, " ")) + '</p>';
-    }).join("");
+    /* ---- Top summary banner ---- */
+    const countTiles =
+      '<div class="mc-inbox-summary">' +
+        '<div class="mc-inbox-count" data-severity="RED">' +
+          '<span class="mc-inbox-count-label">Critical</span>' +
+          '<span class="mc-inbox-count-value">' + redCount + '</span>' +
+        '</div>' +
+        '<div class="mc-inbox-count" data-severity="YELLOW">' +
+          '<span class="mc-inbox-count-label">Attention</span>' +
+          '<span class="mc-inbox-count-value">' + yellowCount + '</span>' +
+        '</div>' +
+        '<div class="mc-inbox-count" data-severity="GREEN">' +
+          '<span class="mc-inbox-count-label">Healthy</span>' +
+          '<span class="mc-inbox-count-value">' + healthyCount + '</span>' +
+        '</div>' +
+        (hiddenCount > 0
+          ? '<div class="mc-inbox-count is-dim"><span class="mc-inbox-count-label">Hidden</span><span class="mc-inbox-count-value">' + hiddenCount + '</span></div>'
+          : "") +
+      '</div>';
 
-    // Phase 33B — compact single-row cards. Title + severity pill + entity
-    // line + buttons all on one row. Reason + Fix move into a collapsible
-    // Details panel so the default state is scannable (~4-6 alerts visible
-    // without scroll).
-    const itemsHtml = visibleItems.map(it => {
-      const key = escapeHtml(it.alertKey || "");
-      const hasDetails = !!(it.reason || it.fix);
-      return (
-        '<article class="mc-item is-compact" data-severity="' + escapeHtml(it.severity) + '" data-key="' + key + '" data-expanded="false">' +
-          '<div class="mc-item-row">' +
-            '<div class="mc-item-row-head">' +
-              '<span class="mc-item-severity-pill" data-severity="' + escapeHtml(it.severity) + '">' + escapeHtml(it.severity) + '</span>' +
-              '<span class="mc-item-title-compact">' + escapeHtml(it.title) + '</span>' +
+    const priorityBlock = topPriorities.length === 0
+      ? '<div class="mc-inbox-priorities is-clean">All clear — no priorities right now.</div>'
+      : '<ol class="mc-inbox-priorities">' +
+          topPriorities.map(p => '<li>' + escapeHtml(p) + '</li>').join("") +
+        '</ol>';
+
+    /* ---- Inbox row builder ---- */
+    function rowHtml(g) {
+      const summary = summarizeGroupContexts(g, 3);
+      const countTag = g.items.length > 1 ? ' · <strong>' + g.items.length + '×</strong>' : "";
+      const openBtn = g.actionRoute
+        ? '<button type="button" class="mc-inbox-btn mc-inbox-btn-primary" data-mc-action-route="' +
+          escapeHtml(g.actionRoute) + '">' + escapeHtml(g.actionLabel || "Open") + '</button>'
+        : '';
+      // Expanded subitems list — each row's context + reason/fix collapsed
+      // into compact paragraphs. Per-item alertKeys ride along as data
+      // attributes so per-row Dismiss/Snooze can target one instance.
+      const subItems = g.items.map(it => {
+        const k = escapeHtml(it.alertKey || "");
+        return (
+          '<div class="mc-inbox-subitem" data-key="' + k + '">' +
+            '<div class="mc-inbox-subitem-head">' +
+              (it.context ? '<span class="mc-inbox-subitem-ctx">' + escapeHtml(it.context) + '</span>' : '') +
+              '<button type="button" class="mc-inbox-btn mc-inbox-btn-mini" data-mc-noise="dismiss-prompt" data-key="' + k + '">Dismiss</button>' +
+              '<button type="button" class="mc-inbox-btn mc-inbox-btn-mini" data-mc-noise="snooze-prompt"  data-key="' + k + '">Snooze</button>' +
             '</div>' +
-            '<div class="mc-item-row-body">' +
-              '<span class="mc-item-entity-compact">' + escapeHtml(it.subject) + '</span>' +
-              (it.context ? '<span class="mc-item-context-compact"> · ' + escapeHtml(it.context) + '</span>' : '') +
-            '</div>' +
-            '<div class="mc-item-actions" data-actions-state="default">' +
-              (it.actionRoute
-                ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
-                  escapeHtml(it.actionRoute) + '">' + escapeHtml(it.actionLabel || "Open") + '</button>'
-                : '') +
-              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt"  data-key="' + key + '">Dismiss</button>' +
-              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"   data-key="' + key + '">Snooze</button>' +
-              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress</button>' +
-              (hasDetails
-                ? '<button type="button" class="mc-item-btn mc-item-quiet mc-item-details-btn" data-mc-noise="toggle-details" data-key="' + key + '">Details</button>'
-                : '') +
-            '</div>' +
-          '</div>' +
-          (hasDetails
-            ? '<div class="mc-item-details" hidden>' +
-                (it.reason ? '<p class="mc-item-reason">' + escapeHtml(it.reason) + '</p>' : '') +
-                (it.fix    ? '<p class="mc-item-fix"><span class="mc-item-fix-label">Fix</span>' + escapeHtml(it.fix) + '</p>' : '') +
-              '</div>'
+            (it.reason ? '<p class="mc-inbox-subitem-reason">' + escapeHtml(it.reason) + '</p>' : '') +
+            (it.fix    ? '<p class="mc-inbox-subitem-fix"><span class="mc-inbox-fix-label">FIX</span>' + escapeHtml(it.fix) + '</p>' : '') +
+          '</div>'
+        );
+      }).join("");
+      // Group-level Suppress always points at the same (category, entity)
+      // bucket — one click suppresses every row in this group.
+      const firstKey = escapeHtml((g.items[0] && g.items[0].alertKey) || "");
+      const groupActions =
+        '<div class="mc-inbox-group-actions">' +
+          '<button type="button" class="mc-inbox-btn mc-inbox-btn-suppress" data-mc-noise="suppress-prompt" data-key="' + firstKey + '">Suppress Similar</button>' +
+          (g.items.length > 1
+            ? '<button type="button" class="mc-inbox-btn" data-mc-group-action="dismiss-all-prompt" data-group-key="' + escapeHtml(g.groupKey) + '">Dismiss All</button>'
             : '') +
+        '</div>';
+
+      return (
+        '<article class="mc-inbox-row" data-severity="' + escapeHtml(g.severity) + '" data-group-key="' + escapeHtml(g.groupKey) + '" data-expanded="false">' +
+          '<div class="mc-inbox-row-line">' +
+            '<span class="mc-inbox-sev-dot" data-severity="' + escapeHtml(g.severity) + '" title="' + escapeHtml(g.severity) + '"></span>' +
+            '<span class="mc-inbox-row-entity">' + escapeHtml(g.entityName) + '</span>' +
+            '<span class="mc-inbox-row-headline"> · ' + escapeHtml(g.title) + countTag + '</span>' +
+            (summary ? '<span class="mc-inbox-row-summary"> · ' + escapeHtml(summary) + '</span>' : '') +
+            '<span class="mc-inbox-row-actions">' +
+              openBtn +
+              '<button type="button" class="mc-inbox-btn" data-mc-noise="toggle-details" data-key="' + firstKey + '" data-group-key="' + escapeHtml(g.groupKey) + '">Details</button>' +
+            '</span>' +
+          '</div>' +
+          '<div class="mc-inbox-row-details" hidden>' +
+            (g.items.length > 1
+              ? '<p class="mc-inbox-row-details-intro">' + g.items.length + ' alerts grouped by ' + escapeHtml(g.entityName) + '. Each can be dismissed individually, or use Suppress Similar to hide all matching alerts going forward.</p>'
+              : '') +
+            subItems +
+            groupActions +
+          '</div>' +
         '</article>'
       );
-    }).join("") + overflowNotes;
+    }
 
-    const healthyHtml = (model.healthy && model.healthy.length)
-      ? '<div class="mc-healthy"><span class="mc-healthy-label">Healthy</span>' +
-        model.healthy.map(h => '<span class="mc-healthy-item">' + escapeHtml(h) + '</span>').join("") +
-        '</div>'
-      : "";
+    const redSection = redGroups.length === 0
+      ? '<details class="mc-inbox-section" data-severity="RED" open><summary><span class="mc-inbox-sev-pill" data-severity="RED">CRITICAL</span><span class="mc-inbox-sev-count">0</span></summary><p class="mc-inbox-empty">No critical alerts.</p></details>'
+      : '<details class="mc-inbox-section" data-severity="RED" open><summary><span class="mc-inbox-sev-pill" data-severity="RED">CRITICAL</span><span class="mc-inbox-sev-count">' + redGroups.length + ' · ' + redCount + ' alert' + (redCount === 1 ? '' : 's') + '</span></summary>' +
+        redGroups.map(rowHtml).join("") + '</details>';
 
-    const warningsHtml = (model.failedReads && model.failedReads.length)
-      ? '<div class="mc-warnings">⚠ ' + escapeHtml(model.failedReads.length + " read(s) failed: " + model.failedReads.join("; ")) + '</div>'
-      : "";
+    const yellowSection = yellowGroups.length === 0
+      ? '<details class="mc-inbox-section" data-severity="YELLOW" open><summary><span class="mc-inbox-sev-pill" data-severity="YELLOW">ATTENTION</span><span class="mc-inbox-sev-count">0</span></summary><p class="mc-inbox-empty">No attention items.</p></details>'
+      : '<details class="mc-inbox-section" data-severity="YELLOW" open><summary><span class="mc-inbox-sev-pill" data-severity="YELLOW">ATTENTION</span><span class="mc-inbox-sev-count">' + yellowGroups.length + ' · ' + yellowCount + ' alert' + (yellowCount === 1 ? '' : 's') + '</span></summary>' +
+        yellowGroups.map(rowHtml).join("") + '</details>';
 
-    // Phase 33A — Suppressed Alerts collapsible. Shows every active
-    // suppression rule with a Reactivate button. Lives at the very
-    // bottom of the panel; defaults to closed so it doesn't compete
-    // with action items.
+    const healthyChips = (model.healthy || []).length === 0
+      ? '<p class="mc-inbox-empty">Nothing to celebrate yet.</p>'
+      : '<div class="mc-inbox-healthy">' +
+          model.healthy.map(h => '<span class="mc-inbox-healthy-chip">' + escapeHtml(h) + '</span>').join("") +
+        '</div>';
+    const healthySection =
+      '<details class="mc-inbox-section" data-severity="GREEN"><summary><span class="mc-inbox-sev-pill" data-severity="GREEN">HEALTHY</span><span class="mc-inbox-sev-count">' + healthyCount + '</span></summary>' +
+        healthyChips + '</details>';
+
+    /* ---- Suppressed Alerts collapsible (unchanged) ---- */
     const suppRows = suppressions.filter(s => s.active !== false);
     const supHtml = suppRows.length === 0
       ? '<p class="mc-supp-empty">No active suppression rules.</p>'
@@ -833,6 +990,10 @@
         '<div class="mc-supp-body">' + supHtml + '</div>' +
       '</details>';
 
+    const warningsHtml = (model.failedReads && model.failedReads.length)
+      ? '<div class="mc-warnings">⚠ ' + escapeHtml(model.failedReads.length + " read(s) failed: " + model.failedReads.join("; ")) + '</div>'
+      : "";
+
     root.innerHTML =
       '<header class="mc-head">' +
         '<div>' +
@@ -842,9 +1003,14 @@
         '</div>' +
         '<button type="button" class="mc-refresh" id="mission-control-refresh">Refresh</button>' +
       '</header>' +
-      banner +
-      (totalActions > 0 ? '<div class="mc-items">' + itemsHtml + '</div>' : "") +
-      healthyHtml +
+      countTiles +
+      '<div class="mc-inbox-priorities-wrap">' +
+        '<div class="mc-inbox-priorities-label">Top priorities</div>' +
+        priorityBlock +
+      '</div>' +
+      redSection +
+      yellowSection +
+      healthySection +
       warningsHtml +
       suppressedSection;
   }
@@ -890,10 +1056,11 @@
 
   /* ---------- public API ---------- */
 
-  // Hold the last snapshot's items + lookup so action handlers can find
-  // the item by alertKey without a re-fetch.
+  // Hold the last snapshot's items + groups + lookup maps so action
+  // handlers can find what they need without a re-fetch.
   let lastSnap = null;
   let lastItemsByKey = {};
+  let lastGroupsByKey = {};
 
   async function refresh() {
     if (loading) return;
@@ -905,6 +1072,8 @@
       lastSnap = snap;
       lastItemsByKey = {};
       (model.items || []).forEach(it => { if (it.alertKey) lastItemsByKey[it.alertKey] = it; });
+      lastGroupsByKey = {};
+      groupByEntity((model.items || []).slice()).forEach(g => { lastGroupsByKey[g.groupKey] = g; });
       render(model, snap.opsWindow, snap);
       loaded = true;
     } catch (err) {
@@ -929,11 +1098,8 @@
    * the admin and leave the card visible.
    */
 
-  function setActionsBar(card, html) {
-    const bar = card.querySelector('[data-actions-state]');
-    if (!bar) return;
-    bar.innerHTML = html;
-  }
+  /* ---------- Phase 33C inbox-mode confirm-bar helpers ---------- */
+
   function escAttr(s) {
     return String(s == null ? "" : s)
       .replace(/&/g,"&amp;").replace(/"/g,"&quot;");
@@ -942,50 +1108,45 @@
     return String(s == null ? "" : s)
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
+  function removeAnyConfirmBar(scope) {
+    if (!scope) return;
+    scope.querySelectorAll(".mc-confirm-bar").forEach(el => el.remove());
+  }
+  function appendConfirmBar(parentEl, html) {
+    if (!parentEl) return null;
+    // Only one confirm bar per parent at a time — replace if present.
+    parentEl.querySelectorAll(":scope > .mc-confirm-bar").forEach(el => el.remove());
+    const div = document.createElement("div");
+    div.className = "mc-confirm-bar";
+    div.innerHTML = html;
+    parentEl.appendChild(div);
+    return div;
+  }
 
-  function buildDismissBar(item) {
-    return '<div class="mc-item-confirm-bar">' +
-      '<span class="mc-item-confirm-label">Dismiss this alert?</span>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet is-danger" data-mc-noise="dismiss-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
-    '</div>';
+  function buildDismissBarItem(item) {
+    return '<span class="mc-confirm-label">Dismiss this alert?</span>' +
+      '<button type="button" class="mc-inbox-btn mc-inbox-btn-danger" data-mc-noise="dismiss-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>';
   }
-  function buildSnoozeBar(item) {
-    return '<div class="mc-item-confirm-bar">' +
-      '<span class="mc-item-confirm-label">Snooze for:</span>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="1">1 day</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="7">7 days</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="30">30 days</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
-    '</div>';
+  function buildSnoozeBarItem(item) {
+    return '<span class="mc-confirm-label">Snooze for:</span>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="1">1 day</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="7">7 days</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="30">30 days</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>';
   }
-  function buildSuppressBar(item) {
+  function buildSuppressBarItem(item) {
     const scopeLabel = (item.entityType === "aggregate")
       ? 'all "' + (item.title || item.category) + '" alerts'
       : 'all "' + (item.title || item.category) + '" alerts for ' + (item.entityName || item.entityId || "this entity");
-    return '<div class="mc-item-confirm-bar">' +
-      '<span class="mc-item-confirm-label">Suppress ' + escText(scopeLabel) + '?</span>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet is-danger" data-mc-noise="suppress-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
-    '</div>';
+    return '<span class="mc-confirm-label">Suppress ' + escText(scopeLabel) + '?</span>' +
+      '<button type="button" class="mc-inbox-btn mc-inbox-btn-danger" data-mc-noise="suppress-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>';
   }
-
-  // Restore the default actions row for a card (called on Cancel).
-  function buildDefaultBar(item) {
-    const key = escAttr(item.alertKey || "");
-    const hasDetails = !!(item.reason || item.fix);
-    const routeBtn = item.actionRoute
-      ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
-        escAttr(item.actionRoute) + '">' + escText(item.actionLabel || "Open") + '</button>'
-      : '';
-    const detailsBtn = hasDetails
-      ? '<button type="button" class="mc-item-btn mc-item-quiet mc-item-details-btn" data-mc-noise="toggle-details" data-key="' + key + '">Details</button>'
-      : '';
-    return routeBtn +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt"  data-key="' + key + '">Dismiss</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"   data-key="' + key + '">Snooze</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress</button>' +
-      detailsBtn;
+  function buildDismissAllBarGroup(group) {
+    return '<span class="mc-confirm-label">Dismiss all ' + group.items.length + ' alerts in this group?</span>' +
+      '<button type="button" class="mc-inbox-btn mc-inbox-btn-danger" data-mc-group-action="dismiss-all-confirm" data-group-key="' + escAttr(group.groupKey) + '">Confirm</button>' +
+      '<button type="button" class="mc-inbox-btn" data-mc-group-action="cancel" data-group-key="' + escAttr(group.groupKey) + '">Cancel</button>';
   }
 
   async function applyDismissal(item, opts) {
@@ -1039,6 +1200,38 @@
     });
   }
 
+  // Phase 33C — group dismissal. Writes one dismissal doc per alertKey
+  // in the group, batched. Used by the "Dismiss All" group action.
+  async function applyDismissalGroup(group, opts) {
+    if (!group || !group.items || !group.items.length) return;
+    const db = firebase.firestore();
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const expiresAt = (opts && opts.expiresMs)
+      ? firebase.firestore.Timestamp.fromMillis(opts.expiresMs)
+      : null;
+    const me = firebase.auth().currentUser;
+    const batch = db.batch();
+    group.items.forEach(item => {
+      if (!item.alertKey) return;
+      const ref = db.collection("mission_control_alert_dismissals").doc(item.alertKey);
+      batch.set(ref, {
+        alert_key:          item.alertKey,
+        alert_type:         item.category,
+        entity_type:        item.entityType || null,
+        entity_id:          item.entityId   || null,
+        entity_name:        item.entityName || null,
+        dismissed_by_uid:   me ? me.uid   : null,
+        dismissed_by_email: me ? me.email : null,
+        dismissed_at:       now,
+        reason:             (opts && opts.reason) || null,
+        expires_at:         expiresAt,
+        snooze_days:        (opts && opts.days) || null,
+        group_dismissal:    true
+      });
+    });
+    await batch.commit();
+  }
+
   function wireClicks() {
     document.addEventListener("click", async function (ev) {
       // Refresh
@@ -1055,44 +1248,78 @@
         return;
       }
 
-      // Noise-control buttons on cards
+      /* -------- Group-level actions (dismiss-all, cancel on group bar) -------- */
+      const groupBtn = ev.target.closest("#mission-control [data-mc-group-action]");
+      if (groupBtn) {
+        const action = groupBtn.getAttribute("data-mc-group-action");
+        const groupKey = groupBtn.getAttribute("data-group-key");
+        const group = lastGroupsByKey[groupKey];
+        if (!group) return;
+        try {
+          if (action === "dismiss-all-prompt") {
+            const groupActionsEl = groupBtn.closest(".mc-inbox-group-actions");
+            appendConfirmBar(groupActionsEl, buildDismissAllBarGroup(group));
+          } else if (action === "dismiss-all-confirm") {
+            await applyDismissalGroup(group);
+            refresh();
+          } else if (action === "cancel") {
+            const groupActionsEl = groupBtn.closest(".mc-inbox-group-actions");
+            removeAnyConfirmBar(groupActionsEl);
+          }
+        } catch (err) {
+          alert("Couldn't update: " + (err.message || err));
+        }
+        return;
+      }
+
+      /* -------- Per-item noise controls (Phase 33A buttons preserved) -------- */
       const noiseBtn = ev.target.closest("#mission-control [data-mc-noise]");
       if (noiseBtn) {
         const action = noiseBtn.getAttribute("data-mc-noise");
         const key    = noiseBtn.getAttribute("data-key");
-        const card   = noiseBtn.closest(".mc-item");
-        const item   = lastItemsByKey[key];
-        if (!item) { return; }
+        const row    = noiseBtn.closest(".mc-inbox-row");
+        const subitem= noiseBtn.closest(".mc-inbox-subitem");
+        const item   = key ? lastItemsByKey[key] : null;
+
+        // Toggle Details — independent of any item key (works on group level)
+        if (action === "toggle-details") {
+          if (!row) return;
+          const expanded = row.getAttribute("data-expanded") === "true";
+          row.setAttribute("data-expanded", expanded ? "false" : "true");
+          const panel = row.querySelector(".mc-inbox-row-details");
+          if (panel) panel.hidden = expanded;
+          return;
+        }
+        // Cancel — remove the confirm bar from whichever scope hosts it.
+        if (action === "cancel") {
+          if (subitem) removeAnyConfirmBar(subitem);
+          else if (row) removeAnyConfirmBar(row.querySelector(".mc-inbox-group-actions"));
+          return;
+        }
+        if (!item) return;
         try {
           if (action === "dismiss-prompt") {
-            setActionsBar(card, buildDismissBar(item));
+            appendConfirmBar(subitem, buildDismissBarItem(item));
           } else if (action === "dismiss-confirm") {
             await applyDismissal(item);
             refresh();
           } else if (action === "snooze-prompt") {
-            setActionsBar(card, buildSnoozeBar(item));
+            appendConfirmBar(subitem, buildSnoozeBarItem(item));
           } else if (action === "snooze-do") {
             const days = parseInt(noiseBtn.getAttribute("data-days") || "0", 10);
             if (!days) return;
-            await applyDismissal(item, {
-              days: days,
-              expiresMs: Date.now() + days * 86400000
-            });
+            await applyDismissal(item, { days: days, expiresMs: Date.now() + days * 86400000 });
             refresh();
           } else if (action === "suppress-prompt") {
-            setActionsBar(card, buildSuppressBar(item));
+            // Suppress lives at the group-actions level. The button is
+            // wired with the first item's key (the group's category +
+            // entity is what matters; any item in the group has the
+            // same category+entity, so the first works fine).
+            const groupActions = row && row.querySelector(".mc-inbox-group-actions");
+            appendConfirmBar(groupActions, buildSuppressBarItem(item));
           } else if (action === "suppress-confirm") {
             await applySuppression(item);
             refresh();
-          } else if (action === "cancel") {
-            setActionsBar(card, buildDefaultBar(item));
-          } else if (action === "toggle-details") {
-            // Phase 33B — show/hide the per-card Details panel without
-            // touching Firestore. Pure DOM toggle on the same card.
-            const expanded = card.getAttribute("data-expanded") === "true";
-            card.setAttribute("data-expanded", expanded ? "false" : "true");
-            const panel = card.querySelector(".mc-item-details");
-            if (panel) panel.hidden = expanded;
           }
         } catch (err) {
           alert("Couldn't update: " + (err.message || err));
