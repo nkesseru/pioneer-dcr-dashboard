@@ -7,17 +7,28 @@
  * so the Hiring Health card flips the "Data Source" pill to "Live GHL"
  * automatically once a snapshot lands.
  *
- * Mapping (from Phase 2A.2 spec):
- *   Applicants 7d        — opportunities created in last 7 days
- *   Applicants 30d       — opportunities created in last 30 days
- *   Interviews Scheduled — currently in "Group Interview" stage
- *   Interviews Completed — currently in any stage past Group Interview
- *                          (1on1, Working Interview, Waiting, Offer,
- *                           Onboarding, Hired) — excludes Yellow/Red/Withdrawn
- *   Working Interviews   — currently in "Working Interview - OnSite"
- *   Hires                — currently in "Hired" with lastStageChangeAt
- *                          inside the last 30 days (falls back to createdAt)
- *   Yellow / Red / Withdrawn are excluded from active funnel health for v1.
+ * Mapping (Phase 2A.2.1 — cohort-based 30-day funnel):
+ *   Every funnel metric uses the SAME population: opportunities created in
+ *   the last 30 days, excluding Yellow/Red/Withdrawn. Numerators count how
+ *   many of that cohort have reached each downstream stage (by current
+ *   stage position). This guarantees a monotonic funnel and conversion
+ *   rates <= 100%.
+ *
+ *     applicants_30d        — opps created in last 30d (cohort denominator)
+ *     applicants_7d         — opps created in last 7d (sub-cohort, same exclusions)
+ *     interviews_scheduled  — cohort with stage rank >= "Group Interview"
+ *     interviews_completed  — cohort with stage rank >= "1 on 1 Interview - Starbucks"
+ *     working_interviews    — cohort with stage rank >= "Working Interview - OnSite"
+ *     hires                 — cohort with stage rank >= "Hired"
+ *
+ *   stage_breakdown stays as current-stage occupancy (lifetime stock) for
+ *   diagnostic/reference use only — it is NOT funnel-comparable. A duplicate
+ *   alias `current_stage_breakdown` is published for clarity.
+ *
+ *   Earlier (Phase 2A.2) the downstream metrics counted current stock in
+ *   each stage with no time window. That mixed stock vs. flow and produced
+ *   conversion rates > 100% (e.g. 689 / 67 = 1028%). The cohort model fixes
+ *   the units; see Phase 2A.2.1 audit for the full reasoning.
  *
  * PII discipline:
  *   The opportunity records carry candidate names + contact IDs. This module
@@ -60,18 +71,19 @@ const STAGE_HIRED             = 'Hired';
 const STAGE_RED               = 'Red';
 const STAGE_WITHDRAWN         = 'Withdrawn';
 
-// Stages past Group Interview (spec: "stage index >= 4"). Used to count
-// Interviews Completed. Hired is included because someone hired completed
-// their interviews; Yellow/Red/Withdrawn are excluded entirely from the
-// active funnel.
-const COMPLETED_INTERVIEW_STAGES = new Set([
-  STAGE_ONE_ON_ONE,
-  STAGE_WORKING_INTERVIEW,
-  STAGE_WAITING_DECISION,
-  STAGE_OFFER,
-  STAGE_ONBOARDING,
-  STAGE_HIRED
-]);
+// Funnel rank thresholds — each metric counts cohort members whose current
+// stage position is >= the position of the named stage. Positions are
+// resolved at runtime from the GHL pipeline payload (see calculateMetrics).
+const FUNNEL_STAGE_THRESHOLDS = [
+  { metric: 'interviews_scheduled', stageName: STAGE_GROUP_INTERVIEW   },
+  { metric: 'interviews_completed', stageName: STAGE_ONE_ON_ONE        },
+  { metric: 'working_interviews',   stageName: STAGE_WORKING_INTERVIEW },
+  { metric: 'hires',                stageName: STAGE_HIRED             }
+];
+
+// Cohort window in days. Surfaced on the snapshot as cohort_window_days
+// so future readers don't have to grep for it.
+const COHORT_WINDOW_DAYS = 30;
 
 const EXCLUDED_STAGES = new Set([STAGE_YELLOW, STAGE_RED, STAGE_WITHDRAWN]);
 
@@ -184,20 +196,38 @@ async function fetchOpportunities(token, locationId, pipelineId) {
 // ---- Metrics ----------------------------------------------------------------
 
 function calculateMetrics(opportunities, stages, now) {
-  const nowMs          = now.getTime();
-  const sevenDaysAgo   = nowMs - 7  * 86400000;
-  const thirtyDaysAgo  = nowMs - 30 * 86400000;
+  const nowMs         = now.getTime();
+  const sevenDaysAgo  = nowMs - 7  * 86400000;
+  const cohortCutoff  = nowMs - COHORT_WINDOW_DAYS * 86400000;
 
   const stageById = new Map();
   stages.forEach(function (s) { stageById.set(s.id, s); });
 
-  // Initialize breakdown so empty stages still report zero (easier to debug).
+  // Resolve each funnel threshold's stage position from the live pipeline.
+  // A missing stage name means GHL renamed it under us — log and treat the
+  // threshold as unreachable (count stays zero) rather than crashing.
+  const thresholds = {};
+  FUNNEL_STAGE_THRESHOLDS.forEach(function (t) {
+    const stage = stages.find(function (s) { return s.name === t.stageName; });
+    if (!stage) {
+      logger.warn('[ghlSync] funnel threshold stage not found', {
+        metric: t.metric, expected_name: t.stageName
+      });
+      thresholds[t.metric] = Infinity;
+    } else {
+      thresholds[t.metric] = stage.position;
+    }
+  });
+
+  // Current-stage occupancy (lifetime stock) — kept for diagnostics only.
+  // Includes all opportunities, even excluded stages, so the breakdown
+  // matches what an admin sees in GHL's pipeline view.
   const breakdown = {};
   stages.forEach(function (s) { breakdown[s.name] = 0; });
   breakdown['(unknown)'] = 0;
 
   let applicants7d        = 0;
-  let applicants30d       = 0;
+  let applicants30d       = 0;  // cohort denominator
   let interviewsScheduled = 0;
   let interviewsCompleted = 0;
   let workingInterviews   = 0;
@@ -208,28 +238,22 @@ function calculateMetrics(opportunities, stages, now) {
     const stageName = stage ? stage.name : '(unknown)';
     breakdown[stageName] = (breakdown[stageName] || 0) + 1;
 
+    // Cohort gate 1: exclude Yellow / Red / Withdrawn for funnel health.
     if (EXCLUDED_STAGES.has(stageName)) return;
 
-    const createdMs     = parseMs(opp.createdAt);
-    const stageChangeMs = parseMs(opp.lastStageChangeAt);
+    // Cohort gate 2: must have been created in the last 30 days.
+    const createdMs = parseMs(opp.createdAt);
+    if (!Number.isFinite(createdMs) || createdMs < cohortCutoff) return;
 
-    if (Number.isFinite(createdMs)) {
-      if (createdMs >= sevenDaysAgo)  applicants7d++;
-      if (createdMs >= thirtyDaysAgo) applicants30d++;
-    }
+    // We're in the 30-day cohort. Count + rank downstream stages.
+    applicants30d++;
+    if (createdMs >= sevenDaysAgo) applicants7d++;
 
-    if (stageName === STAGE_GROUP_INTERVIEW)   interviewsScheduled++;
-    if (COMPLETED_INTERVIEW_STAGES.has(stageName)) interviewsCompleted++;
-    if (stageName === STAGE_WORKING_INTERVIEW) workingInterviews++;
-
-    if (stageName === STAGE_HIRED) {
-      // Prefer the stage-change timestamp so "hires in the last 30 days"
-      // counts when the move happened, not when the contact was created.
-      const effectiveMs = Number.isFinite(stageChangeMs) ? stageChangeMs : createdMs;
-      if (Number.isFinite(effectiveMs) && effectiveMs >= thirtyDaysAgo) {
-        hires++;
-      }
-    }
+    const stageRank = stage ? stage.position : -1;
+    if (stageRank >= thresholds.interviews_scheduled) interviewsScheduled++;
+    if (stageRank >= thresholds.interviews_completed) interviewsCompleted++;
+    if (stageRank >= thresholds.working_interviews)   workingInterviews++;
+    if (stageRank >= thresholds.hires)                hires++;
   });
 
   return {
@@ -239,7 +263,8 @@ function calculateMetrics(opportunities, stages, now) {
     interviewsCompleted: interviewsCompleted,
     workingInterviews:   workingInterviews,
     hires:               hires,
-    breakdown:           breakdown
+    breakdown:           breakdown,
+    thresholds:          thresholds
   };
 }
 
@@ -277,9 +302,9 @@ async function runSync(opts) {
 
   const today       = pacificYMD(now);
   const periodEnd   = today;
-  // 7-day rolling window is the headline; period_start matches it so the
-  // existing reader has a sane label.
-  const periodStart = pacificYMD(new Date(now.getTime() - 6 * 86400000));
+  // period_start matches the cohort window — 30 days back — so a reader
+  // sees the timeframe the funnel counts actually cover.
+  const periodStart = pacificYMD(new Date(now.getTime() - (COHORT_WINDOW_DAYS - 1) * 86400000));
 
   const snapshot = {
     snapshot_date:        today,
@@ -298,13 +323,23 @@ async function runSync(opts) {
     // serialize when the calling context (e.g. scripts/run-ghl-hiring-sync.js)
     // loads firebase-admin from a different node_modules than this module.
     updated_at:           new Date(),
-    stage_breakdown:      metrics.breakdown,
+    // Lifetime stock — current occupancy of each stage. Diagnostic only;
+    // NOT funnel-comparable. Published under two names: stage_breakdown
+    // (existing field, kept for back-compat) and current_stage_breakdown
+    // (clearer name for new consumers).
+    stage_breakdown:         metrics.breakdown,
+    current_stage_breakdown: metrics.breakdown,
+    // Phase 2A.2.1 diagnostics — let future readers tell at a glance which
+    // metric definition produced these numbers.
+    cohort_window_days:   COHORT_WINDOW_DAYS,
+    metric_mode:          'cohort_30d',
     raw_counts: {
       total_opportunities: opportunities.length,
       pipeline_id:         resolved.pipelineId,
       location_id:         locationId,
       invoked_by:          invokedBy,
-      duration_ms:         Date.now() - startMs
+      duration_ms:         Date.now() - startMs,
+      thresholds:          metrics.thresholds
     }
   };
 
