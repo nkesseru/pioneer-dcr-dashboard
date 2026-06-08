@@ -82,4 +82,11 @@
   // supply_notifications reminder doc with April's contact info attached
   // server-side, so the tech-facing JS bundle never sees the phone.
   window.SUPPLY_STATION_ORDER_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `refreshGhlHiringV1`.
+  // Used by /manager.html (Hiring Health → "Refresh GHL" button) to trigger
+  // an on-demand pull of the GHL Applicant Tracking pipeline. Admin-only
+  // (server-side role check). The GHL integration token is held only in
+  // the GHL_PRIVATE_INTEGRATION_TOKEN Firebase secret — never exposed here.
+  window.REFRESH_GHL_HIRING_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
 })();

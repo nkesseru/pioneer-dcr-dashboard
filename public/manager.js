@@ -1491,6 +1491,71 @@
     }
   }
 
+  // Phase 2A.2 — admin-only manual trigger for the GHL hiring sync.
+  // Calls refreshGhlHiringV1 with the signed-in admin's Firebase ID
+  // token. The endpoint server-side re-validates admin role, so this
+  // button is safe even if the /manager auth gate is ever loosened.
+  function wireHiringRefresh() {
+    const btn    = $("manager-hiring-refresh");
+    const status = $("manager-hiring-refresh-status");
+    if (!btn || !status) return;
+
+    btn.addEventListener("click", async function () {
+      if (!currentUser) {
+        status.hidden = false;
+        status.textContent = "Not signed in.";
+        status.style.color = "var(--mc-critical, #b00020)";
+        return;
+      }
+      const url = window.REFRESH_GHL_HIRING_URL;
+      if (!url) {
+        status.hidden = false;
+        status.textContent = "Refresh URL not configured.";
+        status.style.color = "var(--mc-critical, #b00020)";
+        return;
+      }
+
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = "Refreshing…";
+      status.hidden = false;
+      status.textContent = "Pulling latest from GHL…";
+      status.style.color = "var(--mc-ink-soft)";
+
+      try {
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + idToken,
+            "Content-Type":  "application/json"
+          },
+          body: "{}"
+        });
+        const body = await res.json().catch(function () { return {}; });
+        if (!res.ok || !body.ok) {
+          const msg = (body && body.error) || ("HTTP " + res.status);
+          throw new Error(msg);
+        }
+        const counts = (body.result && body.result.counts) || {};
+        status.textContent =
+          "Synced · applicants " + (counts.applicants_30d != null ? counts.applicants_30d : "?") +
+          " · hires " + (counts.hires != null ? counts.hires : "?");
+        status.style.color = "var(--mc-good, #1d7d3a)";
+
+        // Reload the Hiring Health snapshot (re-fetches the just-written doc).
+        await refreshAll();
+      } catch (err) {
+        console.error("[manager] GHL refresh failed", err);
+        status.textContent = "Failed: " + ((err && err.message) || "unknown");
+        status.style.color = "var(--mc-critical, #b00020)";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    });
+  }
+
   function wireForms() {
     $("manager-bottleneck-form").addEventListener("submit", submitBottleneck);
     $("manager-reflection-form").addEventListener("submit", submitReflection);
@@ -1499,6 +1564,7 @@
     const weeklyForm = $("manager-weekly-form");
     if (weeklyForm) weeklyForm.addEventListener("submit", submitWeeklyReview);
     wireBottleneckChoices();
+    wireHiringRefresh();
 
     // Phase 1B — pipeline action delegation. One listener on the
     // pipeline section catches every per-card button click and routes
