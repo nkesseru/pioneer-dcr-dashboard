@@ -293,7 +293,11 @@ async function runSync(opts) {
     working_interviews:   metrics.workingInterviews,
     hires:                metrics.hires,
     source:               'ghl',
-    updated_at:           admin.firestore.FieldValue.serverTimestamp(),
+    // Concrete Date — auto-converts to Firestore Timestamp on write. Plain
+    // Date avoids the FieldValue.serverTimestamp() sentinel, which fails to
+    // serialize when the calling context (e.g. scripts/run-ghl-hiring-sync.js)
+    // loads firebase-admin from a different node_modules than this module.
+    updated_at:           new Date(),
     stage_breakdown:      metrics.breakdown,
     raw_counts: {
       total_opportunities: opportunities.length,
