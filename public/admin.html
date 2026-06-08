@@ -154,12 +154,23 @@
          per firestore.rules). See refreshDayHealthMetrics24h. -->
     <!-- Phase 33D — tighter spacing so Admin Control Center sits closer
          under the ops overview (Mission Control + legacy DCR + KPI strip).
-         Inline rule because the original admin-ops-overview has no
-         dedicated stylesheet entry; this is a one-liner override. -->
+         Phase 33E — admin-main widened from 980 → 1160 so Mission Control
+         centers on a wide desktop instead of feeling "right-shifted." The
+         attention-strip max-width is bumped to match so the KPI strip
+         doesn't appear visually narrower than the MC card above it. -->
     <style>
+      .admin-main      { max-width: 1160px; }
+      .attention-strip { max-width: 1160px; margin: 8px auto 0; }
       #admin-ops-overview { margin-bottom: 6px; }
       #admin-ops-overview > * + * { margin-top: 6px; }
       #attention-strip { margin-bottom: 0; }
+      /* Phase 33E — legacy DCR details: confirm full-width inline row
+         (already block-level via the existing inline style; this just
+         pins width so it can't be visually misread as a side card). */
+      #admin-legacy-dcr-email-metrics { width: 100%; display: block; }
+      /* Phase 33E — trim hero bottom padding by 2px so MC sits one notch
+         closer to the page title without crowding the subtitle. */
+      .hero-admin { padding-bottom: 2px; }
     </style>
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
