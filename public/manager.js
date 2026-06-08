@@ -10,7 +10,7 @@
  *
  * Reads (live, on load + on user refresh):
  *   STAFFING HEALTH
- *     • open_shifts                        — where status != "closed"
+ *     • open_shift_requests                — where status == "open"
  *     • call_outs                          — where status not in
  *                                            ["resolved", "closed"] OR
  *                                            created in last 7 days
@@ -186,8 +186,10 @@
     }
 
     const reads = await Promise.all([
-      // 0. open_shifts
-      safe("open_shifts", db.collection("open_shifts").get()),
+      // 0. open_shift_requests — unclaimed coverage requests. Filter
+      // server-side to status="open" so the read stays small.
+      safe("open_shifts", db.collection("open_shift_requests")
+        .where("status", "==", "open").get()),
       // 1. call_outs (recent + open)
       safe("call_outs", db.collection("call_outs").orderBy("created_at", "desc").limit(50).get()),
       // 2. pioneer_service_sessions for last 7 days
@@ -280,7 +282,7 @@
     // ---- Same derived signals as before — UI shape is the only thing
     // changing in Phase 1A.1. ----
     const sessions = (snap.sessions || []).filter(s => !isQaTestSession(s));
-    const openShifts = (snap.openShifts || []).filter(s => (s.status || "open") !== "closed");
+    const openShifts = (snap.openShifts || []).filter(s => (s.status || "open") === "open");
     const openCallOuts = (snap.callOuts || []).filter(c => {
       const status = String(c.status || "open").toLowerCase();
       const recent = tsToMs(c.created_at) >= snap.sevenDaysAgo;
@@ -543,17 +545,18 @@
     return "submitted";
   }
 
-  // Phase 1B hotfix — per-status counts, matching the spec:
-  //   Submitted   = count(status="submitted")
-  //   Approved    = count(status="approved")
-  //   Implemented = count(status="implemented")
-  //   Rate        = implemented / approved (per-status; "—" if approved is 0)
+  // Phase 2A.1 cleanup — Implementation Rate uses cumulative "ever-approved"
+  // denominator (approved + in_progress + implemented) so the rate keeps
+  // calculating after items move past the approved column. Per-status
+  // count tiles still show the current-column counts.
   function renderImprovementMetrics(items) {
     const submitted   = items.filter(i => i.status === "submitted").length;
     const approved    = items.filter(i => i.status === "approved").length;
+    const inProgress  = items.filter(i => i.status === "in_progress").length;
     const implemented = items.filter(i => i.status === "implemented").length;
-    const rate = approved > 0
-      ? Math.round((implemented / approved) * 100)
+    const everApproved = approved + inProgress + implemented;
+    const rate = everApproved > 0
+      ? Math.round((implemented / everApproved) * 100)
       : null;
     $("mc-im-submitted").textContent   = String(submitted);
     $("mc-im-approved").textContent    = String(approved);
