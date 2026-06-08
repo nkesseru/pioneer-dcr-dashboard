@@ -215,15 +215,42 @@ const INVITE_ACTION_CODE_SETTINGS = {
   handleCodeInApp:   false   // browser-based reset; no app intent capture
 };
 
-// Mirror of the client-side ALLOWED_ADMIN_EMAILS in public/admin.js. Server-
-// side authoritative copy — used by verifyStaffOrReject() + whoAmIV1.
-// Keep in sync with public/admin.js + firestore.rules → isPioneerAdmin().
+// Role hierarchy (mirror of firestore.rules and public/staff-auth.js).
+// Hierarchical: owner > executive > admin > tech. Higher roles inherit
+// all lower-role capabilities.
+//   owner       — full access incl. pay-rate + financial data.
+//   executive   — CEO Mission Control + (future) Financial Pulse.
+//   admin       — Office Manager Mission Control + admin CRUD.
+//   tech        — operational surfaces only.
+//
+// Keep these three lists in sync with the matching consts in
+// public/staff-auth.js and the helpers in firestore.rules.
+const ALLOWED_OWNER_EMAILS = [
+  "nick@pioneercomclean.com",
+  "april@pioneercomclean.com"
+];
+const ALLOWED_EXECUTIVE_EMAILS = [
+  "april@pioneercomclean.com"
+];
 const ALLOWED_ADMIN_EMAILS = [
   "nick@pioneercomclean.com",
   "april@pioneercomclean.com",
   "kirby@pioneercomclean.com",
   "mgies@pioneercomclean.com"
 ];
+
+function roleForEmail(email) {
+  const lc = String(email || "").toLowerCase().trim();
+  if (!lc) return null;
+  if (ALLOWED_OWNER_EMAILS.indexOf(lc) >= 0)     return "owner";
+  if (ALLOWED_EXECUTIVE_EMAILS.indexOf(lc) >= 0) return "executive";
+  if (ALLOWED_ADMIN_EMAILS.indexOf(lc) >= 0)     return "admin";
+  return null;
+}
+
+function emailHasOwnerAccess(email)     { const r = roleForEmail(email); return r === "owner"; }
+function emailHasExecutiveAccess(email) { const r = roleForEmail(email); return r === "owner" || r === "executive"; }
+function emailHasAdminAccess(email)     { const r = roleForEmail(email); return r === "owner" || r === "executive" || r === "admin"; }
 
 /* ----------------------------- Staff auth (shared helper) ----------------------------- */
 

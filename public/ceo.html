@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>Pioneer · Executive Mission Control</title>
+  <link rel="icon" href="/favicon.ico" />
+
+  <style>
+    /* ============================================================
+     * CEO Mission Control — luxury wellness aesthetic
+     *
+     * Color philosophy: warm, organic, breathable. No pure black,
+     * no aggressive reds, no corporate blues. Every surface should
+     * feel earned and calm.
+     *
+     * Audience: April (primary) + Nick (owner). Desktop-first.
+     * ============================================================ */
+
+    :root {
+      /* ---- Palette ---- */
+      --ceo-cream:           #faf6ef;   /* page wash — soft cream */
+      --ceo-cream-deep:      #f3ede2;   /* card lift behind hero */
+      --ceo-paper:           #ffffff;   /* card surface */
+      --ceo-paper-soft:      #fdfbf6;   /* card surface, secondary */
+      --ceo-edge:            rgba(70, 60, 45, 0.08);
+
+      --ceo-charcoal:        #2f2a24;   /* warm charcoal — primary text */
+      --ceo-charcoal-soft:   #5d564b;
+      --ceo-charcoal-faint:  #8a8275;
+
+      --ceo-sage:            #a3b5a3;   /* dusty sage */
+      --ceo-sage-deep:       #6b8576;   /* muted eucalyptus */
+      --ceo-sage-soft:       #e3ebdf;
+      --ceo-sage-tint:       #f2f6ee;
+
+      --ceo-champagne:       #c8a96f;   /* champagne gold — accent */
+      --ceo-champagne-soft:  #f0e4c8;
+
+      --ceo-clay:            #b88a6f;   /* soft clay — warmth */
+      --ceo-clay-soft:       #f3e3d6;
+
+      --ceo-terracotta:      #c4836a;   /* warm amber — caution */
+      --ceo-terracotta-soft: #fbe4d6;
+
+      --ceo-berry:           #a26b76;   /* soft berry — danger */
+      --ceo-berry-soft:      #f0dee0;
+
+      --ceo-good:            #6b8576;   /* gentle green — success */
+      --ceo-good-soft:       #dde7dc;
+
+      /* ---- Type ---- */
+      --ceo-font: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                   "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --ceo-font-serif: "Iowan Old Style", "Apple Garamond", Georgia, serif;
+
+      /* ---- Geometry ---- */
+      --ceo-radius:   18px;
+      --ceo-radius-l: 28px;
+      --ceo-shadow:   0 1px 2px rgba(70, 60, 45, 0.04),
+                       0 6px 24px rgba(70, 60, 45, 0.06);
+      --ceo-shadow-l: 0 1px 3px rgba(70, 60, 45, 0.05),
+                       0 18px 48px rgba(70, 60, 45, 0.10);
+    }
+
+    /* ---- Reset / shell ---- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--ceo-cream);
+      color: var(--ceo-charcoal);
+      font-family: var(--ceo-font);
+      font-size: 15px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    button { font-family: inherit; }
+
+    .ceo-shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 56px 96px;
+    }
+
+    /* ---- Auth states ---- */
+    .ceo-auth-shell {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 96px 32px;
+      text-align: center;
+    }
+    .ceo-auth-shell h1 {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 36px;
+      letter-spacing: -0.5px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-auth-shell p {
+      color: var(--ceo-charcoal-soft);
+      margin: 0 0 24px;
+    }
+    .ceo-auth-btn {
+      background: var(--ceo-charcoal);
+      color: var(--ceo-cream);
+      border: none;
+      padding: 14px 28px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      box-shadow: var(--ceo-shadow);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .ceo-auth-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--ceo-shadow-l);
+    }
+    .ceo-auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ceo-auth-denied {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+      margin-top: 24px;
+    }
+
+    /* ---- Hero ---- */
+    .ceo-hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+    .ceo-hero-greeting {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 44px;
+      letter-spacing: -0.8px;
+      line-height: 1.1;
+      color: var(--ceo-charcoal);
+      margin: 0;
+    }
+    .ceo-hero-greeting em {
+      font-style: normal;
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-hero-meta {
+      text-align: right;
+      font-size: 13px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-hero-meta-date {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 4px;
+    }
+
+    /* ---- Company Health hero ---- */
+    .ceo-health-card {
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-paper-soft) 100%);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 56px 64px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 56px;
+    }
+    .ceo-health-card::after {
+      content: "";
+      position: absolute;
+      top: -120px; right: -120px;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle, var(--ceo-sage-soft) 0%, transparent 70%);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .ceo-health-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 24px;
+    }
+    .ceo-health-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) minmax(420px, 2fr);
+      gap: 64px;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+    .ceo-health-headline {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .ceo-health-score {
+      font-family: var(--ceo-font);
+      font-size: 128px;
+      font-weight: 200;
+      letter-spacing: -4px;
+      line-height: 1;
+      color: var(--ceo-charcoal);
+    }
+    .ceo-health-score-suffix {
+      font-size: 36px;
+      font-weight: 300;
+      color: var(--ceo-charcoal-soft);
+      letter-spacing: -1px;
+    }
+    .ceo-health-label {
+      font-family: var(--ceo-font-serif);
+      font-size: 24px;
+      color: var(--ceo-charcoal-soft);
+      margin: 12px 0 0;
+      font-weight: 400;
+    }
+    .ceo-health-pillars {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 28px 40px;
+    }
+    .ceo-pillar { }
+    .ceo-pillar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 6px;
+    }
+    .ceo-pillar-value {
+      font-family: var(--ceo-font);
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: -0.8px;
+      color: var(--ceo-charcoal);
+      line-height: 1.1;
+    }
+    .ceo-pillar-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 4px;
+    }
+
+    /* ---- Section header ---- */
+    .ceo-section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 4px 20px;
+    }
+    .ceo-section-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-section-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 30px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 4px 0 0;
+    }
+    .ceo-section-aside {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+    }
+
+    /* ---- Two-column row ---- */
+    .ceo-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+
+    /* ---- Cards ---- */
+    .ceo-card {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 32px;
+    }
+    .ceo-card-deep {
+      background: linear-gradient(180deg, var(--ceo-paper) 0%, var(--ceo-paper-soft) 100%);
+    }
+    .ceo-list { margin: 0; padding: 0; list-style: none; }
+    .ceo-list-item {
+      padding: 16px 0;
+      border-top: 1px solid var(--ceo-edge);
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+    }
+    .ceo-list-item:first-child { border-top: none; padding-top: 0; }
+    .ceo-list-item:last-child  { padding-bottom: 0; }
+    .ceo-list-item-icon {
+      flex: none;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .ceo-list-item-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .ceo-list-item-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      line-height: 1.35;
+    }
+    .ceo-list-item-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin: 4px 0 0;
+      line-height: 1.5;
+    }
+    .ceo-list-item-count {
+      font-family: var(--ceo-font);
+      font-size: 22px;
+      font-weight: 300;
+      color: var(--ceo-charcoal);
+      letter-spacing: -0.5px;
+      margin-left: 12px;
+      flex: none;
+    }
+    .ceo-list-item-cta {
+      font-size: 12px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 6px;
+      display: inline-block;
+    }
+    .ceo-list-item-cta:hover { color: var(--ceo-charcoal); }
+
+    /* Tier-flavored icon backgrounds */
+    .ceo-tone-attention .ceo-list-item-icon {
+      background: var(--ceo-terracotta-soft);
+      color: var(--ceo-terracotta);
+    }
+    .ceo-tone-watch .ceo-list-item-icon {
+      background: var(--ceo-champagne-soft);
+      color: var(--ceo-champagne);
+    }
+    .ceo-tone-celebrate .ceo-list-item-icon {
+      background: var(--ceo-sage-soft);
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-tone-pulse .ceo-list-item-icon {
+      background: var(--ceo-clay-soft);
+      color: var(--ceo-clay);
+    }
+
+    /* Empty states — calm, encouraging */
+    .ceo-empty {
+      padding: 32px 12px;
+      text-align: center;
+    }
+    .ceo-empty-icon {
+      font-family: var(--ceo-font-serif);
+      font-size: 28px;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 10px;
+    }
+    .ceo-empty-headline {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 4px;
+    }
+    .ceo-empty-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
+    /* ---- Department Scorecards ---- */
+    .ceo-row-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin-bottom: 56px;
+    }
+    .ceo-scorecard {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 220px;
+    }
+    .ceo-scorecard-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0;
+    }
+    .ceo-scorecard-name {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 16px;
+      font-weight: 400;
+    }
+    .ceo-scorecard-hero {
+      font-family: var(--ceo-font);
+      font-size: 48px;
+      font-weight: 200;
+      letter-spacing: -1.5px;
+      line-height: 1;
+      color: var(--ceo-charcoal);
+      margin-bottom: 4px;
+    }
+    .ceo-scorecard-hero-suffix {
+      font-size: 18px;
+      font-weight: 300;
+      color: var(--ceo-charcoal-soft);
+    }
+    .ceo-scorecard-hero-label {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft);
+      letter-spacing: 0.4px;
+      margin-bottom: 18px;
+    }
+    .ceo-scorecard-stats {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--ceo-edge);
+      padding-top: 14px;
+    }
+    .ceo-scorecard-stat {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .ceo-scorecard-stat-label { color: var(--ceo-charcoal-soft); }
+    .ceo-scorecard-stat-value {
+      font-weight: 500;
+      color: var(--ceo-charcoal);
+    }
+
+    /* ---- Leadership Pulse ---- */
+    .ceo-pulse-card {
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-sage-tint) 100%);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 44px 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ceo-pulse-card::before {
+      content: "";
+      position: absolute;
+      bottom: -100px; left: -100px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, var(--ceo-champagne-soft) 0%, transparent 70%);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .ceo-pulse-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+      margin: 0 0 8px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 28px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 28px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-item { }
+    .ceo-pulse-item-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 8px;
+    }
+    .ceo-pulse-item-value {
+      font-family: var(--ceo-font);
+      font-size: 32px;
+      font-weight: 200;
+      letter-spacing: -0.6px;
+      color: var(--ceo-charcoal);
+      line-height: 1.1;
+    }
+    .ceo-pulse-item-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 6px;
+    }
+
+    /* ---- Loading + utility ---- */
+    .ceo-loading {
+      color: var(--ceo-charcoal-faint);
+      font-style: italic;
+    }
+    .ceo-hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Sign-in state -->
+  <div id="ceo-state-signin" class="ceo-auth-shell ceo-hidden">
+    <h1>Pioneer Mission Control</h1>
+    <p>Sign in to continue.</p>
+    <button type="button" id="ceo-signin-btn" class="ceo-auth-btn">Continue with Google</button>
+  </div>
+
+  <!-- Access denied -->
+  <div id="ceo-state-denied" class="ceo-auth-shell ceo-hidden">
+    <h1>Restricted</h1>
+    <p>Executive Mission Control is available to Pioneer executives only.</p>
+    <p class="ceo-auth-denied" id="ceo-denied-email"></p>
+  </div>
+
+  <!-- Loading -->
+  <div id="ceo-state-loading" class="ceo-auth-shell ceo-hidden">
+    <p class="ceo-loading">Loading…</p>
+  </div>
+
+  <!-- Main content -->
+  <div id="ceo-state-content" class="ceo-hidden">
+    <main class="ceo-shell">
+
+      <!-- HERO GREETING -->
+      <header class="ceo-hero">
+        <div>
+          <h1 class="ceo-hero-greeting" id="ceo-greeting">Welcome.</h1>
+        </div>
+        <div class="ceo-hero-meta">
+          <div>Executive Mission Control</div>
+          <div class="ceo-hero-meta-date" id="ceo-date-label">—</div>
+        </div>
+      </header>
+
+      <!-- 1. COMPANY HEALTH -->
+      <section class="ceo-health-card" id="ceo-health">
+        <p class="ceo-health-eyebrow">Company Health</p>
+        <div class="ceo-health-grid">
+          <div>
+            <div class="ceo-health-headline">
+              <span class="ceo-health-score" id="ceo-health-score">—</span>
+              <span class="ceo-health-score-suffix">%</span>
+            </div>
+            <p class="ceo-health-label" id="ceo-health-label">Operational Health</p>
+          </div>
+          <div class="ceo-health-pillars" id="ceo-health-pillars">
+            <!-- pillars injected by ceo.js -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 + 3. DANGERS + OPPORTUNITIES -->
+      <div class="ceo-row-2">
+        <section>
+          <div class="ceo-section-head">
+            <div>
+              <div class="ceo-section-eyebrow">Attention Needed</div>
+              <h2 class="ceo-section-title">Where to lead this week</h2>
+            </div>
+          </div>
+          <div class="ceo-card ceo-card-deep" id="ceo-dangers">
+            <p class="ceo-loading">Reading the room…</p>
+          </div>
+        </section>
+        <section>
+          <div class="ceo-section-head">
+            <div>
+              <div class="ceo-section-eyebrow">Momentum</div>
+              <h2 class="ceo-section-title">What is working</h2>
+            </div>
+          </div>
+          <div class="ceo-card ceo-card-deep" id="ceo-opportunities">
+            <p class="ceo-loading">Counting the wins…</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- 4. DEPARTMENT SCORECARDS -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Department Scorecards</div>
+            <h2 class="ceo-section-title">How each part of Pioneer is doing</h2>
+          </div>
+          <div class="ceo-section-aside" id="ceo-scorecards-aside">Last 30 days</div>
+        </div>
+        <div class="ceo-row-4" id="ceo-scorecards">
+          <!-- 4 scorecards injected by ceo.js -->
+        </div>
+      </section>
+
+      <!-- 5. LEADERSHIP PULSE -->
+      <section class="ceo-pulse-card" id="ceo-pulse">
+        <p class="ceo-pulse-eyebrow">Leadership Pulse</p>
+        <h2 class="ceo-pulse-title">How you've been leading</h2>
+        <div class="ceo-pulse-grid" id="ceo-pulse-grid">
+          <!-- pulse items injected by ceo.js -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Firebase SDK + config -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="ceo.js?v=20260608-phase1-init"></script>
+</body>
+</html>

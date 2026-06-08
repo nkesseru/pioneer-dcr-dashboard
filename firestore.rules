@@ -49,19 +49,55 @@ service cloud.firestore {
     // Adding an admin: write /admins/{email}. Removing: set active:
     // false on the doc (or delete it). Keep this list in sync with
     // ALLOWED_ADMIN_EMAILS in public/admin.js + functions/index.js.
-    function isPioneerAdmin() {
+    // Role hierarchy (Phase: CEO Mission Control discovery).
+    //   owner       — full access incl. future pay-rate + financial data.
+    //   executive   — owner + CEO Mission Control + (future) Financial Pulse.
+    //   admin       — executive + Office Manager Mission Control + admin CRUD.
+    //   tech        — operational surfaces only (own data + assigned customers).
+    //
+    // Higher roles inherit lower-role capabilities — isPioneerAdmin() returns
+    // true for executives and owners too, so existing admin-gated reads/writes
+    // keep working without rule churn when a new executive is added.
+    //
+    // Role rosters are hardcoded here while the role-management UI is deferred.
+    // Promoting/demoting requires a rules deploy (and matching update to the
+    // hardcoded lists in functions/index.js and the client-side staff-auth.js).
+    function isPioneerOwner() {
       return request.auth != null
         && request.auth.token.email is string
-        && (
-          request.auth.token.email.lower() in [
-            "nick@pioneercomclean.com",
-            "april@pioneercomclean.com",
-            "kirby@pioneercomclean.com",
-            "mgies@pioneercomclean.com"
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com"
+        ];
+    }
+
+    function isPioneerExecutive() {
+      return isPioneerOwner()
+        || (
+          request.auth != null
+          && request.auth.token.email is string
+          && request.auth.token.email.lower() in [
+            "april@pioneercomclean.com"
           ]
-          || (
-            exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
-            && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.active != false
+        );
+    }
+
+    function isPioneerAdmin() {
+      return isPioneerExecutive()
+        || (
+          request.auth != null
+          && request.auth.token.email is string
+          && (
+            request.auth.token.email.lower() in [
+              "nick@pioneercomclean.com",
+              "april@pioneercomclean.com",
+              "kirby@pioneercomclean.com",
+              "mgies@pioneercomclean.com"
+            ]
+            || (
+              exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+              && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.active != false
+            )
           )
         );
     }
