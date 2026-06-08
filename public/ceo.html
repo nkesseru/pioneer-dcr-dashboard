@@ -253,6 +253,176 @@
       margin-top: 4px;
     }
 
+    /* ---- Today's CEO Actions (Phase 1B) ---- */
+    .ceo-actions-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 4px 20px;
+    }
+    .ceo-actions-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+    }
+    .ceo-actions-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 30px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 4px 0 0;
+    }
+    .ceo-actions-aside {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-actions-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 56px;
+    }
+    .ceo-action-card {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 28px 28px 24px;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+      position: relative;
+      overflow: hidden;
+      border-top: 3px solid var(--ceo-sage);
+    }
+    .ceo-action-card[data-category="customer"]   { border-top-color: var(--ceo-clay); }
+    .ceo-action-card[data-category="staffing"]   { border-top-color: var(--ceo-sage-deep); }
+    .ceo-action-card[data-category="hiring"]     { border-top-color: var(--ceo-champagne); }
+    .ceo-action-card[data-category="leadership"] { border-top-color: var(--ceo-berry); }
+    .ceo-action-card[data-category="finance"]    { border-top-color: var(--ceo-charcoal-soft); }
+    .ceo-action-badge {
+      align-self: flex-start;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--ceo-cream-deep);
+      margin-bottom: 16px;
+    }
+    .ceo-action-title {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      line-height: 1.25;
+      color: var(--ceo-charcoal);
+      margin: 0 0 12px;
+      font-weight: 400;
+      letter-spacing: -0.2px;
+    }
+    .ceo-action-why {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--ceo-charcoal-soft);
+      font-style: italic;
+      margin: 0 0 14px;
+    }
+    .ceo-action-next {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--ceo-charcoal);
+      font-weight: 500;
+      margin: 0 0 20px;
+    }
+    .ceo-action-next::before {
+      content: "Next: ";
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .ceo-action-meta {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 14px;
+    }
+    .ceo-action-btns {
+      margin-top: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .ceo-action-btn {
+      font-family: inherit;
+      background: var(--ceo-charcoal);
+      color: var(--ceo-cream);
+      border: none;
+      padding: 9px 16px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+    .ceo-action-btn:hover { transform: translateY(-1px); }
+    .ceo-action-btn:active { transform: translateY(0); }
+    .ceo-action-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      transform: none;
+    }
+    .ceo-action-btn-secondary {
+      background: transparent;
+      color: var(--ceo-charcoal);
+      border: 1px solid var(--ceo-edge);
+    }
+    .ceo-action-btn-ghost {
+      background: transparent;
+      color: var(--ceo-charcoal-soft);
+      border: none;
+      padding: 9px 12px;
+    }
+    .ceo-action-status {
+      font-size: 12px;
+      color: var(--ceo-sage-deep);
+      margin-top: 10px;
+      min-height: 16px;
+    }
+    .ceo-action-status[data-tone="error"] { color: var(--ceo-berry); }
+
+    .ceo-actions-empty {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-sage-tint) 100%);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 48px;
+      text-align: center;
+    }
+    .ceo-actions-empty-icon {
+      font-family: var(--ceo-font-serif);
+      font-size: 36px;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 12px;
+    }
+    .ceo-actions-empty-title {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-actions-empty-sub {
+      font-size: 14px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
     /* ---- Section header ---- */
     .ceo-section-head {
       display: flex;
@@ -592,6 +762,20 @@
         </div>
       </section>
 
+      <!-- 1B. TODAY'S CEO ACTIONS -->
+      <section>
+        <div class="ceo-actions-head">
+          <div>
+            <div class="ceo-actions-eyebrow">Today's CEO Actions</div>
+            <h2 class="ceo-actions-title">One nudge at a time</h2>
+          </div>
+          <div class="ceo-actions-aside" id="ceo-actions-aside">Up to three things, no more</div>
+        </div>
+        <div class="ceo-actions-row" id="ceo-actions">
+          <p class="ceo-loading" style="grid-column:1/-1;">Reading the field…</p>
+        </div>
+      </section>
+
       <!-- 2 + 3. DANGERS + OPPORTUNITIES -->
       <div class="ceo-row-2">
         <section>
@@ -650,6 +834,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="ceo.js?v=20260608-phase1-init"></script>
+  <script src="ceo.js?v=20260608-phase1b-actions"></script>
 </body>
 </html>

@@ -11,12 +11,22 @@
  *   user UP to admin tier but cannot promote to executive — promotion is a
  *   deploy. This stays in sync until the role-management UI ships.
  *
- * Five sections:
- *   1. Company Health   — composite Operational Health %, 4 pillar tiles
- *   2. Dangers          — "Where to lead this week" — calm, guiding
- *   3. Opportunities    — "What is working" — wins, momentum
- *   4. Scorecards       — Operations / People / Quality / Hiring (30d)
- *   5. Leadership Pulse — personal accomplishments + items on your desk
+ * Sections (top to bottom):
+ *   1.  Company Health   — composite Operational Health %, 4 pillar tiles
+ *   1B. Today's Actions  — 1-3 action cards (auto-suggestions + ceo_tasks)
+ *   2.  Dangers          — "Where to lead this week" — calm, guiding
+ *   3.  Opportunities    — "What is working" — wins, momentum
+ *   4.  Scorecards       — Operations / People / Quality / Hiring (30d)
+ *   5.  Leadership Pulse — personal accomplishments + items on your desk
+ *
+ * Action Layer (Phase 1B):
+ *   - Cap of 3 cards total to prevent stacking clutter.
+ *   - Cards are either a TASK (already in ceo_tasks, status=open) or a
+ *     SUGGESTION (computed from current data).
+ *   - Dedup by (sourceType + sourceId + category) — a suggestion whose
+ *     triple matches an open task is suppressed; the task itself shows.
+ *   - Create Task is idempotent at the UI layer: client queries for an
+ *     existing open task before writing. Race window is tiny + visible.
  *
  * Reads (live, on load):
  *   office_manager_hiring_snapshots, cleaning_techs, pioneer_service_sessions,
@@ -248,7 +258,13 @@
         .orderBy('created_at', 'desc').limit(7).get()),
       // 16. office_manager_bottlenecks (today)
       safe('om_bottleneck_today', db.collection('office_manager_bottlenecks')
-        .orderBy('created_at', 'desc').limit(7).get())
+        .orderBy('created_at', 'desc').limit(7).get()),
+      // 17. ceo_tasks — Phase 1B action queue, open only.
+      // Limit 50 is well above the 3-card cap so we never miss an open task.
+      safe('ceo_tasks_open', db.collection('ceo_tasks')
+        .where('status', '==', 'open')
+        .orderBy('createdAt', 'desc').limit(50).get()
+        .catch(function () { return { docs: [] }; }))
     ]);
 
     function docs(idx) {
@@ -285,7 +301,8 @@
       timeAdj:       docs(13),
       improvements:  docs(14),
       omReflections: docs(15),
-      omBottlenecks: docs(16)
+      omBottlenecks: docs(16),
+      openTasks:     docs(17)
     };
   }
 
@@ -394,9 +411,16 @@
 
   /* ---------------- Renderers ---------------- */
 
+  // Cached for in-place re-renders (Action Layer Create/Done/Dismiss).
+  let cachedSnap   = null;
+  let cachedHealth = null;
+
   function render(snap) {
     const health = calcCompanyHealth(snap);
+    cachedSnap   = snap;
+    cachedHealth = health;
     renderCompanyHealth(snap, health);
+    renderActions(snap, health);
     renderDangers(snap, health);
     renderOpportunities(snap, health);
     renderScorecards(snap, health);
@@ -456,6 +480,387 @@
   function fmtScoreOutOf(score) {
     // Quality score is 0-100; show as fraction out of 100 to feel natural
     return String(Math.round(score)) + '%';
+  }
+
+  // ---- Section 1B: Today's CEO Actions ----------------------------------
+
+  const MAX_ACTIONS = 3;
+
+  const CATEGORY_LABEL = {
+    customer:   'Customer',
+    staffing:   'Staffing',
+    hiring:     'Hiring',
+    leadership: 'Leadership',
+    finance:    'Finance'
+  };
+
+  // Generate up to ~6 auto-suggestions from the current snapshot, in
+  // priority order. Each suggestion is a candidate for the action card
+  // grid; merged with open tasks and capped at MAX_ACTIONS downstream.
+  function generateSuggestions(snap, health) {
+    const out = [];
+    const now = snap.now;
+
+    // 1) 48-hour coverage gap — immediate operational
+    if (health.openShifts48h > 0) {
+      out.push({
+        sourceType: 'coverage_gap_48h',
+        sourceId:   snap.todayPT,
+        category:   'staffing',
+        title:      health.openShifts48h + ' open shift' +
+                    (health.openShifts48h === 1 ? '' : 's') + ' in the next 48 hours',
+        why:        'Coverage is the first promise Pioneer makes to customers. Every uncovered shift puts a relationship at risk.',
+        next:       'Lock in coverage now while options exist — call, text, or post to the open-shift board.',
+        openLabel:  'Manager view',
+        openHref:   '/manager',
+        description: 'Resolve all open shifts on the board within the next 48 hours.'
+      });
+    }
+
+    // 2) Unresolved customer complaint > 48h — reputation risk
+    const stale = snap.complaints.filter(function (c) {
+      const st = String(c.status || '').toLowerCase();
+      const created = tsToMs(c.created_at);
+      return st !== 'resolved' && st !== 'closed'
+          && created > 0 && (now - created) > 48 * 3600000;
+    });
+    if (stale.length) {
+      const oldest = stale.sort(function (a, b) { return tsToMs(a.created_at) - tsToMs(b.created_at); })[0];
+      out.push({
+        sourceType: 'unresolved_complaint',
+        sourceId:   oldest._id || 'unknown',
+        category:   'customer',
+        title:      stale.length + ' complaint' + (stale.length === 1 ? '' : 's') +
+                    ' open longer than 48 hours',
+        why:        'A complaint left open past 48 hours usually means the customer feels unheard. Time matters more than the resolution itself.',
+        next:       'Read the oldest one personally, then call the customer today.',
+        openLabel:  'Review in admin',
+        openHref:   '/admin',
+        description: 'Personally close the loop on every complaint older than 48 hours.'
+      });
+    }
+
+    // 3) Repeat customer issue — chronic 3+ DCR issues in 30d
+    const chronicEntries = Object.entries(health.issuesByCustomer)
+      .filter(function (e) { return e[1] >= 3; })
+      .sort(function (a, b) { return b[1] - a[1]; });
+    if (chronicEntries.length) {
+      const top = chronicEntries[0];
+      out.push({
+        sourceType: 'chronic_customer_issue',
+        sourceId:   top[0],
+        category:   'customer',
+        title:      'Repeat issues at ' + top[0] + ' (' + top[1] + ' this month)',
+        why:        'Repeat concerns are the earliest signal of cancellation risk. A short personal call often resets the relationship.',
+        next:       'Review the recent DCRs for this customer, then decide whether to contact them.',
+        openLabel:  'Open admin',
+        openHref:   '/admin',
+        description: 'Review repeat issues for ' + top[0] + ' and decide on outreach.'
+      });
+    }
+
+    // 4) Hiring funnel stalling — applicants but no hires
+    if (snap.hiring) {
+      const a30 = Number(snap.hiring.applicants_30d || 0);
+      const h30 = Number(snap.hiring.hires || 0);
+      if (a30 > 0 && h30 === 0) {
+        out.push({
+          sourceType: 'hiring_funnel_stalling',
+          sourceId:   snap.hiring.snapshot_date || snap.todayPT,
+          category:   'hiring',
+          title:      a30 + ' applicants this month, zero hires',
+          why:        'Pipeline activity is healthy, but no one is converting. The bottleneck is usually somewhere between interview and offer.',
+          next:       'Sit in on a working interview this week, then debrief the conversion step that’s losing people.',
+          openLabel:  'Open Hiring',
+          openHref:   '/manager',
+          description: 'Audit the interview-to-hire conversion and fix the weakest step.'
+        });
+      }
+    }
+
+    // 5) Approvals piling up
+    const pendingImprovements = snap.improvements.filter(function (i) {
+      return String(i.status || '').toLowerCase() === 'submitted';
+    }).length;
+    const approvalsBacklog = snap.timeAdj.length + pendingImprovements;
+    if (approvalsBacklog >= 5) {
+      out.push({
+        sourceType: 'approvals_backlog',
+        sourceId:   'current',
+        category:   'leadership',
+        title:      approvalsBacklog + ' approvals waiting on your nod',
+        why:        'Approvals waiting too long erode trust in the system. The faster the loop, the more the team submits.',
+        next:       'Clear the queue in one sitting — typically five minutes per item.',
+        openLabel:  'Open admin',
+        openHref:   '/admin',
+        description: 'Clear the backlog of pending approvals (time adjustments + improvements).'
+      });
+    }
+
+    // 6) No recognition logged this month
+    const rockstars30 = snap.rockstars.filter(function (r) {
+      return tsToMs(r.created_at) >= snap.thirtyDaysAgo;
+    });
+    const activeTechs = snap.techs.filter(function (t) { return t.active !== false; }).length;
+    if (rockstars30.length === 0 && activeTechs > 0) {
+      const monthKey = snap.todayPT.slice(0, 7); // YYYY-MM
+      out.push({
+        sourceType: 'no_recognition_30d',
+        sourceId:   monthKey,
+        category:   'leadership',
+        title:      'No recognition logged in 30 days',
+        why:        'Recognition is the cheapest, fastest lever for retention and morale. Easy to forget when no one’s asking.',
+        next:       'Recognize one employee today — a Rockstar bonus, a hand-written note, or a public mention.',
+        openLabel:  'Team view',
+        openHref:   '/admin',
+        description: 'Recognize at least one team member this week.'
+      });
+    }
+
+    return out;
+  }
+
+  function actionTaskKey(task) {
+    return (task.sourceType || '') + '|' + (task.sourceId || '') + '|' + (task.category || '');
+  }
+
+  function renderActions(snap, health) {
+    const root = $('ceo-actions');
+    if (!root) return;
+
+    const openTasks   = (snap.openTasks || []).slice(); // already status==='open'
+    const taskKeys    = new Set(openTasks.map(actionTaskKey));
+    const suggestions = generateSuggestions(snap, health)
+      .filter(function (s) { return !taskKeys.has(actionTaskKey(s)); });
+
+    const cards = [];
+    // Open tasks first — these are commitments April already made.
+    openTasks.forEach(function (t) {
+      if (cards.length < MAX_ACTIONS) cards.push(renderTaskCardHtml(t));
+    });
+    // Top suggestions to fill remaining slots.
+    suggestions.forEach(function (s) {
+      if (cards.length < MAX_ACTIONS) cards.push(renderSuggestionCardHtml(s));
+    });
+
+    if (!cards.length) {
+      root.innerHTML =
+        '<div class="ceo-actions-empty">' +
+          '<div class="ceo-actions-empty-icon">·</div>' +
+          '<p class="ceo-actions-empty-title">Today is unscripted.</p>' +
+          '<p class="ceo-actions-empty-sub">' +
+            'Nothing demands your attention right now. Use the space to think, not react.' +
+          '</p>' +
+        '</div>';
+      return;
+    }
+    root.innerHTML = cards.join('');
+    wireActionButtons();
+  }
+
+  function renderSuggestionCardHtml(s) {
+    const dataAttrs =
+      ' data-action-kind="suggestion"' +
+      ' data-source-type="' + escapeHtml(s.sourceType) + '"' +
+      ' data-source-id="'   + escapeHtml(s.sourceId)   + '"' +
+      ' data-category="'    + escapeHtml(s.category)   + '"';
+    return '<article class="ceo-action-card" data-category="' + escapeHtml(s.category) + '"' + dataAttrs + '>' +
+             '<span class="ceo-action-badge">' + escapeHtml(CATEGORY_LABEL[s.category] || s.category) + '</span>' +
+             '<h3 class="ceo-action-title">' + escapeHtml(s.title) + '</h3>' +
+             '<p class="ceo-action-why">' + escapeHtml(s.why) + '</p>' +
+             '<p class="ceo-action-next">' + escapeHtml(s.next) + '</p>' +
+             '<div class="ceo-action-btns">' +
+               '<button type="button" class="ceo-action-btn" data-action="create">Create Task</button>' +
+               '<a class="ceo-action-btn ceo-action-btn-secondary" href="' + escapeHtml(s.openHref) +
+                 '" data-action="open">' + escapeHtml(s.openLabel || 'Open') + '</a>' +
+             '</div>' +
+             '<p class="ceo-action-status" data-status></p>' +
+             // Stash payload on the element so click handlers can hydrate
+             // the task doc without re-walking the suggestion list.
+             '<script type="application/json" data-payload>' +
+               JSON.stringify({
+                 title:       s.title,
+                 description: s.description || s.next,
+                 category:    s.category,
+                 sourceType:  s.sourceType,
+                 sourceId:    s.sourceId,
+                 openHref:    s.openHref,
+                 openLabel:   s.openLabel
+               }).replace(/</g, '\\u003c') +
+             '</script>' +
+           '</article>';
+  }
+
+  function renderTaskCardHtml(t) {
+    const dataAttrs =
+      ' data-action-kind="task"' +
+      ' data-task-id="'   + escapeHtml(t._id) + '"' +
+      ' data-source-type="' + escapeHtml(t.sourceType || '') + '"' +
+      ' data-source-id="'   + escapeHtml(t.sourceId   || '') + '"' +
+      ' data-category="'    + escapeHtml(t.category   || 'leadership') + '"';
+    const cat = t.category || 'leadership';
+    // Re-derive a useful "open related area" target from the category.
+    const openLink = categoryDefaultLink(cat);
+    const createdMeta = t.createdAt ? 'Created ' + fmtAgo(tsToMs(t.createdAt)) : '';
+    const why = t.description || 'Committed action on your queue.';
+    return '<article class="ceo-action-card" data-category="' + escapeHtml(cat) + '"' + dataAttrs + '>' +
+             '<span class="ceo-action-badge">On Your Desk · ' +
+               escapeHtml(CATEGORY_LABEL[cat] || cat) + '</span>' +
+             '<h3 class="ceo-action-title">' + escapeHtml(t.title || 'Untitled task') + '</h3>' +
+             '<p class="ceo-action-why">' + escapeHtml(why) + '</p>' +
+             '<p class="ceo-action-next">Mark this done when you’ve handled it, or dismiss if it’s no longer relevant.</p>' +
+             (createdMeta ? '<p class="ceo-action-meta">' + escapeHtml(createdMeta) + '</p>' : '') +
+             '<div class="ceo-action-btns">' +
+               '<button type="button" class="ceo-action-btn" data-action="done">Mark Done</button>' +
+               '<button type="button" class="ceo-action-btn ceo-action-btn-secondary" data-action="dismiss">Dismiss</button>' +
+               (openLink ? '<a class="ceo-action-btn ceo-action-btn-ghost" href="' + escapeHtml(openLink.href) +
+                            '" data-action="open">' + escapeHtml(openLink.label) + '</a>' : '') +
+             '</div>' +
+             '<p class="ceo-action-status" data-status></p>' +
+           '</article>';
+  }
+
+  function categoryDefaultLink(category) {
+    switch (category) {
+      case 'customer':   return { href: '/admin',   label: 'Open admin' };
+      case 'staffing':   return { href: '/manager', label: 'Manager view' };
+      case 'hiring':     return { href: '/manager', label: 'Open hiring' };
+      case 'leadership': return { href: '/admin',   label: 'Open admin' };
+      case 'finance':    return null; // placeholder until Financial Pulse
+      default:           return null;
+    }
+  }
+
+  function fmtAgo(ms) {
+    if (!ms) return '';
+    const diff = Date.now() - ms;
+    if (diff < 0) return 'just now';
+    if (diff < 60_000)        return 'just now';
+    if (diff < 3600_000)      return Math.round(diff / 60_000)   + ' min ago';
+    if (diff < 86400_000)     return Math.round(diff / 3600_000) + ' hr ago';
+    return Math.round(diff / 86400_000) + ' d ago';
+  }
+
+  /* ---- Action card button wiring ---- */
+
+  function wireActionButtons() {
+    document.querySelectorAll('.ceo-action-card').forEach(function (card) {
+      // Replace listeners by re-attaching fresh — the card markup is
+      // rebuilt on every re-render so no de-dup needed.
+      card.querySelectorAll('[data-action]').forEach(function (btn) {
+        if (btn.tagName === 'A') return; // anchors navigate natively
+        btn.addEventListener('click', function () { handleActionClick(card, btn); });
+      });
+    });
+  }
+
+  async function handleActionClick(card, btn) {
+    const kind   = card.getAttribute('data-action-kind');
+    const action = btn.getAttribute('data-action');
+    const status = card.querySelector('[data-status]');
+    setActionStatus(status, '');
+
+    if (action === 'create' && kind === 'suggestion') {
+      await handleCreateTask(card, btn, status);
+    } else if (action === 'done' && kind === 'task') {
+      await handleMutateTask(card, btn, status, 'done');
+    } else if (action === 'dismiss' && kind === 'task') {
+      await handleMutateTask(card, btn, status, 'dismissed');
+    }
+  }
+
+  async function handleCreateTask(card, btn, status) {
+    const payloadEl = card.querySelector('[data-payload]');
+    if (!payloadEl || !currentUser) return;
+    let payload;
+    try { payload = JSON.parse(payloadEl.textContent || '{}'); }
+    catch (err) { setActionStatus(status, 'Could not read this suggestion.', 'error'); return; }
+
+    btn.disabled = true;
+    setActionStatus(status, 'Saving…');
+
+    try {
+      // Dedup: existing OPEN task with same triple?
+      const existing = await db.collection('ceo_tasks')
+        .where('status', '==', 'open')
+        .where('sourceType', '==', payload.sourceType)
+        .where('sourceId',   '==', payload.sourceId)
+        .where('category',   '==', payload.category)
+        .limit(1).get();
+      if (!existing.empty) {
+        setActionStatus(status, 'Task already open.', 'error');
+        btn.disabled = false;
+        await refreshActionLayer();
+        return;
+      }
+
+      const email = (currentUser.email || '').toLowerCase();
+      await db.collection('ceo_tasks').add({
+        title:       payload.title,
+        description: payload.description || '',
+        category:    payload.category,
+        sourceType:  payload.sourceType,
+        sourceId:    payload.sourceId,
+        status:      'open',
+        assignedTo:  email,
+        createdBy:   email,
+        createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        dueDate:     null,
+        completedAt: null
+      });
+      setActionStatus(status, 'Added to your desk.');
+      await refreshActionLayer();
+    } catch (err) {
+      console.error('[ceo] create task failed', err);
+      setActionStatus(status, 'Save failed: ' + (err.message || 'unknown'), 'error');
+      btn.disabled = false;
+    }
+  }
+
+  async function handleMutateTask(card, btn, status, nextStatus) {
+    const taskId = card.getAttribute('data-task-id');
+    if (!taskId) return;
+
+    btn.disabled = true;
+    setActionStatus(status, nextStatus === 'done' ? 'Marking done…' : 'Dismissing…');
+
+    try {
+      await db.collection('ceo_tasks').doc(taskId).update({
+        status:      nextStatus,
+        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at:  firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setActionStatus(status, nextStatus === 'done' ? 'Done. Nice.' : 'Dismissed.');
+      await refreshActionLayer();
+    } catch (err) {
+      console.error('[ceo] task update failed', err);
+      setActionStatus(status, 'Update failed: ' + (err.message || 'unknown'), 'error');
+      btn.disabled = false;
+    }
+  }
+
+  function setActionStatus(el, msg, tone) {
+    if (!el) return;
+    el.textContent = msg || '';
+    if (tone) el.setAttribute('data-tone', tone);
+    else el.removeAttribute('data-tone');
+  }
+
+  // Re-read only ceo_tasks and re-render the action layer using the
+  // cached snap. Avoids a full 17-collection re-fetch after every click.
+  async function refreshActionLayer() {
+    if (!cachedSnap || !cachedHealth) return;
+    try {
+      const snap = await db.collection('ceo_tasks')
+        .where('status', '==', 'open')
+        .orderBy('createdAt', 'desc').limit(50).get();
+      cachedSnap.openTasks = snap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data() || {});
+      });
+      renderActions(cachedSnap, cachedHealth);
+    } catch (err) {
+      console.error('[ceo] action refresh failed', err);
+    }
   }
 
   // ---- Section 2: Dangers (Attention Needed) ----

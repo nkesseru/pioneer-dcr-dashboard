@@ -158,6 +158,25 @@
         { "fieldPath": "entry_type",     "order": "ASCENDING"  },
         { "fieldPath": "effective_date", "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "ceo_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ceo_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "category",   "order": "ASCENDING" },
+        { "fieldPath": "sourceType", "order": "ASCENDING" },
+        { "fieldPath": "sourceId",   "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -1387,6 +1387,58 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // CEO Mission Control — ceo_tasks (Action Layer, Phase 1B)
+    // ====================================================================
+    // Executive-tier action queue. April (executive) and Nick (owner) can
+    // create / mark done / dismiss action items surfaced by the CEO
+    // dashboard. Once created a task is never deleted — done/dismissed
+    // states preserve the audit trail. Status is the only mutable field
+    // post-create.
+    //
+    // Schema:
+    //   title         string, required, len 1..200
+    //   description   string, len 0..2000
+    //   category      enum: customer | staffing | hiring | leadership | finance
+    //   sourceType    string, len 0..50  — origin discriminator (e.g.
+    //                 "chronic_customer_issue", "hiring_funnel_stalling")
+    //   sourceId      string, len 0..200 — pointer back to the originating
+    //                 record (customer_slug, snapshot_date, etc.)
+    //   status        enum: open | done | dismissed (create-time must be open)
+    //   assignedTo    string (email) — who is on the hook
+    //   createdBy     string (email) — who created
+    //   createdAt     server timestamp
+    //   dueDate       optional string (YYYY-MM-DD)
+    //   completedAt   optional server timestamp (set when status flips)
+    //
+    // Dedup: client checks for matching (sourceType, sourceId, category)
+    // open tasks before creating. Rules don't enforce uniqueness — two
+    // near-simultaneous clicks can race and produce two docs. Acceptable
+    // for Phase 1B; the UI shows the same card so the duplication is
+    // visually obvious and either can be dismissed.
+    match /ceo_tasks/{taskId} {
+      allow read:   if isPioneerExecutive();
+
+      allow create: if isPioneerExecutive()
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() >= 1
+                    && request.resource.data.title.size() <= 200
+                    && request.resource.data.category in
+                       ['customer', 'staffing', 'hiring', 'leadership', 'finance']
+                    && request.resource.data.status == 'open'
+                    && request.resource.data.createdBy == request.auth.token.email.lower();
+
+      // Status-only updates. completedAt + updated_at may also move with
+      // the status flip. Title/description/category/source* are immutable
+      // after create so audit-trail meaning stays intact.
+      allow update: if isPioneerExecutive()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'completedAt', 'updated_at'])
+                    && request.resource.data.status in ['open', 'done', 'dismissed'];
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Phase 33A — Mission Control alert noise control.
     // ====================================================================
     // Two collections that let admins quiet irrelevant Mission Control
