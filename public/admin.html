@@ -152,23 +152,38 @@
          supplyRequests, dcrIssues) plus two lightweight 24h-window
          queries on dcr_email_payloads + customer_feedback (admin-only
          per firestore.rules). See refreshDayHealthMetrics24h. -->
-    <!-- Phase 33D — tighter spacing so Admin Control Center sits closer
-         under the ops overview (Mission Control + legacy DCR + KPI strip).
-         Phase 33E — admin-main widened from 980 → 1160 so Mission Control
-         centers on a wide desktop instead of feeling "right-shifted." The
-         attention-strip max-width is bumped to match so the KPI strip
-         doesn't appear visually narrower than the MC card above it. -->
+    <!-- Phase 33D-F admin layout overrides — keep them all here so the
+         change history is auditable in one place and admin.css stays
+         untouched. -->
     <style>
-      .admin-main      { max-width: 1160px; }
-      .attention-strip { max-width: 1160px; margin: 8px auto 0; }
-      #admin-ops-overview { margin-bottom: 6px; }
-      #admin-ops-overview > * + * { margin-top: 6px; }
-      #attention-strip { margin-bottom: 0; }
-      /* Phase 33E — legacy DCR details: confirm full-width inline row
-         (already block-level via the existing inline style; this just
-         pins width so it can't be visually misread as a side card). */
+      /* 33E — widen + center the admin canvas (was 980px → felt narrow
+         on a wide desktop and "right-shifted" the dark MC card). */
+      .admin-main { max-width: 1160px; }
+
+      /* 33F — Hide the legacy 5-tile KPI strip ("attention-strip"). Every
+         signal it surfaces (Open Supply, DCR Email Off, Need Assignments,
+         New Issues, Inspections This Week) is now redundant with Mission
+         Control alerts. The 5 small cards rendered as "skinny floating
+         vertical tiles" on a wide canvas and broke the page composition.
+         To restore: delete this rule. The DOM + click wiring on the
+         strip are intact in admin.js — nothing else needs to be
+         re-enabled. */
+      #attention-strip { display: none !important; }
+
+      /* 33E — full-width pin on the legacy DCR Email Metrics collapsed
+         details so it can't be visually misread as a side card. */
       #admin-legacy-dcr-email-metrics { width: 100%; display: block; }
-      /* Phase 33E — trim hero bottom padding by 2px so MC sits one notch
+
+      /* 33F — tighten the gap between MC and Admin Control Center. With
+         the KPI strip hidden, the only ops-overview children are MC and
+         the collapsed legacy DCR row, so total ops-overview height drops
+         to ~MC + ~30px summary. Sibling gap pulled from 6px to 4px and
+         section bottom-margin from 6px to 4px so the nav sits ~16-20px
+         below MC + legacy row. */
+      #admin-ops-overview            { margin-bottom: 4px; }
+      #admin-ops-overview > * + *    { margin-top: 4px; }
+
+      /* 33E — trim hero bottom padding by 2px so MC sits one notch
          closer to the page title without crowding the subtitle. */
       .hero-admin { padding-bottom: 2px; }
     </style>
