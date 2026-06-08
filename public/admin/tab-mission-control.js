@@ -630,7 +630,34 @@
       "#mission-control .mc-supp-table th{text-align:left;padding:6px 8px;font-weight:700;color:#a8c0e1;letter-spacing:0.4px;text-transform:uppercase;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.10);}",
       "#mission-control .mc-supp-table td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);}",
       "#mission-control .mc-supp-reactivate{appearance:none;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;}",
-      "#mission-control .mc-supp-reactivate:hover{background:rgba(255,255,255,0.18);}"
+      "#mission-control .mc-supp-reactivate:hover{background:rgba(255,255,255,0.18);}",
+      // ---- Phase 33B — compact alert cards ----
+      // Reduce padding ~45%, single-row layout, smaller inline buttons,
+      // collapsible details panel. Overrides the verbose Phase 33A
+      // styles for cards marked .is-compact.
+      "#mission-control .mc-items{gap:6px;}",
+      "#mission-control .mc-item.is-compact{padding:8px 12px;gap:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;}",
+      "#mission-control .mc-item.is-compact .mc-item-row-head{display:flex;align-items:center;gap:8px;min-width:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-severity-pill{font-size:9.5px;font-weight:800;letter-spacing:0.8px;padding:2px 7px;border-radius:999px;flex-shrink:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-severity-pill[data-severity='RED']{background:rgba(239,68,68,0.22);color:#fecaca;border:1px solid rgba(239,68,68,0.45);}",
+      "#mission-control .mc-item.is-compact .mc-item-severity-pill[data-severity='YELLOW']{background:rgba(250,204,21,0.18);color:#fde68a;border:1px solid rgba(250,204,21,0.40);}",
+      "#mission-control .mc-item.is-compact .mc-item-title-compact{font-size:11.5px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:#cdd9ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+      "#mission-control .mc-item.is-compact .mc-item-row-body{display:flex;align-items:baseline;gap:4px;min-width:0;font-size:13.5px;line-height:1.3;overflow:hidden;}",
+      "#mission-control .mc-item.is-compact .mc-item-entity-compact{font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;max-width:240px;}",
+      "#mission-control .mc-item.is-compact .mc-item-context-compact{color:#a8c0e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-actions{margin-top:0;display:flex;flex-wrap:nowrap;gap:4px;align-items:center;justify-self:end;}",
+      "#mission-control .mc-item.is-compact .mc-item-btn{padding:4px 10px;font-size:11.5px;border-radius:6px;line-height:1.2;}",
+      "#mission-control .mc-item.is-compact .mc-item-details{margin-top:8px;padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;}",
+      "#mission-control .mc-item.is-compact .mc-item-details p{margin:0 0 6px;}",
+      "#mission-control .mc-item.is-compact .mc-item-details p:last-child{margin:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-details .mc-item-reason{font-size:12.5px;color:#cdd9ec;line-height:1.45;}",
+      "#mission-control .mc-item.is-compact .mc-item-details .mc-item-fix{font-size:12.5px;color:#fff;}",
+      "#mission-control .mc-item.is-compact[data-expanded='true'] .mc-item-details-btn{background:rgba(255,255,255,0.16);color:#fff;}",
+      "#mission-control .mc-item.is-compact .mc-item-confirm-bar{padding:0;}",
+      "#mission-control .mc-item.is-compact .mc-item-confirm-bar .mc-item-confirm-label{font-size:11.5px;}",
+      // Narrow-desktop fallback: wrap the row's body+actions onto a 2nd line if needed
+      "@media (max-width:1100px){#mission-control .mc-item.is-compact .mc-item-row{grid-template-columns:auto 1fr;grid-auto-flow:row;}#mission-control .mc-item.is-compact .mc-item-actions{grid-column:1 / span 2;justify-self:start;flex-wrap:wrap;}}"
     ].join("\n");
     const tag = document.createElement("style");
     tag.setAttribute("data-pioneer", "mission-control-styles");
@@ -728,35 +755,43 @@
       return '<p class="mc-overflow">+ ' + overflow[cat] + ' more ' + escapeHtml(cat.replace(/-/g, " ")) + '</p>';
     }).join("");
 
+    // Phase 33B — compact single-row cards. Title + severity pill + entity
+    // line + buttons all on one row. Reason + Fix move into a collapsible
+    // Details panel so the default state is scannable (~4-6 alerts visible
+    // without scroll).
     const itemsHtml = visibleItems.map(it => {
       const key = escapeHtml(it.alertKey || "");
-      // Phase 33A — 3 noise-control buttons + the existing route-to-tab
-      // primary. Layout: [Open Tab] on the left; [Dismiss] [Snooze ▾]
-      // [Suppress Similar] on the right. Aggregate alerts hide the
-      // entity-name fragment in the Suppress confirmation copy.
-      const noiseButtons =
-        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt" data-key="' + key + '">Dismiss</button>' +
-        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"  data-key="' + key + '">Snooze</button>' +
-        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress Similar</button>';
+      const hasDetails = !!(it.reason || it.fix);
       return (
-        '<article class="mc-item" data-severity="' + escapeHtml(it.severity) + '" data-key="' + key + '">' +
-          '<div class="mc-item-head">' +
-            '<span class="mc-item-title">' + escapeHtml(it.title) + '</span>' +
-            (it.severity === "RED"
-              ? '<span class="mc-item-title" style="color:#fecaca">● RED</span>'
-              : '<span class="mc-item-title" style="color:#fde68a">● YELLOW</span>') +
+        '<article class="mc-item is-compact" data-severity="' + escapeHtml(it.severity) + '" data-key="' + key + '" data-expanded="false">' +
+          '<div class="mc-item-row">' +
+            '<div class="mc-item-row-head">' +
+              '<span class="mc-item-severity-pill" data-severity="' + escapeHtml(it.severity) + '">' + escapeHtml(it.severity) + '</span>' +
+              '<span class="mc-item-title-compact">' + escapeHtml(it.title) + '</span>' +
+            '</div>' +
+            '<div class="mc-item-row-body">' +
+              '<span class="mc-item-entity-compact">' + escapeHtml(it.subject) + '</span>' +
+              (it.context ? '<span class="mc-item-context-compact"> · ' + escapeHtml(it.context) + '</span>' : '') +
+            '</div>' +
+            '<div class="mc-item-actions" data-actions-state="default">' +
+              (it.actionRoute
+                ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
+                  escapeHtml(it.actionRoute) + '">' + escapeHtml(it.actionLabel || "Open") + '</button>'
+                : '') +
+              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt"  data-key="' + key + '">Dismiss</button>' +
+              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"   data-key="' + key + '">Snooze</button>' +
+              '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress</button>' +
+              (hasDetails
+                ? '<button type="button" class="mc-item-btn mc-item-quiet mc-item-details-btn" data-mc-noise="toggle-details" data-key="' + key + '">Details</button>'
+                : '') +
+            '</div>' +
           '</div>' +
-          '<p class="mc-item-subject">' + escapeHtml(it.subject) + '</p>' +
-          (it.context ? '<p class="mc-item-context">' + escapeHtml(it.context) + '</p>' : '') +
-          (it.reason  ? '<p class="mc-item-reason">' + escapeHtml(it.reason) + '</p>' : '') +
-          (it.fix     ? '<p class="mc-item-fix"><span class="mc-item-fix-label">Fix</span>' + escapeHtml(it.fix) + '</p>' : '') +
-          '<div class="mc-item-actions" data-actions-state="default">' +
-            (it.actionRoute
-              ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
-                escapeHtml(it.actionRoute) + '">' + escapeHtml(it.actionLabel || "Open") + '</button>'
-              : '') +
-            noiseButtons +
-          '</div>' +
+          (hasDetails
+            ? '<div class="mc-item-details" hidden>' +
+                (it.reason ? '<p class="mc-item-reason">' + escapeHtml(it.reason) + '</p>' : '') +
+                (it.fix    ? '<p class="mc-item-fix"><span class="mc-item-fix-label">Fix</span>' + escapeHtml(it.fix) + '</p>' : '') +
+              '</div>'
+            : '') +
         '</article>'
       );
     }).join("") + overflowNotes;
@@ -938,14 +973,19 @@
   // Restore the default actions row for a card (called on Cancel).
   function buildDefaultBar(item) {
     const key = escAttr(item.alertKey || "");
+    const hasDetails = !!(item.reason || item.fix);
     const routeBtn = item.actionRoute
       ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
         escAttr(item.actionRoute) + '">' + escText(item.actionLabel || "Open") + '</button>'
       : '';
+    const detailsBtn = hasDetails
+      ? '<button type="button" class="mc-item-btn mc-item-quiet mc-item-details-btn" data-mc-noise="toggle-details" data-key="' + key + '">Details</button>'
+      : '';
     return routeBtn +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt" data-key="' + key + '">Dismiss</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"  data-key="' + key + '">Snooze</button>' +
-      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress Similar</button>';
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt"  data-key="' + key + '">Dismiss</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"   data-key="' + key + '">Snooze</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress</button>' +
+      detailsBtn;
   }
 
   async function applyDismissal(item, opts) {
@@ -1046,6 +1086,13 @@
             refresh();
           } else if (action === "cancel") {
             setActionsBar(card, buildDefaultBar(item));
+          } else if (action === "toggle-details") {
+            // Phase 33B — show/hide the per-card Details panel without
+            // touching Firestore. Pure DOM toggle on the same card.
+            const expanded = card.getAttribute("data-expanded") === "true";
+            card.setAttribute("data-expanded", expanded ? "false" : "true");
+            const panel = card.querySelector(".mc-item-details");
+            if (panel) panel.hidden = expanded;
           }
         } catch (err) {
           alert("Couldn't update: " + (err.message || err));
