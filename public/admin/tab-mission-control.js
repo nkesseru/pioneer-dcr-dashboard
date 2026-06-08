@@ -698,7 +698,11 @@
       "#mission-control .mc-inbox-fix-label{font-weight:800;letter-spacing:0.6px;color:#fde68a;margin-right:6px;font-size:10.5px;}",
       "#mission-control .mc-inbox-group-actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:4px;margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);}",
       "#mission-control .mc-confirm-bar{margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}",
-      "#mission-control .mc-confirm-label{font-size:12px;color:#cdd9ec;margin-right:4px;}"
+      "#mission-control .mc-confirm-label{font-size:12px;color:#cdd9ec;margin-right:4px;}",
+      /* ---------- Phase 33D — hint chip + tighter spacing ---------- */
+      "#mission-control{margin-bottom:8px;}",
+      "#mission-control .mc-inbox-row-hint{margin:2px 0 4px 18px;font-size:11px;color:#7ea3d6;font-style:italic;letter-spacing:0.2px;}",
+      "#mission-control .mc-inbox-details-toggle[data-mc-noise='toggle-details']{min-width:64px;text-align:center;}"
     ].join("\n");
     const tag = document.createElement("style");
     tag.setAttribute("data-pioneer", "mission-control-styles");
@@ -924,6 +928,9 @@
             : '') +
         '</div>';
 
+      const expandHint = g.items.length > 1
+        ? '<div class="mc-inbox-row-hint">' + g.items.length + ' alerts — expand to review all</div>'
+        : '';
       return (
         '<article class="mc-inbox-row" data-severity="' + escapeHtml(g.severity) + '" data-group-key="' + escapeHtml(g.groupKey) + '" data-expanded="false">' +
           '<div class="mc-inbox-row-line">' +
@@ -933,9 +940,10 @@
             (summary ? '<span class="mc-inbox-row-summary"> · ' + escapeHtml(summary) + '</span>' : '') +
             '<span class="mc-inbox-row-actions">' +
               openBtn +
-              '<button type="button" class="mc-inbox-btn" data-mc-noise="toggle-details" data-key="' + firstKey + '" data-group-key="' + escapeHtml(g.groupKey) + '">Details</button>' +
+              '<button type="button" class="mc-inbox-btn mc-inbox-details-toggle" data-mc-noise="toggle-details" data-key="' + firstKey + '" data-group-key="' + escapeHtml(g.groupKey) + '">Details</button>' +
             '</span>' +
           '</div>' +
+          expandHint +
           '<div class="mc-inbox-row-details" hidden>' +
             (g.items.length > 1
               ? '<p class="mc-inbox-row-details-intro">' + g.items.length + ' alerts grouped by ' + escapeHtml(g.entityName) + '. Each can be dismissed individually, or use Suppress Similar to hide all matching alerts going forward.</p>'
@@ -1285,9 +1293,16 @@
         if (action === "toggle-details") {
           if (!row) return;
           const expanded = row.getAttribute("data-expanded") === "true";
-          row.setAttribute("data-expanded", expanded ? "false" : "true");
+          const nowExpanded = !expanded;
+          row.setAttribute("data-expanded", nowExpanded ? "true" : "false");
           const panel = row.querySelector(".mc-inbox-row-details");
-          if (panel) panel.hidden = expanded;
+          if (panel) panel.hidden = !nowExpanded;
+          // Phase 33D — flip the button label so the affordance is obvious.
+          const toggleBtn = row.querySelector(".mc-inbox-details-toggle");
+          if (toggleBtn) toggleBtn.textContent = nowExpanded ? "Hide Details" : "Details";
+          // The hint chip is only useful while collapsed.
+          const hint = row.querySelector(".mc-inbox-row-hint");
+          if (hint) hint.hidden = nowExpanded;
           return;
         }
         // Cancel — remove the confirm bar from whichever scope hosts it.

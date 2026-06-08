@@ -152,6 +152,15 @@
          supplyRequests, dcrIssues) plus two lightweight 24h-window
          queries on dcr_email_payloads + customer_feedback (admin-only
          per firestore.rules). See refreshDayHealthMetrics24h. -->
+    <!-- Phase 33D — tighter spacing so Admin Control Center sits closer
+         under the ops overview (Mission Control + legacy DCR + KPI strip).
+         Inline rule because the original admin-ops-overview has no
+         dedicated stylesheet entry; this is a one-liner override. -->
+    <style>
+      #admin-ops-overview { margin-bottom: 6px; }
+      #admin-ops-overview > * + * { margin-top: 6px; }
+      #attention-strip { margin-bottom: 0; }
+    </style>
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
       <!-- ============ PioneerOps Mission Control (Phase 31) ============
@@ -180,8 +189,8 @@
            Open tracking is intentionally NOT shown — we don't track opens
            today, so a fake "—" or zero would mislead. See the TODO block
            in admin.js for the future tracking-pixel / click-event plan. -->
-      <details class="admin-legacy-dcr-email-metrics" id="admin-legacy-dcr-email-metrics" style="margin-bottom:14px;">
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#64748b;padding:8px 12px;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;list-style:revert;">Legacy DCR Email Metrics (native pipeline send-side stats)</summary>
+      <details class="admin-legacy-dcr-email-metrics" id="admin-legacy-dcr-email-metrics" style="margin-bottom:6px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#64748b;padding:6px 10px;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;list-style:revert;">Legacy DCR Email Metrics (native pipeline send-side stats)</summary>
         <div style="margin-top:10px;">
       <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
         <header class="health-head">
@@ -3519,7 +3528,7 @@
   <script src="admin/tab-labor-review.js?v=20260602-phase28d-auth-download"></script>
   <script src="admin/tab-payroll.js?v=20260603-phase29a-effective-minutes"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
-  <script src="admin/tab-mission-control.js?v=20260607-phase33c-inbox-mode"></script>
+  <script src="admin/tab-mission-control.js?v=20260607-phase33d-inbox-tighten"></script>
   <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
   <script src="admin.js?v=20260604-phase31-mission-control"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
