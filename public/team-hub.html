@@ -230,6 +230,18 @@
            (non-archived, within starts_at..expires_at) announcement
            renders as a card. Mandatory unread announcements ALSO open
            the blocking modal below the main content. -->
+      <!-- Phase 1C — Leadership Messages. One-way notes from executives
+           (April / Nick). Show when status=queued AND deliverAfter has
+           passed. Ack/Dismiss flips the status; the card disappears. -->
+      <section class="card team-hub-section team-hub-leadership-messages" id="team-hub-leadership-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">💛 From Leadership</h2>
+        </header>
+        <div class="team-hub-leadership-list" id="team-hub-leadership-list">
+          <!-- leadership message cards rendered here -->
+        </div>
+      </section>
+
       <section class="card team-hub-section team-hub-announcements" id="team-hub-announcements-section" hidden>
         <header class="team-hub-section-head">
           <h2 class="team-hub-section-title">📣 Announcements</h2>
@@ -583,7 +595,7 @@
   <script src="walkthrough.js"></script>
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
-  <script src="team-hub.js?v=20260528-installux"></script>
+  <script src="team-hub.js?v=20260608-phase1c-leadership"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.

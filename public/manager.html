@@ -945,6 +945,16 @@
         </div>
       </header>
 
+      <!-- Phase 1C — Leadership Messages for office_manager.
+           CEO (executive) sends; any admin tier sees here. Self-sent
+           messages are filtered client-side so April doesn't see her
+           own notes back. Reuses team-hub-leadership-* CSS. -->
+      <section class="mc-leadership-wrap" id="manager-leadership-section" hidden>
+        <div class="team-hub-leadership-list" id="manager-leadership-list">
+          <!-- cards rendered by manager.js -->
+        </div>
+      </section>
+
       <!-- ====== Action Required (cockpit centerpiece) ====== -->
       <section class="mc-action-required" id="manager-action-required">
         <span class="mc-section-eyebrow">Action Required</span>
@@ -1273,6 +1283,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="manager.js?v=20260608-phase2a2-refresh"></script>
+  <script src="manager.js?v=20260608-phase1c-leadership"></script>
 </body>
 </html>

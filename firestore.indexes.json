@@ -177,6 +177,26 @@
         { "fieldPath": "sourceType", "order": "ASCENDING" },
         { "fieldPath": "sourceId",   "order": "ASCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "leadership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientType", "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "deliverAfter",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leadership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientType", "order": "ASCENDING" },
+        { "fieldPath": "recipientId",   "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "deliverAfter",  "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

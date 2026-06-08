@@ -423,6 +423,147 @@
       margin: 0;
     }
 
+    /* ---- Quick Leadership Actions (Phase 1C) ---- */
+    .ceo-quick-actions {
+      display: flex;
+      gap: 16px;
+      margin: 0 4px 56px;
+      flex-wrap: wrap;
+    }
+    .ceo-quick-btn {
+      flex: 1;
+      min-width: 220px;
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-edge);
+      border-radius: var(--ceo-radius);
+      padding: 22px 24px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+      box-shadow: var(--ceo-shadow);
+    }
+    .ceo-quick-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--ceo-shadow-l);
+      border-color: var(--ceo-sage);
+    }
+    .ceo-quick-btn-symbol {
+      font-family: var(--ceo-font-serif);
+      font-size: 28px;
+      color: var(--ceo-sage-deep);
+      line-height: 1;
+      margin: 0 0 12px;
+    }
+    .ceo-quick-btn-label {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      color: var(--ceo-charcoal);
+      font-weight: 400;
+      margin: 0 0 4px;
+    }
+    .ceo-quick-btn-sub {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
+    /* ---- Compose modal ---- */
+    .ceo-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(47, 42, 36, 0.4);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      backdrop-filter: blur(6px);
+    }
+    .ceo-modal {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      width: 100%;
+      max-width: 520px;
+      padding: 40px;
+      position: relative;
+    }
+    .ceo-modal-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+      margin: 0 0 8px;
+    }
+    .ceo-modal-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 28px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-modal-sub {
+      font-size: 14px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0 0 24px;
+      line-height: 1.5;
+    }
+    .ceo-modal-field { margin-bottom: 18px; }
+    .ceo-modal-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft);
+      margin-bottom: 8px;
+    }
+    .ceo-modal-input,
+    .ceo-modal-textarea,
+    .ceo-modal-select {
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--ceo-charcoal);
+      background: var(--ceo-cream);
+      border: 1px solid var(--ceo-edge);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-sizing: border-box;
+    }
+    .ceo-modal-textarea {
+      min-height: 130px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .ceo-modal-input:focus,
+    .ceo-modal-textarea:focus,
+    .ceo-modal-select:focus {
+      outline: none;
+      border-color: var(--ceo-sage-deep);
+      box-shadow: 0 0 0 3px var(--ceo-sage-soft);
+    }
+    .ceo-modal-helper {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 8px 0 0;
+    }
+    .ceo-modal-btns {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .ceo-modal-status {
+      font-size: 13px;
+      color: var(--ceo-sage-deep);
+      margin: 12px 0 0;
+      min-height: 18px;
+    }
+    .ceo-modal-status[data-tone="error"] { color: var(--ceo-berry); }
+
     /* ---- Section header ---- */
     .ceo-section-head {
       display: flex;
@@ -776,6 +917,34 @@
         </div>
       </section>
 
+      <!-- 1C. QUICK LEADERSHIP ACTIONS -->
+      <section>
+        <div class="ceo-actions-head">
+          <div>
+            <div class="ceo-actions-eyebrow">Quick Leadership Actions</div>
+            <h2 class="ceo-actions-title">Lead with a few words</h2>
+          </div>
+          <div class="ceo-actions-aside">Delivered during working hours</div>
+        </div>
+        <div class="ceo-quick-actions">
+          <button type="button" class="ceo-quick-btn" data-quick="recognize">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Recognize Employee</p>
+            <p class="ceo-quick-btn-sub">Celebrate one person specifically.</p>
+          </button>
+          <button type="button" class="ceo-quick-btn" data-quick="team">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Message Team</p>
+            <p class="ceo-quick-btn-sub">A short note to everyone on the field.</p>
+          </button>
+          <button type="button" class="ceo-quick-btn" data-quick="office_manager">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Message Office Manager</p>
+            <p class="ceo-quick-btn-sub">Quick coaching or appreciation.</p>
+          </button>
+        </div>
+      </section>
+
       <!-- 2 + 3. DANGERS + OPPORTUNITIES -->
       <div class="ceo-row-2">
         <section>
@@ -828,12 +997,54 @@
     </main>
   </div>
 
+  <!-- Compose modal (Phase 1C) — single shared modal swapped by recipient type -->
+  <div id="ceo-compose-overlay" class="ceo-modal-overlay ceo-hidden">
+    <div class="ceo-modal" role="dialog" aria-modal="true" aria-labelledby="ceo-compose-title">
+      <p class="ceo-modal-eyebrow" id="ceo-compose-eyebrow">Leadership Message</p>
+      <h2 class="ceo-modal-title" id="ceo-compose-title">Send a note</h2>
+      <p class="ceo-modal-sub" id="ceo-compose-sub"></p>
+
+      <div class="ceo-modal-field" id="ceo-compose-recipient-field" hidden>
+        <label class="ceo-modal-label" for="ceo-compose-recipient">Employee</label>
+        <select id="ceo-compose-recipient" class="ceo-modal-select">
+          <option value="">Select a teammate…</option>
+        </select>
+      </div>
+
+      <div class="ceo-modal-field">
+        <label class="ceo-modal-label" for="ceo-compose-type">Tone</label>
+        <select id="ceo-compose-type" class="ceo-modal-select">
+          <option value="recognition">Recognition</option>
+          <option value="coaching">Coaching / Support</option>
+          <option value="announcement">Announcement</option>
+        </select>
+      </div>
+
+      <div class="ceo-modal-field">
+        <label class="ceo-modal-label" for="ceo-compose-body">Message</label>
+        <textarea id="ceo-compose-body" class="ceo-modal-textarea"
+                  maxlength="2000"
+                  placeholder="Keep it short, specific, and human."></textarea>
+        <p class="ceo-modal-helper" id="ceo-compose-helper">
+          Delivered next time the recipient signs in during working hours.
+        </p>
+      </div>
+
+      <p class="ceo-modal-status" id="ceo-compose-status" data-status></p>
+
+      <div class="ceo-modal-btns">
+        <button type="button" class="ceo-action-btn ceo-action-btn-ghost" id="ceo-compose-cancel">Cancel</button>
+        <button type="button" class="ceo-action-btn" id="ceo-compose-send">Queue Message</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Firebase SDK + config -->
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="ceo.js?v=20260608-phase1b-actions"></script>
+  <script src="ceo.js?v=20260608-phase1c-messaging"></script>
 </body>
 </html>

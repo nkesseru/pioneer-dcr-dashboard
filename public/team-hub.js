@@ -1304,6 +1304,145 @@
     }
   }
 
+  /* ---------- Phase 1C — Leadership Messages ----------
+     One-way leadership notes from executives (April/Nick). Two queries
+     in parallel: team broadcasts + this tech's personal messages. Show
+     queued messages whose deliverAfter has passed; Acknowledge or
+     Dismiss flips status to delivered/dismissed so they don't return.
+     NOT chat, NOT inbox — there are no replies. */
+  async function bootLeadershipMessagesForStaff(staff) {
+    if (!staff) return;
+    const section = $("team-hub-leadership-section");
+    const list    = $("team-hub-leadership-list");
+    if (!section || !list) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const myEmail = String((staff.email || "")).toLowerCase().trim();
+    const db      = firebase.firestore();
+    const nowMs   = Date.now();
+
+    try {
+      const queries = [
+        db.collection("leadership_messages")
+          .where("recipientType", "==", "team")
+          .where("status", "==", "queued")
+          .limit(20).get()
+      ];
+      if (myEmail) {
+        queries.push(
+          db.collection("leadership_messages")
+            .where("recipientType", "==", "employee")
+            .where("recipientId",   "==", myEmail)
+            .where("status",        "==", "queued")
+            .limit(20).get()
+        );
+      }
+      const snaps = await Promise.all(queries);
+      const docsAll = [];
+      snaps.forEach(function (snap) {
+        snap.docs.forEach(function (d) {
+          docsAll.push(Object.assign({ _id: d.id }, d.data() || {}));
+        });
+      });
+
+      // Filter by deliverAfter (working-hours protection) + sort newest first.
+      const ready = docsAll.filter(function (m) {
+        const ms = leadershipTsToMs(m.deliverAfter);
+        return !ms || ms <= nowMs;
+      }).sort(function (a, b) {
+        return leadershipTsToMs(b.createdAt) - leadershipTsToMs(a.createdAt);
+      });
+
+      if (!ready.length) { section.hidden = true; return; }
+
+      list.innerHTML = ready.map(renderLeadershipCardHtml).join("");
+      section.hidden = false;
+      wireLeadershipButtons(staff);
+    } catch (err) {
+      console.warn("[team-hub] leadership messages read failed", err);
+    }
+  }
+
+  function leadershipTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number")    return ts.seconds * 1000;
+    if (typeof ts === "string")            { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    return 0;
+  }
+
+  function leadershipEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function renderLeadershipCardHtml(m) {
+    const typeLabel = m.messageType === "recognition" ? "Recognition"
+                    : m.messageType === "coaching"    ? "A note for you"
+                    : "From Leadership";
+    const fromWho = m.createdBy ? "From " + m.createdBy.split("@")[0] : "From Leadership";
+    return (
+      '<article class="team-hub-leadership-card" data-msg-id="' + leadershipEscape(m._id) + '">' +
+        '<header class="team-hub-leadership-head">' +
+          '<span class="team-hub-leadership-type">' + leadershipEscape(typeLabel) + '</span>' +
+          '<span class="team-hub-leadership-from">' + leadershipEscape(fromWho) + '</span>' +
+        '</header>' +
+        '<p class="team-hub-leadership-body">' + leadershipEscape(m.messageBody || "") + '</p>' +
+        '<div class="team-hub-leadership-btns">' +
+          '<button type="button" class="team-hub-leadership-ack" data-msg-action="ack">Acknowledge</button>' +
+          '<button type="button" class="team-hub-leadership-dismiss" data-msg-action="dismiss">Dismiss</button>' +
+        '</div>' +
+        '<p class="team-hub-leadership-status" data-msg-status></p>' +
+      '</article>'
+    );
+  }
+
+  function wireLeadershipButtons(staff) {
+    document.querySelectorAll(".team-hub-leadership-card").forEach(function (card) {
+      card.querySelectorAll("[data-msg-action]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          handleLeadershipClick(card, btn, staff);
+        });
+      });
+    });
+  }
+
+  async function handleLeadershipClick(card, btn, staff) {
+    const msgId  = card.getAttribute("data-msg-id");
+    const action = btn.getAttribute("data-msg-action");
+    const status = card.querySelector("[data-msg-status]");
+    if (!msgId) return;
+    const nextStatus = action === "ack" ? "delivered" : "dismissed";
+    btn.disabled = true;
+    if (status) status.textContent = action === "ack" ? "Thank you." : "";
+    try {
+      await firebase.firestore().collection("leadership_messages").doc(msgId).update({
+        status:       nextStatus,
+        deliveredAt:  firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at:   firebase.firestore.FieldValue.serverTimestamp()
+      });
+      // Remove the card with a soft fade
+      card.style.transition = "opacity 0.3s ease";
+      card.style.opacity = "0";
+      setTimeout(function () {
+        card.remove();
+        const list = $("team-hub-leadership-list");
+        if (list && !list.children.length) {
+          const section = $("team-hub-leadership-section");
+          if (section) section.hidden = true;
+        }
+      }, 320);
+    } catch (err) {
+      console.error("[team-hub] leadership message update failed", err);
+      if (status) {
+        status.textContent = "Couldn't save — try again.";
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -1347,6 +1486,10 @@
           // independently. Today's Work lives on /work.html.
           bootOpenShiftsBadge();
           bootRockstarRecognition();
+          // Phase 1C — Leadership Messages. Reads queued messages
+          // targeting this tech (employee) or the team broadcast.
+          // Soft-fails; non-blocking.
+          bootLeadershipMessagesForStaff(staff);
         }
       });
     } catch (err) {

@@ -1439,6 +1439,72 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Leadership Messages (Phase 1C) — leadership_messages
+    // ====================================================================
+    // One-way leadership communication. CEO (executive+) composes;
+    // employees / team / office managers receive. NOT chat, NOT inbox,
+    // NOT a Slack replacement. No employee-to-employee messaging.
+    //
+    // Schema:
+    //   messageType    enum: recognition | coaching | announcement
+    //   recipientType  enum: employee | team | office_manager
+    //   recipientId    string (email for 'employee', null/empty otherwise)
+    //   recipientName  string (display name, for the sender's audit view)
+    //   messageBody    string, len 1..2000
+    //   createdBy      string (email of executive/owner)
+    //   createdAt      server timestamp
+    //   status         enum: queued | delivered | dismissed
+    //   deliverAfter   timestamp — earliest visible. Client computes
+    //                  using working-hours protection (8 AM–6 PM Pacific).
+    //   deliveredAt    optional timestamp, set when first Ack/Dismiss flip
+    //
+    // Read access:
+    //   - The sender (executive+) can always read what they sent.
+    //   - 'team'           → any active cleaning tech
+    //   - 'employee'       → only the tech whose email matches recipientId
+    //   - 'office_manager' → any admin-tier user
+    //
+    // Update access (Ack/Dismiss only — status + deliveredAt + updated_at):
+    //   - Same recipient-side gate as reads. Sender does NOT mutate after
+    //     create (one-way delivery; no recall).
+    //
+    // Delete: never (audit trail). Dismissed != deleted.
+    match /leadership_messages/{msgId} {
+      allow read:   if isPioneerExecutive()
+                    || (resource.data.recipientType == 'team' && isActiveCleaningTech())
+                    || (resource.data.recipientType == 'employee'
+                        && request.auth != null
+                        && request.auth.token.email is string
+                        && resource.data.recipientId == request.auth.token.email.lower())
+                    || (resource.data.recipientType == 'office_manager' && isPioneerAdmin());
+
+      allow create: if isPioneerExecutive()
+                    && request.resource.data.messageType in
+                       ['recognition', 'coaching', 'announcement']
+                    && request.resource.data.recipientType in
+                       ['employee', 'team', 'office_manager']
+                    && request.resource.data.messageBody is string
+                    && request.resource.data.messageBody.size() >= 1
+                    && request.resource.data.messageBody.size() <= 2000
+                    && request.resource.data.status == 'queued'
+                    && request.resource.data.createdBy == request.auth.token.email.lower();
+
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'deliveredAt', 'updated_at'])
+                    && request.resource.data.status in ['delivered', 'dismissed']
+                    && (
+                      (resource.data.recipientType == 'team' && isActiveCleaningTech())
+                      || (resource.data.recipientType == 'employee'
+                          && request.auth != null
+                          && request.auth.token.email is string
+                          && resource.data.recipientId == request.auth.token.email.lower())
+                      || (resource.data.recipientType == 'office_manager' && isPioneerAdmin())
+                    );
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Phase 33A — Mission Control alert noise control.
     // ====================================================================
     // Two collections that let admins quiet irrelevant Mission Control

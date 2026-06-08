@@ -1288,10 +1288,233 @@
   }
   function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
+  /* ============================================================
+   * Phase 1C — Quick Leadership Actions (compose + queue)
+   * ============================================================ */
+
+  // Active techs cache for the Recognize-Employee picker. Loaded lazily
+  // on first modal-open so the page paints fast.
+  let techsCache = null;
+
+  function pacificHour(date) {
+    return parseInt(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false
+    }).format(date), 10);
+  }
+
+  // Working-hours protection: 8 AM – 6 PM Pacific. If we're inside the
+  // window now, deliver immediately. Otherwise queue until the next 8 AM
+  // PT. Iterative hour-walk handles DST correctly without manual offset
+  // math.
+  function nextDeliveryAt(now) {
+    const hour = pacificHour(now);
+    if (hour >= 8 && hour < 18) return new Date(now);
+    let cursor = new Date(now);
+    cursor.setMinutes(0, 0, 0);
+    cursor = new Date(cursor.getTime() + 3600000);
+    let safety = 0;
+    while (pacificHour(cursor) !== 8 && safety < 36) {
+      cursor = new Date(cursor.getTime() + 3600000);
+      safety++;
+    }
+    return cursor;
+  }
+
+  function fmtDeliveryHint(deliverAt, now) {
+    if (deliverAt.getTime() - now.getTime() < 60_000) return 'Delivers immediately.';
+    // Same day vs next day in Pacific
+    const nowPT  = pacificDateString();
+    const deliverPT = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(deliverAt);
+    const when = (deliverPT === nowPT) ? 'today' : 'tomorrow';
+    return 'Queued for delivery ' + when + ' at 8 AM PT.';
+  }
+
+  /* ---- Tech roster (for Recognize Employee picker) ---- */
+
+  async function ensureTechsCache() {
+    if (techsCache) return techsCache;
+    try {
+      const snap = await db.collection('cleaning_techs').get();
+      techsCache = snap.docs
+        .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        .filter(function (t) { return t.active !== false; })
+        .filter(function (t) { return t.email; })
+        .sort(function (a, b) {
+          return String(a.display_name || a.tech_display_name || a.email)
+                 .localeCompare(String(b.display_name || b.tech_display_name || b.email));
+        });
+      return techsCache;
+    } catch (err) {
+      console.error('[ceo] tech roster load failed', err);
+      techsCache = [];
+      return techsCache;
+    }
+  }
+
+  /* ---- Compose modal ---- */
+
+  let composeMode = null; // 'recognize' | 'team' | 'office_manager'
+
+  function openCompose(mode) {
+    composeMode = mode;
+    const overlay = $('ceo-compose-overlay');
+    const recipientField = $('ceo-compose-recipient-field');
+    const recipientSelect = $('ceo-compose-recipient');
+    const typeSelect = $('ceo-compose-type');
+    const eyebrow = $('ceo-compose-eyebrow');
+    const title = $('ceo-compose-title');
+    const sub = $('ceo-compose-sub');
+    const body = $('ceo-compose-body');
+    const status = $('ceo-compose-status');
+    const helper = $('ceo-compose-helper');
+
+    setActionStatus(status, '');
+    body.value = '';
+
+    if (mode === 'recognize') {
+      eyebrow.textContent = 'Recognition';
+      title.textContent   = 'Recognize a teammate';
+      sub.textContent     = 'A few specific words mean more than anything generic. Name the thing you noticed.';
+      typeSelect.value    = 'recognition';
+      body.placeholder    = 'Example: "Thank you for covering the Saturday DIVCO route — that took real flexibility."';
+      recipientField.hidden = false;
+      // Load techs list async
+      recipientSelect.innerHTML = '<option value="">Loading…</option>';
+      ensureTechsCache().then(function (techs) {
+        recipientSelect.innerHTML = '<option value="">Select a teammate…</option>' +
+          techs.map(function (t) {
+            const name = escapeHtml(t.display_name || t.tech_display_name || t.email);
+            return '<option value="' + escapeHtml(t.email.toLowerCase()) +
+                   '" data-name="' + name + '">' + name + '</option>';
+          }).join('');
+      });
+    } else if (mode === 'team') {
+      eyebrow.textContent = 'Team Announcement';
+      title.textContent   = 'A note for the whole team';
+      sub.textContent     = 'Keep it short. Everyone on the field will see it next time they sign in.';
+      typeSelect.value    = 'announcement';
+      body.placeholder    = 'Example: "Great week, everyone. The five-star inspection at Westfield was the cherry on top."';
+      recipientField.hidden = true;
+    } else if (mode === 'office_manager') {
+      eyebrow.textContent = 'Office Manager';
+      title.textContent   = 'A note for the office manager';
+      sub.textContent     = 'Coaching, appreciation, or a quick thought. Delivered on their dashboard.';
+      typeSelect.value    = 'coaching';
+      body.placeholder    = 'Example: "Thank you for pushing the open-shift coverage this week — it landed."';
+      recipientField.hidden = true;
+    } else {
+      return;
+    }
+
+    helper.textContent = pacificHour(new Date()) >= 8 && pacificHour(new Date()) < 18
+      ? 'Delivered next time they sign in.'
+      : 'Outside delivery hours — queued until next 8 AM PT.';
+
+    overlay.classList.remove('ceo-hidden');
+    setTimeout(function () { body.focus(); }, 50);
+  }
+
+  function closeCompose() {
+    composeMode = null;
+    $('ceo-compose-overlay').classList.add('ceo-hidden');
+  }
+
+  async function sendCompose() {
+    if (!currentUser || !composeMode) return;
+    const status = $('ceo-compose-status');
+    const body   = $('ceo-compose-body').value.trim();
+    const messageType = $('ceo-compose-type').value;
+
+    if (!body) {
+      setActionStatus(status, 'Add a message before queueing.', 'error');
+      return;
+    }
+    if (body.length > 2000) {
+      setActionStatus(status, 'Keep it under 2,000 characters.', 'error');
+      return;
+    }
+
+    let recipientType, recipientId, recipientName;
+    if (composeMode === 'recognize') {
+      const sel = $('ceo-compose-recipient');
+      recipientId = (sel.value || '').toLowerCase();
+      if (!recipientId) {
+        setActionStatus(status, 'Choose a teammate to recognize.', 'error');
+        return;
+      }
+      recipientName = sel.options[sel.selectedIndex].getAttribute('data-name') || recipientId;
+      recipientType = 'employee';
+    } else if (composeMode === 'team') {
+      recipientType = 'team';
+      recipientId   = '';
+      recipientName = 'Pioneer Team';
+    } else if (composeMode === 'office_manager') {
+      recipientType = 'office_manager';
+      recipientId   = '';
+      recipientName = 'Office Manager';
+    }
+
+    const sendBtn   = $('ceo-compose-send');
+    const cancelBtn = $('ceo-compose-cancel');
+    sendBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setActionStatus(status, 'Queueing…');
+
+    try {
+      const now       = new Date();
+      const deliverAt = nextDeliveryAt(now);
+      const email     = (currentUser.email || '').toLowerCase();
+      await db.collection('leadership_messages').add({
+        messageType:   messageType,
+        recipientType: recipientType,
+        recipientId:   recipientId,
+        recipientName: recipientName,
+        messageBody:   body,
+        createdBy:     email,
+        createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+        status:        'queued',
+        deliverAfter:  firebase.firestore.Timestamp.fromDate(deliverAt),
+        deliveredAt:   null
+      });
+      setActionStatus(status, 'Message queued. ' + fmtDeliveryHint(deliverAt, now));
+      setTimeout(closeCompose, 1400);
+    } catch (err) {
+      console.error('[ceo] compose send failed', err);
+      setActionStatus(status, 'Save failed: ' + (err.message || 'unknown'), 'error');
+      sendBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  }
+
+  function wireQuickActions() {
+    document.querySelectorAll('[data-quick]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openCompose(btn.getAttribute('data-quick'));
+      });
+    });
+    const overlay = $('ceo-compose-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', function (ev) {
+        if (ev.target === overlay) closeCompose();
+      });
+    }
+    const cancel = $('ceo-compose-cancel');
+    if (cancel) cancel.addEventListener('click', closeCompose);
+    const send = $('ceo-compose-send');
+    if (send) send.addEventListener('click', sendCompose);
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && composeMode) closeCompose();
+    });
+  }
+
   /* ---------------- Boot ---------------- */
 
   document.addEventListener('DOMContentLoaded', function () {
     bindSignIn();
+    wireQuickActions();
   });
 
 })();
