@@ -1351,6 +1351,40 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 33A — Mission Control alert noise control.
+    // ====================================================================
+    // Two collections that let admins quiet irrelevant Mission Control
+    // alerts without touching underlying business data (deputy_shift_cache
+    // / service_assignments / dcr_submissions stay untouched).
+    //
+    //   mission_control_alert_dismissals   — per-instance hide. Doc id is
+    //                                        the stable alertKey, so
+    //                                        re-dismissing simply
+    //                                        overwrites. expires_at
+    //                                        carries snooze deadlines
+    //                                        (null = permanent).
+    //   mission_control_alert_suppressions — broader rules: "hide all
+    //                                        alerts of type X for entity
+    //                                        Y." Reactivation toggles
+    //                                        active:false.
+    //
+    // Deletes are allowed on both so admins can fully clear a record
+    // (e.g., an obsolete suppression). Reactivation is the soft path
+    // (set active:false); delete is the hard path.
+    match /mission_control_alert_dismissals/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+    match /mission_control_alert_suppressions/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+
+    // ====================================================================
     // Employee action events — lightweight client-side click log.
     // ====================================================================
     // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"

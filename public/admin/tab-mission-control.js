@@ -111,7 +111,16 @@
       safe("deputy_tonight", db.collection("deputy_shift_cache")
         .where("sync_date", "==", todayPT).get()),
       safe("deputy_tomorrow", db.collection("deputy_shift_cache")
-        .where("sync_date", "==", tomorrowPT).get())
+        .where("sync_date", "==", tomorrowPT).get()),
+      // Phase 33A — noise control. Two collections of admin choices that
+      // suppress matching alerts at render time. Soft-failing fallback
+      // returns an empty list so a missing collection (first deploy)
+      // doesn't break the panel.
+      safe("dismissals", db.collection("mission_control_alert_dismissals").get()
+        .catch(() => ({ docs: [] }))),
+      safe("suppressions", db.collection("mission_control_alert_suppressions")
+        .where("active", "==", true).get()
+        .catch(() => ({ docs: [] })))
     ]);
 
     function docs(idx) {
@@ -138,8 +147,49 @@
       timeAdj:         docs(6),
       deputyTonight:   docs(7),
       deputyTomorrow:  docs(8),
+      dismissals:      docs(9)  || [],
+      suppressions:    docs(10) || [],
       failedReads:     failures()
     };
+  }
+
+  /* ---------- Phase 33A — noise control filter ----------
+   *
+   * Active dismissal = doc whose id matches the item's alertKey AND
+   * whose expires_at is null/missing OR > now. Snoozed dismissals get
+   * an expires_at value; permanent dismissals leave it null.
+   *
+   * Active suppression = doc with active === true AND alert_type ==
+   * item.category. For aggregate alerts (entityType === "aggregate")
+   * the entity match is by-category alone. For per-instance alerts
+   * (every other category), the entity_type + entity_id must also
+   * match — that's how "Suppress similar for Gene F" cleanly hides
+   * future bridge-skipped alerts for Gene F without nuking other
+   * blocked-shift alerts. */
+
+  function dismissalActiveFor(alertKey, dismissals, nowMs) {
+    if (!alertKey) return null;
+    for (let i = 0; i < dismissals.length; i++) {
+      const d = dismissals[i];
+      if (d._id !== alertKey) continue;
+      const expiresMs = tsToMs(d.expires_at);
+      if (!expiresMs) return d;            // permanent
+      if (expiresMs > nowMs) return d;     // snoozed, still active
+    }
+    return null;
+  }
+
+  function suppressionActiveFor(item, suppressions) {
+    if (!item || !suppressions || !suppressions.length) return null;
+    for (let i = 0; i < suppressions.length; i++) {
+      const sup = suppressions[i];
+      if (sup.active === false) continue;
+      if (sup.alert_type !== item.category) continue;
+      if (item.entityType === "aggregate") return sup;          // category-only match
+      if (sup.entity_type === item.entityType &&
+          sup.entity_id   === item.entityId) return sup;
+    }
+    return null;
   }
 
   /* ---------- Phase 29A QA filter ---------- */
@@ -201,7 +251,11 @@
           reason:  'Deputy company "' + (s.deputy_company_name || "?") + '" has no PioneerOps customer mapping.',
           fix:     "Add a customer alias in Deputy Mapping.",
           actionLabel: "Open Deputy Mapping",
-          actionRoute: "deputy"
+          actionRoute: "deputy",
+          alertKey:   "unmapped_customer:" + (s.deputy_company_name || "") + ":" + (s.shift_id || ""),
+          entityType: "deputy_company",
+          entityId:   String(s.deputy_company_name || "(unknown)"),
+          entityName: s.deputy_company_name || "(unknown company)"
         });
         return;
       }
@@ -216,7 +270,11 @@
           reason:  "Deputy profile has no email, so the bridge can't link this shift to a Firebase user.",
           fix:     "Add the tech's email to their Deputy employee profile, OR add a manual alias.",
           actionLabel: "Open Deputy Mapping",
-          actionRoute: "deputy"
+          actionRoute: "deputy",
+          alertKey:   "blocked_shift_noemail:" + (s.shift_id || "") + ":" + (s.deputy_employee_id || s.employee_display_name || ""),
+          entityType: "deputy_employee",
+          entityId:   String(s.deputy_employee_id || s.employee_display_name || "(unknown)"),
+          entityName: techName
         });
         return;
       }
@@ -232,7 +290,11 @@
           reason:  "Deputy email " + s.employee_email + " has no cleaning_techs record.",
           fix:     "Add the tech in Cleaning Techs and invite them to sign in.",
           actionLabel: "Open Cleaning Techs",
-          actionRoute: "techs"
+          actionRoute: "techs",
+          alertKey:   "blocked_shift_no_tech_doc:" + (s.shift_id || "") + ":" + s.employee_email,
+          entityType: "tech_email",
+          entityId:   String(s.employee_email).toLowerCase(),
+          entityName: techName
         });
         return;
       }
@@ -247,7 +309,11 @@
           reason:  "cleaning_techs/" + tech._id + " is archived but Deputy still has them scheduled.",
           fix:     "Either reactivate the tech, or remove the shift in Deputy.",
           actionLabel: "Open Cleaning Techs",
-          actionRoute: "techs"
+          actionRoute: "techs",
+          alertKey:   "blocked_shift_tech_archived:" + (s.shift_id || "") + ":" + tech._id,
+          entityType: "tech",
+          entityId:   tech._id,
+          entityName: tech.display_name || techName
         });
         return;
       }
@@ -272,7 +338,11 @@
                    "Usually means the tech hasn't signed into /work yet (so Firebase Auth has no UID to attach).",
           fix:     "Send the tech the /work link and ask them to sign in once. The scheduled bridge picks it up within 10 minutes.",
           actionLabel: "Open Cleaning Techs",
-          actionRoute: "techs"
+          actionRoute: "techs",
+          alertKey:   "blocked_shift_bridge_skipped:" + (s.shift_id || "") + ":" + tech._id,
+          entityType: "tech",
+          entityId:   tech._id,
+          entityName: tech.display_name || techName
         });
       }
     });
@@ -301,7 +371,11 @@
           reason:  "Assignment existed but no clock-in was ever recorded.",
           fix:     "Confirm with the tech, then either submit a time adjustment or mark the shift as a no-show in Labor.",
           actionLabel: "Open Labor",
-          actionRoute: "labor-review"
+          actionRoute: "labor-review",
+          alertKey:   "missed_shift:" + a._id,
+          entityType: "tech",
+          entityId:   String(a.staff_uid || a.staff_email || techName),
+          entityName: techName
         });
       });
     }
@@ -326,7 +400,11 @@
           reason:  "Tech is still clocked in from an older ops day. Likely forgot to clock out.",
           fix:     "Force-close the session in Labor Review, then ask the tech to submit a time adjustment if needed.",
           actionLabel: "Open Labor",
-          actionRoute: "labor-review"
+          actionRoute: "labor-review",
+          alertKey:   "stuck_clock:" + a.staff_uid + ":" + inMs,
+          entityType: "tech",
+          entityId:   String(a.staff_uid || "(unknown)"),
+          entityName: techName
         });
       });
     }
@@ -353,7 +431,11 @@
           reason:  "Shift is clocked out but no DCR was submitted yet.",
           fix:     "Have the tech submit the DCR, or follow up via DCR Issues.",
           actionLabel: "Open DCR Issues",
-          actionRoute: "issues"
+          actionRoute: "issues",
+          alertKey:   "missing_dcr:" + s._id,
+          entityType: "tech",
+          entityId:   String(s.staff_uid || s.staff_email || techName),
+          entityName: techName
         });
       });
     }
@@ -378,7 +460,11 @@
           reason:  "Session is paused — tech may have walked off or forgotten to resume.",
           fix:     "Check in with the tech; force-close if confirmed.",
           actionLabel: "Open Labor",
-          actionRoute: "labor-review"
+          actionRoute: "labor-review",
+          alertKey:   "paused_shift:" + s._id,
+          entityType: "tech",
+          entityId:   String(s.staff_uid || s.staff_email || techName),
+          entityName: techName
         });
       });
     }
@@ -402,7 +488,11 @@
           reason:  (r.reason || "—") + (r.notes ? " — " + r.notes : ""),
           fix:     "Review and approve / deny in Payroll Exceptions.",
           actionLabel: "Open Payroll Exceptions",
-          actionRoute: "payroll-exceptions"
+          actionRoute: "payroll-exceptions",
+          alertKey:   "time_adjustment:" + r._id,
+          entityType: "tech",
+          entityId:   String(r.employee_uid || r.employee_email || r.employee_name || "(unknown)"),
+          entityName: r.employee_name || r.employee_email || "Tech"
         });
       });
     }
@@ -428,7 +518,11 @@
           reason:  "Some customers are missing DCR or geofence config.",
           fix:     "Visit Customers, expand each flagged row, and fix dcr_enabled / location_lat / location_lon.",
           actionLabel: "Open Customers",
-          actionRoute: "customers"
+          actionRoute: "customers",
+          alertKey:   "customer_config_aggregate",
+          entityType: "aggregate",
+          entityId:   "customer-config",
+          entityName: "Customer Config Gaps"
         });
       } else {
         healthy.push("Customer config · all active customers configured");
@@ -458,7 +552,11 @@
           reason:  "Open supply requests count exceeds 5.",
           fix:     "Triage in the Supply tab.",
           actionLabel: "Open Supply",
-          actionRoute: "supply"
+          actionRoute: "supply",
+          alertKey:   "supply_backlog_aggregate",
+          entityType: "aggregate",
+          entityId:   "supply-backlog",
+          entityName: "Supply Request Backlog"
         });
       } else {
         healthy.push("Supply · " + open.length + " open" + (open.length === 1 ? "" : "s"));
@@ -512,7 +610,27 @@
       "#mission-control .mc-warnings{margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.45);color:#fecaca;border-radius:8px;font-size:12px;}",
       "#mission-control .mc-collapse{cursor:pointer;color:#7ea3d6;font-size:12px;text-decoration:underline;margin-top:6px;display:inline-block;}",
       "#mission-control .mc-collapse:hover{color:#a8c0e1;}",
-      "#mission-control .mc-overflow{font-size:12px;color:#a8c0e1;margin-top:4px;font-style:italic;}"
+      "#mission-control .mc-overflow{font-size:12px;color:#a8c0e1;margin-top:4px;font-style:italic;}",
+      // Phase 33A — noise control buttons + suppressions section
+      "#mission-control .mc-item-actions{flex-wrap:wrap;}",
+      "#mission-control .mc-item-quiet{background:transparent;border:1px solid rgba(255,255,255,0.18);color:#cdd9ec;}",
+      "#mission-control .mc-item-quiet:hover{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.32);color:#fff;}",
+      "#mission-control .mc-item-quiet.is-danger{border-color:rgba(239,68,68,0.5);color:#fecaca;}",
+      "#mission-control .mc-item-quiet.is-danger:hover{background:rgba(239,68,68,0.25);color:#fff;}",
+      "#mission-control .mc-item-confirm-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;}",
+      "#mission-control .mc-item-confirm-bar .mc-item-confirm-label{font-size:12.5px;color:#cdd9ec;margin-right:6px;}",
+      "#mission-control .mc-action-banner-hidden{font-size:12px;font-weight:600;color:#94a3b8;}",
+      "#mission-control .mc-suppressions{margin-top:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;}",
+      "#mission-control .mc-suppressions summary{cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:#a8c0e1;list-style:revert;}",
+      "#mission-control .mc-suppressions .mc-supp-count{color:#7ea3d6;font-weight:600;margin-left:6px;}",
+      "#mission-control .mc-suppressions[open] summary{border-bottom:1px solid rgba(255,255,255,0.08);}",
+      "#mission-control .mc-supp-body{padding:10px 14px;}",
+      "#mission-control .mc-supp-empty{margin:0;font-size:13px;color:#94a3b8;text-align:center;padding:14px;}",
+      "#mission-control .mc-supp-table{width:100%;border-collapse:collapse;font-size:12.5px;color:#cdd9ec;}",
+      "#mission-control .mc-supp-table th{text-align:left;padding:6px 8px;font-weight:700;color:#a8c0e1;letter-spacing:0.4px;text-transform:uppercase;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.10);}",
+      "#mission-control .mc-supp-table td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.05);}",
+      "#mission-control .mc-supp-reactivate{appearance:none;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);padding:5px 10px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;}",
+      "#mission-control .mc-supp-reactivate:hover{background:rgba(255,255,255,0.18);}"
     ].join("\n");
     const tag = document.createElement("style");
     tag.setAttribute("data-pioneer", "mission-control-styles");
@@ -547,12 +665,28 @@
     "time-adjustment":              8
   };
 
-  function render(model, opsWindow) {
+  function render(model, opsWindow, snap) {
     ensureStyles();
     const root = $("mission-control");
     if (!root) return;
 
-    const items = model.items.slice().sort((a, b) => {
+    // ---- Phase 33A — noise control filter (dismissed + suppressed) ----
+    const dismissals  = (snap && snap.dismissals)   || [];
+    const suppressions= (snap && snap.suppressions) || [];
+    const nowMs = (snap && snap.now) || Date.now();
+    const allItems = model.items.slice();
+    const hiddenByDismissal = [];
+    const hiddenBySuppression = [];
+    const visibleAfterFilter = [];
+    allItems.forEach(it => {
+      const dis = dismissalActiveFor(it.alertKey, dismissals, nowMs);
+      if (dis) { hiddenByDismissal.push({ item: it, dismissal: dis }); return; }
+      const sup = suppressionActiveFor(it, suppressions);
+      if (sup) { hiddenBySuppression.push({ item: it, suppression: sup }); return; }
+      visibleAfterFilter.push(it);
+    });
+
+    const items = visibleAfterFilter.sort((a, b) => {
       // RED first, then YELLOW. Within severity, stable category sort.
       if (a.severity !== b.severity) return a.severity === "RED" ? -1 : 1;
       return String(a.category).localeCompare(String(b.category));
@@ -560,6 +694,7 @@
     const redCount = items.filter(i => i.severity === "RED").length;
     const yellowCount = items.filter(i => i.severity === "YELLOW").length;
     const totalActions = items.length;
+    const hiddenCount = hiddenByDismissal.length + hiddenBySuppression.length;
 
     // Group by category so caps + "and N more" work.
     const byCategory = {};
@@ -581,18 +716,30 @@
       }
     });
 
+    const hiddenSuffix = hiddenCount > 0
+      ? ' <span class="mc-action-banner-hidden">· ' + hiddenCount + ' hidden by dismissals/suppressions</span>'
+      : "";
     const banner = totalActions === 0
-      ? '<div class="mc-action-banner is-clean">✓&nbsp;<span>All clear — no action items.</span></div>'
+      ? '<div class="mc-action-banner is-clean">✓&nbsp;<span>All clear — no action items.' + hiddenSuffix + '</span></div>'
       : '<div class="mc-action-banner is-attn"><span class="mc-action-banner-count">' + totalActions + '</span>'
-        + '<span>Action Required · ' + redCount + ' red, ' + yellowCount + ' yellow</span></div>';
+        + '<span>Action Required · ' + redCount + ' red, ' + yellowCount + ' yellow' + hiddenSuffix + '</span></div>';
 
     const overflowNotes = Object.keys(overflow).map(cat => {
       return '<p class="mc-overflow">+ ' + overflow[cat] + ' more ' + escapeHtml(cat.replace(/-/g, " ")) + '</p>';
     }).join("");
 
     const itemsHtml = visibleItems.map(it => {
+      const key = escapeHtml(it.alertKey || "");
+      // Phase 33A — 3 noise-control buttons + the existing route-to-tab
+      // primary. Layout: [Open Tab] on the left; [Dismiss] [Snooze ▾]
+      // [Suppress Similar] on the right. Aggregate alerts hide the
+      // entity-name fragment in the Suppress confirmation copy.
+      const noiseButtons =
+        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt" data-key="' + key + '">Dismiss</button>' +
+        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"  data-key="' + key + '">Snooze</button>' +
+        '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress Similar</button>';
       return (
-        '<article class="mc-item" data-severity="' + escapeHtml(it.severity) + '">' +
+        '<article class="mc-item" data-severity="' + escapeHtml(it.severity) + '" data-key="' + key + '">' +
           '<div class="mc-item-head">' +
             '<span class="mc-item-title">' + escapeHtml(it.title) + '</span>' +
             (it.severity === "RED"
@@ -603,11 +750,12 @@
           (it.context ? '<p class="mc-item-context">' + escapeHtml(it.context) + '</p>' : '') +
           (it.reason  ? '<p class="mc-item-reason">' + escapeHtml(it.reason) + '</p>' : '') +
           (it.fix     ? '<p class="mc-item-fix"><span class="mc-item-fix-label">Fix</span>' + escapeHtml(it.fix) + '</p>' : '') +
-          '<div class="mc-item-actions">' +
+          '<div class="mc-item-actions" data-actions-state="default">' +
             (it.actionRoute
               ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
                 escapeHtml(it.actionRoute) + '">' + escapeHtml(it.actionLabel || "Open") + '</button>'
               : '') +
+            noiseButtons +
           '</div>' +
         '</article>'
       );
@@ -623,6 +771,33 @@
       ? '<div class="mc-warnings">⚠ ' + escapeHtml(model.failedReads.length + " read(s) failed: " + model.failedReads.join("; ")) + '</div>'
       : "";
 
+    // Phase 33A — Suppressed Alerts collapsible. Shows every active
+    // suppression rule with a Reactivate button. Lives at the very
+    // bottom of the panel; defaults to closed so it doesn't compete
+    // with action items.
+    const suppRows = suppressions.filter(s => s.active !== false);
+    const supHtml = suppRows.length === 0
+      ? '<p class="mc-supp-empty">No active suppression rules.</p>'
+      : '<table class="mc-supp-table"><thead><tr>' +
+          '<th>Type</th><th>Entity</th><th>Suppressed by</th><th>Date</th><th>Reason</th><th></th>' +
+        '</tr></thead><tbody>' +
+        suppRows.map(s => {
+          return '<tr>' +
+            '<td>' + escapeHtml(String(s.alert_type || "").replace(/[-_]/g, " ")) + '</td>' +
+            '<td>' + escapeHtml(s.entity_name || s.entity_id || "—") + '</td>' +
+            '<td>' + escapeHtml(s.suppressed_by_email || "—") + '</td>' +
+            '<td>' + escapeHtml(fmtSuppressionDate(s.suppressed_at)) + '</td>' +
+            '<td>' + escapeHtml(s.reason || "") + '</td>' +
+            '<td><button type="button" class="mc-supp-reactivate" data-mc-reactivate="' + escapeHtml(s._id) + '">Reactivate</button></td>' +
+          '</tr>';
+        }).join("") +
+        '</tbody></table>';
+    const suppressedSection =
+      '<details class="mc-suppressions">' +
+        '<summary>Suppressed Alerts <span class="mc-supp-count">(' + suppRows.length + ')</span></summary>' +
+        '<div class="mc-supp-body">' + supHtml + '</div>' +
+      '</details>';
+
     root.innerHTML =
       '<header class="mc-head">' +
         '<div>' +
@@ -635,7 +810,19 @@
       banner +
       (totalActions > 0 ? '<div class="mc-items">' + itemsHtml + '</div>' : "") +
       healthyHtml +
-      warningsHtml;
+      warningsHtml +
+      suppressedSection;
+  }
+
+  function fmtSuppressionDate(ts) {
+    const ms = tsToMs(ts);
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true
+      }).format(new Date(ms));
+    } catch (_e) { return "—"; }
   }
 
   function renderLoading() {
@@ -668,6 +855,11 @@
 
   /* ---------- public API ---------- */
 
+  // Hold the last snapshot's items + lookup so action handlers can find
+  // the item by alertKey without a re-fetch.
+  let lastSnap = null;
+  let lastItemsByKey = {};
+
   async function refresh() {
     if (loading) return;
     loading = true;
@@ -675,7 +867,10 @@
     try {
       const snap  = await loadSnapshot();
       const model = buildActionItems(snap);
-      render(model, snap.opsWindow);
+      lastSnap = snap;
+      lastItemsByKey = {};
+      (model.items || []).forEach(it => { if (it.alertKey) lastItemsByKey[it.alertKey] = it; });
+      render(model, snap.opsWindow, snap);
       loaded = true;
     } catch (err) {
       console.error("[mission-control] load failed", err);
@@ -685,16 +880,185 @@
     }
   }
 
+  /* ---------- Phase 33A — noise-control click handlers ----------
+   *
+   * In-place inline confirmation. Avoids browser prompt() per spec
+   * ("Do not use browser prompt() if avoidable"). Click flow:
+   *
+   *   Dismiss:           click Dismiss → confirm bar → confirm → write
+   *   Snooze:            click Snooze  → duration bar (1d / 7d / 30d) → write
+   *   Suppress Similar:  click Suppress → confirm bar (with entity) → confirm → write
+   *
+   * Each action writes Firestore, then triggers refresh() so the card
+   * disappears immediately. All writes are best-effort; failures alert
+   * the admin and leave the card visible.
+   */
+
+  function setActionsBar(card, html) {
+    const bar = card.querySelector('[data-actions-state]');
+    if (!bar) return;
+    bar.innerHTML = html;
+  }
+  function escAttr(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+  }
+  function escText(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function buildDismissBar(item) {
+    return '<div class="mc-item-confirm-bar">' +
+      '<span class="mc-item-confirm-label">Dismiss this alert?</span>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet is-danger" data-mc-noise="dismiss-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
+    '</div>';
+  }
+  function buildSnoozeBar(item) {
+    return '<div class="mc-item-confirm-bar">' +
+      '<span class="mc-item-confirm-label">Snooze for:</span>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="1">1 day</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="7">7 days</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-do" data-key="' + escAttr(item.alertKey) + '" data-days="30">30 days</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
+    '</div>';
+  }
+  function buildSuppressBar(item) {
+    const scopeLabel = (item.entityType === "aggregate")
+      ? 'all "' + (item.title || item.category) + '" alerts'
+      : 'all "' + (item.title || item.category) + '" alerts for ' + (item.entityName || item.entityId || "this entity");
+    return '<div class="mc-item-confirm-bar">' +
+      '<span class="mc-item-confirm-label">Suppress ' + escText(scopeLabel) + '?</span>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet is-danger" data-mc-noise="suppress-confirm" data-key="' + escAttr(item.alertKey) + '">Confirm</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="cancel" data-key="' + escAttr(item.alertKey) + '">Cancel</button>' +
+    '</div>';
+  }
+
+  // Restore the default actions row for a card (called on Cancel).
+  function buildDefaultBar(item) {
+    const key = escAttr(item.alertKey || "");
+    const routeBtn = item.actionRoute
+      ? '<button type="button" class="mc-item-btn mc-item-btn-primary" data-mc-action-route="' +
+        escAttr(item.actionRoute) + '">' + escText(item.actionLabel || "Open") + '</button>'
+      : '';
+    return routeBtn +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="dismiss-prompt" data-key="' + key + '">Dismiss</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="snooze-prompt"  data-key="' + key + '">Snooze</button>' +
+      '<button type="button" class="mc-item-btn mc-item-quiet" data-mc-noise="suppress-prompt" data-key="' + key + '">Suppress Similar</button>';
+  }
+
+  async function applyDismissal(item, opts) {
+    const db = firebase.firestore();
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const expiresAt = (opts && opts.expiresMs)
+      ? firebase.firestore.Timestamp.fromMillis(opts.expiresMs)
+      : null;
+    const me = firebase.auth().currentUser;
+    await db.collection("mission_control_alert_dismissals").doc(item.alertKey).set({
+      alert_key:        item.alertKey,
+      alert_type:       item.category,
+      entity_type:      item.entityType || null,
+      entity_id:        item.entityId   || null,
+      entity_name:      item.entityName || null,
+      dismissed_by_uid:   me ? me.uid   : null,
+      dismissed_by_email: me ? me.email : null,
+      dismissed_at:     now,
+      reason:           (opts && opts.reason) || null,
+      expires_at:       expiresAt,
+      snooze_days:      (opts && opts.days) || null
+    });
+  }
+  async function applySuppression(item) {
+    const db = firebase.firestore();
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const me = firebase.auth().currentUser;
+    // Doc id = alert_type + entity_type + entity_id so re-suppressing
+    // the same scope upserts cleanly. Aggregates collapse to alert_type only.
+    const id = item.entityType === "aggregate"
+      ? "agg__" + item.category
+      : item.category + "__" + (item.entityType || "any") + "__" + (item.entityId || "any");
+    await db.collection("mission_control_alert_suppressions").doc(id).set({
+      alert_type:         item.category,
+      entity_type:        item.entityType || null,
+      entity_id:          item.entityId   || null,
+      entity_name:        item.entityName || null,
+      suppressed_by_uid:   me ? me.uid   : null,
+      suppressed_by_email: me ? me.email : null,
+      suppressed_at:      now,
+      reason:             null,
+      active:             true
+    }, { merge: true });
+  }
+  async function reactivateSuppression(suppId) {
+    const db = firebase.firestore();
+    await db.collection("mission_control_alert_suppressions").doc(suppId).update({
+      active:           false,
+      reactivated_at:   firebase.firestore.FieldValue.serverTimestamp(),
+      reactivated_by_email: (firebase.auth().currentUser && firebase.auth().currentUser.email) || null
+    });
+  }
+
   function wireClicks() {
-    document.addEventListener("click", function (ev) {
+    document.addEventListener("click", async function (ev) {
+      // Refresh
       const refreshBtn = ev.target.closest("#mission-control-refresh");
       if (refreshBtn) { refresh(); return; }
+
+      // Re-activate a suppression
+      const reactivateBtn = ev.target.closest("#mission-control [data-mc-reactivate]");
+      if (reactivateBtn) {
+        const id = reactivateBtn.getAttribute("data-mc-reactivate");
+        if (!id) return;
+        try { await reactivateSuppression(id); refresh(); }
+        catch (err) { alert("Couldn't reactivate: " + (err.message || err)); }
+        return;
+      }
+
+      // Noise-control buttons on cards
+      const noiseBtn = ev.target.closest("#mission-control [data-mc-noise]");
+      if (noiseBtn) {
+        const action = noiseBtn.getAttribute("data-mc-noise");
+        const key    = noiseBtn.getAttribute("data-key");
+        const card   = noiseBtn.closest(".mc-item");
+        const item   = lastItemsByKey[key];
+        if (!item) { return; }
+        try {
+          if (action === "dismiss-prompt") {
+            setActionsBar(card, buildDismissBar(item));
+          } else if (action === "dismiss-confirm") {
+            await applyDismissal(item);
+            refresh();
+          } else if (action === "snooze-prompt") {
+            setActionsBar(card, buildSnoozeBar(item));
+          } else if (action === "snooze-do") {
+            const days = parseInt(noiseBtn.getAttribute("data-days") || "0", 10);
+            if (!days) return;
+            await applyDismissal(item, {
+              days: days,
+              expiresMs: Date.now() + days * 86400000
+            });
+            refresh();
+          } else if (action === "suppress-prompt") {
+            setActionsBar(card, buildSuppressBar(item));
+          } else if (action === "suppress-confirm") {
+            await applySuppression(item);
+            refresh();
+          } else if (action === "cancel") {
+            setActionsBar(card, buildDefaultBar(item));
+          }
+        } catch (err) {
+          alert("Couldn't update: " + (err.message || err));
+        }
+        return;
+      }
+
+      // Route-to-tab buttons (existing behavior)
       const actionBtn = ev.target.closest("#mission-control [data-mc-action-route]");
       if (!actionBtn) return;
       const route = actionBtn.getAttribute("data-mc-action-route");
       if (!route) return;
-      try { activateTab(route); }
-      catch (_e) { /* tab may not exist */ }
+      try { activateTab(route); } catch (_e) { /* tab may not exist */ }
     });
   }
 
