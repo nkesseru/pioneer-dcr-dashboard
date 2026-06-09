@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="inspections.css" />
+  <link rel="stylesheet" href="inspections.css?v=20260609-inspection-v2" />
   <link rel="stylesheet" href="styles/inspections-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -369,13 +369,13 @@
         <header class="insp-step-head">
           <span class="insp-step-num">2</span>
           <div>
-            <h2 class="insp-step-title">Score each area</h2>
-            <p class="insp-step-sub">Swipe or tap. Default is 3 (Acceptable). Notes optional.</p>
+            <h2 class="insp-step-title">Evaluate each item</h2>
+            <p class="insp-step-sub">Mark each item Pass, Great, Fail, or N/A. Fails need a comment.</p>
           </div>
         </header>
 
-        <!-- Areas list — populated by inspections.js so the slugs +
-             labels stay in one source of truth. -->
+        <!-- Sections + items rendered by inspections.js so the
+             template definitions stay in one source of truth. -->
         <div class="insp-areas" id="insp-areas"></div>
       </section>
 
@@ -564,7 +564,7 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="info-tip.js"></script>
-  <script src="inspections.js"></script>
+  <script src="inspections.js?v=20260609-inspection-v2"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

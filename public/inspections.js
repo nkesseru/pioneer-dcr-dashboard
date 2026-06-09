@@ -34,31 +34,85 @@
     { key: "admin",          label: "Admin",                href: "/admin",                roles: ["admin"] }
   ];
 
-  // Inspection areas. Each item: { slug, label }. Slug is the
-  // canonical key on the inspection doc's area_scores map; label is
-  // the inspector-facing string. Order is the order they render in
-  // the form (and the order they'll roll up to dashboards later).
-  const INSPECTION_AREAS = [
-    { slug: "offices",        label: "Offices" },
-    { slug: "bathrooms",      label: "Bathrooms" },
-    { slug: "entry_foyer",    label: "Entry / Foyer" },
-    { slug: "lunchroom",      label: "Lunchroom" },
-    { slug: "common_areas",   label: "Common Areas" },
-    { slug: "trash",          label: "Trash" },
-    { slug: "floors",         label: "Floors" },
-    { slug: "dusting",        label: "Dusting" },
-    { slug: "glass",          label: "Glass" },
-    { slug: "touchpoints",    label: "Touchpoints" },
-    { slug: "supplies",       label: "Supplies" }
+  // Phase Inspection V2 — objective inspection template. Mirrors the
+  // DCR cleaning sections (per spec) and forces each item to a discrete
+  // verdict: N/A, Pass, Great, or Fail. Subjective 1-5 ratings are gone
+  // — the inspector validates DCR completion rather than expressing
+  // opinions. Items are hardcoded here; a per-customer template
+  // override can land later without changing the doc schema.
+  //
+  // Item key = "{section.slug}::{item.slug}" — used as the map key on
+  // state.inspection_items so we can look up + mutate by ID in O(1)
+  // without walking the array.
+  const INSPECTION_TEMPLATE_V2 = [
+    { slug: "trash",         label: "Trash", items: [
+      { slug: "all_bins_emptied",        label: "All trash bins emptied" },
+      { slug: "new_liners_installed",    label: "New liners installed" },
+      { slug: "trash_to_dock",           label: "Trash collected and out to dock" },
+      { slug: "trash_area_clean",        label: "Trash area left clean" }
+    ]},
+    { slug: "restrooms",     label: "Restrooms", items: [
+      { slug: "toilets_sanitized",       label: "Toilets cleaned and sanitized" },
+      { slug: "sinks_counters_wiped",    label: "Sinks and counters wiped" },
+      { slug: "mirrors_streak_free",     label: "Mirrors streak-free" },
+      { slug: "floors_mopped",           label: "Floors mopped" },
+      { slug: "soap_paper_restocked",    label: "Soap / paper restocked" },
+      { slug: "trash_emptied",           label: "Restroom trash emptied" }
+    ]},
+    { slug: "breakroom",     label: "Breakroom", items: [
+      { slug: "counters_wiped",          label: "Counters wiped" },
+      { slug: "sink_cleaned",            label: "Sink cleaned" },
+      { slug: "microwave_wiped",         label: "Microwave wiped (inside + out)" },
+      { slug: "tables_clean",            label: "Tables clean" },
+      { slug: "floor_swept_mopped",      label: "Floor swept and mopped" },
+      { slug: "trash_emptied",           label: "Breakroom trash emptied" }
+    ]},
+    { slug: "floors",        label: "Floors", items: [
+      { slug: "vacuumed",                label: "Carpets vacuumed" },
+      { slug: "mopped",                  label: "Hard floors mopped" },
+      { slug: "edges_done",              label: "Edges and corners addressed" },
+      { slug: "no_visible_debris",       label: "No visible debris remaining" }
+    ]},
+    { slug: "dusting",       label: "Dusting", items: [
+      { slug: "surfaces_dusted",         label: "Desk and counter surfaces dusted" },
+      { slug: "high_touch_wiped",        label: "High-touch surfaces wiped" },
+      { slug: "vents_blinds",            label: "Vents and blinds dusted (as scheduled)" }
+    ]},
+    { slug: "entry",         label: "Entry", items: [
+      { slug: "glass_cleaned",           label: "Entry glass cleaned" },
+      { slug: "mats_vacuumed",           label: "Mats vacuumed" },
+      { slug: "entry_floors",            label: "Entry floors mopped" }
+    ]},
+    { slug: "security",      label: "Security", items: [
+      { slug: "doors_locked",            label: "All exterior doors locked" },
+      { slug: "lights_set",              label: "Lights set per customer protocol" },
+      { slug: "alarm_armed",             label: "Alarm armed (if applicable)" }
+    ]},
+    { slug: "supplies",      label: "Supplies", items: [
+      { slug: "toilet_paper",            label: "Toilet paper restocked" },
+      { slug: "paper_towels",            label: "Paper towels restocked" },
+      { slug: "hand_soap",               label: "Hand soap restocked" },
+      { slug: "liners",                  label: "Trash liners restocked" }
+    ]},
+    { slug: "special_tasks", label: "Special Tasks", items: [
+      { slug: "window_cleaning",         label: "Window cleaning completed (as scheduled)" },
+      { slug: "carpet_treatment",        label: "Carpet treatment completed (as scheduled)" },
+      { slug: "other_requests",          label: "Customer special requests completed" }
+    ]}
   ];
 
-  const SCORE_META = {
-    1: { label: "Poor",        emoji: "🚩", tone: "tone-1" },
-    2: { label: "Needs Work",  emoji: "⚠️", tone: "tone-2" },
-    3: { label: "Acceptable",  emoji: "😐", tone: "tone-3" },
-    4: { label: "Great",       emoji: "👍", tone: "tone-4" },
-    5: { label: "Excellent",   emoji: "🌟", tone: "tone-5" }
-  };
+  // Per-item verdict metadata. Order matters — buttons render in this
+  // sequence (N/A first so a non-applicable item can be cleared from
+  // the scoring denominator with one tap).
+  const V2_RESULTS = [
+    { value: "na",    label: "N/A",   short: "N/A",   tone: "tone-na",    points: null, includeInScore: false },
+    { value: "pass",  label: "Pass",  short: "Pass",  tone: "tone-pass",  points: 1.0,  includeInScore: true  },
+    { value: "great", label: "Great", short: "Great", tone: "tone-great", points: 1.2,  includeInScore: true  },
+    { value: "fail",  label: "Fail",  short: "Fail",  tone: "tone-fail",  points: 0.0,  includeInScore: true  }
+  ];
+  const V2_RESULT_META = V2_RESULTS.reduce(function (o, r) { o[r.value] = r; return o; }, {});
+
+  function itemKey(sectionSlug, itemSlug) { return sectionSlug + "::" + itemSlug; }
 
   /* ====================================================================
      Role-nav + identity painters (mirrors team-hub.js / work.js).
@@ -222,10 +276,16 @@
     building_activity_level:      "",
     cleaning_tech_present:        "",       // "yes" | "no" | ""
     approximate_time_since_clean: "",
-    area_scores: (function () {
+    // Phase V2 — per-item verdicts. Map keyed by "{section}::{item}",
+    // value: { result: null|"pass"|"great"|"fail"|"na", comment, photo_urls }.
+    // Items start unselected so the inspector has to make a conscious
+    // choice on each one — that's the objectivity guarantee.
+    inspection_items: (function () {
       const obj = {};
-      INSPECTION_AREAS.forEach(function (a) {
-        obj[a.slug] = { score: 3, note: "", photo_urls: [] };
+      INSPECTION_TEMPLATE_V2.forEach(function (sec) {
+        sec.items.forEach(function (it) {
+          obj[itemKey(sec.slug, it.slug)] = { result: null, comment: "", photo_urls: [] };
+        });
       });
       return obj;
     })(),
@@ -337,150 +397,212 @@
     });
   }
 
-  /* ---------- area sliders ---------- */
+  /* ---------- Phase V2 — section + item rendering ----------
+     Each section is a labeled card. Within it, every item exposes a
+     four-button toggle (N/A · Pass · Great · Fail). Fail expands a
+     comment box (required before submit). Great optionally collects
+     a "what was great" praise note. */
 
   function renderAreas() {
     const root = $("insp-areas");
     if (!root) return;
-    root.innerHTML = INSPECTION_AREAS.map(function (a) {
-      const initial = state.area_scores[a.slug].score;
-      const meta = SCORE_META[initial];
-      return (
-        '<article class="insp-area is-' + escapeAttr(meta.tone) + '" data-slug="' + escapeAttr(a.slug) + '">' +
-          '<header class="insp-area-head">' +
-            '<h3 class="insp-area-title">' + escapeText(a.label) + '</h3>' +
-            '<button type="button" class="insp-area-note-toggle" data-action="toggle-note"' +
-                   ' aria-expanded="false" aria-label="Add note">+ note</button>' +
-          '</header>' +
-          '<div class="insp-area-readout">' +
-            '<span class="insp-area-score" data-role="score">' + initial + '</span>' +
-            '<div class="insp-area-meta">' +
-              '<span class="insp-area-label" data-role="label">' + escapeText(meta.label) + '</span>' +
-              '<span class="insp-area-emoji" data-role="emoji" aria-hidden="true">' + meta.emoji + '</span>' +
-            '</div>' +
-          '</div>' +
-          '<input type="range" class="insp-area-slider" min="1" max="5" step="1"' +
-                ' value="' + initial + '" aria-label="' + escapeAttr(a.label) + ' score"' +
-                ' data-role="slider" />' +
-          '<div class="insp-area-ticks" role="presentation">' +
-            '<button type="button" class="insp-area-tick" data-tick="1">1</button>' +
-            '<button type="button" class="insp-area-tick" data-tick="2">2</button>' +
-            '<button type="button" class="insp-area-tick" data-tick="3">3</button>' +
-            '<button type="button" class="insp-area-tick" data-tick="4">4</button>' +
-            '<button type="button" class="insp-area-tick" data-tick="5">5</button>' +
-          '</div>' +
-          '<div class="insp-area-extras" hidden data-role="extras">' +
-            '<textarea class="insp-area-note" data-role="note" rows="2" maxlength="1000"' +
-                     ' placeholder="What did you see? (optional)"></textarea>' +
-            '<button type="button" class="insp-area-photo" data-action="add-photo" disabled' +
-                   ' title="Photo upload lands in a follow-up build">' +
-              '📷 Add photo (coming soon)' +
-            '</button>' +
-          '</div>' +
-        '</article>'
-      );
-    }).join("");
+    root.innerHTML = INSPECTION_TEMPLATE_V2.map(renderSectionHtml).join("");
   }
 
-  function applyAreaScore(card, score) {
-    const slug = card.dataset.slug;
-    if (!slug) return;
-    const clean = Math.max(1, Math.min(5, parseInt(score, 10) || 3));
-    state.area_scores[slug].score = clean;
+  function renderSectionHtml(section) {
+    return (
+      '<article class="insp-section" data-section-slug="' + escapeAttr(section.slug) + '">' +
+        '<header class="insp-section-head">' +
+          '<h3 class="insp-section-title">' + escapeText(section.label) + '</h3>' +
+          '<span class="insp-section-progress" data-role="section-progress">0 / ' +
+            section.items.length + '</span>' +
+        '</header>' +
+        '<div class="insp-section-items">' +
+          section.items.map(function (it) { return renderItemHtml(section, it); }).join("") +
+        '</div>' +
+      '</article>'
+    );
+  }
 
-    const meta = SCORE_META[clean];
-    // Update visuals.
-    card.querySelector('[data-role="score"]').textContent = clean;
-    card.querySelector('[data-role="label"]').textContent = meta.label;
-    card.querySelector('[data-role="emoji"]').textContent = meta.emoji;
-    const slider = card.querySelector('[data-role="slider"]');
-    if (slider && Number(slider.value) !== clean) slider.value = clean;
-    // Swap tone class.
-    ["tone-1","tone-2","tone-3","tone-4","tone-5"].forEach(function (t) {
-      card.classList.remove("is-" + t);
+  function renderItemHtml(section, item) {
+    const key = itemKey(section.slug, item.slug);
+    return (
+      '<div class="insp-item" data-key="' + escapeAttr(key) + '" data-result="">' +
+        '<div class="insp-item-line">' +
+          '<span class="insp-item-label">' + escapeText(item.label) + '</span>' +
+          '<div class="insp-item-results" role="radiogroup" aria-label="' +
+              escapeAttr(item.label) + ' result">' +
+            V2_RESULTS.map(function (r) {
+              return '<button type="button" class="insp-item-btn ' + escapeAttr(r.tone) +
+                     '" data-result="' + escapeAttr(r.value) +
+                     '" aria-pressed="false">' + escapeText(r.short) + '</button>';
+            }).join("") +
+          '</div>' +
+        '</div>' +
+        // Comment row hidden until result === fail or great. Fail
+        // requires the comment; great makes it optional praise.
+        '<div class="insp-item-comment" hidden data-role="comment-wrap">' +
+          '<textarea class="insp-item-comment-input" data-role="comment-input"' +
+                   ' rows="2" maxlength="1000"' +
+                   ' placeholder="What did you see?"></textarea>' +
+          '<button type="button" class="insp-item-photo" data-action="add-photo" disabled' +
+                 ' title="Photo upload lands in a follow-up build">' +
+            '📷 Add photo (coming soon)' +
+          '</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function applyItemResult(itemEl, result) {
+    const key = itemEl.dataset.key;
+    if (!key || !state.inspection_items[key]) return;
+    const cur = state.inspection_items[key];
+    const meta = V2_RESULT_META[result];
+    if (!meta) return;
+
+    cur.result = result;
+
+    // Update pressed state on buttons.
+    itemEl.querySelectorAll(".insp-item-btn").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.result === result ? "true" : "false");
     });
-    card.classList.add("is-" + meta.tone);
-    // Recalculate overall.
+    itemEl.dataset.result = result;
+
+    // Show/hide the comment box. Fail and Great both reveal it. Pass
+    // and N/A clear it from view (state preserved if they flip back).
+    const wrap = itemEl.querySelector('[data-role="comment-wrap"]');
+    const input = itemEl.querySelector('[data-role="comment-input"]');
+    if (wrap) {
+      const showComment = (result === "fail" || result === "great");
+      wrap.hidden = !showComment;
+      if (input) {
+        input.placeholder = (result === "fail")
+          ? "What was missing or unacceptable? (required)"
+          : (result === "great")
+            ? "What made this great? (optional)"
+            : "What did you see?";
+        if (showComment) {
+          input.value = cur.comment || "";
+          setTimeout(function () { input.focus(); }, 60);
+        }
+      }
+    }
+    updateSectionProgress(itemEl);
     renderOverallScore();
+  }
+
+  function updateSectionProgress(itemEl) {
+    const sec = itemEl.closest(".insp-section");
+    if (!sec) return;
+    const total = sec.querySelectorAll(".insp-item").length;
+    let scored = 0;
+    sec.querySelectorAll(".insp-item").forEach(function (el) {
+      if (el.dataset.result) scored++;
+    });
+    const out = sec.querySelector('[data-role="section-progress"]');
+    if (out) out.textContent = scored + " / " + total;
   }
 
   function wireAreas() {
     const root = $("insp-areas");
     if (!root) return;
 
-    // Slider input — fires on every drag step. Apply live for tactile
-    // feedback (color + score number snap to the value).
-    root.addEventListener("input", function (ev) {
-      const slider = ev.target.closest('[data-role="slider"]');
-      if (!slider) return;
-      const card = slider.closest(".insp-area");
-      if (card) applyAreaScore(card, slider.value);
-    });
-
-    // Click delegator — handles tick buttons + note toggle.
+    // Verdict button delegator.
     root.addEventListener("click", function (ev) {
-      // Tick buttons jump the slider.
-      const tick = ev.target.closest(".insp-area-tick");
-      if (tick) {
-        const card = tick.closest(".insp-area");
-        if (card) applyAreaScore(card, tick.dataset.tick);
-        return;
-      }
-      // Note toggle.
-      const noteBtn = ev.target.closest('[data-action="toggle-note"]');
-      if (noteBtn) {
-        const card    = noteBtn.closest(".insp-area");
-        const extras  = card && card.querySelector('[data-role="extras"]');
-        if (!extras) return;
-        const expanded = noteBtn.getAttribute("aria-expanded") === "true";
-        extras.hidden = expanded;
-        noteBtn.setAttribute("aria-expanded", expanded ? "false" : "true");
-        noteBtn.textContent = expanded ? "+ note" : "− note";
-        if (!expanded) {
-          const ta = extras.querySelector('[data-role="note"]');
-          if (ta) setTimeout(function () { ta.focus(); }, 60);
-        }
-        return;
-      }
-      // Photo button — placeholder. Disabled in markup; click does nothing.
+      const btn = ev.target.closest(".insp-item-btn");
+      if (!btn) return;
+      const itemEl = btn.closest(".insp-item");
+      if (itemEl) applyItemResult(itemEl, btn.dataset.result);
     });
 
-    // Note textarea input — sync to state.
+    // Comment text input sync.
     root.addEventListener("input", function (ev) {
-      const ta = ev.target.closest('[data-role="note"]');
+      const ta = ev.target.closest('[data-role="comment-input"]');
       if (!ta) return;
-      const card = ta.closest(".insp-area");
-      if (!card) return;
-      state.area_scores[card.dataset.slug].note = ta.value;
+      const itemEl = ta.closest(".insp-item");
+      if (!itemEl) return;
+      const key = itemEl.dataset.key;
+      if (state.inspection_items[key]) {
+        state.inspection_items[key].comment = ta.value;
+      }
     });
   }
 
-  /* ---------- overall score ---------- */
+  /* ---------- Phase V2 — overall score ----------
+     Score math:
+       pass=1, great=1.2, fail=0, n/a excluded from denominator.
+       earned_ratio   = earned / scored_count        (0 .. 1.2 raw)
+       overall_score  = min(5, earned_ratio * 5)     (clamped 0..5 for
+                                                      backwards-compat
+                                                      with v1 readers
+                                                      on /ceo, /tech,
+                                                      /team-hub)
+       pass_pct       = pass / scored_count
+       great_pct      = great / scored_count
+       fail_pct       = fail / scored_count
+     If nothing is scored yet, overall_score reads "—" so the inspector
+     doesn't see a misleading 0. */
+
+  function computeScoreV2() {
+    let pass = 0, great = 0, fail = 0, na = 0, earned = 0;
+    Object.keys(state.inspection_items).forEach(function (k) {
+      const r = state.inspection_items[k].result;
+      if (r === "pass")       { pass++;  earned += 1.0; }
+      else if (r === "great") { great++; earned += 1.2; }
+      else if (r === "fail")  { fail++; }
+      else if (r === "na")    { na++;  }
+    });
+    const scored = pass + great + fail;
+    return {
+      pass_count: pass, great_count: great, fail_count: fail, na_count: na,
+      scored_count: scored, earned_points: earned,
+      earned_ratio:  scored > 0 ? earned / scored : null,
+      overall_score: scored > 0 ? Math.min(5, (earned / scored) * 5) : null,
+      pass_pct:      scored > 0 ? pass  / scored : 0,
+      great_pct:     scored > 0 ? great / scored : 0,
+      fail_pct:      scored > 0 ? fail  / scored : 0
+    };
+  }
 
   function renderOverallScore() {
     const valueEl = $("insp-overall-value");
     const emojiEl = $("insp-overall-emoji");
     const subEl   = $("insp-overall-sub");
     if (!valueEl) return;
-    const scores = INSPECTION_AREAS.map(function (a) { return state.area_scores[a.slug].score; });
-    const total = scores.reduce(function (s, n) { return s + n; }, 0);
-    const avg = total / scores.length;
-    const rounded = Math.round(avg * 10) / 10;     // 1 decimal
-    valueEl.textContent = rounded.toFixed(1);
-
-    // Tone the overall card by the rounded-to-nearest score.
-    const nearest = Math.round(avg);
-    const meta = SCORE_META[Math.max(1, Math.min(5, nearest))];
-    if (emojiEl) emojiEl.textContent = meta.emoji;
-    if (subEl)   subEl.textContent   = meta.label + " · " + scores.length + " areas";
-
-    const wrap = $("insp-overall");
-    if (wrap) {
-      ["tone-1","tone-2","tone-3","tone-4","tone-5"].forEach(function (t) {
-        wrap.classList.remove("is-" + t);
-      });
-      wrap.classList.add("is-" + meta.tone);
+    const s = computeScoreV2();
+    if (s.scored_count === 0) {
+      valueEl.textContent = "—";
+      if (subEl)   subEl.textContent   = "Mark items to start scoring";
+      if (emojiEl) emojiEl.textContent = "•";
+      setOverallTone("tone-empty");
+      return;
     }
+    valueEl.textContent = (Math.round(s.overall_score * 10) / 10).toFixed(1);
+    const subParts = [];
+    subParts.push(s.pass_count + " pass");
+    if (s.great_count > 0) subParts.push(s.great_count + " great");
+    if (s.fail_count > 0)  subParts.push(s.fail_count + " fail");
+    if (s.na_count > 0)    subParts.push(s.na_count + " n/a");
+    if (subEl) subEl.textContent = subParts.join(" · ");
+
+    // Choose tone by fail rate first, then by great share.
+    let tone, emoji;
+    if (s.fail_count > 0)        { tone = "tone-fail";  emoji = "⚠️"; }
+    else if (s.great_pct >= 0.5) { tone = "tone-great"; emoji = "🌟"; }
+    else                         { tone = "tone-pass";  emoji = "✓";  }
+    if (emojiEl) emojiEl.textContent = emoji;
+    setOverallTone(tone);
+  }
+
+  function setOverallTone(tone) {
+    const wrap = $("insp-overall");
+    if (!wrap) return;
+    ["tone-1","tone-2","tone-3","tone-4","tone-5",
+     "tone-empty","tone-pass","tone-great","tone-fail"].forEach(function (t) {
+      wrap.classList.remove("is-" + t);
+    });
+    wrap.classList.add("is-" + tone);
   }
 
   /* ---------- submit ---------- */
@@ -522,10 +644,45 @@
       (staff.email || "").split("@")[0] ||
       "Inspector";
 
-    // Average across all areas. Decimal preserved for downstream
-    // rolling averages — the UI rounds at display time.
-    const scores  = INSPECTION_AREAS.map(function (a) { return state.area_scores[a.slug].score; });
-    const overall = scores.reduce(function (s, n) { return s + n; }, 0) / scores.length;
+    // Phase V2 — scoring computed from inspection_items.
+    const v2 = computeScoreV2();
+    if (v2.scored_count === 0) {
+      setSubmitError("Mark at least one item before submitting.");
+      return;
+    }
+    // Each Fail must carry a comment — that's the objectivity guarantee.
+    const failsMissingComment = [];
+    Object.keys(state.inspection_items).forEach(function (k) {
+      const it = state.inspection_items[k];
+      if (it.result === "fail" && !String(it.comment || "").trim()) {
+        failsMissingComment.push(k);
+      }
+    });
+    if (failsMissingComment.length) {
+      setSubmitError("Add a comment for each failed item (" +
+        failsMissingComment.length + " missing).");
+      return;
+    }
+
+    // Flatten inspection_items into an ordered array that matches the
+    // template — readers don't have to know about map keys.
+    const itemsFlat = [];
+    INSPECTION_TEMPLATE_V2.forEach(function (sec) {
+      sec.items.forEach(function (it) {
+        const key = itemKey(sec.slug, it.slug);
+        const cur = state.inspection_items[key];
+        if (!cur || cur.result == null) return; // skip unmarked items
+        itemsFlat.push({
+          section:      sec.slug,
+          section_label: sec.label,
+          item:         it.slug,
+          item_label:   it.label,
+          result:       cur.result,
+          comment:      String(cur.comment || "").trim(),
+          photo_urls:   Array.isArray(cur.photo_urls) ? cur.photo_urls.slice() : []
+        });
+      });
+    });
 
     const sts = firebase.firestore.FieldValue.serverTimestamp();
     const doc = {
@@ -550,31 +707,33 @@
                                   : null,
       approximate_time_since_clean: state.approximate_time_since_clean || "",
 
-      // Scoring
-      overall_score:                Math.round(overall * 100) / 100,   // 2 decimals on disk
-      area_scores:                  Object.keys(state.area_scores).reduce(function (out, k) {
-        const a = state.area_scores[k];
-        out[k] = {
-          score:      a.score,
-          score_label: SCORE_META[a.score].label,
-          note:       String(a.note || "").trim(),
-          photo_urls: Array.isArray(a.photo_urls) ? a.photo_urls.slice() : []
-        };
-        return out;
-      }, {}),
+      // Phase V2 scoring
+      inspection_items:             itemsFlat,
+      pass_count:                   v2.pass_count,
+      great_count:                  v2.great_count,
+      fail_count:                   v2.fail_count,
+      na_count:                     v2.na_count,
+      scored_count:                 v2.scored_count,
+      earned_points:                Math.round(v2.earned_points * 100) / 100,
+      earned_ratio:                 Math.round(v2.earned_ratio * 10000) / 10000,
+      pass_pct:                     Math.round(v2.pass_pct  * 10000) / 10000,
+      great_pct:                    Math.round(v2.great_pct * 10000) / 10000,
+      fail_pct:                     Math.round(v2.fail_pct  * 10000) / 10000,
+      // 0-5 scale clamped for back-compat with /ceo, /tech, /team-hub
+      // readers that already speak v1's overall_score. v2-aware readers
+      // should prefer earned_ratio for precision (greats can push above 1.0).
+      overall_score:                Math.round(v2.overall_score * 100) / 100,
 
       // Free-text / attachments
       notes:                        String(state.notes || "").trim(),
-      photos:                       [],   // placeholder — wired in a follow-up
+      photos:                       [],
 
-      // Future-ready aggregation fields (set when known; null otherwise).
-      // Submit-side leaves them null; admin tools or scheduled jobs can
-      // backfill from area_scores + customer/tech lookups later.
+      // Future-ready aggregation fields.
       cleaning_tech_slug:           null,
       cleaning_tech_display_name:   null,
       location_slug:                state.customer_slug,
-      company_slug:                 "pioneer",   // operator constant
-      schema_version:               "inspection.v1"
+      company_slug:                 "pioneer",
+      schema_version:               "inspection.v2"
     };
 
     // Cleaning-tech attribution — captured at intake when the
@@ -697,8 +856,12 @@
     state.cleaning_tech_present   = "";
     state.approximate_time_since_clean = "";
     state.notes = "";
-    INSPECTION_AREAS.forEach(function (a) {
-      state.area_scores[a.slug] = { score: 3, note: "", photo_urls: [] };
+    state.inspection_items = {};
+    INSPECTION_TEMPLATE_V2.forEach(function (sec) {
+      sec.items.forEach(function (it) {
+        state.inspection_items[itemKey(sec.slug, it.slug)] =
+          { result: null, comment: "", photo_urls: [] };
+      });
     });
 
     // Reset DOM.
@@ -901,22 +1064,48 @@
     } catch (e) { return new Date(ms).toLocaleDateString(); }
   }
 
-  // Public-safe rendering. NO inspector identity. Areas needing
-  // attention surfaces broad CATEGORY names only, derived from
-  // area_scores. v1 picks any area with score <= 2; broader, not
-  // per-task.
+  // Public-safe rendering. NO inspector identity. "Areas needing
+  // attention" surfaces broad CATEGORY names only. For v2 docs that's
+  // any section with at least one failing item. For legacy v1 docs
+  // it's any area with score <= 2.
   function lowAreasFor(doc) {
+    if (!doc) return [];
+    // v2 path
+    if (Array.isArray(doc.inspection_items)) {
+      const sectionLabels = {};
+      doc.inspection_items.forEach(function (it) {
+        if (it && it.result === "fail") {
+          const label = it.section_label || it.section || "";
+          if (label) sectionLabels[label] = true;
+        }
+      });
+      return Object.keys(sectionLabels);
+    }
+    // v1 path
     const out = [];
-    const scores = doc && doc.area_scores;
+    const scores = doc.area_scores;
     if (!scores) return out;
     Object.keys(scores).forEach(function (slug) {
       const s = scores[slug] && scores[slug].score;
-      if (typeof s === "number" && s <= 2) out.push(slug);
+      if (typeof s === "number" && s <= 2) out.push(AREA_LABELS[slug] || slug);
     });
     return out;
   }
 
+  function hasAttentionForRow(doc) {
+    if (!doc) return false;
+    if (Array.isArray(doc.inspection_items)) {
+      return doc.inspection_items.some(function (it) { return it && it.result === "fail"; });
+    }
+    const a = doc.area_scores || {};
+    return Object.keys(a).some(function (k) {
+      const v = a[k] && a[k].score;
+      return typeof v === "number" && v <= 2;
+    });
+  }
+
   // Title-case the area slug for display. e.g. "entry_foyer" → "Entry / Foyer"
+  // Legacy v1 area labels, kept for displaying older docs.
   const AREA_LABELS = {
     offices:        "Offices",
     bathrooms:      "Bathrooms",
@@ -943,10 +1132,11 @@
     const when = ms ? relativeTime(ms) : (date || "—");
 
     // Areas needing attention — broad categories only, no inspector
-    // identity, no per-task callouts.
+    // identity, no per-task callouts. lowAreasFor handles both v1 and
+    // v2 docs and already returns display-ready labels.
     let attentionHtml = "";
     if (score !== null && score < ATTENTION_SCORE_THRESHOLD) {
-      const lows = lowAreasFor(doc).map(function (slug) { return AREA_LABELS[slug] || slug; });
+      const lows = lowAreasFor(doc);
       if (lows.length) {
         attentionHtml =
           '<div class="insp-recent-attention">' +
@@ -961,19 +1151,10 @@
       ? '<div class="insp-recent-summary"><span class="insp-celebrate-emoji" aria-hidden="true">🌟</span> 5-star inspection — nice work, team.</div>'
       : "";
 
-    // Admin-only quiet attention flag — surfaces ONE small chip when
-    // the inspection has any area scoring under the area-attention
-    // threshold (≤2). NOT public, NOT loud, NOT blame copy. Lives only
-    // on /inspections.html which is admin-gated.
-    const hasLowArea = (function () {
-      const a = doc.area_scores || {};
-      return Object.keys(a).some(function (k) {
-        const v = a[k] && a[k].score;
-        return typeof v === "number" && v <= 2;
-      });
-    })();
-    const attentionChip = hasLowArea
-      ? '<span class="insp-recent-attention-chip" title="Admin quiet flag — one or more areas scored ≤ 2">🚩 Attention</span>'
+    // Admin-only quiet attention flag — v1 = any area scoring ≤ 2;
+    // v2 = any failed item. Lives only on admin-gated /inspections.html.
+    const attentionChip = hasAttentionForRow(doc)
+      ? '<span class="insp-recent-attention-chip" title="Admin quiet flag — needs attention">🚩 Attention</span>'
       : "";
 
     return (
@@ -1134,28 +1315,84 @@
       }).join("") +
     '</div>';
 
-    const scores = doc.area_scores || {};
-    const order = ["offices","bathrooms","entry_foyer","lunchroom","common_areas","trash","floors","dusting","glass","touchpoints","supplies"];
-    const areasHtml = '<div class="insp-detail-areas">' +
-      order.map(function (slug) {
-        const a = scores[slug];
-        if (!a) return "";
-        const score = typeof a.score === "number" ? a.score : null;
-        const tone  = inspToneForScore(score || 0);
-        const note  = (a.note || "").trim();
-        return (
-          '<div class="insp-detail-area-row">' +
-            '<div>' +
-              '<span class="insp-detail-area-name">' + escapeText(AREA_LABELS[slug] || slug) + '</span>' +
-              (note ? '<p class="insp-detail-area-note">' + escapeText(note) + '</p>' : "") +
-            '</div>' +
-            '<span class="insp-detail-area-score is-' + escapeAttr(tone) + '">' +
-              (score !== null ? score : "—") +
-            '</span>' +
-          '</div>'
-        );
-      }).join("") +
-    '</div>';
+    // Branch on schema version. v2 docs carry inspection_items[];
+    // v1 docs carry area_scores{}. v2 renderer groups items by section
+    // and shows their per-item verdict + comments.
+    const isV2 = Array.isArray(doc.inspection_items);
+    let areasHtml = "";
+    if (isV2) {
+      const grouped = {};
+      doc.inspection_items.forEach(function (it) {
+        const sec = it.section_label || it.section || "Other";
+        if (!grouped[sec]) grouped[sec] = [];
+        grouped[sec].push(it);
+      });
+      // Section order — match the template if possible, else alphabetical
+      const order = INSPECTION_TEMPLATE_V2.map(function (s) { return s.label; });
+      const sectionsToShow = order.filter(function (s) { return grouped[s]; })
+        .concat(Object.keys(grouped).filter(function (s) { return order.indexOf(s) < 0; }));
+      const counts = {
+        pass:  doc.pass_count  || 0,
+        great: doc.great_count || 0,
+        fail:  doc.fail_count  || 0,
+        na:    doc.na_count    || 0
+      };
+      const summaryHtml = '<div class="insp-detail-summary">' +
+        '<span class="insp-detail-summary-chip tone-pass">'  + counts.pass  + ' Pass</span>' +
+        '<span class="insp-detail-summary-chip tone-great">' + counts.great + ' Great</span>' +
+        '<span class="insp-detail-summary-chip tone-fail">'  + counts.fail  + ' Fail</span>' +
+        '<span class="insp-detail-summary-chip tone-na">'    + counts.na    + ' N/A</span>' +
+      '</div>';
+      areasHtml = summaryHtml + '<div class="insp-detail-areas">' +
+        sectionsToShow.map(function (sec) {
+          const items = grouped[sec];
+          return (
+            '<div class="insp-detail-section">' +
+              '<h4 class="insp-detail-section-title">' + escapeText(sec) + '</h4>' +
+              items.map(function (it) {
+                const r = (it.result || "");
+                const comment = (it.comment || "").trim();
+                return (
+                  '<div class="insp-detail-item-row" data-result="' + escapeAttr(r) + '">' +
+                    '<div>' +
+                      '<span class="insp-detail-item-name">' + escapeText(it.item_label || it.item || "—") + '</span>' +
+                      (comment ? '<p class="insp-detail-area-note">' + escapeText(comment) + '</p>' : "") +
+                    '</div>' +
+                    '<span class="insp-detail-item-verdict tone-' + escapeAttr(r) + '">' +
+                      escapeText((r || "—").toUpperCase()) +
+                    '</span>' +
+                  '</div>'
+                );
+              }).join("") +
+            '</div>'
+          );
+        }).join("") +
+      '</div>';
+    } else {
+      // v1 legacy — area_scores with 1-5 numbers
+      const scores = doc.area_scores || {};
+      const order = ["offices","bathrooms","entry_foyer","lunchroom","common_areas","trash","floors","dusting","glass","touchpoints","supplies"];
+      areasHtml = '<div class="insp-detail-areas">' +
+        order.map(function (slug) {
+          const a = scores[slug];
+          if (!a) return "";
+          const score = typeof a.score === "number" ? a.score : null;
+          const tone  = inspToneForScore(score || 0);
+          const note  = (a.note || "").trim();
+          return (
+            '<div class="insp-detail-area-row">' +
+              '<div>' +
+                '<span class="insp-detail-area-name">' + escapeText(AREA_LABELS[slug] || slug) + '</span>' +
+                (note ? '<p class="insp-detail-area-note">' + escapeText(note) + '</p>' : "") +
+              '</div>' +
+              '<span class="insp-detail-area-score is-' + escapeAttr(tone) + '">' +
+                (score !== null ? score : "—") +
+              '</span>' +
+            '</div>'
+          );
+        }).join("") +
+      '</div>';
+    }
 
     const notes = (doc.notes || "").trim();
     const notesHtml = notes

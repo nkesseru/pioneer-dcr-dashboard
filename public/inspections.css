@@ -1004,3 +1004,175 @@
   border-radius: 999px;
   vertical-align: middle;
 }
+
+/* ============================================================
+   Phase Inspection V2 — section + item form
+   ============================================================ */
+.insp-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px 8px;
+  margin-bottom: 14px;
+}
+.insp-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.insp-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0b1220;
+  letter-spacing: -0.2px;
+}
+.insp-section-progress {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #64748b;
+}
+.insp-section-items { display: flex; flex-direction: column; }
+.insp-item {
+  padding: 10px 0;
+  border-top: 1px solid #f1f5f9;
+}
+.insp-item:first-child { border-top: none; }
+.insp-item-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.insp-item-label {
+  flex: 1;
+  min-width: 180px;
+  font-size: 14px;
+  color: #0b1220;
+}
+.insp-item-results {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.insp-item-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.insp-item-btn:hover { background: #f8fafc; }
+.insp-item-btn[aria-pressed="true"] {
+  color: #ffffff;
+  border-color: transparent;
+}
+.insp-item-btn.tone-na[aria-pressed="true"]    { background: #64748b; }
+.insp-item-btn.tone-pass[aria-pressed="true"]  { background: #16a34a; }
+.insp-item-btn.tone-great[aria-pressed="true"] { background: #d4af37; color: #1f2937; }
+.insp-item-btn.tone-fail[aria-pressed="true"]  { background: #b91c1c; }
+.insp-item[data-result="fail"]  { background: #fef2f2; border-radius: 8px; padding-left: 10px; padding-right: 10px; }
+.insp-item[data-result="great"] { background: #fffbeb; border-radius: 8px; padding-left: 10px; padding-right: 10px; }
+.insp-item-comment {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.insp-item-comment-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1220;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.insp-item-photo {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* Overall card tones for v2 */
+.insp-overall.is-tone-empty .insp-overall-value { color: #64748b; }
+.insp-overall.is-tone-pass  .insp-overall-value { color: #16a34a; }
+.insp-overall.is-tone-great .insp-overall-value { color: #d4af37; }
+.insp-overall.is-tone-fail  .insp-overall-value { color: #b91c1c; }
+
+/* Detail modal — v2 item rows */
+.insp-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+.insp-detail-summary-chip {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.insp-detail-summary-chip.tone-pass  { background: #dcfce7; color: #166534; }
+.insp-detail-summary-chip.tone-great { background: #fef3c7; color: #92400e; }
+.insp-detail-summary-chip.tone-fail  { background: #fee2e2; color: #991b1b; }
+.insp-detail-summary-chip.tone-na    { background: #e2e8f0; color: #334155; }
+.insp-detail-section {
+  margin-bottom: 12px;
+}
+.insp-detail-section-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #475569;
+}
+.insp-detail-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #f1f5f9;
+}
+.insp-detail-item-row:first-child { border-top: none; }
+.insp-detail-item-name {
+  font-size: 13px;
+  color: #0b1220;
+}
+.insp-detail-item-verdict {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.insp-detail-item-verdict.tone-pass  { background: #dcfce7; color: #166534; }
+.insp-detail-item-verdict.tone-great { background: #fef3c7; color: #92400e; }
+.insp-detail-item-verdict.tone-fail  { background: #fee2e2; color: #991b1b; }
+.insp-detail-item-verdict.tone-na    { background: #e2e8f0; color: #334155; }
