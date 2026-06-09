@@ -1302,11 +1302,17 @@
     }).format(date), 10);
   }
 
-  // Working-hours protection: 8 AM – 6 PM Pacific. If we're inside the
-  // window now, deliver immediately. Otherwise queue until the next 8 AM
-  // PT. Iterative hour-walk handles DST correctly without manual offset
-  // math.
-  function nextDeliveryAt(now) {
+  // Delivery timing depends on recipientType:
+  //   - office_manager → working-hours protection (8 AM–6 PM PT). Outside
+  //     the window, queue until the next 8 AM PT. The OM is in front of
+  //     /manager during business hours, so a 4 AM ping isn't useful.
+  //   - employee / team → deliver immediately. Techs work evenings and
+  //     weekends; they see messages whenever they next open Team Hub.
+  //     The "queue" is the sign-in event itself, not a clock.
+  // Twilio/SMS gating (future) will keep its own separate window — the
+  // in-app deliverAfter does not constrain SMS scheduling.
+  function nextDeliveryAt(now, recipientType) {
+    if (recipientType !== 'office_manager') return new Date(now);
     const hour = pacificHour(now);
     if (hour >= 8 && hour < 18) return new Date(now);
     let cursor = new Date(now);
@@ -1320,9 +1326,11 @@
     return cursor;
   }
 
-  function fmtDeliveryHint(deliverAt, now) {
+  function fmtDeliveryHint(deliverAt, now, recipientType) {
+    if (recipientType !== 'office_manager') {
+      return 'It will appear the next time they open Team Hub.';
+    }
     if (deliverAt.getTime() - now.getTime() < 60_000) return 'Delivers immediately.';
-    // Same day vs next day in Pacific
     const nowPT  = pacificDateString();
     const deliverPT = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Los_Angeles',
@@ -1409,9 +1417,17 @@
       return;
     }
 
-    helper.textContent = pacificHour(new Date()) >= 8 && pacificHour(new Date()) < 18
-      ? 'Delivered next time they sign in.'
-      : 'Outside delivery hours — queued until next 8 AM PT.';
+    // Helper text mirrors the post-send confirmation copy. Techs see the
+    // message whenever they next open Team Hub regardless of hour; the
+    // office manager surface respects the 8 AM-6 PM PT window.
+    if (mode === 'office_manager') {
+      const hr = pacificHour(new Date());
+      helper.textContent = (hr >= 8 && hr < 18)
+        ? 'Delivers immediately to the office manager dashboard.'
+        : 'Outside delivery hours — queued until next 8 AM PT.';
+    } else {
+      helper.textContent = 'It will appear the next time they open Team Hub.';
+    }
 
     overlay.classList.remove('ceo-hidden');
     setTimeout(function () { body.focus(); }, 50);
@@ -1465,7 +1481,7 @@
 
     try {
       const now       = new Date();
-      const deliverAt = nextDeliveryAt(now);
+      const deliverAt = nextDeliveryAt(now, recipientType);
       const email     = (currentUser.email || '').toLowerCase();
       await db.collection('leadership_messages').add({
         messageType:   messageType,
@@ -1479,7 +1495,7 @@
         deliverAfter:  firebase.firestore.Timestamp.fromDate(deliverAt),
         deliveredAt:   null
       });
-      setActionStatus(status, 'Message queued. ' + fmtDeliveryHint(deliverAt, now));
+      setActionStatus(status, 'Message queued. ' + fmtDeliveryHint(deliverAt, now, recipientType));
       setTimeout(closeCompose, 1400);
     } catch (err) {
       console.error('[ceo] compose send failed', err);
