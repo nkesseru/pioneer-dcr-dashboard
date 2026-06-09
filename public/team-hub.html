@@ -242,6 +242,18 @@
         </div>
       </section>
 
+      <!-- Phase 3B — Messages from Pioneer. Thread-based; the tech can
+           reply inline to messages addressed to them. Sits between the
+           old Leadership Messages strip (Phase 1C) and Announcements. -->
+      <section class="card team-hub-section team-hub-comm" id="team-hub-comm-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">💬 Messages from Pioneer</h2>
+        </header>
+        <div class="team-hub-comm-list" id="team-hub-comm-list">
+          <!-- thread cards rendered by team-hub.js -->
+        </div>
+      </section>
+
       <section class="card team-hub-section team-hub-announcements" id="team-hub-announcements-section" hidden>
         <header class="team-hub-section-head">
           <h2 class="team-hub-section-title">📣 Announcements</h2>
@@ -595,7 +607,8 @@
   <script src="walkthrough.js"></script>
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
-  <script src="team-hub.js?v=20260608-phase1c-leadership"></script>
+  <script src="comm-threads.js?v=20260609-phase3b"></script>
+  <script src="team-hub.js?v=20260609-phase3b-comm"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.

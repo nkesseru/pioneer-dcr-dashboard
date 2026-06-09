@@ -2207,6 +2207,114 @@ select {
 }
 .team-hub-leadership-status[data-tone="error"] { color: #a26b76; }
 
+/* Phase 3B — Messages from Pioneer (thread-based). Distinct visual
+   treatment from Phase 1C leadership messages so techs can tell the
+   two apart while we run them in parallel. */
+.team-hub-comm-list { display: flex; flex-direction: column; gap: 14px; }
+.team-hub-comm-card {
+  background: #ffffff;
+  border: 1px solid rgba(70, 60, 45, 0.10);
+  border-left: 3px solid #6b8576;
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+}
+.team-hub-comm-card[data-category="leadership"] { border-left-color: #c8a96f; }
+.team-hub-comm-card[data-category="scheduling"] { border-left-color: #4a90e2; }
+.team-hub-comm-card[data-category="supplies"]   { border-left-color: #7b9d6c; }
+.team-hub-comm-card[data-category="callout"]    { border-left-color: #c4836a; }
+.team-hub-comm-card[data-category="customer"]   { border-left-color: #a26b76; }
+.team-hub-comm-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.team-hub-comm-card-subject {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2f2a24;
+}
+.team-hub-comm-card-meta {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #8a8275;
+}
+.team-hub-comm-card-from {
+  font-size: 12px;
+  color: #5d564b;
+  margin-bottom: 8px;
+}
+.team-hub-comm-card-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #2f2a24;
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+.team-hub-comm-card-reply {
+  margin-top: 8px;
+}
+.team-hub-comm-card-reply-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(70, 60, 45, 0.16);
+  border-radius: 10px;
+  background: #fdfbf6;
+  color: #2f2a24;
+  min-height: 60px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.team-hub-comm-card-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.team-hub-comm-btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: none;
+}
+.team-hub-comm-btn-primary {
+  background: #2f2a24;
+  color: #faf6ef;
+}
+.team-hub-comm-btn-secondary {
+  background: transparent;
+  color: #5d564b;
+  border: 1px solid rgba(70, 60, 45, 0.16);
+}
+.team-hub-comm-btn:disabled { opacity: 0.5; cursor: default; }
+.team-hub-comm-card-status {
+  font-size: 12px;
+  color: #6b8576;
+  margin: 8px 0 0;
+  min-height: 14px;
+}
+.team-hub-comm-card-status[data-tone="error"] { color: #a26b76; }
+.team-hub-comm-card-history {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  background: rgba(110, 130, 110, 0.06);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #5d564b;
+}
+.team-hub-comm-card-history-item {
+  padding: 4px 0;
+  border-top: 1px solid rgba(70, 60, 45, 0.08);
+}
+.team-hub-comm-card-history-item:first-child { border-top: none; }
+
 /* Announcements section — cards rendered by team-hub.js. The placeholder
    empty-state styles below still exist for any future use; the new
    .ann-card rules cover the live v1 layout. */

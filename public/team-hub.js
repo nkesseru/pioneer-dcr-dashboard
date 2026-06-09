@@ -1443,6 +1443,290 @@
     }
   }
 
+  /* ---------- Phase 3B — Messages from Pioneer (thread-based) ----------
+     Reads communication_messages addressed to the tech (via recipient_id)
+     OR team broadcasts. For each unique thread the tech is touched by,
+     show the latest outbound message + a reply box. Reply writes an
+     inbound message on the same thread via window.CommThreads.addMessage. */
+  async function bootCommMessagesForStaff(staff) {
+    if (!staff) return;
+    if (!window.CommThreads) return;
+    const section = $("team-hub-comm-section");
+    const list    = $("team-hub-comm-list");
+    if (!section || !list) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const myEmail = String((staff.email || "")).toLowerCase().trim();
+    if (!myEmail) return;
+    const db = firebase.firestore();
+
+    try {
+      // Two parallel reads, mirroring the leadership-messages pattern.
+      // We could query by thread participation directly, but going via
+      // messages keeps the surface tied to "what was addressed to me"
+      // rather than "every thread I'm in" — clearer for the tech.
+      // Use the (recipient_type, recipient_id, status, deliver_after)
+      // composite index without an explicit DESC orderBy so we don't
+      // need a separate DESC variant. Sort client-side after fetch —
+      // the per-tech result set is bounded enough that the limit is
+      // unlikely to truncate meaningful unread traffic.
+      const [personal, broadcast] = await Promise.all([
+        db.collection("communication_messages")
+          .where("recipient_type", "==", "employee")
+          .where("recipient_id",   "==", myEmail)
+          .where("status",         "==", "delivered")
+          .limit(50).get()
+          .catch(function () { return { docs: [] }; }),
+        db.collection("communication_messages")
+          .where("recipient_type", "==", "team")
+          .where("status",         "==", "delivered")
+          .limit(50).get()
+          .catch(function () { return { docs: [] }; })
+      ]);
+      const docsAll = [];
+      [personal, broadcast].forEach(function (snap) {
+        snap.docs.forEach(function (d) {
+          docsAll.push(Object.assign({ _id: d.id }, d.data() || {}));
+        });
+      });
+      // Group by thread_id, keep latest message per thread that the tech
+      // hasn't already read. Filter to outbound (admin → tech) so a
+      // tech's own reply doesn't echo back as something to acknowledge.
+      const byThread = new Map();
+      docsAll.forEach(function (m) {
+        if (m.direction !== "outbound") return;
+        if (!m.thread_id) return;
+        const existing = byThread.get(m.thread_id);
+        if (!existing) { byThread.set(m.thread_id, m); return; }
+        if (commTsToMs(m.created_at) > commTsToMs(existing.created_at)) {
+          byThread.set(m.thread_id, m);
+        }
+      });
+      const latestByThread = Array.from(byThread.values()).sort(function (a, b) {
+        return commTsToMs(b.created_at) - commTsToMs(a.created_at);
+      });
+
+      if (!latestByThread.length) { section.hidden = true; return; }
+
+      // For each thread, fetch the thread doc so we know the subject /
+      // category / category-rail / participants. Done in parallel.
+      const threadDocs = await Promise.all(latestByThread.map(function (m) {
+        return window.CommThreads.findThreadById(m.thread_id).catch(function () { return null; });
+      }));
+
+      const cards = latestByThread.map(function (msg, i) {
+        const thread = threadDocs[i];
+        if (!thread) return "";
+        return renderCommCardHtml(thread, msg);
+      }).filter(Boolean);
+
+      if (!cards.length) { section.hidden = true; return; }
+
+      list.innerHTML = cards.join("");
+      section.hidden = false;
+      wireCommCardButtons(staff);
+    } catch (err) {
+      console.warn("[team-hub] comm messages read failed", err);
+    }
+  }
+
+  function renderCommCardHtml(thread, msg) {
+    const cat = thread.category || "general";
+    const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+    const senderName = msg.sender_name || msg.sender_id || "Pioneer";
+    return (
+      '<article class="team-hub-comm-card" data-thread-id="' + commEscape(thread._id) +
+        '" data-msg-id="' + commEscape(msg._id) +
+        '" data-category="' + commEscape(cat) + '">' +
+        '<header class="team-hub-comm-card-head">' +
+          '<span class="team-hub-comm-card-subject">' + commEscape(thread.subject || "(no subject)") + '</span>' +
+          '<span class="team-hub-comm-card-meta">' + commEscape(catLabel) + '</span>' +
+        '</header>' +
+        '<p class="team-hub-comm-card-from">From ' + commEscape(senderName) + ' · ' +
+          commEscape(commFmtAgoTH(commTsToMs(msg.created_at))) + '</p>' +
+        '<p class="team-hub-comm-card-body">' + commEscape(msg.body || "") + '</p>' +
+        '<div class="team-hub-comm-card-reply" hidden>' +
+          '<textarea class="team-hub-comm-card-reply-input" maxlength="2000" placeholder="Type a reply…"></textarea>' +
+        '</div>' +
+        '<div class="team-hub-comm-card-btns">' +
+          '<button type="button" class="team-hub-comm-btn team-hub-comm-btn-secondary" data-comm-action="reply-open">Reply</button>' +
+          '<button type="button" class="team-hub-comm-btn team-hub-comm-btn-primary" data-comm-action="ack">Acknowledge</button>' +
+        '</div>' +
+        '<p class="team-hub-comm-card-status" data-comm-status></p>' +
+      '</article>'
+    );
+  }
+
+  function wireCommCardButtons(staff) {
+    document.querySelectorAll(".team-hub-comm-card").forEach(function (card) {
+      card.querySelectorAll("[data-comm-action]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          handleCommCardClick(card, btn, staff);
+        });
+      });
+    });
+  }
+
+  async function handleCommCardClick(card, btn, staff) {
+    const action = btn.getAttribute("data-comm-action");
+    const status = card.querySelector("[data-comm-status]");
+
+    if (action === "reply-open") {
+      const replyBox = card.querySelector(".team-hub-comm-card-reply");
+      const isHidden = replyBox.hidden;
+      replyBox.hidden = !isHidden;
+      if (isHidden) {
+        // First open — swap button to "Send" + add a Cancel
+        btn.setAttribute("data-comm-action", "reply-send");
+        btn.textContent = "Send Reply";
+        // Inject a Cancel button next to it if not already there
+        if (!card.querySelector("[data-comm-action='reply-cancel']")) {
+          const cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.className = "team-hub-comm-btn team-hub-comm-btn-secondary";
+          cancel.setAttribute("data-comm-action", "reply-cancel");
+          cancel.textContent = "Cancel";
+          cancel.addEventListener("click", function () { handleCommCardClick(card, cancel, staff); });
+          btn.parentElement.insertBefore(cancel, btn);
+        }
+        setTimeout(function () {
+          card.querySelector(".team-hub-comm-card-reply-input").focus();
+        }, 30);
+      }
+      return;
+    }
+
+    if (action === "reply-cancel") {
+      card.querySelector(".team-hub-comm-card-reply").hidden = true;
+      const sendBtn = card.querySelector("[data-comm-action='reply-send']");
+      if (sendBtn) {
+        sendBtn.setAttribute("data-comm-action", "reply-open");
+        sendBtn.textContent = "Reply";
+      }
+      btn.remove();
+      if (status) status.textContent = "";
+      return;
+    }
+
+    if (action === "reply-send") {
+      await sendCommReply(card, btn, staff, status);
+      return;
+    }
+
+    if (action === "ack") {
+      await ackCommCard(card, btn, status);
+      return;
+    }
+  }
+
+  async function sendCommReply(card, btn, staff, status) {
+    const threadId = card.getAttribute("data-thread-id");
+    const ta = card.querySelector(".team-hub-comm-card-reply-input");
+    const body = (ta.value || "").trim();
+    if (!body) {
+      if (status) { status.textContent = "Type a reply before sending."; status.setAttribute("data-tone", "error"); }
+      return;
+    }
+    const myEmail = String((staff.email || "")).toLowerCase();
+    const myName  = (staff.tech && (staff.tech.display_name || staff.tech.tech_display_name)) || myEmail.split("@")[0];
+    btn.disabled = true;
+    if (status) { status.textContent = "Sending…"; status.removeAttribute("data-tone"); }
+    try {
+      const thread = await window.CommThreads.findThreadById(threadId);
+      if (!thread) throw new Error("Thread not found");
+      // Recipient = first participant whose id isn't me. Usually the
+      // admin who started the thread.
+      const other = (thread.participants || []).find(function (p) {
+        return String(p.id || "").toLowerCase() !== myEmail;
+      });
+      const recipient_type = (other && other.type === "tech") ? "employee"
+                           : (other && other.type === "team") ? "team"
+                           : "admin";
+      const recipient_id   = other ? String(other.id || "").toLowerCase() : "";
+      const recipient_name = (other && other.name) || "";
+
+      await window.CommThreads.addMessage(threadId, {
+        channel:        window.CommThreads.CHANNELS.IN_APP,
+        direction:      window.CommThreads.DIRECTIONS.INBOUND,
+        status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
+        sender_type:    "tech",
+        sender_id:      myEmail,
+        sender_name:    myName,
+        recipient_type: recipient_type,
+        recipient_id:   recipient_id,
+        recipient_name: recipient_name,
+        body:           body
+      });
+      if (status) { status.textContent = "Sent. Thank you."; status.setAttribute("data-tone", "ok"); }
+      ta.value = "";
+      // Remove the card from view — they replied, the loop is closed.
+      setTimeout(function () { fadeAndRemoveCommCard(card); }, 700);
+    } catch (err) {
+      console.error("[team-hub] reply send failed", err);
+      if (status) {
+        status.textContent = "Send failed: " + (err.message || "unknown");
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
+  async function ackCommCard(card, btn, status) {
+    const msgId = card.getAttribute("data-msg-id");
+    btn.disabled = true;
+    if (status) { status.textContent = "Got it."; status.removeAttribute("data-tone"); }
+    try {
+      await firebase.firestore().collection("communication_messages").doc(msgId).update({
+        read_at:    firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setTimeout(function () { fadeAndRemoveCommCard(card); }, 400);
+    } catch (err) {
+      console.error("[team-hub] ack failed", err);
+      if (status) {
+        status.textContent = "Couldn't save — try again.";
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
+  function fadeAndRemoveCommCard(card) {
+    card.style.transition = "opacity 0.3s ease";
+    card.style.opacity = "0";
+    setTimeout(function () {
+      card.remove();
+      const list = $("team-hub-comm-list");
+      if (list && !list.children.length) {
+        const section = $("team-hub-comm-section");
+        if (section) section.hidden = true;
+      }
+    }, 320);
+  }
+
+  function commEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function commTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts === "string") { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    return 0;
+  }
+  function commFmtAgoTH(ms) {
+    if (!ms) return "";
+    const diff = Date.now() - ms;
+    if (diff < 60000)    return "just now";
+    if (diff < 3600000)  return Math.round(diff / 60000)   + " min ago";
+    if (diff < 86400000) return Math.round(diff / 3600000) + " hr ago";
+    const days = Math.round(diff / 86400000);
+    if (days < 7)        return days + " d ago";
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -1490,6 +1774,10 @@
           // targeting this tech (employee) or the team broadcast.
           // Soft-fails; non-blocking.
           bootLeadershipMessagesForStaff(staff);
+          // Phase 3B — Messages from Pioneer (thread-based). Reads
+          // communication_messages addressed to this tech, lets them
+          // acknowledge or reply inline. Soft-fails; non-blocking.
+          bootCommMessagesForStaff(staff);
         }
       });
     } catch (err) {

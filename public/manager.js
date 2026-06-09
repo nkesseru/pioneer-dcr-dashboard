@@ -154,6 +154,7 @@
     paintHero();
     refreshAll();
     bootLeadershipMessages();
+    bootCommunicationCenter();
   }
 
   function paintHero() {
@@ -1738,4 +1739,427 @@
     showAuthState("checking");
     firebase.auth().onAuthStateChanged(handleAuthChange);
   });
+
+  /* ============================================================
+   * Phase 3B — Communication Center
+   *
+   * Surfaces communication_threads grouped by category. Each row
+   * opens a detail modal with message history, a reply box, and a
+   * "Close Thread" control. Compose modal lets admins start a fresh
+   * conversation for testing + day-to-day use.
+   * All writes go through window.CommThreads so denorm bookkeeping
+   * stays centralized.
+   * ============================================================ */
+
+  const COMM_CATEGORY_ORDER = ["leadership", "scheduling", "supplies", "callout", "customer", "general"];
+  const COMM_CATEGORY_LABEL = {
+    leadership: "Leadership",
+    scheduling: "Scheduling",
+    supplies:   "Supplies",
+    callout:    "Call-out",
+    customer:   "Customer",
+    general:    "General"
+  };
+  let commTechCache = null;
+  let openThreadCache = null;     // most recent fetched threads
+  let openThreadId   = null;      // thread currently in the detail modal
+
+  async function bootCommunicationCenter() {
+    if (!window.CommThreads) {
+      console.warn("[manager] CommThreads helper not loaded");
+      return;
+    }
+    wireCommToolbar();
+    wireThreadModal();
+    wireNewThreadModal();
+    await loadAndRenderThreads();
+  }
+
+  async function loadAndRenderThreads() {
+    const groupsEl = $("manager-comm-groups");
+    const countsEl = $("manager-comm-counts");
+    if (!groupsEl) return;
+    try {
+      const snap = await firebase.firestore().collection("communication_threads")
+        .where("status", "==", "open")
+        .orderBy("updated_at", "desc")
+        .limit(80).get();
+      const threads = snap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data() || {});
+      });
+      openThreadCache = threads;
+      renderThreadGroups(threads);
+      const total = threads.length;
+      countsEl.textContent = total === 0
+        ? "No open conversations."
+        : total + " open conversation" + (total === 1 ? "" : "s");
+    } catch (err) {
+      console.error("[manager] threads load failed", err);
+      groupsEl.innerHTML = '<p class="mc-empty">Couldn\'t load conversations: ' +
+        commEscape(err.message || "unknown") + '</p>';
+    }
+  }
+
+  function renderThreadGroups(threads) {
+    const root = $("manager-comm-groups");
+    if (!root) return;
+    if (!threads.length) {
+      root.innerHTML = '<p class="mc-empty">No open conversations. Start one with the button above.</p>';
+      return;
+    }
+    const buckets = {};
+    COMM_CATEGORY_ORDER.forEach(function (c) { buckets[c] = []; });
+    threads.forEach(function (t) {
+      const cat = COMM_CATEGORY_ORDER.indexOf(t.category) >= 0 ? t.category : "general";
+      buckets[cat].push(t);
+    });
+    root.innerHTML = COMM_CATEGORY_ORDER
+      .filter(function (c) { return buckets[c].length > 0; })
+      .map(function (c) {
+        const items = buckets[c]
+          .sort(function (a, b) {
+            return commTsToMs(b.last_message_at || b.updated_at) -
+                   commTsToMs(a.last_message_at || a.updated_at);
+          })
+          .map(renderThreadRowHtml).join("");
+        return (
+          '<div class="mc-comm-group">' +
+            '<div class="mc-comm-group-head">' +
+              '<span class="mc-comm-group-title">' + commEscape(COMM_CATEGORY_LABEL[c]) + '</span>' +
+              '<span class="mc-comm-group-count">' + buckets[c].length + ' open</span>' +
+            '</div>' +
+            items +
+          '</div>'
+        );
+      }).join("");
+    document.querySelectorAll(".mc-comm-thread").forEach(function (row) {
+      row.addEventListener("click", function () {
+        openThreadDetail(row.getAttribute("data-thread-id"));
+      });
+    });
+  }
+
+  function renderThreadRowHtml(t) {
+    const participantNames = (t.participants || [])
+      .map(function (p) { return p.name || p.id; })
+      .filter(Boolean)
+      .join(" · ");
+    const preview = t.last_message_preview || "No messages yet.";
+    const when = commFmtAgo(commTsToMs(t.last_message_at || t.updated_at));
+    return (
+      '<div class="mc-comm-thread" data-thread-id="' + commEscape(t._id) +
+        '" data-category="' + commEscape(t.category || "general") + '">' +
+        '<div class="mc-comm-thread-rail"></div>' +
+        '<div class="mc-comm-thread-main">' +
+          '<div class="mc-comm-thread-head">' +
+            '<span class="mc-comm-thread-subject">' + commEscape(t.subject || "(no subject)") + '</span>' +
+            '<span class="mc-comm-thread-time">' + commEscape(when) + '</span>' +
+          '</div>' +
+          '<div class="mc-comm-thread-participants">' + commEscape(participantNames || "—") + '</div>' +
+          '<div class="mc-comm-thread-preview">' + commEscape(preview) + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ---- Thread detail modal ---- */
+
+  function wireThreadModal() {
+    const overlay = $("manager-thread-overlay");
+    if (!overlay) return;
+    $("manager-thread-close-btn").addEventListener("click", closeThreadModal);
+    $("manager-thread-send").addEventListener("click", handleThreadReplySend);
+    $("manager-thread-action-close").addEventListener("click", handleThreadClose);
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay) closeThreadModal();
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && !overlay.hidden) closeThreadModal();
+    });
+  }
+
+  async function openThreadDetail(threadId) {
+    if (!threadId) return;
+    openThreadId = threadId;
+    const overlay = $("manager-thread-overlay");
+    overlay.hidden = false;
+    const histEl = $("manager-thread-history");
+    histEl.innerHTML = '<p class="mc-empty">Loading…</p>';
+    $("manager-thread-reply-body").value = "";
+    setThreadStatus("");
+    try {
+      const thread = await window.CommThreads.findThreadById(threadId);
+      if (!thread) {
+        histEl.innerHTML = '<p class="mc-empty">Thread not found.</p>';
+        return;
+      }
+      $("manager-thread-eyebrow").textContent =
+        (COMM_CATEGORY_LABEL[thread.category] || "Conversation") +
+        " · " + (thread.status || "open");
+      $("manager-thread-title").textContent = thread.subject || "Conversation";
+      $("manager-thread-meta").textContent =
+        (thread.participants || []).map(function (p) { return p.name || p.id; }).join(" · ");
+
+      const messages = await window.CommThreads.listMessagesForThread(threadId);
+      if (!messages.length) {
+        histEl.innerHTML = '<p class="mc-empty">No messages yet.</p>';
+      } else {
+        histEl.innerHTML = messages.map(renderMessageBubbleHtml).join("");
+        // Auto-scroll to bottom
+        histEl.scrollTop = histEl.scrollHeight;
+      }
+    } catch (err) {
+      console.error("[manager] thread detail failed", err);
+      histEl.innerHTML = '<p class="mc-empty">Couldn\'t load: ' +
+        commEscape(err.message || "unknown") + '</p>';
+    }
+  }
+
+  function renderMessageBubbleHtml(m) {
+    const when = commFmtAgo(commTsToMs(m.created_at));
+    const who = m.sender_name || m.sender_id || "—";
+    return (
+      '<div class="mc-thread-msg" data-direction="' + commEscape(m.direction || "outbound") + '">' +
+        commEscape(m.body || "") +
+        '<div class="mc-thread-msg-meta">' + commEscape(who) + ' · ' + commEscape(when) + '</div>' +
+      '</div>'
+    );
+  }
+
+  function closeThreadModal() {
+    $("manager-thread-overlay").hidden = true;
+    openThreadId = null;
+  }
+
+  async function handleThreadReplySend() {
+    if (!openThreadId || !currentUser) return;
+    const ta = $("manager-thread-reply-body");
+    const body = (ta.value || "").trim();
+    if (!body) {
+      setThreadStatus("Type a reply before sending.", "error");
+      return;
+    }
+    const thread = (openThreadCache || []).find(function (t) { return t._id === openThreadId; })
+                || await window.CommThreads.findThreadById(openThreadId);
+    if (!thread) {
+      setThreadStatus("Thread not found.", "error");
+      return;
+    }
+    const myEmail = String((currentUser.email || "")).toLowerCase();
+    // Recipient = first participant that isn't me. Falls back to a team
+    // broadcast shape if the only participants are admins.
+    const otherParticipant = (thread.participants || [])
+      .find(function (p) { return String(p.id || "").toLowerCase() !== myEmail; });
+    let recipient_type, recipient_id, recipient_name;
+    if (otherParticipant) {
+      recipient_type = participantTypeToRecipientType(otherParticipant.type);
+      recipient_id   = String(otherParticipant.id || "").toLowerCase();
+      recipient_name = otherParticipant.name || otherParticipant.id || "";
+    } else {
+      recipient_type = "admin";
+      recipient_id   = "";
+      recipient_name = "Team";
+    }
+    setThreadStatus("Sending…");
+    $("manager-thread-send").disabled = true;
+    try {
+      await window.CommThreads.addMessage(openThreadId, {
+        channel:        window.CommThreads.CHANNELS.IN_APP,
+        direction:      window.CommThreads.DIRECTIONS.OUTBOUND,
+        status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
+        sender_type:    "admin",
+        sender_id:      myEmail,
+        sender_name:    currentUser.displayName || myEmail.split("@")[0],
+        recipient_type: recipient_type,
+        recipient_id:   recipient_id,
+        recipient_name: recipient_name,
+        body:           body
+      });
+      ta.value = "";
+      setThreadStatus("Sent.", "ok");
+      // Refresh the open thread
+      await openThreadDetail(openThreadId);
+      await loadAndRenderThreads();
+    } catch (err) {
+      console.error("[manager] reply send failed", err);
+      setThreadStatus("Send failed: " + (err.message || "unknown"), "error");
+    } finally {
+      $("manager-thread-send").disabled = false;
+    }
+  }
+
+  function participantTypeToRecipientType(type) {
+    if (type === "tech")     return "employee";
+    if (type === "customer") return "customer";
+    if (type === "team")     return "team";
+    if (type === "office_manager") return "office_manager";
+    return "admin";
+  }
+
+  async function handleThreadClose() {
+    if (!openThreadId) return;
+    const ok = window.confirm("Close this thread? It can be referenced later but no new messages will be added.");
+    if (!ok) return;
+    setThreadStatus("Closing…");
+    try {
+      await window.CommThreads.closeThread(openThreadId, { closed_by: (currentUser.email || "").toLowerCase() });
+      setThreadStatus("Closed.", "ok");
+      setTimeout(closeThreadModal, 600);
+      await loadAndRenderThreads();
+    } catch (err) {
+      console.error("[manager] close thread failed", err);
+      setThreadStatus("Close failed: " + (err.message || "unknown"), "error");
+    }
+  }
+
+  function setThreadStatus(msg, tone) {
+    const el = $("manager-thread-reply-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    if (tone) el.setAttribute("data-tone", tone);
+    else el.removeAttribute("data-tone");
+  }
+
+  /* ---- New thread compose modal ---- */
+
+  function wireCommToolbar() {
+    const btn = $("manager-comm-new");
+    if (btn) btn.addEventListener("click", openNewThreadModal);
+  }
+
+  function wireNewThreadModal() {
+    const overlay = $("manager-comm-new-overlay");
+    if (!overlay) return;
+    $("manager-comm-new-close").addEventListener("click", function () { overlay.hidden = true; });
+    $("manager-comm-new-cancel").addEventListener("click", function () { overlay.hidden = true; });
+    $("manager-comm-new-send").addEventListener("click", handleNewThreadSend);
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay) overlay.hidden = true;
+    });
+  }
+
+  async function ensureCommTechCache() {
+    if (commTechCache) return commTechCache;
+    try {
+      const snap = await firebase.firestore().collection("cleaning_techs").get();
+      commTechCache = snap.docs
+        .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        .filter(function (t) { return t.active !== false && t.email; })
+        .sort(function (a, b) {
+          return String(a.display_name || a.email).localeCompare(String(b.display_name || b.email));
+        });
+    } catch (err) {
+      console.error("[manager] tech roster load failed", err);
+      commTechCache = [];
+    }
+    return commTechCache;
+  }
+
+  async function openNewThreadModal() {
+    const overlay = $("manager-comm-new-overlay");
+    if (!overlay) return;
+    overlay.hidden = false;
+    setNewThreadStatus("");
+    $("manager-comm-new-subject").value = "";
+    $("manager-comm-new-body").value = "";
+    $("manager-comm-new-category").value = "general";
+    const sel = $("manager-comm-new-recipient");
+    sel.innerHTML = '<option value="">Loading…</option>';
+    const techs = await ensureCommTechCache();
+    sel.innerHTML = '<option value="">Choose a teammate…</option>' +
+      techs.map(function (t) {
+        const name = commEscape(t.display_name || t.tech_display_name || t.email);
+        return '<option value="' + commEscape(t.email.toLowerCase()) +
+               '" data-name="' + name + '">' + name + '</option>';
+      }).join("");
+  }
+
+  async function handleNewThreadSend() {
+    if (!currentUser) return;
+    const overlay = $("manager-comm-new-overlay");
+    const category  = $("manager-comm-new-category").value;
+    const sel       = $("manager-comm-new-recipient");
+    const recipientId = (sel.value || "").toLowerCase();
+    const recipientName = sel.options[sel.selectedIndex].getAttribute("data-name") || recipientId;
+    const subject   = ($("manager-comm-new-subject").value || "").trim();
+    const body      = ($("manager-comm-new-body").value || "").trim();
+    if (!recipientId) { setNewThreadStatus("Choose a teammate.", "error"); return; }
+    if (!subject)     { setNewThreadStatus("Give it a subject.", "error"); return; }
+    if (!body)        { setNewThreadStatus("Write the first message.", "error"); return; }
+    const myEmail = (currentUser.email || "").toLowerCase();
+    setNewThreadStatus("Starting…");
+    $("manager-comm-new-send").disabled = true;
+    try {
+      const tid = await window.CommThreads.createThread({
+        category:    category,
+        subject:     subject,
+        source_type: "manager_compose",
+        source_id:   tid_seed(),
+        participants: [
+          { type: "admin", id: myEmail, name: currentUser.displayName || myEmail.split("@")[0] },
+          { type: "tech",  id: recipientId, name: recipientName }
+        ]
+      });
+      await window.CommThreads.addMessage(tid, {
+        channel:        window.CommThreads.CHANNELS.IN_APP,
+        direction:      window.CommThreads.DIRECTIONS.OUTBOUND,
+        status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
+        sender_type:    "admin",
+        sender_id:      myEmail,
+        sender_name:    currentUser.displayName || myEmail.split("@")[0],
+        recipient_type: "employee",
+        recipient_id:   recipientId,
+        recipient_name: recipientName,
+        body:           body
+      });
+      setNewThreadStatus("Conversation started.", "ok");
+      setTimeout(function () { overlay.hidden = true; }, 700);
+      await loadAndRenderThreads();
+    } catch (err) {
+      console.error("[manager] new thread failed", err);
+      setNewThreadStatus("Start failed: " + (err.message || "unknown"), "error");
+    } finally {
+      $("manager-comm-new-send").disabled = false;
+    }
+  }
+
+  function tid_seed() {
+    // Lightweight unique seed for source_id so each compose-started thread
+    // is unique (dedup intentionally not applied to manager_compose).
+    return "manager-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function setNewThreadStatus(msg, tone) {
+    const el = $("manager-comm-new-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    if (tone) el.setAttribute("data-tone", tone);
+    else el.removeAttribute("data-tone");
+  }
+
+  /* ---- shared helpers ---- */
+
+  function commEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function commTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts === "string") { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    return 0;
+  }
+  function commFmtAgo(ms) {
+    if (!ms) return "";
+    const diff = Date.now() - ms;
+    if (diff < 60000)        return "just now";
+    if (diff < 3600000)      return Math.round(diff / 60000)   + " min ago";
+    if (diff < 86400000)     return Math.round(diff / 3600000) + " hr ago";
+    const days = Math.round(diff / 86400000);
+    if (days < 7)            return days + " d ago";
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
+  }
+
 }());

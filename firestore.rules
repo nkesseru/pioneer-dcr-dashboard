@@ -1501,16 +1501,28 @@ service cloud.firestore {
                     && request.resource.data.participant_ids is list
                     && request.resource.data.created_by == request.auth.token.email.lower();
 
-      // Denorm fields are bumped on every new message; status/closure
-      // controls move when threads are resolved. Subject/category/
-      // participants are immutable post-create for audit integrity.
-      allow update: if isPioneerAdmin()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                      'status', 'closed_at', 'closed_by', 'updated_at',
-                      'last_message_at', 'last_message_preview',
-                      'last_message_direction', 'message_count'
-                    ])
-                    && request.resource.data.status in ['open', 'closed'];
+      // Two update gates so addMessage() works for both sides of a
+      // conversation. Admin tier can mutate everything (status/closure
+      // + denorm). A participating tech can ONLY bump the denorm
+      // bookkeeping that addMessage() needs — status, closure, and
+      // identity remain immutable to them.
+      allow update: if (
+                      isPioneerAdmin()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'closed_at', 'closed_by', 'updated_at',
+                        'last_message_at', 'last_message_preview',
+                        'last_message_direction', 'message_count'
+                      ])
+                      && request.resource.data.status in ['open', 'closed']
+                    )
+                    || (
+                      isActiveCleaningTech()
+                      && isThreadParticipant()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'updated_at', 'last_message_at', 'last_message_preview',
+                        'last_message_direction', 'message_count'
+                      ])
+                    );
 
       allow delete: if false;
     }
@@ -1522,16 +1534,40 @@ service cloud.firestore {
           && resource.data.recipient_id is string
           && resource.data.recipient_id == request.auth.token.email.lower();
       }
+      function isMessageSender() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.sender_id is string
+          && resource.data.sender_id == request.auth.token.email.lower();
+      }
       function isTeamBroadcastReader() {
         return resource.data.recipient_type == 'team' && isActiveCleaningTech();
       }
+      // For tech inbound replies: confirm they are a participant in the
+      // parent thread. Single get() — cost is one document read per
+      // message create.
+      function isParticipantInIncomingThread() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && request.resource.data.thread_id is string
+          && exists(/databases/$(database)/documents/communication_threads/$(request.resource.data.thread_id))
+          && (request.auth.token.email.lower() in
+              get(/databases/$(database)/documents/communication_threads/$(request.resource.data.thread_id))
+              .data.participant_ids);
+      }
 
+      // Sender check lets a tech read their own outgoing replies in the
+      // thread timeline (recipient check only covers what they received).
       allow read:   if isPioneerAdmin()
                     || isMessageRecipient()
+                    || isMessageSender()
                     || isTeamBroadcastReader();
 
-      allow create: if isPioneerAdmin()
-                    && request.resource.data.thread_id is string
+      // Phase 3B — tech inbound replies are now allowed on threads they
+      // participate in. Admin tier retains full create access. Common
+      // schema validation runs first so a bad payload fails the same way
+      // for either role.
+      allow create: if request.resource.data.thread_id is string
                     && request.resource.data.thread_id.size() >= 1
                     && request.resource.data.channel in ['in_app', 'sms']
                     && request.resource.data.direction in ['outbound', 'inbound']
@@ -1540,7 +1576,17 @@ service cloud.firestore {
                     && request.resource.data.body is string
                     && request.resource.data.body.size() >= 1
                     && request.resource.data.body.size() <= 2000
-                    && request.resource.data.sender_id == request.auth.token.email.lower();
+                    && request.resource.data.sender_id == request.auth.token.email.lower()
+                    && (
+                      isPioneerAdmin()
+                      || (
+                        isActiveCleaningTech()
+                        && request.resource.data.direction == 'inbound'
+                        && request.resource.data.channel == 'in_app'
+                        && request.resource.data.sender_type == 'tech'
+                        && isParticipantInIncomingThread()
+                      )
+                    );
 
       // Status + delivery tracking only. Identity/body/thread linkage
       // immutable post-create.
@@ -1554,6 +1600,8 @@ service cloud.firestore {
                       isPioneerAdmin()
                       || (resource.data.recipient_id is string
                           && resource.data.recipient_id == request.auth.token.email.lower())
+                      || (resource.data.sender_id is string
+                          && resource.data.sender_id == request.auth.token.email.lower())
                       || (resource.data.recipient_type == 'team' && isActiveCleaningTech())
                     );
 

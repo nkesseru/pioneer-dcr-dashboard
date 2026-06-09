@@ -900,6 +900,261 @@
       content: "📅";
       font-size: 16px;
     }
+
+    /* ============== Phase 3B — Communication Center ============== */
+    .mc-comm-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 8px 0 16px;
+      flex-wrap: wrap;
+    }
+    .mc-comm-toolbar-aside {
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+    }
+    .mc-comm-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .mc-comm-group {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border-soft);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .mc-comm-group-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .mc-comm-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mc-ink-muted);
+    }
+    .mc-comm-group-count {
+      font-size: 12px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-comm-thread {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--mc-border-soft);
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .mc-comm-thread:first-child { border-top: none; padding-top: 4px; }
+    .mc-comm-thread:hover { background: var(--mc-surface); }
+    .mc-comm-thread-rail {
+      flex: none;
+      width: 4px;
+      border-radius: 2px;
+      background: var(--mc-ink-muted);
+      align-self: stretch;
+    }
+    .mc-comm-thread[data-category="leadership"] .mc-comm-thread-rail { background: #d4af37; }
+    .mc-comm-thread[data-category="scheduling"] .mc-comm-thread-rail { background: #4a90e2; }
+    .mc-comm-thread[data-category="supplies"]   .mc-comm-thread-rail { background: #7b9d6c; }
+    .mc-comm-thread[data-category="callout"]    .mc-comm-thread-rail { background: #c4836a; }
+    .mc-comm-thread[data-category="customer"]   .mc-comm-thread-rail { background: #a26b76; }
+    .mc-comm-thread[data-category="general"]    .mc-comm-thread-rail { background: var(--mc-ink-muted); }
+    .mc-comm-thread-main { flex: 1; min-width: 0; }
+    .mc-comm-thread-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 2px;
+    }
+    .mc-comm-thread-subject {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mc-ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mc-comm-thread-time {
+      flex: none;
+      font-size: 12px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-comm-thread-participants {
+      font-size: 12px;
+      color: var(--mc-ink-muted);
+      margin-bottom: 4px;
+    }
+    .mc-comm-thread-preview {
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    /* ============== Generic modal (Phase 3B) ============== */
+    .mc-modal-overlay[hidden] { display: none !important; }
+    .mc-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(11, 18, 32, 0.55);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .mc-modal {
+      background: var(--mc-surface);
+      border-radius: 14px;
+      box-shadow: 0 18px 48px rgba(11, 18, 32, 0.25);
+      width: 100%;
+      max-width: 640px;
+      max-height: 84vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .mc-modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 22px 24px 16px;
+      border-bottom: 1px solid var(--mc-border-soft);
+    }
+    .mc-modal-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-modal-head h2 {
+      margin: 4px 0 0;
+      font-size: 20px;
+      color: var(--mc-ink);
+    }
+    .mc-modal-sub {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--mc-ink-soft);
+      line-height: 1.5;
+    }
+    .mc-modal-close {
+      flex: none;
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      line-height: 1;
+      color: var(--mc-ink-soft);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .mc-modal-close:hover { color: var(--mc-ink); }
+    .mc-modal-fields {
+      padding: 18px 24px 20px;
+      overflow-y: auto;
+    }
+    .mc-modal-status {
+      font-size: 13px;
+      color: var(--mc-ink-soft);
+      margin: 8px 0 4px;
+      min-height: 16px;
+    }
+    .mc-modal-status[data-tone="error"] { color: #b00020; }
+    .mc-modal-status[data-tone="ok"]    { color: #1d7d3a; }
+    .mc-modal-btns {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .mc-btn-ghost {
+      background: transparent;
+      color: var(--mc-ink-muted);
+      border: 1px solid var(--mc-border);
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mc-btn-ghost:hover { color: var(--mc-ink); }
+    .mc-btn-ghost:disabled { opacity: 0.5; cursor: default; }
+
+    /* Modal field reuses .mc-field-question + select/input styles already present */
+    #manager-comm-new-overlay input,
+    #manager-comm-new-overlay select,
+    #manager-comm-new-overlay textarea,
+    #manager-thread-overlay textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+      box-sizing: border-box;
+    }
+    #manager-comm-new-overlay textarea,
+    #manager-thread-overlay textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    /* ============== Thread history ============== */
+    .mc-thread-history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 24px;
+      background: var(--mc-surface-soft);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mc-thread-msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      box-shadow: 0 1px 2px rgba(11, 18, 32, 0.04);
+    }
+    .mc-thread-msg[data-direction="outbound"] {
+      align-self: flex-end;
+      background: var(--mc-ink);
+      color: var(--mc-surface);
+    }
+    .mc-thread-msg[data-direction="inbound"] {
+      align-self: flex-start;
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+      border: 1px solid var(--mc-border-soft);
+    }
+    .mc-thread-msg-meta {
+      font-size: 11px;
+      letter-spacing: 0.4px;
+      margin-top: 4px;
+      opacity: 0.75;
+    }
+    .mc-thread-reply {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--mc-border-soft);
+      background: var(--mc-surface);
+    }
   </style>
 </head>
 <body class="manager-page">
@@ -1081,6 +1336,22 @@
           </details>
         </section>
       </div>
+
+      <!-- ====== Phase 3B — Communication Center ====== -->
+      <section class="mc-section" id="manager-communication">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow">Communication Center</span>
+          <h2>Open conversations</h2>
+          <p>Threads grouped by category. Click any conversation to read history, reply, or close it.</p>
+        </div>
+        <div class="mc-comm-toolbar">
+          <button type="button" class="mc-btn" id="manager-comm-new">+ New Conversation</button>
+          <span class="mc-comm-toolbar-aside" id="manager-comm-counts">Reading…</span>
+        </div>
+        <div class="mc-comm-groups" id="manager-comm-groups">
+          <p class="mc-empty">Loading conversations…</p>
+        </div>
+      </section>
 
       <!-- ====== Bottlenecks + Daily Reflection ====== -->
       <div class="mc-row-2-eq">
@@ -1278,11 +1549,85 @@
     </div>
   </main>
 
+  <!-- Phase 3B — Thread detail modal (history + reply + close). Single
+       shared overlay; manager.js swaps content per-thread on open. -->
+  <div id="manager-thread-overlay" class="mc-modal-overlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true" aria-labelledby="manager-thread-title">
+      <header class="mc-modal-head">
+        <div>
+          <span class="mc-modal-eyebrow" id="manager-thread-eyebrow">Conversation</span>
+          <h2 id="manager-thread-title">Thread</h2>
+          <p class="mc-modal-sub" id="manager-thread-meta"></p>
+        </div>
+        <button type="button" class="mc-modal-close" id="manager-thread-close-btn" aria-label="Close">×</button>
+      </header>
+      <div class="mc-thread-history" id="manager-thread-history">
+        <p class="mc-empty">Loading messages…</p>
+      </div>
+      <div class="mc-thread-reply">
+        <label class="mc-field-question" for="manager-thread-reply-body">Reply</label>
+        <textarea id="manager-thread-reply-body" maxlength="2000" placeholder="Type a reply to this conversation…"></textarea>
+        <p class="mc-modal-status" id="manager-thread-reply-status"></p>
+        <div class="mc-modal-btns">
+          <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
+          <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 3B — New conversation modal. Admin-tier compose. -->
+  <div id="manager-comm-new-overlay" class="mc-modal-overlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true">
+      <header class="mc-modal-head">
+        <div>
+          <span class="mc-modal-eyebrow">New Conversation</span>
+          <h2>Start a conversation</h2>
+          <p class="mc-modal-sub">Pick a category, a participant, give it a subject, and write the first message.</p>
+        </div>
+        <button type="button" class="mc-modal-close" id="manager-comm-new-close" aria-label="Close">×</button>
+      </header>
+      <div class="mc-modal-fields">
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-category">Category</label>
+          <select id="manager-comm-new-category">
+            <option value="leadership">Leadership</option>
+            <option value="scheduling">Scheduling</option>
+            <option value="supplies">Supplies</option>
+            <option value="callout">Call-out</option>
+            <option value="customer">Customer</option>
+            <option value="general" selected>General</option>
+          </select>
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-recipient">Send to</label>
+          <select id="manager-comm-new-recipient">
+            <option value="">Choose a teammate…</option>
+          </select>
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-subject">Subject</label>
+          <input type="text" id="manager-comm-new-subject" maxlength="200" placeholder="What's this about?" />
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-body">First message</label>
+          <textarea id="manager-comm-new-body" maxlength="2000" placeholder="Keep it short and specific."></textarea>
+        </div>
+        <p class="mc-modal-status" id="manager-comm-new-status"></p>
+        <div class="mc-modal-btns">
+          <button type="button" class="mc-btn-ghost" id="manager-comm-new-cancel">Cancel</button>
+          <button type="button" class="mc-btn" id="manager-comm-new-send">Start &amp; Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="manager.js?v=20260608-phase1c-leadership"></script>
+  <script src="comm-threads.js?v=20260609-phase3b"></script>
+  <script src="manager.js?v=20260609-phase3b-comm"></script>
 </body>
 </html>

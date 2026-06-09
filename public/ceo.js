@@ -438,8 +438,12 @@
     renderDangers(snap, health);
     renderOpportunities(snap, health);
     renderScorecards(snap, health);
-    renderLeadershipPulse(snap, health);
     renderRecentActivity(snap);
+    renderLeadershipPulse(snap, health);
+    // Phase 3B — Open Conversations preview. Fires its own read; soft-fails.
+    renderOpenConvosPreview().catch(function (err) {
+      console.warn('[ceo] open convos preview failed', err);
+    });
   }
 
   // ---- Section 1: Company Health ----
@@ -1549,6 +1553,67 @@
     return new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric'
     }).format(new Date(ms));
+  }
+
+  /* ============================================================
+   * Phase 3B — Open Conversations preview (read-only)
+   * ============================================================ */
+
+  async function renderOpenConvosPreview() {
+    const root = $('ceo-open-convos');
+    if (!root) return;
+    try {
+      const snap = await db.collection('communication_threads')
+        .where('status', '==', 'open')
+        .orderBy('updated_at', 'desc')
+        .limit(10).get();
+      const threads = snap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data() || {});
+      });
+      if (!threads.length) {
+        root.innerHTML =
+          '<div class="ceo-empty" style="padding:24px 12px;">' +
+            '<p class="ceo-empty-headline">Quiet on the wires.</p>' +
+            '<p class="ceo-empty-context">No open conversations right now.</p>' +
+          '</div>';
+        return;
+      }
+      const total = threads.length;
+      const top   = threads.slice(0, 3);
+      root.innerHTML =
+        '<p style="font-size:13px;color:var(--ceo-charcoal-soft);margin:0 0 14px;">' +
+          escapeHtml(total + ' open conversation' + (total === 1 ? '' : 's') +
+                    ' across the team. Latest 3:') +
+        '</p>' +
+        '<ul class="ceo-list">' +
+          top.map(renderOpenConvoRowHtml).join('') +
+        '</ul>';
+    } catch (err) {
+      console.warn('[ceo] open convos read failed', err);
+      root.innerHTML = '<p class="ceo-empty-context" style="padding:18px 12px;">' +
+        'Conversations aren\'t loading right now.</p>';
+    }
+  }
+
+  function renderOpenConvoRowHtml(t) {
+    const categoryLabel = (t.category || 'general').charAt(0).toUpperCase() + (t.category || 'general').slice(1);
+    const preview = t.last_message_preview || 'No messages yet.';
+    const when = fmtRelative(tsToMs(t.last_message_at || t.updated_at));
+    const participants = (t.participants || [])
+      .map(function (p) { return p.name || p.id; })
+      .filter(Boolean).join(' · ');
+    return '<li class="ceo-list-item ceo-tone-pulse">' +
+             '<div class="ceo-list-item-icon">·</div>' +
+             '<div class="ceo-list-item-body">' +
+               '<p class="ceo-list-item-title">' + escapeHtml(t.subject || '(no subject)') + '</p>' +
+               '<p class="ceo-list-item-context">' +
+                 escapeHtml(categoryLabel + ' · ' + (participants || '—') + ' · ' + when) +
+               '</p>' +
+               '<p class="ceo-list-item-context" style="margin-top:4px;font-style:italic;">' +
+                 escapeHtml(preview) +
+               '</p>' +
+             '</div>' +
+           '</li>';
   }
 
   /* ============================================================
