@@ -1443,6 +1443,124 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 3A — Communication Threads Foundation
+    // ====================================================================
+    // Generic thread/message backbone that future communication features
+    // attach to (Leadership Messages, Call-out conversations, Customer
+    // follow-ups, Scheduling notices, Supplies coordination). NOT used by
+    // any surface in Phase 3A — data architecture only.
+    //
+    // Two collections:
+    //   communication_threads   — one doc per conversation. Carries
+    //                             category, status, participants, denorm
+    //                             last-message fields for sorting/preview.
+    //   communication_messages  — one doc per message. Linked back to a
+    //                             thread by thread_id. Channel = in_app
+    //                             OR sms. Direction = outbound (from
+    //                             leadership) OR inbound (replies — future).
+    //
+    // Categories (enum):  leadership | scheduling | supplies | callout
+    //                     | customer | general
+    // Status     (enum):  open | closed
+    // Channels   (enum):  in_app | sms
+    // Directions (enum):  outbound | inbound
+    //
+    // Read model (Phase 3A — conservative; expand when surfaces ship):
+    //   • Admin tier (incl. executive+owner) reads any thread/message.
+    //   • A non-admin reader sees a thread only if their email is in
+    //     participant_ids. Same for the messages they appear in as
+    //     recipient. Team-broadcast messages (recipient_type='team')
+    //     are readable by any active cleaning tech, mirroring the
+    //     leadership_messages rule so the future migration is direct.
+    //
+    // Write model (Phase 3A):
+    //   • Only admin-tier can CREATE threads and messages. Tech replies
+    //     ("inbound") are deferred — Phase 3A is foundation only.
+    //   • UPDATEs are field-scoped: threads can only mutate denorm/status
+    //     fields; messages can only mutate delivery/read/error fields.
+    //     Body and identity are immutable post-create for audit integrity.
+    //
+    // DELETE is denied on both — dismissed/closed != deleted.
+    match /communication_threads/{threadId} {
+      function isThreadParticipant() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.participant_ids is list
+          && (request.auth.token.email.lower() in resource.data.participant_ids);
+      }
+
+      allow read:   if isPioneerAdmin() || isThreadParticipant();
+
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.category in
+                       ['leadership', 'scheduling', 'supplies', 'callout', 'customer', 'general']
+                    && request.resource.data.status in ['open', 'closed']
+                    && request.resource.data.subject is string
+                    && request.resource.data.subject.size() >= 1
+                    && request.resource.data.subject.size() <= 200
+                    && request.resource.data.participant_ids is list
+                    && request.resource.data.created_by == request.auth.token.email.lower();
+
+      // Denorm fields are bumped on every new message; status/closure
+      // controls move when threads are resolved. Subject/category/
+      // participants are immutable post-create for audit integrity.
+      allow update: if isPioneerAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'status', 'closed_at', 'closed_by', 'updated_at',
+                      'last_message_at', 'last_message_preview',
+                      'last_message_direction', 'message_count'
+                    ])
+                    && request.resource.data.status in ['open', 'closed'];
+
+      allow delete: if false;
+    }
+
+    match /communication_messages/{messageId} {
+      function isMessageRecipient() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.recipient_id is string
+          && resource.data.recipient_id == request.auth.token.email.lower();
+      }
+      function isTeamBroadcastReader() {
+        return resource.data.recipient_type == 'team' && isActiveCleaningTech();
+      }
+
+      allow read:   if isPioneerAdmin()
+                    || isMessageRecipient()
+                    || isTeamBroadcastReader();
+
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.thread_id is string
+                    && request.resource.data.thread_id.size() >= 1
+                    && request.resource.data.channel in ['in_app', 'sms']
+                    && request.resource.data.direction in ['outbound', 'inbound']
+                    && request.resource.data.status in
+                       ['queued', 'delivered', 'failed', 'dismissed']
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() >= 1
+                    && request.resource.data.body.size() <= 2000
+                    && request.resource.data.sender_id == request.auth.token.email.lower();
+
+      // Status + delivery tracking only. Identity/body/thread linkage
+      // immutable post-create.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'status', 'delivered_at', 'read_at', 'updated_at',
+                      'sms_sid', 'sms_error'
+                    ])
+                    && request.resource.data.status in
+                       ['queued', 'delivered', 'failed', 'dismissed']
+                    && (
+                      isPioneerAdmin()
+                      || (resource.data.recipient_id is string
+                          && resource.data.recipient_id == request.auth.token.email.lower())
+                      || (resource.data.recipient_type == 'team' && isActiveCleaningTech())
+                    );
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Leadership Messages (Phase 1C) — leadership_messages
     // ====================================================================
     // One-way leadership communication. CEO (executive+) composes;
