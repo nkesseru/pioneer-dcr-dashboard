@@ -100,24 +100,23 @@
   // sequence (N/A first so a non-applicable item can be cleared from
   // the scoring denominator with one tap).
   //
-  // Phase V2.1 scoring change:
-  //   Fail  = 1   (still gets credit for being assessed; uncoachable
-  //                if it were 0)
-  //   Pass  = 2   (work completed correctly)
-  //   Great = 3   (exceeded expectations)
-  //   N/A   = excluded from both numerator and denominator
+  // Phase V2.1 scoring (recalibrated):
+  //   Fail  = 0     coaching needed; the only verdict that hurts the score
+  //   Pass  = 1     met Pioneer standard — successful
+  //   Great = 1.25  exceptional, called out separately as praise
+  //   N/A          excluded from both numerator and denominator
   //
-  // Max points per scored item = 3. The 0-5 conversion in computeScoreV2
-  // multiplies the earned-ratio by 5 so a clean Great run lands at 5.0,
-  // clean Pass at ~3.33, clean Fail at ~1.67.
+  // The 0-5 conversion in computeScoreV2 multiplies (earned / scored)
+  // by 5 and clamps at 5. A clean all-Pass inspection scores 5.0 — Pass
+  // is celebrated, not shamed. Greats can't pull the score above 5 but
+  // surface separately as a praise signal.
   const V2_RESULTS = [
     { value: "na",    label: "N/A",   short: "N/A",   tone: "tone-na",    points: null, includeInScore: false },
-    { value: "pass",  label: "Pass",  short: "Pass",  tone: "tone-pass",  points: 2,    includeInScore: true  },
-    { value: "great", label: "Great", short: "Great", tone: "tone-great", points: 3,    includeInScore: true  },
-    { value: "fail",  label: "Fail",  short: "Fail",  tone: "tone-fail",  points: 1,    includeInScore: true  }
+    { value: "pass",  label: "Pass",  short: "Pass",  tone: "tone-pass",  points: 1,    includeInScore: true  },
+    { value: "great", label: "Great", short: "Great", tone: "tone-great", points: 1.25, includeInScore: true  },
+    { value: "fail",  label: "Fail",  short: "Fail",  tone: "tone-fail",  points: 0,    includeInScore: true  }
   ];
   const V2_RESULT_META = V2_RESULTS.reduce(function (o, r) { o[r.value] = r; return o; }, {});
-  const V2_MAX_POINTS_PER_ITEM = 3;
 
   function itemKey(sectionSlug, itemSlug) { return sectionSlug + "::" + itemSlug; }
 
@@ -524,14 +523,17 @@
     });
   }
 
-  /* ---------- Phase V2.1 — overall score ----------
+  /* ---------- Phase V2.1 (recalibrated) — overall score ----------
      Score math:
-       fail=1, pass=2, great=3, n/a excluded from both sides.
-       max-possible per scored item = 3 (Great).
-       earned_ratio   = earned / (scored_count * 3)   (0 .. 1.0)
-       overall_score  = earned_ratio * 5              (0 .. 5)
+       fail = 0, pass = 1, great = 1.25, n/a excluded from both sides.
+       base_score    = earned_points / scored_count        (0..1.25)
+       overall_score = min(5, base_score * 5)              (0..5)
+     A clean all-Pass run lands at 5.0 — Pass is treated as successful,
+     not mediocre. Great can't pull the score above 5 by itself; it
+     surfaces separately as a praise signal next to the overall.
+
      pass_pct / great_pct / fail_pct are over the scored denominator
-     (na excluded), unchanged in meaning from V2.
+     (n/a excluded), unchanged from prior V2.
 
      If nothing is scored yet, overall_score reads "—" so the inspector
      doesn't see a misleading 0. */
@@ -540,18 +542,19 @@
     let pass = 0, great = 0, fail = 0, na = 0, earned = 0;
     Object.keys(state.inspection_items).forEach(function (k) {
       const r = state.inspection_items[k].result;
-      if (r === "pass")       { pass++;  earned += 2; }
-      else if (r === "great") { great++; earned += 3; }
-      else if (r === "fail")  { fail++;  earned += 1; }
+      if (r === "pass")       { pass++;  earned += 1.0;  }
+      else if (r === "great") { great++; earned += 1.25; }
+      else if (r === "fail")  { fail++; /* +0 */         }
       else if (r === "na")    { na++;  }
     });
     const scored = pass + great + fail;
-    const possible = scored * V2_MAX_POINTS_PER_ITEM;
+    const baseScore = scored > 0 ? earned / scored : null;
     return {
       pass_count: pass, great_count: great, fail_count: fail, na_count: na,
-      scored_count: scored, earned_points: earned, possible_points: possible,
-      earned_ratio:  possible > 0 ? earned / possible : null,
-      overall_score: possible > 0 ? (earned / possible) * 5 : null,
+      scored_count:  scored,
+      earned_points: earned,
+      earned_ratio:  baseScore,                                          // 0..1.25 (uncapped)
+      overall_score: baseScore != null ? Math.min(5, baseScore * 5) : null,
       pass_pct:      scored > 0 ? pass  / scored : 0,
       great_pct:     scored > 0 ? great / scored : 0,
       fail_pct:      scored > 0 ? fail  / scored : 0
@@ -716,10 +719,9 @@
       great_pct:                    Math.round(v2.great_pct * 10000) / 10000,
       fail_pct:                     Math.round(v2.fail_pct  * 10000) / 10000,
       // 0-5 scale for back-compat with /ceo, /tech, /team-hub readers
-      // that already speak v1's overall_score. v2-aware readers can
-      // prefer earned_ratio for the raw 0..1 number.
+      // that already speak v1's overall_score. V2.1-aware readers can
+      // prefer earned_ratio (0..1.25, uncapped) for the precise number.
       overall_score:                Math.round(v2.overall_score * 100) / 100,
-      possible_points:              v2.possible_points,
 
       // Free-text / attachments
       notes:                        String(state.notes || "").trim(),
