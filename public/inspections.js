@@ -48,7 +48,6 @@
     { slug: "trash",         label: "Trash", items: [
       { slug: "all_bins_emptied",        label: "All trash bins emptied" },
       { slug: "new_liners_installed",    label: "New liners installed" },
-      { slug: "trash_to_dock",           label: "Trash collected and out to dock" },
       { slug: "trash_area_clean",        label: "Trash area left clean" }
     ]},
     { slug: "restrooms",     label: "Restrooms", items: [
@@ -92,25 +91,33 @@
       { slug: "toilet_paper",            label: "Toilet paper restocked" },
       { slug: "paper_towels",            label: "Paper towels restocked" },
       { slug: "hand_soap",               label: "Hand soap restocked" },
-      { slug: "liners",                  label: "Trash liners restocked" }
-    ]},
-    { slug: "special_tasks", label: "Special Tasks", items: [
-      { slug: "window_cleaning",         label: "Window cleaning completed (as scheduled)" },
-      { slug: "carpet_treatment",        label: "Carpet treatment completed (as scheduled)" },
-      { slug: "other_requests",          label: "Customer special requests completed" }
+      { slug: "liners",                  label: "Trash liners restocked" },
+      { slug: "janitorial_closet",       label: "Janitorial closet clean and organized" }
     ]}
   ];
 
   // Per-item verdict metadata. Order matters — buttons render in this
   // sequence (N/A first so a non-applicable item can be cleared from
   // the scoring denominator with one tap).
+  //
+  // Phase V2.1 scoring change:
+  //   Fail  = 1   (still gets credit for being assessed; uncoachable
+  //                if it were 0)
+  //   Pass  = 2   (work completed correctly)
+  //   Great = 3   (exceeded expectations)
+  //   N/A   = excluded from both numerator and denominator
+  //
+  // Max points per scored item = 3. The 0-5 conversion in computeScoreV2
+  // multiplies the earned-ratio by 5 so a clean Great run lands at 5.0,
+  // clean Pass at ~3.33, clean Fail at ~1.67.
   const V2_RESULTS = [
     { value: "na",    label: "N/A",   short: "N/A",   tone: "tone-na",    points: null, includeInScore: false },
-    { value: "pass",  label: "Pass",  short: "Pass",  tone: "tone-pass",  points: 1.0,  includeInScore: true  },
-    { value: "great", label: "Great", short: "Great", tone: "tone-great", points: 1.2,  includeInScore: true  },
-    { value: "fail",  label: "Fail",  short: "Fail",  tone: "tone-fail",  points: 0.0,  includeInScore: true  }
+    { value: "pass",  label: "Pass",  short: "Pass",  tone: "tone-pass",  points: 2,    includeInScore: true  },
+    { value: "great", label: "Great", short: "Great", tone: "tone-great", points: 3,    includeInScore: true  },
+    { value: "fail",  label: "Fail",  short: "Fail",  tone: "tone-fail",  points: 1,    includeInScore: true  }
   ];
   const V2_RESULT_META = V2_RESULTS.reduce(function (o, r) { o[r.value] = r; return o; }, {});
+  const V2_MAX_POINTS_PER_ITEM = 3;
 
   function itemKey(sectionSlug, itemSlug) { return sectionSlug + "::" + itemSlug; }
 
@@ -410,12 +417,13 @@
   }
 
   function renderSectionHtml(section) {
+    // Phase V2.1 — no per-section averages or progress counters.
+    // The objective verdict per item is the unit of truth; section
+    // rollups add noise without adding coaching value.
     return (
       '<article class="insp-section" data-section-slug="' + escapeAttr(section.slug) + '">' +
         '<header class="insp-section-head">' +
           '<h3 class="insp-section-title">' + escapeText(section.label) + '</h3>' +
-          '<span class="insp-section-progress" data-role="section-progress">0 / ' +
-            section.items.length + '</span>' +
         '</header>' +
         '<div class="insp-section-items">' +
           section.items.map(function (it) { return renderItemHtml(section, it); }).join("") +
@@ -488,20 +496,7 @@
         }
       }
     }
-    updateSectionProgress(itemEl);
     renderOverallScore();
-  }
-
-  function updateSectionProgress(itemEl) {
-    const sec = itemEl.closest(".insp-section");
-    if (!sec) return;
-    const total = sec.querySelectorAll(".insp-item").length;
-    let scored = 0;
-    sec.querySelectorAll(".insp-item").forEach(function (el) {
-      if (el.dataset.result) scored++;
-    });
-    const out = sec.querySelector('[data-role="section-progress"]');
-    if (out) out.textContent = scored + " / " + total;
   }
 
   function wireAreas() {
@@ -529,18 +524,15 @@
     });
   }
 
-  /* ---------- Phase V2 — overall score ----------
+  /* ---------- Phase V2.1 — overall score ----------
      Score math:
-       pass=1, great=1.2, fail=0, n/a excluded from denominator.
-       earned_ratio   = earned / scored_count        (0 .. 1.2 raw)
-       overall_score  = min(5, earned_ratio * 5)     (clamped 0..5 for
-                                                      backwards-compat
-                                                      with v1 readers
-                                                      on /ceo, /tech,
-                                                      /team-hub)
-       pass_pct       = pass / scored_count
-       great_pct      = great / scored_count
-       fail_pct       = fail / scored_count
+       fail=1, pass=2, great=3, n/a excluded from both sides.
+       max-possible per scored item = 3 (Great).
+       earned_ratio   = earned / (scored_count * 3)   (0 .. 1.0)
+       overall_score  = earned_ratio * 5              (0 .. 5)
+     pass_pct / great_pct / fail_pct are over the scored denominator
+     (na excluded), unchanged in meaning from V2.
+
      If nothing is scored yet, overall_score reads "—" so the inspector
      doesn't see a misleading 0. */
 
@@ -548,17 +540,18 @@
     let pass = 0, great = 0, fail = 0, na = 0, earned = 0;
     Object.keys(state.inspection_items).forEach(function (k) {
       const r = state.inspection_items[k].result;
-      if (r === "pass")       { pass++;  earned += 1.0; }
-      else if (r === "great") { great++; earned += 1.2; }
-      else if (r === "fail")  { fail++; }
+      if (r === "pass")       { pass++;  earned += 2; }
+      else if (r === "great") { great++; earned += 3; }
+      else if (r === "fail")  { fail++;  earned += 1; }
       else if (r === "na")    { na++;  }
     });
     const scored = pass + great + fail;
+    const possible = scored * V2_MAX_POINTS_PER_ITEM;
     return {
       pass_count: pass, great_count: great, fail_count: fail, na_count: na,
-      scored_count: scored, earned_points: earned,
-      earned_ratio:  scored > 0 ? earned / scored : null,
-      overall_score: scored > 0 ? Math.min(5, (earned / scored) * 5) : null,
+      scored_count: scored, earned_points: earned, possible_points: possible,
+      earned_ratio:  possible > 0 ? earned / possible : null,
+      overall_score: possible > 0 ? (earned / possible) * 5 : null,
       pass_pct:      scored > 0 ? pass  / scored : 0,
       great_pct:     scored > 0 ? great / scored : 0,
       fail_pct:      scored > 0 ? fail  / scored : 0
@@ -579,12 +572,15 @@
       return;
     }
     valueEl.textContent = (Math.round(s.overall_score * 10) / 10).toFixed(1);
-    const subParts = [];
-    subParts.push(s.pass_count + " pass");
-    if (s.great_count > 0) subParts.push(s.great_count + " great");
-    if (s.fail_count > 0)  subParts.push(s.fail_count + " fail");
-    if (s.na_count > 0)    subParts.push(s.na_count + " n/a");
-    if (subEl) subEl.textContent = subParts.join(" · ");
+    // Phase V2.1 — show pass / great / fail only. N/A is excluded from
+    // scoring on purpose; not surfacing it keeps the readout tied to
+    // what actually counted.
+    if (subEl) {
+      subEl.textContent =
+        s.pass_count  + " pass · " +
+        s.great_count + " great · " +
+        s.fail_count  + " fail";
+    }
 
     // Choose tone by fail rate first, then by great share.
     let tone, emoji;
@@ -719,10 +715,11 @@
       pass_pct:                     Math.round(v2.pass_pct  * 10000) / 10000,
       great_pct:                    Math.round(v2.great_pct * 10000) / 10000,
       fail_pct:                     Math.round(v2.fail_pct  * 10000) / 10000,
-      // 0-5 scale clamped for back-compat with /ceo, /tech, /team-hub
-      // readers that already speak v1's overall_score. v2-aware readers
-      // should prefer earned_ratio for precision (greats can push above 1.0).
+      // 0-5 scale for back-compat with /ceo, /tech, /team-hub readers
+      // that already speak v1's overall_score. v2-aware readers can
+      // prefer earned_ratio for the raw 0..1 number.
       overall_score:                Math.round(v2.overall_score * 100) / 100,
+      possible_points:              v2.possible_points,
 
       // Free-text / attachments
       notes:                        String(state.notes || "").trim(),
@@ -733,7 +730,7 @@
       cleaning_tech_display_name:   null,
       location_slug:                state.customer_slug,
       company_slug:                 "pioneer",
-      schema_version:               "inspection.v2"
+      schema_version:               "inspection.v2.1"
     };
 
     // Cleaning-tech attribution — captured at intake when the
@@ -1331,17 +1328,18 @@
       const order = INSPECTION_TEMPLATE_V2.map(function (s) { return s.label; });
       const sectionsToShow = order.filter(function (s) { return grouped[s]; })
         .concat(Object.keys(grouped).filter(function (s) { return order.indexOf(s) < 0; }));
+      // Phase V2.1 — display Pass / Great / Fail only. N/A is excluded
+      // from scoring; surfacing it here would imply it counts. The
+      // per-item rows below still render N/A verdicts for context.
       const counts = {
         pass:  doc.pass_count  || 0,
         great: doc.great_count || 0,
-        fail:  doc.fail_count  || 0,
-        na:    doc.na_count    || 0
+        fail:  doc.fail_count  || 0
       };
       const summaryHtml = '<div class="insp-detail-summary">' +
         '<span class="insp-detail-summary-chip tone-pass">'  + counts.pass  + ' Pass</span>' +
         '<span class="insp-detail-summary-chip tone-great">' + counts.great + ' Great</span>' +
         '<span class="insp-detail-summary-chip tone-fail">'  + counts.fail  + ' Fail</span>' +
-        '<span class="insp-detail-summary-chip tone-na">'    + counts.na    + ' N/A</span>' +
       '</div>';
       areasHtml = summaryHtml + '<div class="insp-detail-areas">' +
         sectionsToShow.map(function (sec) {
