@@ -264,6 +264,18 @@
       safe('ceo_tasks_open', db.collection('ceo_tasks')
         .where('status', '==', 'open')
         .orderBy('createdAt', 'desc').limit(50).get()
+        .catch(function () { return { docs: [] }; })),
+      // 18. ceo_tasks — Phase 1D recent handled by THIS exec (history +
+      // today's progress count + suggestion same-day dedup).
+      safe('ceo_tasks_recent', db.collection('ceo_tasks')
+        .where('createdBy', '==', (currentUser && currentUser.email ? currentUser.email.toLowerCase() : ''))
+        .orderBy('completedAt', 'desc').limit(30).get()
+        .catch(function () { return { docs: [] }; })),
+      // 19. leadership_messages — Phase 1D recent by THIS exec (streak +
+      // history + today's queued/recognition counts).
+      safe('leadership_msgs_recent', db.collection('leadership_messages')
+        .where('createdBy', '==', (currentUser && currentUser.email ? currentUser.email.toLowerCase() : ''))
+        .orderBy('createdAt', 'desc').limit(60).get()
         .catch(function () { return { docs: [] }; }))
     ]);
 
@@ -302,7 +314,9 @@
       improvements:  docs(14),
       omReflections: docs(15),
       omBottlenecks: docs(16),
-      openTasks:     docs(17)
+      openTasks:     docs(17),
+      recentTasks:   docs(18),
+      recentMessages: docs(19)
     };
   }
 
@@ -425,6 +439,7 @@
     renderOpportunities(snap, health);
     renderScorecards(snap, health);
     renderLeadershipPulse(snap, health);
+    renderRecentActivity(snap);
   }
 
   // ---- Section 1: Company Health ----
@@ -629,9 +644,28 @@
     if (!root) return;
 
     const openTasks   = (snap.openTasks || []).slice(); // already status==='open'
+
+    // Phase 1D — also suppress suggestions whose triple was handled
+    // TODAY (status done/dismissed AND completedAt is today PT). Yesterday's
+    // done task can come back as a suggestion if the underlying signal
+    // still fires; today's handled action stays cleared.
+    const todayStart = todayStartMs(snap.todayPT);
+    const handledTodayKeys = new Set(
+      (snap.recentTasks || [])
+        .filter(function (t) {
+          const status = String(t.status || '');
+          if (status !== 'done' && status !== 'dismissed') return false;
+          return tsToMs(t.completedAt) >= todayStart;
+        })
+        .map(actionTaskKey)
+    );
+
     const taskKeys    = new Set(openTasks.map(actionTaskKey));
     const suggestions = generateSuggestions(snap, health)
-      .filter(function (s) { return !taskKeys.has(actionTaskKey(s)); });
+      .filter(function (s) {
+        const k = actionTaskKey(s);
+        return !taskKeys.has(k) && !handledTodayKeys.has(k);
+      });
 
     const cards = [];
     // Open tasks first — these are commitments April already made.
@@ -644,18 +678,26 @@
     });
 
     if (!cards.length) {
+      const handled = handledTodayKeys.size;
+      const headline = handled > 0
+        ? 'Inbox zero. Beautiful.'
+        : 'Today is unscripted.';
+      const sub = handled > 0
+        ? 'You\'ve handled ' + handled + ' action' + (handled === 1 ? '' : 's') +
+          ' today. Take the rest of the afternoon to think, not react.'
+        : 'Nothing demands your attention right now. Use the space to think, not react.';
       root.innerHTML =
         '<div class="ceo-actions-empty">' +
           '<div class="ceo-actions-empty-icon">·</div>' +
-          '<p class="ceo-actions-empty-title">Today is unscripted.</p>' +
-          '<p class="ceo-actions-empty-sub">' +
-            'Nothing demands your attention right now. Use the space to think, not react.' +
-          '</p>' +
+          '<p class="ceo-actions-empty-title">' + escapeHtml(headline) + '</p>' +
+          '<p class="ceo-actions-empty-sub">' + escapeHtml(sub) + '</p>' +
         '</div>';
+      renderTodaysProgress(snap);
       return;
     }
     root.innerHTML = cards.join('');
     wireActionButtons();
+    renderTodaysProgress(snap);
   }
 
   function renderSuggestionCardHtml(s) {
@@ -670,8 +712,14 @@
              '<p class="ceo-action-why">' + escapeHtml(s.why) + '</p>' +
              '<p class="ceo-action-next">' + escapeHtml(s.next) + '</p>' +
              '<div class="ceo-action-btns">' +
-               '<button type="button" class="ceo-action-btn" data-action="create">Create Task</button>' +
-               '<a class="ceo-action-btn ceo-action-btn-secondary" href="' + escapeHtml(s.openHref) +
+               // Phase 1D — three controls. Done writes a task with status
+               // pre-set so April can act in one click without creating an
+               // open task first. Create Task keeps the option to commit
+               // for later. Open jumps to the related admin surface.
+               '<button type="button" class="ceo-action-btn" data-action="done">Done</button>' +
+               '<button type="button" class="ceo-action-btn ceo-action-btn-secondary" data-action="dismiss">Dismiss</button>' +
+               '<button type="button" class="ceo-action-btn ceo-action-btn-ghost" data-action="create">+ Task</button>' +
+               '<a class="ceo-action-btn ceo-action-btn-ghost" href="' + escapeHtml(s.openHref) +
                  '" data-action="open">' + escapeHtml(s.openLabel || 'Open') + '</a>' +
              '</div>' +
              '<p class="ceo-action-status" data-status></p>' +
@@ -760,55 +808,66 @@
     const status = card.querySelector('[data-status]');
     setActionStatus(status, '');
 
-    if (action === 'create' && kind === 'suggestion') {
-      await handleCreateTask(card, btn, status);
-    } else if (action === 'done' && kind === 'task') {
-      await handleMutateTask(card, btn, status, 'done');
-    } else if (action === 'dismiss' && kind === 'task') {
-      await handleMutateTask(card, btn, status, 'dismissed');
+    if (kind === 'suggestion') {
+      if (action === 'create')  return handleCreateTask(card, btn, status, 'open');
+      if (action === 'done')    return handleCreateTask(card, btn, status, 'done');
+      if (action === 'dismiss') return handleCreateTask(card, btn, status, 'dismissed');
+    } else if (kind === 'task') {
+      if (action === 'done')    return handleMutateTask(card, btn, status, 'done');
+      if (action === 'dismiss') return handleMutateTask(card, btn, status, 'dismissed');
     }
   }
 
-  async function handleCreateTask(card, btn, status) {
+  async function handleCreateTask(card, btn, status, targetStatus) {
     const payloadEl = card.querySelector('[data-payload]');
     if (!payloadEl || !currentUser) return;
     let payload;
     try { payload = JSON.parse(payloadEl.textContent || '{}'); }
     catch (err) { setActionStatus(status, 'Could not read this suggestion.', 'error'); return; }
 
+    const finalStatus = (targetStatus === 'done' || targetStatus === 'dismissed') ? targetStatus : 'open';
     btn.disabled = true;
-    setActionStatus(status, 'Saving…');
+    setActionStatus(status,
+      finalStatus === 'done'      ? 'Marking done…' :
+      finalStatus === 'dismissed' ? 'Dismissing…'   : 'Saving…');
 
     try {
-      // Dedup: existing OPEN task with same triple?
-      const existing = await db.collection('ceo_tasks')
-        .where('status', '==', 'open')
-        .where('sourceType', '==', payload.sourceType)
-        .where('sourceId',   '==', payload.sourceId)
-        .where('category',   '==', payload.category)
-        .limit(1).get();
-      if (!existing.empty) {
-        setActionStatus(status, 'Task already open.', 'error');
-        btn.disabled = false;
-        await refreshActionLayer();
-        return;
+      // Dedup: existing OPEN task with same triple? Only meaningful when
+      // we'd be opening a new task. For one-shot Done/Dismiss, allow a
+      // new doc — the audit trail benefits from per-event records.
+      if (finalStatus === 'open') {
+        const existing = await db.collection('ceo_tasks')
+          .where('status', '==', 'open')
+          .where('sourceType', '==', payload.sourceType)
+          .where('sourceId',   '==', payload.sourceId)
+          .where('category',   '==', payload.category)
+          .limit(1).get();
+        if (!existing.empty) {
+          setActionStatus(status, 'Task already open.', 'error');
+          btn.disabled = false;
+          await refreshActionLayer();
+          return;
+        }
       }
 
       const email = (currentUser.email || '').toLowerCase();
+      const sts   = firebase.firestore.FieldValue.serverTimestamp();
       await db.collection('ceo_tasks').add({
         title:       payload.title,
         description: payload.description || '',
         category:    payload.category,
         sourceType:  payload.sourceType,
         sourceId:    payload.sourceId,
-        status:      'open',
+        status:      finalStatus,
         assignedTo:  email,
         createdBy:   email,
-        createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt:   sts,
         dueDate:     null,
-        completedAt: null
+        completedAt: (finalStatus === 'open') ? null : sts
       });
-      setActionStatus(status, 'Added to your desk.');
+      setActionStatus(status,
+        finalStatus === 'done'      ? 'Done. Nice.' :
+        finalStatus === 'dismissed' ? 'Dismissed.'  : 'Added to your desk.');
       await refreshActionLayer();
     } catch (err) {
       console.error('[ceo] create task failed', err);
@@ -846,18 +905,34 @@
     else el.removeAttribute('data-tone');
   }
 
-  // Re-read only ceo_tasks and re-render the action layer using the
-  // cached snap. Avoids a full 17-collection re-fetch after every click.
+  // Re-read only ceo_tasks (open + recent) + recent messages, then
+  // re-render the action layer and progress strip using the cached snap.
+  // Avoids a full 17-collection re-fetch after every click.
   async function refreshActionLayer() {
-    if (!cachedSnap || !cachedHealth) return;
+    if (!cachedSnap || !cachedHealth || !currentUser) return;
+    const email = (currentUser.email || '').toLowerCase();
     try {
-      const snap = await db.collection('ceo_tasks')
-        .where('status', '==', 'open')
-        .orderBy('createdAt', 'desc').limit(50).get();
-      cachedSnap.openTasks = snap.docs.map(function (d) {
-        return Object.assign({ _id: d.id }, d.data() || {});
-      });
+      const [openSnap, recentSnap, msgSnap] = await Promise.all([
+        db.collection('ceo_tasks')
+          .where('status', '==', 'open')
+          .orderBy('createdAt', 'desc').limit(50).get(),
+        db.collection('ceo_tasks')
+          .where('createdBy', '==', email)
+          .orderBy('completedAt', 'desc').limit(30).get()
+          .catch(function () { return { docs: [] }; }),
+        db.collection('leadership_messages')
+          .where('createdBy', '==', email)
+          .orderBy('createdAt', 'desc').limit(60).get()
+          .catch(function () { return { docs: [] }; })
+      ]);
+      const mapDocs = function (s) {
+        return s.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+      };
+      cachedSnap.openTasks      = mapDocs(openSnap);
+      cachedSnap.recentTasks    = mapDocs(recentSnap);
+      cachedSnap.recentMessages = mapDocs(msgSnap);
       renderActions(cachedSnap, cachedHealth);
+      renderRecentActivity(cachedSnap);
     } catch (err) {
       console.error('[ceo] action refresh failed', err);
     }
@@ -1289,6 +1364,194 @@
   function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
   /* ============================================================
+   * Phase 1D — Today's Progress + Leadership Streak + Activity Feed
+   * ============================================================ */
+
+  function pacificDateOf(ms) {
+    if (!ms) return null;
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date(ms));
+  }
+
+  // Pacific YYYY-MM-DD offset by N days. Walks via date math in UTC,
+  // then formats back to PT. Works across DST because we let Intl
+  // re-resolve the offset each step.
+  function pacificDateShift(startPT, deltaDays) {
+    const ms = Date.parse(startPT + 'T12:00:00Z'); // noon UTC anchor avoids DST cliff
+    return pacificDateOf(ms + deltaDays * 86400000);
+  }
+
+  // Compute progress + streak from recent activity. Activity for a day
+  // counts if April either (a) completed an action (ceo_tasks status in
+  // [done, dismissed], completedAt that day) OR (b) sent any leadership
+  // message (createdAt that day). Streak is the longest run of
+  // consecutive PT days ending today (or yesterday — see below).
+  function computeProgress(snap) {
+    const recentTasks    = snap.recentTasks    || [];
+    const recentMessages = snap.recentMessages || [];
+    const todayPT        = snap.todayPT;
+    const todayStart     = todayStartMs(todayPT);
+
+    // Today counts
+    const handledToday = recentTasks.filter(function (t) {
+      const st = String(t.status || '');
+      if (st !== 'done' && st !== 'dismissed') return false;
+      return tsToMs(t.completedAt) >= todayStart;
+    }).length;
+    const messagesToday = recentMessages.filter(function (m) {
+      return tsToMs(m.createdAt) >= todayStart;
+    }).length;
+    const recognitionsToday = recentMessages.filter(function (m) {
+      return tsToMs(m.createdAt) >= todayStart && m.messageType === 'recognition';
+    }).length;
+
+    // Build the set of PT dates with at least one activity event.
+    const activeDates = new Set();
+    recentTasks.forEach(function (t) {
+      const st = String(t.status || '');
+      if (st !== 'done' && st !== 'dismissed') return;
+      const d = pacificDateOf(tsToMs(t.completedAt));
+      if (d) activeDates.add(d);
+    });
+    recentMessages.forEach(function (m) {
+      const d = pacificDateOf(tsToMs(m.createdAt));
+      if (d) activeDates.add(d);
+    });
+
+    // Streak: walk back from today (or yesterday if today has no activity
+    // yet but yesterday did — preserves a streak before April acts today).
+    let streak = 0;
+    let cursor = activeDates.has(todayPT) ? todayPT : pacificDateShift(todayPT, -1);
+    while (activeDates.has(cursor) && streak < 365) {
+      streak++;
+      cursor = pacificDateShift(cursor, -1);
+    }
+    // If today has no activity AND yesterday has none, streak is 0
+    // (not "carry yesterday's streak forward"). If today has activity,
+    // streak includes today.
+
+    return {
+      handledToday:      handledToday,
+      messagesToday:     messagesToday,
+      recognitionsToday: recognitionsToday,
+      remaining:         0, // filled by renderTodaysProgress (knows current card count)
+      streak:            streak,
+      streakIncludesToday: activeDates.has(todayPT)
+    };
+  }
+
+  function renderTodaysProgress(snap) {
+    const aside = $('ceo-actions-aside');
+    if (!aside) return;
+    const p = computeProgress(snap);
+    const visibleCards = document.querySelectorAll('#ceo-actions .ceo-action-card').length;
+    const totalToday = p.handledToday + visibleCards;
+    const handledPart = totalToday > 0
+      ? p.handledToday + ' of ' + totalToday + ' handled'
+      : 'No actions yet today';
+    const safeParts = [escapeHtml(handledPart)];
+    if (p.messagesToday > 0) {
+      safeParts.push(escapeHtml(
+        p.messagesToday + ' message' + (p.messagesToday === 1 ? '' : 's') + ' queued'
+      ));
+    }
+    if (p.recognitionsToday > 0) {
+      safeParts.push(escapeHtml(
+        p.recognitionsToday + ' recognition' + (p.recognitionsToday === 1 ? '' : 's') + ' sent'
+      ));
+    }
+    let html = safeParts.join(' &middot; ');
+    if (p.streak >= 2) {
+      // Champagne-gold chip — celebratory but quiet. 2-day minimum so
+      // a single active day doesn't yell.
+      html += '<span class="ceo-streak-chip" title="Consecutive days with at least one action or message">' +
+              '<span class="ceo-streak-flame">✦</span>' +
+              p.streak + '-day streak</span>';
+    }
+    aside.innerHTML = html;
+  }
+
+  /* ---- Recent Activity feed ---- */
+
+  function renderRecentActivity(snap) {
+    const root = $('ceo-recent-activity');
+    if (!root) return;
+    const events = [];
+    (snap.recentTasks || []).forEach(function (t) {
+      const st = String(t.status || '');
+      if (st !== 'done' && st !== 'dismissed') return;
+      const at = tsToMs(t.completedAt);
+      if (!at) return;
+      events.push({
+        at:       at,
+        verb:     st === 'done' ? 'Marked done' : 'Dismissed',
+        title:    t.title || 'Untitled action',
+        category: t.category || 'leadership',
+        tone:     st === 'done' ? 'good' : 'neutral'
+      });
+    });
+    (snap.recentMessages || []).forEach(function (m) {
+      const at = tsToMs(m.createdAt);
+      if (!at) return;
+      const verb = m.messageType === 'recognition' ? 'Recognized'
+                 : m.recipientType === 'team'      ? 'Messaged the team'
+                 : m.recipientType === 'office_manager' ? 'Messaged office manager'
+                 : 'Messaged';
+      const subject = (m.messageType === 'recognition' || m.recipientType === 'employee')
+                      ? (m.recipientName || m.recipientId || 'a teammate')
+                      : '';
+      events.push({
+        at:       at,
+        verb:     verb,
+        title:    subject ? subject : (m.recipientName || ''),
+        category: 'leadership',
+        tone:     m.messageType === 'recognition' ? 'celebrate' : 'neutral'
+      });
+    });
+    events.sort(function (a, b) { return b.at - a.at; });
+    const top = events.slice(0, 10);
+
+    if (!top.length) {
+      root.innerHTML =
+        '<p class="ceo-empty-context" style="padding:18px 12px;text-align:center;">' +
+        'Your recent leadership actions and messages will appear here.' +
+        '</p>';
+      return;
+    }
+
+    root.innerHTML = '<ul class="ceo-activity-list">' +
+      top.map(function (ev) {
+        return '<li class="ceo-activity-item" data-tone="' + escapeHtml(ev.tone) + '">' +
+                 '<span class="ceo-activity-dot"></span>' +
+                 '<div class="ceo-activity-body">' +
+                   '<p class="ceo-activity-line">' +
+                     '<span class="ceo-activity-verb">' + escapeHtml(ev.verb) + '</span>' +
+                     (ev.title ? ' &middot; <span class="ceo-activity-subject">' + escapeHtml(ev.title) + '</span>' : '') +
+                   '</p>' +
+                   '<p class="ceo-activity-when">' + escapeHtml(fmtRelative(ev.at)) + '</p>' +
+                 '</div>' +
+               '</li>';
+      }).join('') +
+    '</ul>';
+  }
+
+  function fmtRelative(ms) {
+    if (!ms) return '';
+    const diff = Date.now() - ms;
+    if (diff < 60_000)    return 'just now';
+    if (diff < 3600_000)  return Math.round(diff / 60_000)   + ' min ago';
+    if (diff < 86400_000) return Math.round(diff / 3600_000) + ' hr ago';
+    const days = Math.round(diff / 86400_000);
+    if (days === 1) return 'yesterday';
+    if (days < 7)   return days + ' days ago';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric'
+    }).format(new Date(ms));
+  }
+
+  /* ============================================================
    * Phase 1C — Quick Leadership Actions (compose + queue)
    * ============================================================ */
 
@@ -1496,6 +1759,9 @@
         deliveredAt:   null
       });
       setActionStatus(status, 'Message queued. ' + fmtDeliveryHint(deliverAt, now, recipientType));
+      // Refresh action layer so Today's Progress + Streak reflect the
+      // just-queued message in real time without a full page reload.
+      refreshActionLayer().catch(function () {});
       setTimeout(closeCompose, 1400);
     } catch (err) {
       console.error('[ceo] compose send failed', err);

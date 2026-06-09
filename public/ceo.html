@@ -423,6 +423,68 @@
       margin: 0;
     }
 
+    /* Phase 1D — Today's Progress chip (rendered inside .ceo-actions-aside) */
+    .ceo-streak-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 12px;
+      padding: 4px 10px 4px 8px;
+      border-radius: 999px;
+      background: var(--ceo-champagne-soft);
+      color: var(--ceo-charcoal);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+    .ceo-streak-flame {
+      color: var(--ceo-champagne);
+      font-family: var(--ceo-font-serif);
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    /* Phase 1D — Recent Activity feed */
+    .ceo-activity-list { margin: 0; padding: 0; list-style: none; }
+    .ceo-activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px 0;
+      border-top: 1px solid var(--ceo-edge);
+    }
+    .ceo-activity-item:first-child { border-top: none; padding-top: 0; }
+    .ceo-activity-item:last-child  { padding-bottom: 0; }
+    .ceo-activity-dot {
+      flex: none;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ceo-charcoal-faint);
+      margin-top: 7px;
+    }
+    .ceo-activity-item[data-tone="good"]      .ceo-activity-dot { background: var(--ceo-good); }
+    .ceo-activity-item[data-tone="celebrate"] .ceo-activity-dot { background: var(--ceo-champagne); }
+    .ceo-activity-body { flex: 1; }
+    .ceo-activity-line {
+      font-size: 14px;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      line-height: 1.4;
+    }
+    .ceo-activity-verb {
+      font-weight: 600;
+    }
+    .ceo-activity-subject {
+      color: var(--ceo-charcoal-soft);
+    }
+    .ceo-activity-when {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 4px 0 0;
+    }
+
     /* ---- Quick Leadership Actions (Phase 1C) ---- */
     .ceo-quick-actions {
       display: flex;
@@ -985,6 +1047,20 @@
         </div>
       </section>
 
+      <!-- 4B. RECENT ACTIVITY (Phase 1D) -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Recent Activity</div>
+            <h2 class="ceo-section-title">What you've done lately</h2>
+          </div>
+          <div class="ceo-section-aside">Last 10 events</div>
+        </div>
+        <div class="ceo-card ceo-card-deep" id="ceo-recent-activity">
+          <p class="ceo-loading">Pulling history…</p>
+        </div>
+      </section>
+
       <!-- 5. LEADERSHIP PULSE -->
       <section class="ceo-pulse-card" id="ceo-pulse">
         <p class="ceo-pulse-eyebrow">Leadership Pulse</p>
@@ -1045,6 +1121,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="ceo.js?v=20260608-phase1c-delivery"></script>
+  <script src="ceo.js?v=20260609-phase1d-completion"></script>
 </body>
 </html>

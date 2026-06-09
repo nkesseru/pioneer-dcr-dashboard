@@ -1418,13 +1418,17 @@ service cloud.firestore {
     match /ceo_tasks/{taskId} {
       allow read:   if isPioneerExecutive();
 
+      // Phase 1D — allow create with a terminal status (done | dismissed)
+      // so April can act on a SUGGESTION in one click without first
+      // creating an open task and immediately updating it. The audit
+      // trail still captures createdAt + status + completedAt.
       allow create: if isPioneerExecutive()
                     && request.resource.data.title is string
                     && request.resource.data.title.size() >= 1
                     && request.resource.data.title.size() <= 200
                     && request.resource.data.category in
                        ['customer', 'staffing', 'hiring', 'leadership', 'finance']
-                    && request.resource.data.status == 'open'
+                    && request.resource.data.status in ['open', 'done', 'dismissed']
                     && request.resource.data.createdBy == request.auth.token.email.lower();
 
       // Status-only updates. completedAt + updated_at may also move with
