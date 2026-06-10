@@ -1789,12 +1789,21 @@
     const countsEl = $("manager-comm-counts");
     if (!groupsEl) return;
     try {
+      // Phase 3B.1 — load every active status (open + waiting_on_*).
+      // Resolved + closed threads are excluded from the working queue.
+      // No orderBy here because `status in [...]` plus orderBy needs a
+      // separate composite index per status value; client-side sort is
+      // fine while the active thread count stays in the dozens.
+      const activeStatuses = (window.CommThreads && window.CommThreads.ACTIVE_STATUSES)
+        ? window.CommThreads.ACTIVE_STATUSES.slice()
+        : ["open", "waiting_on_employee", "waiting_on_management"];
       const snap = await firebase.firestore().collection("communication_threads")
-        .where("status", "==", "open")
-        .orderBy("updated_at", "desc")
+        .where("status", "in", activeStatuses)
         .limit(80).get();
       const threads = snap.docs.map(function (d) {
         return Object.assign({ _id: d.id }, d.data() || {});
+      }).sort(function (a, b) {
+        return commTsToMs(b.updated_at) - commTsToMs(a.updated_at);
       });
       openThreadCache = threads;
       renderThreadGroups(threads);
@@ -1848,6 +1857,18 @@
     });
   }
 
+  // Phase 3B.1 — status badge helper. Returns HTML for an inline chip.
+  // Defaults to a neutral "Open" badge for legacy threads + falls
+  // through gracefully on unknown status values.
+  function renderCommStatusBadge(status) {
+    const value = String(status || "open").toLowerCase();
+    const labels = (window.CommThreads && window.CommThreads.STATUS_LABEL) || {};
+    const label = labels[value] || value;
+    return '<span class="mc-comm-status-chip is-' + commEscape(value) + '">' +
+             commEscape(label) +
+           '</span>';
+  }
+
   function renderThreadRowHtml(t) {
     const participantNames = (t.participants || [])
       .map(function (p) { return p.name || p.id; })
@@ -1862,6 +1883,7 @@
         '<div class="mc-comm-thread-main">' +
           '<div class="mc-comm-thread-head">' +
             '<span class="mc-comm-thread-subject">' + commEscape(t.subject || "(no subject)") + '</span>' +
+            renderCommStatusBadge(t.status) +
             '<span class="mc-comm-thread-time">' + commEscape(when) + '</span>' +
           '</div>' +
           '<div class="mc-comm-thread-participants">' + commEscape(participantNames || "—") + '</div>' +
@@ -1879,6 +1901,10 @@
     $("manager-thread-close-btn").addEventListener("click", closeThreadModal);
     $("manager-thread-send").addEventListener("click", handleThreadReplySend);
     $("manager-thread-action-close").addEventListener("click", handleThreadClose);
+    // Phase 3B.1 — Resolve is the happy-path terminal. Different audit
+    // status than Close so reports can tell the two apart.
+    const resolveBtn = $("manager-thread-action-resolve");
+    if (resolveBtn) resolveBtn.addEventListener("click", handleThreadResolve);
     overlay.addEventListener("click", function (ev) {
       if (ev.target === overlay) closeThreadModal();
     });
@@ -1902,9 +1928,22 @@
         histEl.innerHTML = '<p class="mc-empty">Thread not found.</p>';
         return;
       }
-      $("manager-thread-eyebrow").textContent =
-        (COMM_CATEGORY_LABEL[thread.category] || "Conversation") +
-        " · " + (thread.status || "open");
+      // Phase 3B.1 — category text + status badge. innerHTML so the
+      // chip styling shows up; the values are escaped inside
+      // renderCommStatusBadge.
+      const eyebrowEl = $("manager-thread-eyebrow");
+      eyebrowEl.innerHTML = commEscape(COMM_CATEGORY_LABEL[thread.category] || "Conversation") +
+                            ' ' + renderCommStatusBadge(thread.status);
+      // Disable Resolve / Close if thread is already terminal.
+      const isTerminal = thread.status === "resolved" || thread.status === "closed";
+      const resolveBtn = $("manager-thread-action-resolve");
+      const closeBtn   = $("manager-thread-action-close");
+      const sendBtn    = $("manager-thread-send");
+      if (resolveBtn) resolveBtn.disabled = isTerminal;
+      if (closeBtn)   closeBtn.disabled   = isTerminal;
+      // Reply also disabled if terminal — a closed thread shouldn't
+      // accept new messages.
+      if (sendBtn) sendBtn.disabled = isTerminal;
       $("manager-thread-title").textContent = thread.subject || "Conversation";
       $("manager-thread-meta").textContent =
         (thread.participants || []).map(function (p) { return p.name || p.id; }).join(" · ");
@@ -2018,6 +2057,25 @@
     } catch (err) {
       console.error("[manager] close thread failed", err);
       setThreadStatus("Close failed: " + (err.message || "unknown"), "error");
+    }
+  }
+
+  // Phase 3B.1 — Resolve is the "amicable end" terminal. Same shape as
+  // close + uses the audit fields closed_at / closed_by so reports can
+  // differentiate resolved vs. closed without a separate schema.
+  async function handleThreadResolve() {
+    if (!openThreadId) return;
+    const ok = window.confirm("Mark this thread Resolved? It stays in the audit trail but won't accept new messages.");
+    if (!ok) return;
+    setThreadStatus("Resolving…");
+    try {
+      await window.CommThreads.resolveThread(openThreadId, { resolved_by: (currentUser.email || "").toLowerCase() });
+      setThreadStatus("Resolved.", "ok");
+      setTimeout(closeThreadModal, 600);
+      await loadAndRenderThreads();
+    } catch (err) {
+      console.error("[manager] resolve thread failed", err);
+      setThreadStatus("Resolve failed: " + (err.message || "unknown"), "error");
     }
   }
 

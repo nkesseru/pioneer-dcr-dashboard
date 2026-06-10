@@ -112,11 +112,30 @@
   });
   const CATEGORY_SET = new Set(Object.values(CATEGORIES));
 
+  // Phase 3B.1 — five-state machine. The two terminal states (resolved,
+  // closed) and three active states (open + the two waiting_on_*). 'open'
+  // is kept for backward compat with threads created before the state
+  // machine landed; new threads should not be created in 'open'.
   const STATUS = Object.freeze({
-    OPEN:   'open',
-    CLOSED: 'closed'
+    OPEN:                  'open',
+    WAITING_ON_EMPLOYEE:   'waiting_on_employee',
+    WAITING_ON_MANAGEMENT: 'waiting_on_management',
+    RESOLVED:              'resolved',
+    CLOSED:                'closed'
   });
   const STATUS_SET = new Set(Object.values(STATUS));
+  // Active = not terminal. Used by inbox queries on /manager + /ceo.
+  const ACTIVE_STATUSES = Object.freeze([
+    STATUS.OPEN, STATUS.WAITING_ON_EMPLOYEE, STATUS.WAITING_ON_MANAGEMENT
+  ]);
+  // Pretty labels for badge rendering.
+  const STATUS_LABEL = Object.freeze({
+    open:                  'Open',
+    waiting_on_employee:   'Waiting on employee',
+    waiting_on_management: 'Waiting on management',
+    resolved:              'Resolved',
+    closed:                'Closed'
+  });
 
   const CHANNELS = Object.freeze({
     IN_APP: 'in_app',
@@ -206,7 +225,10 @@
     if (!Array.isArray(opts.participants) || !opts.participants.length) {
       throw new Error('comm-threads: at least one participant is required');
     }
-    const status = opts.status || STATUS.OPEN;
+    // Phase 3B.1 — default initial status is waiting_on_employee
+    // (management is the first sender; the recipient is now on the
+    // hook to respond). Callers can override via opts.status.
+    const status = opts.status || STATUS.WAITING_ON_EMPLOYEE;
     ensureEnum('status', status, STATUS_SET);
     const createdBy = lc(opts.created_by || callerEmail());
     if (!createdBy) throw new Error('comm-threads: created_by is required');
@@ -260,10 +282,13 @@
     if (!opts.source_type || !opts.source_id) {
       return createThread(opts, db);
     }
+    // Phase 3B.1 — match any non-terminal status (open + waiting_on_*).
+    // Resolved + closed threads are NOT reused; a fresh trigger on the
+    // same source starts a new thread.
     const existing = await db.collection('communication_threads')
       .where('source_type', '==', opts.source_type)
       .where('source_id',   '==', opts.source_id)
-      .where('status',      '==', STATUS.OPEN)
+      .where('status',      'in', ACTIVE_STATUSES.slice())
       .limit(1).get();
     if (!existing.empty) {
       // Match category too — different feature reusing the same source id
@@ -320,10 +345,28 @@
     });
   }
 
+  // Phase 3B.1 — Resolve is the "happy-path" terminal. Same audit
+  // fields as close, different status so reports can tell the two
+  // apart ("how many threads ended amicably?" vs. "how many got
+  // killed off?").
+  async function resolveThread(threadId, opts, maybeDb) {
+    const db = getDb(maybeDb);
+    opts = opts || {};
+    const resolvedBy = lc(opts.resolved_by || callerEmail());
+    await db.collection('communication_threads').doc(threadId).update({
+      status:     STATUS.RESOLVED,
+      closed_at:  nowSentinel(),
+      closed_by:  resolvedBy,
+      updated_at: nowSentinel()
+    });
+  }
+
   async function reopenThread(threadId, maybeDb) {
     const db = getDb(maybeDb);
+    // Reopen lands on waiting_on_management — the natural "someone
+    // needs to follow up" state after revival.
     await db.collection('communication_threads').doc(threadId).update({
-      status:     STATUS.OPEN,
+      status:     STATUS.WAITING_ON_MANAGEMENT,
       closed_at:  null,
       closed_by:  null,
       updated_at: nowSentinel()
@@ -414,15 +457,32 @@
       sms_error:      null
     };
 
-    const batch = db.batch();
-    batch.set(msgRef, messageDoc);
-    batch.update(threadRef, {
+    // Phase 3B.1 — auto-bump thread status based on direction:
+    //   outbound (management→employee) → waiting_on_employee
+    //   inbound  (employee→management) → waiting_on_management
+    // If the thread is already in a terminal state (resolved/closed),
+    // we DON'T flip it — that would resurrect a closed conversation.
+    // The caller is responsible for reopening if that's their intent.
+    const currentStatus = (threadData && threadData.status) || STATUS.OPEN;
+    const isTerminal = (currentStatus === STATUS.RESOLVED || currentStatus === STATUS.CLOSED);
+    const nextStatus = isTerminal
+      ? currentStatus
+      : (opts.direction === DIRECTIONS.OUTBOUND
+          ? STATUS.WAITING_ON_EMPLOYEE
+          : STATUS.WAITING_ON_MANAGEMENT);
+
+    const threadPatch = {
+      status:                 nextStatus,
       updated_at:             sts,
       last_message_at:        sts,
       last_message_preview:   trimPreview(opts.body),
       last_message_direction: opts.direction,
       message_count: firebase.firestore.FieldValue.increment(1)
-    });
+    };
+
+    const batch = db.batch();
+    batch.set(msgRef, messageDoc);
+    batch.update(threadRef, threadPatch);
     await batch.commit();
     return msgRef.id;
   }
@@ -482,6 +542,8 @@
   window.CommThreads = Object.freeze({
     CATEGORIES:               CATEGORIES,
     STATUS:                   STATUS,
+    STATUS_LABEL:             STATUS_LABEL,
+    ACTIVE_STATUSES:          ACTIVE_STATUSES,
     CHANNELS:                 CHANNELS,
     DIRECTIONS:               DIRECTIONS,
     MESSAGE_STATUS:           MESSAGE_STATUS,
@@ -493,6 +555,7 @@
     findThreadById:           findThreadById,
     findThreadsByParticipant: findThreadsByParticipant,
     closeThread:              closeThread,
+    resolveThread:            resolveThread,
     reopenThread:             reopenThread,
 
     addMessage:               addMessage,

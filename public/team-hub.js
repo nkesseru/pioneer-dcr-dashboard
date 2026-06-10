@@ -1514,9 +1514,17 @@
         return window.CommThreads.findThreadById(m.thread_id).catch(function () { return null; });
       }));
 
+      // Phase 3B.1 — only show threads where management is waiting on
+      // the employee (or legacy 'open' status). After the tech replies,
+      // addMessage flips the thread to waiting_on_management and the
+      // card disappears from this inbox on the next reload. Resolved /
+      // closed threads also drop off automatically.
+      const VISIBLE_TO_TECH = ["waiting_on_employee", "open"];
       const cards = latestByThread.map(function (msg, i) {
         const thread = threadDocs[i];
         if (!thread) return "";
+        const status = String(thread.status || "open");
+        if (VISIBLE_TO_TECH.indexOf(status) < 0) return "";
         return renderCommCardHtml(thread, msg);
       }).filter(Boolean);
 
@@ -1534,12 +1542,20 @@
     const cat = thread.category || "general";
     const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
     const senderName = msg.sender_name || msg.sender_id || "Pioneer";
+    // Phase 3B.1 — status badge. For techs viewing the card, the
+    // status is always one of waiting_on_employee / open (we filtered
+    // upstream), so this is informational rather than action-driving.
+    const statusValue = String(thread.status || "open");
+    const statusLabel = (window.CommThreads && window.CommThreads.STATUS_LABEL &&
+                        window.CommThreads.STATUS_LABEL[statusValue]) || statusValue;
     return (
       '<article class="team-hub-comm-card" data-thread-id="' + commEscape(thread._id) +
         '" data-msg-id="' + commEscape(msg._id) +
         '" data-category="' + commEscape(cat) + '">' +
         '<header class="team-hub-comm-card-head">' +
           '<span class="team-hub-comm-card-subject">' + commEscape(thread.subject || "(no subject)") + '</span>' +
+          '<span class="th-comm-status-chip is-' + commEscape(statusValue) + '">' +
+            commEscape(statusLabel) + '</span>' +
           '<span class="team-hub-comm-card-meta">' + commEscape(catLabel) + '</span>' +
         '</header>' +
         '<p class="team-hub-comm-card-from">From ' + commEscape(senderName) + ' · ' +

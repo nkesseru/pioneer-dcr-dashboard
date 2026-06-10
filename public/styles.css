@@ -2315,6 +2315,31 @@ select {
 }
 .team-hub-comm-card-history-item:first-child { border-top: none; }
 
+/* Phase 3B.1 — Thread status chip on team-hub comm cards. Five tones
+   matching the manager surface so a tech who happens to also see
+   /manager learns one visual vocabulary. */
+.th-comm-status-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  white-space: nowrap;
+}
+.th-comm-status-chip.is-open                  { background: #e2e8f0; color: #475569; }
+.th-comm-status-chip.is-waiting_on_employee   { background: #dbeafe; color: #1e3a8a; }
+.th-comm-status-chip.is-waiting_on_management { background: #fef3c7; color: #92400e; }
+.th-comm-status-chip.is-resolved              { background: #dcfce7; color: #166534; }
+.th-comm-status-chip.is-closed                { background: #cbd5e1; color: #1e293b; }
+.team-hub-comm-card-head {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ============================================================
    Phase Employee Trust Layer — My Hours
    Reassuring summary at the top, an expandable per-shift list

@@ -1642,12 +1642,20 @@
     const root = $('ceo-open-convos');
     if (!root) return;
     try {
+      // Phase 3B.1 — match every active status (open + waiting_on_*).
+      // No orderBy because `status in [...]` + orderBy needs separate
+      // composite indexes per value; client-side sort is fine while
+      // the active thread count stays in the dozens.
+      const activeStatuses = (window.CommThreads && window.CommThreads.ACTIVE_STATUSES)
+        ? window.CommThreads.ACTIVE_STATUSES.slice()
+        : ['open', 'waiting_on_employee', 'waiting_on_management'];
       const snap = await db.collection('communication_threads')
-        .where('status', '==', 'open')
-        .orderBy('updated_at', 'desc')
-        .limit(10).get();
+        .where('status', 'in', activeStatuses)
+        .limit(20).get();
       const threads = snap.docs.map(function (d) {
         return Object.assign({ _id: d.id }, d.data() || {});
+      }).sort(function (a, b) {
+        return tsToMs(b.updated_at) - tsToMs(a.updated_at);
       });
       if (!threads.length) {
         root.innerHTML =
@@ -1681,10 +1689,18 @@
     const participants = (t.participants || [])
       .map(function (p) { return p.name || p.id; })
       .filter(Boolean).join(' · ');
+    // Phase 3B.1 — status badge inline. Same five-state vocabulary as
+    // /manager + /team-hub.
+    const statusValue = String(t.status || 'open');
+    const statusLabel = (window.CommThreads && window.CommThreads.STATUS_LABEL &&
+                         window.CommThreads.STATUS_LABEL[statusValue]) || statusValue;
     return '<li class="ceo-list-item ceo-tone-pulse">' +
              '<div class="ceo-list-item-icon">·</div>' +
              '<div class="ceo-list-item-body">' +
-               '<p class="ceo-list-item-title">' + escapeHtml(t.subject || '(no subject)') + '</p>' +
+               '<p class="ceo-list-item-title">' + escapeHtml(t.subject || '(no subject)') +
+                 ' <span class="ceo-comm-status-chip is-' + escapeHtml(statusValue) + '">' +
+                   escapeHtml(statusLabel) + '</span>' +
+               '</p>' +
                '<p class="ceo-list-item-context">' +
                  escapeHtml(categoryLabel + ' · ' + (participants || '—') + ' · ' + when) +
                '</p>' +

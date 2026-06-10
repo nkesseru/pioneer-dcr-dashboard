@@ -1000,6 +1000,32 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
     }
+    /* Phase 3B.1 — thread status badge. Used in the thread-row head
+       and in the detail modal eyebrow. Five tones: neutral (open),
+       blue (waiting on employee), amber (waiting on management),
+       green (resolved), dark gray (closed). */
+    .mc-comm-status-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #475569;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .mc-comm-status-chip.is-open                   { background: #e2e8f0; color: #475569; }
+    .mc-comm-status-chip.is-waiting_on_employee    { background: #dbeafe; color: #1e3a8a; }
+    .mc-comm-status-chip.is-waiting_on_management  { background: #fef3c7; color: #92400e; }
+    .mc-comm-status-chip.is-resolved               { background: #dcfce7; color: #166534; }
+    .mc-comm-status-chip.is-closed                 { background: #cbd5e1; color: #1e293b; }
+    .mc-comm-thread-head {
+      align-items: center;
+      gap: 8px;
+    }
 
     /* ============== Generic modal (Phase 3B) ============== */
     .mc-modal-overlay[hidden] { display: none !important; }
@@ -1570,6 +1596,7 @@
         <p class="mc-modal-status" id="manager-thread-reply-status"></p>
         <div class="mc-modal-btns">
           <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
+          <button type="button" class="mc-btn-ghost" id="manager-thread-action-resolve">Mark Resolved</button>
           <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
         </div>
       </div>
@@ -1627,7 +1654,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="comm-threads.js?v=20260609-phase3b"></script>
-  <script src="manager.js?v=20260610-timeclock-addon"></script>
+  <script src="comm-threads.js?v=20260610-phase3b1"></script>
+  <script src="manager.js?v=20260610-phase3b1"></script>
 </body>
 </html>

@@ -1531,10 +1531,20 @@ service cloud.firestore {
 
       allow read:   if isPioneerAdmin() || isThreadParticipant();
 
+      // Phase 3B.1 — status enum expanded to a five-state machine:
+      //   open                   — legacy / unspecified active
+      //   waiting_on_employee    — manager spoke last
+      //   waiting_on_management  — employee spoke last
+      //   resolved               — terminal; amicably ended
+      //   closed                 — terminal; canceled / no longer relevant
+      // A freshly-created thread typically starts at waiting_on_employee
+      // (because management is the first sender), but creates with
+      // any of the active states are permitted.
       allow create: if isPioneerAdmin()
                     && request.resource.data.category in
                        ['leadership', 'scheduling', 'supplies', 'callout', 'customer', 'general']
-                    && request.resource.data.status in ['open', 'closed']
+                    && request.resource.data.status in
+                       ['open', 'waiting_on_employee', 'waiting_on_management', 'resolved', 'closed']
                     && request.resource.data.subject is string
                     && request.resource.data.subject.size() >= 1
                     && request.resource.data.subject.size() <= 200
@@ -1542,10 +1552,12 @@ service cloud.firestore {
                     && request.resource.data.created_by == request.auth.token.email.lower();
 
       // Two update gates so addMessage() works for both sides of a
-      // conversation. Admin tier can mutate everything (status/closure
-      // + denorm). A participating tech can ONLY bump the denorm
-      // bookkeeping that addMessage() needs — status, closure, and
-      // identity remain immutable to them.
+      // conversation. Admin tier can mutate everything (status / closure
+      // + denorm). A participating tech can also bump the parent
+      // thread's status — BUT only to waiting_on_management, the value
+      // that signals "the employee just replied; management's turn."
+      // Any other status mutation (Resolve, Close, set to
+      // waiting_on_employee, etc.) stays admin-only.
       allow update: if (
                       isPioneerAdmin()
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -1553,15 +1565,21 @@ service cloud.firestore {
                         'last_message_at', 'last_message_preview',
                         'last_message_direction', 'message_count'
                       ])
-                      && request.resource.data.status in ['open', 'closed']
+                      && request.resource.data.status in
+                         ['open', 'waiting_on_employee', 'waiting_on_management', 'resolved', 'closed']
                     )
                     || (
                       isActiveCleaningTech()
                       && isThreadParticipant()
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                        'updated_at', 'last_message_at', 'last_message_preview',
+                        'status', 'updated_at', 'last_message_at', 'last_message_preview',
                         'last_message_direction', 'message_count'
                       ])
+                      && (
+                        // status either stays put or becomes waiting_on_management.
+                        request.resource.data.status == resource.data.status
+                        || request.resource.data.status == 'waiting_on_management'
+                      )
                     );
 
       allow delete: if false;

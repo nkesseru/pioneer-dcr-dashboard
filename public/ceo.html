@@ -699,6 +699,27 @@
       margin: 0;
       line-height: 1.35;
     }
+    /* Phase 3B.1 — Thread status chip on Open Conversations preview.
+       Tones match /manager + /team-hub vocabulary. */
+    .ceo-comm-status-chip {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--ceo-cream-deep);
+      color: var(--ceo-charcoal-soft);
+      vertical-align: middle;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    .ceo-comm-status-chip.is-open                  { background: var(--ceo-cream-deep); color: var(--ceo-charcoal-soft); }
+    .ceo-comm-status-chip.is-waiting_on_employee   { background: #dbeafe; color: #1e3a8a; }
+    .ceo-comm-status-chip.is-waiting_on_management { background: #fef3c7; color: #92400e; }
+    .ceo-comm-status-chip.is-resolved              { background: var(--ceo-sage-soft); color: var(--ceo-sage-deep); }
+    .ceo-comm-status-chip.is-closed                { background: #cbd5e1; color: #1e293b; }
     .ceo-list-item-context {
       font-size: 13px;
       color: var(--ceo-charcoal-soft);
@@ -1157,7 +1178,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="comm-threads.js?v=20260609-phase3b"></script>
-  <script src="ceo.js?v=20260609-inspection-v1.0"></script>
+  <script src="comm-threads.js?v=20260610-phase3b1"></script>
+  <script src="ceo.js?v=20260610-phase3b1"></script>
 </body>
 </html>
