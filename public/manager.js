@@ -1869,6 +1869,17 @@
            '</span>';
   }
 
+  // Phase 3B.2 — priority badge. Legacy threads (no priority field)
+  // render as 'action_required' so they're visible but not screaming.
+  function renderCommPriorityBadge(priority) {
+    const value = String(priority || "action_required").toLowerCase();
+    const labels = (window.CommThreads && window.CommThreads.PRIORITY_LABEL) || {};
+    const label = labels[value] || value;
+    return '<span class="mc-comm-priority-chip is-' + commEscape(value) + '">' +
+             commEscape(label) +
+           '</span>';
+  }
+
   function renderThreadRowHtml(t) {
     const participantNames = (t.participants || [])
       .map(function (p) { return p.name || p.id; })
@@ -1878,11 +1889,13 @@
     const when = commFmtAgo(commTsToMs(t.last_message_at || t.updated_at));
     return (
       '<div class="mc-comm-thread" data-thread-id="' + commEscape(t._id) +
-        '" data-category="' + commEscape(t.category || "general") + '">' +
+        '" data-category="' + commEscape(t.category || "general") + '"' +
+        ' data-priority="' + commEscape(t.priority || "action_required") + '">' +
         '<div class="mc-comm-thread-rail"></div>' +
         '<div class="mc-comm-thread-main">' +
           '<div class="mc-comm-thread-head">' +
             '<span class="mc-comm-thread-subject">' + commEscape(t.subject || "(no subject)") + '</span>' +
+            renderCommPriorityBadge(t.priority) +
             renderCommStatusBadge(t.status) +
             '<span class="mc-comm-thread-time">' + commEscape(when) + '</span>' +
           '</div>' +
@@ -1928,11 +1941,12 @@
         histEl.innerHTML = '<p class="mc-empty">Thread not found.</p>';
         return;
       }
-      // Phase 3B.1 — category text + status badge. innerHTML so the
-      // chip styling shows up; the values are escaped inside
-      // renderCommStatusBadge.
+      // Phase 3B.1+3B.2 — category text + priority badge + status badge.
+      // innerHTML so the chip styling shows up; the values are escaped
+      // inside the badge helpers.
       const eyebrowEl = $("manager-thread-eyebrow");
       eyebrowEl.innerHTML = commEscape(COMM_CATEGORY_LABEL[thread.category] || "Conversation") +
+                            ' ' + renderCommPriorityBadge(thread.priority) +
                             ' ' + renderCommStatusBadge(thread.status);
       // Disable Resolve / Close if thread is already terminal.
       const isTerminal = thread.status === "resolved" || thread.status === "closed";
@@ -2103,6 +2117,25 @@
     overlay.addEventListener("click", function (ev) {
       if (ev.target === overlay) overlay.hidden = true;
     });
+    // Phase 3B.2 — Kind drives the (category, priority) defaults via
+    // MESSAGE_TYPE_DEFAULTS. Picking Kind syncs both — the admin can
+    // still override either one before submit.
+    const kindSel = $("manager-comm-new-kind");
+    if (kindSel) {
+      kindSel.addEventListener("change", function () {
+        applyKindDefaults(kindSel.value);
+      });
+    }
+  }
+
+  function applyKindDefaults(kind) {
+    if (!window.CommThreads || !window.CommThreads.MESSAGE_TYPE_DEFAULTS) return;
+    const map = window.CommThreads.MESSAGE_TYPE_DEFAULTS[kind];
+    if (!map) return;
+    const catSel = $("manager-comm-new-category");
+    const priSel = $("manager-comm-new-priority");
+    if (catSel) catSel.value = map.category;
+    if (priSel) priSel.value = map.priority;
   }
 
   async function ensureCommTechCache() {
@@ -2129,7 +2162,11 @@
     setNewThreadStatus("");
     $("manager-comm-new-subject").value = "";
     $("manager-comm-new-body").value = "";
-    $("manager-comm-new-category").value = "general";
+    // Phase 3B.2 — reset Kind to General + apply its defaults so the
+    // category + priority dropdowns start in sync.
+    const kindSel = $("manager-comm-new-kind");
+    if (kindSel) kindSel.value = "general";
+    applyKindDefaults("general");
     const sel = $("manager-comm-new-recipient");
     sel.innerHTML = '<option value="">Loading…</option>';
     const techs = await ensureCommTechCache();
@@ -2145,6 +2182,9 @@
     if (!currentUser) return;
     const overlay = $("manager-comm-new-overlay");
     const category  = $("manager-comm-new-category").value;
+    // Phase 3B.2 — read kind + priority alongside the existing category.
+    const kind      = $("manager-comm-new-kind").value;
+    const priority  = $("manager-comm-new-priority").value;
     const sel       = $("manager-comm-new-recipient");
     const recipientId = (sel.value || "").toLowerCase();
     const recipientName = sel.options[sel.selectedIndex].getAttribute("data-name") || recipientId;
@@ -2158,10 +2198,12 @@
     $("manager-comm-new-send").disabled = true;
     try {
       const tid = await window.CommThreads.createThread({
-        category:    category,
-        subject:     subject,
-        source_type: "manager_compose",
-        source_id:   tid_seed(),
+        category:     category,
+        priority:     priority,
+        message_type: kind,
+        subject:      subject,
+        source_type:  "manager_compose",
+        source_id:    tid_seed(),
         participants: [
           { type: "admin", id: myEmail, name: currentUser.displayName || myEmail.split("@")[0] },
           { type: "tech",  id: recipientId, name: recipientName }

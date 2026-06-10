@@ -1022,6 +1022,42 @@
     .mc-comm-status-chip.is-waiting_on_management  { background: #fef3c7; color: #92400e; }
     .mc-comm-status-chip.is-resolved               { background: #dcfce7; color: #166534; }
     .mc-comm-status-chip.is-closed                 { background: #cbd5e1; color: #1e293b; }
+    /* Phase 3B.2 — pair category + priority in a row in the compose
+       modal. Stacks on narrow viewports. */
+    .mc-field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 540px) {
+      .mc-field-row { grid-template-columns: 1fr; }
+    }
+    /* Phase 3B.2 — priority chip. Sits alongside the status chip on
+       thread rows and in the modal eyebrow. */
+    .mc-comm-priority-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .mc-comm-priority-chip.is-fyi             { background: #f1f5f9; color: #475569; }
+    .mc-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
+    .mc-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+    /* Urgent rows get an extra red ring on the rail so the eye catches
+       them across the full registry. */
+    .mc-comm-thread[data-priority="urgent"] .mc-comm-thread-rail {
+      box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, 0.85);
+    }
+    /* Phase 3B.2 — category palette adjustments per spec:
+       callout was clay → now amber (high-attention)
+       customer was berry → now clay (warmer, distinct from callout). */
+    .mc-comm-thread[data-category="callout"] .mc-comm-thread-rail  { background: #f59e0b; }
+    .mc-comm-thread[data-category="customer"] .mc-comm-thread-rail { background: #c4836a; }
     .mc-comm-thread-head {
       align-items: center;
       gap: 8px;
@@ -1615,16 +1651,43 @@
         <button type="button" class="mc-modal-close" id="manager-comm-new-close" aria-label="Close">×</button>
       </header>
       <div class="mc-modal-fields">
+        <!-- Phase 3B.2 — Kind drives the (category, priority) defaults
+             via MESSAGE_TYPE_DEFAULTS. Either dropdown below can still
+             be overridden after Kind selection. -->
         <div class="mc-field-group">
-          <label class="mc-field-question" for="manager-comm-new-category">Category</label>
-          <select id="manager-comm-new-category">
-            <option value="leadership">Leadership</option>
+          <label class="mc-field-question" for="manager-comm-new-kind">Kind</label>
+          <select id="manager-comm-new-kind">
+            <option value="recognition">Recognition</option>
+            <option value="coaching_support">Coaching / Support</option>
+            <option value="announcement">Announcement</option>
+            <option value="logistics">Logistics</option>
+            <option value="supply">Supply</option>
             <option value="scheduling">Scheduling</option>
-            <option value="supplies">Supplies</option>
             <option value="callout">Call-out</option>
-            <option value="customer">Customer</option>
+            <option value="customer_issue">Customer Issue</option>
             <option value="general" selected>General</option>
           </select>
+        </div>
+        <div class="mc-field-row">
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="manager-comm-new-category">Category</label>
+            <select id="manager-comm-new-category">
+              <option value="leadership">Leadership</option>
+              <option value="scheduling">Scheduling</option>
+              <option value="supplies">Supplies</option>
+              <option value="callout">Call-out</option>
+              <option value="customer">Customer</option>
+              <option value="general" selected>General</option>
+            </select>
+          </div>
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="manager-comm-new-priority">Priority</label>
+            <select id="manager-comm-new-priority">
+              <option value="fyi" selected>FYI</option>
+              <option value="action_required">Action Required</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
         </div>
         <div class="mc-field-group">
           <label class="mc-field-question" for="manager-comm-new-recipient">Send to</label>
@@ -1654,7 +1717,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="comm-threads.js?v=20260610-phase3b1"></script>
-  <script src="manager.js?v=20260610-phase3b1"></script>
+  <script src="comm-threads.js?v=20260610-phase3b2"></script>
+  <script src="manager.js?v=20260610-phase3b2"></script>
 </body>
 </html>

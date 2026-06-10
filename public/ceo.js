@@ -1694,10 +1694,22 @@
     const statusValue = String(t.status || 'open');
     const statusLabel = (window.CommThreads && window.CommThreads.STATUS_LABEL &&
                          window.CommThreads.STATUS_LABEL[statusValue]) || statusValue;
-    return '<li class="ceo-list-item ceo-tone-pulse">' +
+    // Phase 3B.2 — priority indicator. Only render when NOT fyi —
+    // executive attention should be drawn to action_required + urgent
+    // threads, not the calm FYI background.
+    const priorityValue = String(t.priority || 'action_required');
+    const priorityLabel = (window.CommThreads && window.CommThreads.PRIORITY_LABEL &&
+                           window.CommThreads.PRIORITY_LABEL[priorityValue]) || priorityValue;
+    const priorityChip = (priorityValue !== 'fyi')
+      ? ' <span class="ceo-comm-priority-chip is-' + escapeHtml(priorityValue) + '">' +
+          escapeHtml(priorityLabel) + '</span>'
+      : '';
+    return '<li class="ceo-list-item ceo-tone-pulse"' +
+             ' data-priority="' + escapeHtml(priorityValue) + '">' +
              '<div class="ceo-list-item-icon">·</div>' +
              '<div class="ceo-list-item-body">' +
                '<p class="ceo-list-item-title">' + escapeHtml(t.subject || '(no subject)') +
+                 priorityChip +
                  ' <span class="ceo-comm-status-chip is-' + escapeHtml(statusValue) + '">' +
                    escapeHtml(statusLabel) + '</span>' +
                '</p>' +

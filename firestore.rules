@@ -1545,6 +1545,20 @@ service cloud.firestore {
                        ['leadership', 'scheduling', 'supplies', 'callout', 'customer', 'general']
                     && request.resource.data.status in
                        ['open', 'waiting_on_employee', 'waiting_on_management', 'resolved', 'closed']
+                    // Phase 3B.2 — priority is required on create; legacy
+                    // threads without it render as 'action_required' at
+                    // read time but every new thread carries an explicit
+                    // value. message_type is optional (back-compat path
+                    // for callers that don't set it yet).
+                    && request.resource.data.priority in ['fyi', 'action_required', 'urgent']
+                    && (
+                      !('message_type' in request.resource.data)
+                      || request.resource.data.message_type in [
+                        'recognition', 'coaching_support', 'announcement',
+                        'logistics', 'supply', 'scheduling', 'callout',
+                        'customer_issue', 'general'
+                      ]
+                    )
                     && request.resource.data.subject is string
                     && request.resource.data.subject.size() >= 1
                     && request.resource.data.subject.size() <= 200

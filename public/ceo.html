@@ -720,6 +720,27 @@
     .ceo-comm-status-chip.is-waiting_on_management { background: #fef3c7; color: #92400e; }
     .ceo-comm-status-chip.is-resolved              { background: var(--ceo-sage-soft); color: var(--ceo-sage-deep); }
     .ceo-comm-status-chip.is-closed                { background: #cbd5e1; color: #1e293b; }
+    /* Phase 3B.2 — priority chip on Open Conversations rows. Only
+       rendered for action_required + urgent (fyi stays calm). */
+    .ceo-comm-priority-chip {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    .ceo-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
+    .ceo-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+    /* Urgent rows get a soft red rail accent on the list item dot. */
+    .ceo-list-item[data-priority="urgent"] .ceo-list-item-icon {
+      box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, 0.65);
+      color: #b91c1c;
+    }
     .ceo-list-item-context {
       font-size: 13px;
       color: var(--ceo-charcoal-soft);
@@ -1178,7 +1199,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="comm-threads.js?v=20260610-phase3b1"></script>
-  <script src="ceo.js?v=20260610-phase3b1"></script>
+  <script src="comm-threads.js?v=20260610-phase3b2"></script>
+  <script src="ceo.js?v=20260610-phase3b2"></script>
 </body>
 </html>

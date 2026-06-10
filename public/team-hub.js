@@ -1548,12 +1548,20 @@
     const statusValue = String(thread.status || "open");
     const statusLabel = (window.CommThreads && window.CommThreads.STATUS_LABEL &&
                         window.CommThreads.STATUS_LABEL[statusValue]) || statusValue;
+    // Phase 3B.2 — priority badge. Defaults to action_required for
+    // legacy threads without the field set.
+    const priorityValue = String(thread.priority || "action_required");
+    const priorityLabel = (window.CommThreads && window.CommThreads.PRIORITY_LABEL &&
+                           window.CommThreads.PRIORITY_LABEL[priorityValue]) || priorityValue;
     return (
       '<article class="team-hub-comm-card" data-thread-id="' + commEscape(thread._id) +
         '" data-msg-id="' + commEscape(msg._id) +
-        '" data-category="' + commEscape(cat) + '">' +
+        '" data-category="' + commEscape(cat) + '"' +
+        ' data-priority="' + commEscape(priorityValue) + '">' +
         '<header class="team-hub-comm-card-head">' +
           '<span class="team-hub-comm-card-subject">' + commEscape(thread.subject || "(no subject)") + '</span>' +
+          '<span class="th-comm-priority-chip is-' + commEscape(priorityValue) + '">' +
+            commEscape(priorityLabel) + '</span>' +
           '<span class="th-comm-status-chip is-' + commEscape(statusValue) + '">' +
             commEscape(statusLabel) + '</span>' +
           '<span class="team-hub-comm-card-meta">' + commEscape(catLabel) + '</span>' +

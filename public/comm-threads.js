@@ -137,6 +137,62 @@
     closed:                'Closed'
   });
 
+  // Phase 3B.2 — priority axis (orthogonal to category + status).
+  const PRIORITIES = Object.freeze({
+    FYI:             'fyi',
+    ACTION_REQUIRED: 'action_required',
+    URGENT:          'urgent'
+  });
+  const PRIORITY_SET = new Set(Object.values(PRIORITIES));
+  const PRIORITY_LABEL = Object.freeze({
+    fyi:             'FYI',
+    action_required: 'Action Required',
+    urgent:          'Urgent'
+  });
+
+  // Phase 3B.2 — message types. UI-side discriminator that maps to a
+  // (category, priority) default via MESSAGE_TYPE_DEFAULTS. Stored on
+  // the thread for future reporting ("we sent 12 recognitions this
+  // month") without re-deriving from category alone.
+  const MESSAGE_TYPES = Object.freeze({
+    RECOGNITION:      'recognition',
+    COACHING_SUPPORT: 'coaching_support',
+    ANNOUNCEMENT:     'announcement',
+    LOGISTICS:        'logistics',
+    SUPPLY:           'supply',
+    SCHEDULING:       'scheduling',
+    CALLOUT:          'callout',
+    CUSTOMER_ISSUE:   'customer_issue',
+    GENERAL:          'general'
+  });
+  const MESSAGE_TYPE_SET = new Set(Object.values(MESSAGE_TYPES));
+  const MESSAGE_TYPE_LABEL = Object.freeze({
+    recognition:      'Recognition',
+    coaching_support: 'Coaching / Support',
+    announcement:     'Announcement',
+    logistics:        'Logistics',
+    supply:           'Supply',
+    scheduling:       'Scheduling',
+    callout:          'Call-out',
+    customer_issue:   'Customer Issue',
+    general:          'General'
+  });
+  // Default (category, priority) per message type. The /manager compose
+  // modal applies this on Kind change; the admin can override either
+  // dropdown before submit. Persisted alongside category + priority so
+  // future reports can group by message type without re-deriving.
+  const MESSAGE_TYPE_DEFAULTS = Object.freeze({
+    recognition:      { category: 'leadership', priority: 'fyi' },
+    coaching_support: { category: 'leadership', priority: 'action_required' },
+    announcement:     { category: 'leadership', priority: 'fyi' },
+    logistics:        { category: 'general',    priority: 'action_required' },
+    supply:           { category: 'supplies',   priority: 'action_required' },
+    scheduling:       { category: 'scheduling', priority: 'action_required' },
+    callout:          { category: 'callout',    priority: 'urgent' },
+    customer_issue:   { category: 'customer',   priority: 'action_required' },
+    general:          { category: 'general',    priority: 'fyi' }
+  });
+
   const CHANNELS = Object.freeze({
     IN_APP: 'in_app',
     SMS:    'sms'
@@ -230,6 +286,17 @@
     // hook to respond). Callers can override via opts.status.
     const status = opts.status || STATUS.WAITING_ON_EMPLOYEE;
     ensureEnum('status', status, STATUS_SET);
+    // Phase 3B.2 — priority is required on the schema; default is
+    // action_required (most messages need a response). message_type
+    // is optional; when present it must match the enum, and it's used
+    // for reporting + the compose-modal Kind defaults.
+    const priority = opts.priority || PRIORITIES.ACTION_REQUIRED;
+    ensureEnum('priority', priority, PRIORITY_SET);
+    let messageType = null;
+    if (opts.message_type != null) {
+      ensureEnum('message_type', opts.message_type, MESSAGE_TYPE_SET);
+      messageType = opts.message_type;
+    }
     const createdBy = lc(opts.created_by || callerEmail());
     if (!createdBy) throw new Error('comm-threads: created_by is required');
 
@@ -246,6 +313,8 @@
     const doc = {
       category:               opts.category,
       status:                 status,
+      priority:               priority,
+      message_type:           messageType,
       subject:                opts.subject,
       source_type:            opts.source_type || null,
       source_id:              opts.source_id   || null,
@@ -544,6 +613,12 @@
     STATUS:                   STATUS,
     STATUS_LABEL:             STATUS_LABEL,
     ACTIVE_STATUSES:          ACTIVE_STATUSES,
+    // Phase 3B.2 — priority + message type
+    PRIORITIES:               PRIORITIES,
+    PRIORITY_LABEL:           PRIORITY_LABEL,
+    MESSAGE_TYPES:            MESSAGE_TYPES,
+    MESSAGE_TYPE_LABEL:       MESSAGE_TYPE_LABEL,
+    MESSAGE_TYPE_DEFAULTS:    MESSAGE_TYPE_DEFAULTS,
     CHANNELS:                 CHANNELS,
     DIRECTIONS:               DIRECTIONS,
     MESSAGE_STATUS:           MESSAGE_STATUS,
