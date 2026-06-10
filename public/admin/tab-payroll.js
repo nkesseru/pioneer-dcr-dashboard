@@ -162,6 +162,11 @@
   function isActiveSession(s) { return s && (s.status === "active" || s.status === "paused"); }
   function dcrPendingFlag(s) {
     if (!s) return false;
+    // Phase Timeclock Add-On — DCR requirement applies only to cleaning
+    // labor; inspection / supply-station sessions are pre-approved on
+    // the DCR axis. Absent labor_type defaults to cleaning.
+    const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+    if (!isCleaning) return false;
     if (s.status === "dcr_pending") return true;
     if (s.status !== "completed") return false;
     const submitted = (s.dcr_status === "submitted") || !!s.dcr_id;

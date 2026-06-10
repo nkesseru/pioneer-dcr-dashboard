@@ -791,6 +791,18 @@
         }
       }
 
+      // Phase Timeclock Add-On — if the inspector clocked in for this
+      // walk, link the new inspection id back to the active session so
+      // payroll can see what was produced during the paid time.
+      if (window.NonServiceClock) {
+        const stf = window.STAFF_AUTH && window.STAFF_AUTH.getCurrentStaff
+          ? window.STAFF_AUTH.getCurrentStaff() : null;
+        if (stf) {
+          window.NonServiceClock.patchActiveSession(stf, {
+            inspection_id: ref.id
+          }).catch(function () {});
+        }
+      }
       showSuccess(doc, ref.id);
       // v1.0 audit fix — refresh the registry so Laura/Jared see the
       // cycle close immediately on the same page. The Cloud Function
@@ -1724,6 +1736,136 @@
   let registryRowsCache = [];
   let registryAdminRoster = [];   // [{ email, display_name }]
 
+  /* ============================================================
+   * Phase Timeclock Add-On — Inspection shift clock
+   *
+   * Shows a card at the top of /inspections with Start / End buttons
+   * and a live elapsed timer. Reuses window.NonServiceClock so the
+   * cleaning singleton lock at active_service_sessions/{uid} prevents
+   * starting an inspection while a cleaning shift is active (and vice
+   * versa). Customer + inspection_id are patched onto the running
+   * session as the inspector picks them.
+   * ============================================================ */
+
+  let inspClockStaff = null;
+  let inspClockTickHandle = null;
+
+  async function bootInspectionClock(staff) {
+    if (!staff) return;
+    if (!window.NonServiceClock) {
+      console.warn("[inspections] NonServiceClock not loaded — clock UI hidden");
+      return;
+    }
+    inspClockStaff = staff;
+    const card = $("insp-clock-card");
+    const btn  = $("insp-clock-toggle");
+    if (!card || !btn) return;
+    card.hidden = false;
+    if (!btn.dataset.wired) {
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", onInspClockToggle);
+    }
+    await refreshInspClock();
+  }
+
+  async function refreshInspClock() {
+    if (!inspClockStaff || !window.NonServiceClock) return;
+    try {
+      const active = await window.NonServiceClock.getActive(inspClockStaff);
+      paintInspClock(active);
+    } catch (err) {
+      console.warn("[inspections] clock refresh failed", err);
+    }
+  }
+
+  function paintInspClock(active) {
+    const card = $("insp-clock-card");
+    const status = $("insp-clock-status");
+    const btn = $("insp-clock-toggle");
+    const errEl = $("insp-clock-err");
+    if (!card || !status || !btn) return;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+
+    if (active && (active.labor_type || "cleaning") === "inspection") {
+      // Currently clocked in for an inspection shift — show live timer.
+      card.setAttribute("data-state", "active");
+      btn.textContent = "End Inspection Shift";
+      btn.disabled = false;
+      paintInspElapsed(active);
+      // Tick every 30s (mirrors service-clock cadence).
+      if (inspClockTickHandle) clearInterval(inspClockTickHandle);
+      inspClockTickHandle = setInterval(function () {
+        paintInspElapsed(active);
+      }, 30000);
+    } else if (active) {
+      // Clocked in for a DIFFERENT labor type — disable Start, explain.
+      const ltLabel = (window.NonServiceClock.LABOR_TYPE_LABEL[active.labor_type || "cleaning"]
+                       || active.labor_type || "cleaning");
+      card.removeAttribute("data-state");
+      btn.textContent = "Start Inspection Shift";
+      btn.disabled = true;
+      status.innerHTML = "Already clocked in for <strong>" + escapeText(ltLabel) +
+                         "</strong>. End that shift first.";
+      if (inspClockTickHandle) { clearInterval(inspClockTickHandle); inspClockTickHandle = null; }
+    } else {
+      // Not clocked in.
+      card.removeAttribute("data-state");
+      btn.textContent = "Start Inspection Shift";
+      btn.disabled = false;
+      status.textContent = "Not clocked in.";
+      if (inspClockTickHandle) { clearInterval(inspClockTickHandle); inspClockTickHandle = null; }
+    }
+  }
+
+  function paintInspElapsed(active) {
+    const status = $("insp-clock-status");
+    if (!status) return;
+    const startedMs = active && active.clock_in_at && typeof active.clock_in_at.toMillis === "function"
+      ? active.clock_in_at.toMillis()
+      : (active && active.clock_in_at && typeof active.clock_in_at.seconds === "number"
+          ? active.clock_in_at.seconds * 1000
+          : Date.now());
+    const min = Math.max(0, Math.floor((Date.now() - startedMs) / 60000));
+    const hh = Math.floor(min / 60);
+    const mm = min % 60;
+    const dur = hh > 0 ? hh + "h " + mm + "m" : mm + "m";
+    const cust = active && active.customer_id ? " · " + active.customer_id : "";
+    status.innerHTML = "On the clock · <strong>" + escapeText(dur) + "</strong>" + escapeText(cust);
+  }
+
+  async function onInspClockToggle() {
+    const btn = $("insp-clock-toggle");
+    const errEl = $("insp-clock-err");
+    if (!btn || !window.NonServiceClock || !inspClockStaff) return;
+    btn.disabled = true;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+    try {
+      const active = await window.NonServiceClock.getActive(inspClockStaff);
+      if (active && (active.labor_type || "cleaning") === "inspection") {
+        // End the shift.
+        await window.NonServiceClock.clockOut(inspClockStaff,
+          window.NonServiceClock.LABOR_TYPES.INSPECTION);
+      } else {
+        // Start the shift — capture any currently-picked customer from
+        // the intake form so the session is associated immediately.
+        await window.NonServiceClock.clockIn(inspClockStaff,
+          window.NonServiceClock.LABOR_TYPES.INSPECTION,
+          {
+            customer_slug: state.customer_slug || "",
+            customer_name: state.customer_name || ""
+          });
+      }
+      await refreshInspClock();
+    } catch (err) {
+      console.error("[inspections] clock toggle failed", err);
+      if (errEl) {
+        errEl.textContent = (err && err.message) || "Couldn't change shift state.";
+        errEl.hidden = false;
+      }
+      btn.disabled = false;
+    }
+  }
+
   async function bootInspectionRegistry(staff) {
     if (!staff) return;
     if (staff.role !== "admin") return;
@@ -2246,7 +2388,9 @@
               showHubView();
             });
           }
-          // Wire customer dropdown change → cache name on state.
+          // Wire customer dropdown change → cache name on state +
+          // patch the active inspection shift session (if any) so the
+          // session carries the customer for payroll visibility.
           const custSel = $("insp-customer");
           if (custSel && !custSel.dataset.wired) {
             custSel.dataset.wired = "1";
@@ -2254,6 +2398,13 @@
               const opt = custSel.options[custSel.selectedIndex];
               state.customer_slug = custSel.value || "";
               state.customer_name = (opt && opt.dataset && opt.dataset.name) || "";
+              // Best-effort patch — silently no-op if not clocked in.
+              if (window.NonServiceClock && state.customer_slug) {
+                window.NonServiceClock.patchActiveSession(staff, {
+                  customer_id:   state.customer_slug,
+                  customer_name: state.customer_name
+                }).catch(function () {});
+              }
             });
           }
 
@@ -2262,6 +2413,11 @@
           wireInspModals();
           loadHubInspections();
           loadSrAssignedDropdown();
+
+          // Phase Timeclock Add-On — Inspection shift clock.
+          bootInspectionClock(staff).catch(function (err) {
+            console.warn("[inspections] clock boot failed", err);
+          });
 
           // Phase Inspection 3 — Health Dashboard + Customer Registry +
           // My Queue. Async, non-blocking; soft-fails if reads error.

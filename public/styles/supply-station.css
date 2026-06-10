@@ -215,3 +215,39 @@
   .ss-code-pill { font-size: 16.5px; padding: 7px 12px; letter-spacing: 1.2px; }
   .ss-copy-target::after { display: none; }   /* hint is desktop-only */
 }
+
+/* ============================================================
+   Phase Timeclock Add-On — Supply Station shift card.
+   Sits above the supply-request form. Distinct from the access card
+   so techs can tell at a glance: top = "log my time", bottom = "send
+   the order."
+   ============================================================ */
+.ss-clock-card {
+  padding: 16px 18px;
+  border-top: 3px solid #0b1220;
+}
+.ss-clock-card[data-state="active"] {
+  border-top-color: #16a34a;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 80%);
+}
+.ss-clock-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0b1220;
+}
+.ss-clock-status {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #475569;
+}
+.ss-clock-card[data-state="active"] .ss-clock-status {
+  color: #166534;
+  font-weight: 600;
+}
+.ss-clock-status strong { color: #0b1220; }
+.ss-clock-err {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #b91c1c;
+}

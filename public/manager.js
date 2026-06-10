@@ -291,8 +291,17 @@
       return recent && status !== "resolved" && status !== "closed";
     });
     const pendingTimeAdj = snap.timeAdj || [];
-    const missingDcrSessions = sessions.filter(s =>
-      s.status === "completed" && !s.dcr_id && !s.dcr_submission_id);
+    // Phase Timeclock Add-On — only cleaning labor produces a DCR.
+    // Inspection + supply-station sessions live in the same collection
+    // but must not trigger this alert. Absent labor_type defaults to
+    // cleaning (every legacy session).
+    const missingDcrSessions = sessions.filter(s => {
+      const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+      return isCleaning
+          && s.status === "completed"
+          && !s.dcr_id
+          && !s.dcr_submission_id;
+    });
     const missingPunches = sessions.filter(s =>
       s.status === "completed" && !s.clock_out_at);
     const openDcrIssues = (snap.dcrIssues || []).filter(i => {

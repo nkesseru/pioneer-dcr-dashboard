@@ -126,6 +126,18 @@
     return email || uid || "Tech";
   }
   function customerLabel(session, assignment) {
+    // Phase Timeclock Add-On — non-cleaning labor (inspection / supply
+    // station) typically has no assigned customer. Render a friendly
+    // label so the row doesn't show "—" and admin can tell at a glance
+    // what kind of paid time it is.
+    const lt = session && session.labor_type;
+    if (lt === "supply_station") {
+      return "Supply Station";
+    }
+    if (lt === "inspection") {
+      const c = (session.customer_name || session.customer_slug || "").trim();
+      return c ? "Inspection · " + c : "Inspection";
+    }
     const name = (assignment && (assignment.customer_name || assignment.customer_slug))
               || session.customer_name
               || session.customer_slug
@@ -348,6 +360,13 @@
   }
   function dcrPendingFlag(s) {
     if (!s) return false;
+    // Phase Timeclock Add-On — DCR requirement applies only to cleaning
+    // labor. Inspection / supply station sessions never produce a DCR
+    // and must not be flagged as pending. Absent labor_type defaults to
+    // cleaning for back-compat with every session written before the
+    // field existed.
+    const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+    if (!isCleaning) return false;
     if (s.status === "dcr_pending") return true;
     if (s.status !== "completed") return false;
     const submitted = (s.dcr_status === "submitted") || !!s.dcr_id;
@@ -411,10 +430,16 @@
     if (s.admin_removed === true) return false;
     if (s.needs_review === true) return false;
     if (s.status !== "completed") return false;     // active/paused/dcr_pending blocked
-    if (!s.assignment_id) return false;
     if (typeof s.work_minutes !== "number" || s.work_minutes <= 0) return false;
-    const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
-    if (!dcrSubmitted) return false;
+    // Phase Timeclock Add-On — non-cleaning labor (inspection / supply
+    // station) has no assignment_id and no DCR. Skip both checks for
+    // those rows; cleaning sessions still require both.
+    const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+    if (isCleaning) {
+      if (!s.assignment_id) return false;
+      const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+      if (!dcrSubmitted) return false;
+    }
     return true;
   }
   // Unapprove gate: row can move approved_for_payroll → reviewed, but only

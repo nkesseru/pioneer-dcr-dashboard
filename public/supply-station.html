@@ -219,6 +219,17 @@
         <div class="ss-access-toast" id="ss-access-toast" hidden aria-live="polite"></div>
       </section>
 
+      <!-- Phase Timeclock Add-On — Supply Station shift card.
+           Sits above the supply-request form so an active tech can clock
+           in for paid time spent restocking. Uses the same singleton
+           lock as cleaning + inspection shifts. -->
+      <section class="card ss-clock-card" id="ss-clock-card" hidden>
+        <h2 class="ss-clock-title">Supply Station Shift</h2>
+        <p class="ss-clock-status" id="ss-clock-status">Not clocked in.</p>
+        <button type="button" class="ss-btn" id="ss-clock-toggle">Start Supply Station Shift</button>
+        <p class="ss-clock-err" id="ss-clock-err" hidden role="alert"></p>
+      </section>
+
       <section class="card supply-station-card">
         <form id="supply-station-form" novalidate>
           <!-- V6 pilot fix — the supply request now attaches to a
@@ -326,7 +337,8 @@
   <script src="staff-auth.js"></script>
   <script src="mandatory-modal.js"></script>
   <script src="walkthrough.js"></script>
-  <script src="supply-station.js"></script>
+  <script src="non-service-clock.js?v=20260610-timeclock-addon"></script>
+  <script src="supply-station.js?v=20260610-timeclock-addon"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

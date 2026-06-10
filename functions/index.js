@@ -5655,6 +5655,12 @@ function payrollIsBlocker(s) {
   if (s.needs_review === true) return "needs_review";
   if (s.status === "active" || s.status === "paused") return "active";
   if (s.status === "completed" && !s.clock_out_at) return "missing_clockout";
+  // Phase Timeclock Add-On — DCR requirement applies only to cleaning
+  // labor. Inspection + supply-station sessions never produce a DCR, so
+  // they pass this gate. Absent labor_type defaults to cleaning for
+  // back-compat with every session written before the field existed.
+  const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+  if (!isCleaning) return null;
   const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
   if (s.status === "dcr_pending") return "dcr_pending";
   if (s.status === "completed" && !dcrSubmitted) return "dcr_pending";

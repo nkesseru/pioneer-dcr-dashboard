@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="inspections.css?v=20260609-inspection-3" />
+  <link rel="stylesheet" href="inspections.css?v=20260610-timeclock-addon" />
   <link rel="stylesheet" href="styles/inspections-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -216,6 +216,22 @@
         <!-- Recent inspections — last 5. Each card expands to a
              detail modal. Score < 3 shows the "Areas needing
              attention" broad-category callout (no per-task blame). -->
+        <!-- ========== Phase Timeclock Add-On — Inspection Shift ========== -->
+        <section class="insp-card insp-clock-card" id="insp-clock-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">◷</span>
+            <div>
+              <h2 class="insp-step-title">Inspection Shift</h2>
+              <p class="insp-step-sub" id="insp-clock-sub">Paid time for inspection walks.</p>
+            </div>
+          </header>
+          <div class="insp-clock-body">
+            <div class="insp-clock-status" id="insp-clock-status">Not clocked in.</div>
+            <button type="button" class="insp-primary-btn" id="insp-clock-toggle">Start Inspection Shift</button>
+            <p class="insp-clock-err" id="insp-clock-err" hidden role="alert"></p>
+          </div>
+        </section>
+
         <!-- ========== Phase Inspection 3 — Health Dashboard ========== -->
         <section class="insp-card insp-health-card" id="insp-health-card" hidden>
           <header class="insp-step-head">
@@ -617,7 +633,8 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="info-tip.js"></script>
-  <script src="inspections.js?v=20260609-inspection-v1.0"></script>
+  <script src="non-service-clock.js?v=20260610-timeclock-addon"></script>
+  <script src="inspections.js?v=20260610-timeclock-addon"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

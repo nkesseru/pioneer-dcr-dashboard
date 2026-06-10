@@ -416,6 +416,12 @@
       snap.sessions.forEach(s => {
         if (isQaTestSession(s)) return;
         if (s.status !== "completed") return;
+        // Phase Timeclock Add-On — non-cleaning labor (inspection /
+        // supply station) never produces a DCR. Don't flag those rows
+        // as a missing-DCR alert. Absent labor_type defaults to
+        // cleaning for back-compat with every legacy session.
+        const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+        if (!isCleaning) return;
         const hasDcr = (s.dcr_status === "submitted") || !!s.dcr_id || !!s.dcr_submission_id;
         if (hasDcr) return;
         missingDcrCount += 1;

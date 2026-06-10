@@ -1178,6 +1178,40 @@
 .insp-detail-item-verdict.tone-na    { background: #e2e8f0; color: #334155; }
 
 /* ============================================================
+   Phase Timeclock Add-On — inspection shift card
+   ============================================================ */
+.insp-clock-card {
+  border-top: 3px solid #0b1220;
+}
+.insp-clock-card[data-state="active"] {
+  border-top-color: #16a34a;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 80%);
+}
+.insp-clock-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.insp-clock-status {
+  font-size: 14px;
+  color: #475569;
+  flex: 1;
+  min-width: 220px;
+}
+.insp-clock-card[data-state="active"] .insp-clock-status {
+  color: #166534;
+  font-weight: 700;
+}
+.insp-clock-status strong { color: #0b1220; }
+.insp-clock-err {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: #b91c1c;
+  margin: 6px 0 0;
+}
+
+/* ============================================================
    Phase Inspection 3 — Health Dashboard + Registry + Queue
    ============================================================ */
 .insp-health-card { }

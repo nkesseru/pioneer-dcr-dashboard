@@ -306,6 +306,124 @@
   // active list. Caching the customer list in memory keeps subsequent
   // resets fast; the Submit-another-order button calls form.reset()
   // which the <select> handles natively (returns to placeholder).
+  /* ============================================================
+   * Phase Timeclock Add-On — Supply Station shift clock
+   *
+   * Mirrors the inspection clock card pattern. Shared
+   * window.NonServiceClock provides the singleton lock so any active
+   * shift (cleaning, inspection, supply) blocks the others.
+   * ============================================================ */
+  let ssClockStaff = null;
+  let ssClockTickHandle = null;
+
+  async function bootSupplyClock(staff) {
+    if (!staff) return;
+    if (!window.NonServiceClock) {
+      console.warn("supply-station: NonServiceClock not loaded — clock UI hidden");
+      return;
+    }
+    ssClockStaff = staff;
+    const card = $("ss-clock-card");
+    const btn  = $("ss-clock-toggle");
+    if (!card || !btn) return;
+    card.hidden = false;
+    if (!btn.dataset.wired) {
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", onSsClockToggle);
+    }
+    await refreshSsClock();
+  }
+
+  async function refreshSsClock() {
+    if (!ssClockStaff || !window.NonServiceClock) return;
+    try {
+      const active = await window.NonServiceClock.getActive(ssClockStaff);
+      paintSsClock(active);
+    } catch (err) {
+      console.warn("supply-station: clock refresh failed", err);
+    }
+  }
+
+  function paintSsClock(active) {
+    const card = $("ss-clock-card");
+    const status = $("ss-clock-status");
+    const btn = $("ss-clock-toggle");
+    const errEl = $("ss-clock-err");
+    if (!card || !status || !btn) return;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+
+    if (active && (active.labor_type || "cleaning") === "supply_station") {
+      card.setAttribute("data-state", "active");
+      btn.textContent = "End Supply Station Shift";
+      btn.disabled = false;
+      paintSsElapsed(active);
+      if (ssClockTickHandle) clearInterval(ssClockTickHandle);
+      ssClockTickHandle = setInterval(function () { paintSsElapsed(active); }, 30000);
+    } else if (active) {
+      const lt = active.labor_type || "cleaning";
+      const ltLabel = (window.NonServiceClock.LABOR_TYPE_LABEL[lt] || lt);
+      card.removeAttribute("data-state");
+      btn.textContent = "Start Supply Station Shift";
+      btn.disabled = true;
+      status.innerHTML = "Already clocked in for <strong>" + escapeText(ltLabel) +
+                         "</strong>. End that shift first.";
+      if (ssClockTickHandle) { clearInterval(ssClockTickHandle); ssClockTickHandle = null; }
+    } else {
+      card.removeAttribute("data-state");
+      btn.textContent = "Start Supply Station Shift";
+      btn.disabled = false;
+      status.textContent = "Not clocked in.";
+      if (ssClockTickHandle) { clearInterval(ssClockTickHandle); ssClockTickHandle = null; }
+    }
+  }
+
+  function paintSsElapsed(active) {
+    const status = $("ss-clock-status");
+    if (!status) return;
+    const startedMs = active && active.clock_in_at && typeof active.clock_in_at.toMillis === "function"
+      ? active.clock_in_at.toMillis()
+      : (active && active.clock_in_at && typeof active.clock_in_at.seconds === "number"
+          ? active.clock_in_at.seconds * 1000
+          : Date.now());
+    const min = Math.max(0, Math.floor((Date.now() - startedMs) / 60000));
+    const hh = Math.floor(min / 60);
+    const mm = min % 60;
+    const dur = hh > 0 ? hh + "h " + mm + "m" : mm + "m";
+    status.innerHTML = "On the clock · <strong>" + escapeText(dur) + "</strong>";
+  }
+
+  async function onSsClockToggle() {
+    const btn = $("ss-clock-toggle");
+    const errEl = $("ss-clock-err");
+    if (!btn || !window.NonServiceClock || !ssClockStaff) return;
+    btn.disabled = true;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+    try {
+      const active = await window.NonServiceClock.getActive(ssClockStaff);
+      if (active && (active.labor_type || "cleaning") === "supply_station") {
+        await window.NonServiceClock.clockOut(ssClockStaff,
+          window.NonServiceClock.LABOR_TYPES.SUPPLY_STATION);
+      } else {
+        await window.NonServiceClock.clockIn(ssClockStaff,
+          window.NonServiceClock.LABOR_TYPES.SUPPLY_STATION,
+          {});
+      }
+      await refreshSsClock();
+    } catch (err) {
+      console.error("supply-station: clock toggle failed", err);
+      if (errEl) {
+        errEl.textContent = (err && err.message) || "Couldn't change shift state.";
+        errEl.hidden = false;
+      }
+      btn.disabled = false;
+    }
+  }
+
+  function escapeText(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   let _ssCustomersLoaded = false;
   async function loadCustomerPicker(staff) {
     const sel = $("ss-customer");
@@ -548,6 +666,14 @@
           loadCustomerPicker(staff).catch(function (err) {
             console.warn("supply-station: customer picker load failed (non-fatal)",
               err && err.code, err && err.message);
+          });
+          // Phase Timeclock Add-On — Supply Station shift clock.
+          // Reads the shared singleton lock at active_service_sessions/
+          // {uid} so a tech who's actively cleaning or inspecting cannot
+          // start a supply shift (and vice versa). Soft-fails if the
+          // helper module didn't load.
+          bootSupplyClock(staff).catch(function (err) {
+            console.warn("supply-station: clock boot failed (non-fatal)", err);
           });
         }
       });
