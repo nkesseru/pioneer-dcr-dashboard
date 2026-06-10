@@ -1348,12 +1348,31 @@
         return;
       }
 
-      // Route-to-tab buttons (existing behavior)
+      // Route-to-tab buttons (existing behavior).
+      // Kirby usability fix — Mission Control sits at the top of /admin
+      // and the activated tab panel lives below the fold. The button
+      // was firing correctly; the user just couldn't tell because the
+      // visual change happened off-screen. Scroll the activated panel
+      // into view so the action is visibly acknowledged. Silent catch
+      // around activateTab replaced with a console.error so future
+      // activation failures aren't hidden.
       const actionBtn = ev.target.closest("#mission-control [data-mc-action-route]");
       if (!actionBtn) return;
       const route = actionBtn.getAttribute("data-mc-action-route");
       if (!route) return;
-      try { activateTab(route); } catch (_e) { /* tab may not exist */ }
+      try {
+        activateTab(route);
+        const targetPanel = document.querySelector(
+          '.admin-panel[data-panel="' + route + '"]'
+        );
+        if (targetPanel) {
+          targetPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          console.warn('[mission-control] no panel found for route "' + route + '"');
+        }
+      } catch (err) {
+        console.error('[mission-control] tab activation failed for "' + route + '"', err);
+      }
     });
   }
 

@@ -6327,11 +6327,18 @@
 .labor-active-meta strong { color: #0f172a; font-weight: 600; }
 .labor-active-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
 
-/* ---- Today's-sessions table (grid-based dense rows) ---- */
+/* ---- Today's-sessions table (grid-based dense rows) ----
+   Kirby usability fix — the 11 grid columns sum to ~1180px minimum
+   plus gaps + padding. Cards narrower than that were clipping the
+   right-side columns (DCR + actions). overflow-x:auto gives a
+   horizontal scrollbar when needed while preserving the
+   border-radius. Inner rows get min-width to keep all columns
+   aligned even when the container is narrower. */
 .labor-table {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: #fff;
 }
 .labor-row {
@@ -6354,6 +6361,10 @@
   border-bottom: 1px solid #e2e8f0;
   font-size: 13px;
   color: #1e293b;
+  /* Keep all columns visible at their min widths even when the table
+     scrolls horizontally — without min-width the grid auto-shrinks
+     and the right columns vanish entirely. */
+  min-width: 1180px;
 }
 .labor-row .lr-col-date { color: #475569; font-variant-numeric: tabular-nums; }
 /* Phase 2A.4 — completed/dcr_pending rows with work_minutes=0 render
@@ -6374,7 +6385,16 @@
   color: #64748b;
 }
 .labor-row .lr-col-emp   { font-weight: 600; color: #0f172a; }
-.labor-row .lr-col-cust  { color: #475569; }
+/* Customer column — ellipsis when names are long so the column doesn't
+   push neighboring columns off-screen. min-width:0 is required for
+   text-overflow inside a grid item. */
+.labor-row .lr-col-cust  {
+  color: #475569;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .labor-row .lr-col-in,
 .labor-row .lr-col-out,
 .labor-row .lr-col-wkd,
