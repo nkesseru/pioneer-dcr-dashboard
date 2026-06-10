@@ -1696,9 +1696,20 @@
    * ============================================================ */
 
   const INSPECTION_CADENCE_DAYS = 60;
+  // Hardcoded root admin list mirrors firestore.rules + functions/index.js.
+  // Used as the rotation suggestion pool when the /admins collection is
+  // empty or unreadable. Keep in sync with the other two source-of-truth
+  // copies.
+  const INSPECTION_ROTATION_FALLBACK_EMAILS = [
+    "nick@pioneercomclean.com",
+    "april@pioneercomclean.com",
+    "kirby@pioneercomclean.com",
+    "mgies@pioneercomclean.com"
+  ];
   let registryStaff = null;
   let registryFilter = "all";
   let registryRowsCache = [];
+  let registryAdminRoster = [];   // [{ email, display_name }]
 
   async function bootInspectionRegistry(staff) {
     if (!staff) return;
@@ -1730,10 +1741,35 @@
       // bootstrap rows for any customer that doesn't have a state doc
       // yet (first time loading the registry after a fresh customer
       // was added).
-      const [stateSnap, custSnap] = await Promise.all([
+      const [stateSnap, custSnap, adminSnap] = await Promise.all([
         db.collection("customer_inspection_state").get(),
-        db.collection("customers").get()
+        db.collection("customers").get(),
+        // Admin roster powers the rotation-suggestion chip on the
+        // registry. Soft-fail: if the admins collection is empty or
+        // unreadable we fall back to the hardcoded root list below.
+        db.collection("admins").get().catch(function () { return { docs: [] }; })
       ]);
+
+      // Build the rotation pool — active admins + hardcoded root list.
+      const rosterByEmail = new Map();
+      adminSnap.docs.forEach(function (d) {
+        const a = d.data() || {};
+        if (a.active === false) return;
+        const email = String(a.email || d.id || "").toLowerCase().trim();
+        if (!email) return;
+        rosterByEmail.set(email, {
+          email: email,
+          display_name: a.display_name || a.name || email.split("@")[0]
+        });
+      });
+      INSPECTION_ROTATION_FALLBACK_EMAILS.forEach(function (e) {
+        const lc = e.toLowerCase();
+        if (!rosterByEmail.has(lc)) {
+          rosterByEmail.set(lc, { email: lc, display_name: lc.split("@")[0] });
+        }
+      });
+      registryAdminRoster = Array.from(rosterByEmail.values())
+        .sort(function (a, b) { return a.display_name.localeCompare(b.display_name); });
 
       const stateByCustomer = new Map();
       stateSnap.docs.forEach(function (d) {
@@ -1892,6 +1928,21 @@
     wireRegistryRowButtons();
   }
 
+  // Rotation suggestion: any admin in the roster whose email is NOT the
+  // last inspector. Stable pick (alphabetical) — same row suggests the
+  // same person every load, so the inspector + manager develop muscle
+  // memory. "Do not hard-enforce" — this is advisory, surfaced as a
+  // small chip next to the last-inspector hint.
+  function suggestNextInspector(lastEmail) {
+    const last = String(lastEmail || "").toLowerCase();
+    if (!registryAdminRoster.length) return null;
+    const candidates = registryAdminRoster.filter(function (a) {
+      return a.email !== last;
+    });
+    if (!candidates.length) return null;
+    return candidates[0];
+  }
+
   function renderRegistryRowHtml(r, showQueueActions) {
     const todayMs = Date.now();
     const status = computeRegistryStatus(r, todayMs);
@@ -1906,10 +1957,25 @@
     const lastInspector = r.last_inspector_name || (r.last_inspector_email ? r.last_inspector_email.split("@")[0] : "—");
     const meEmail = String((registryStaff && registryStaff.email) || "").toLowerCase();
     const isMine = r.assigned_to_email === meEmail;
+
+    // Rotation: surface a suggested next inspector when (a) someone has
+    // inspected before, (b) nobody currently owns the next cycle, and
+    // (c) the suggestion isn't the same person who last inspected.
+    const suggested = (r.last_inspector_email && !r.assigned_to_uid)
+      ? suggestNextInspector(r.last_inspector_email)
+      : null;
+    const suggestedHtml = suggested
+      ? ' &nbsp;→&nbsp;<em style="color:#94a3b8;">try: ' + regEscape(suggested.display_name) + '</em>'
+      : '';
+
     let actionsHtml = '';
     if (showQueueActions) {
+      // My Queue: Open Inspection + Mark Complete (manual closure
+      // without filling out the form, for out-of-band inspections) +
+      // Release (drop the assignment without completing).
       actionsHtml =
         '<button type="button" class="insp-reg-btn insp-reg-btn-primary" data-row-action="open" data-slug="' + regAttr(r.customer_slug) + '">Open Inspection</button>' +
+        '<button type="button" class="insp-reg-btn" data-row-action="mark-complete" data-slug="' + regAttr(r.customer_slug) + '">Mark Complete</button>' +
         '<button type="button" class="insp-reg-btn" data-row-action="unassign" data-slug="' + regAttr(r.customer_slug) + '">Release</button>';
     } else if (status === "assigned") {
       actionsHtml =
@@ -1928,6 +1994,7 @@
         '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Days</span>' + regEscape(daysSince) + '</div>' +
         '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Assigned</span>' + regEscape(assignedTo) +
           (lastInspector && lastInspector !== "—" ? ' &nbsp;·&nbsp; <em style="color:#94a3b8;">last: ' + regEscape(lastInspector) + '</em>' : '') +
+          suggestedHtml +
         '</div>' +
         '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Due</span>' + regEscape(dueDate) +
           ' &nbsp;<span class="insp-reg-status-chip s-' + regAttr(status) + '">' + regEscape(status) + '</span>' +
@@ -1945,11 +2012,59 @@
         const action = btn.getAttribute("data-row-action");
         const slug = btn.getAttribute("data-slug");
         if (!slug) return;
-        if (action === "claim")    return claimRow(slug);
-        if (action === "unassign") return unassignRow(slug);
-        if (action === "open")     return openInspectionFor(slug);
+        if (action === "claim")         return claimRow(slug);
+        if (action === "unassign")      return unassignRow(slug);
+        if (action === "open")          return openInspectionFor(slug);
+        if (action === "mark-complete") return markCompleteRow(slug);
       });
     });
+  }
+
+  // "Mark Complete" stamps the customer as inspected today WITHOUT
+  // creating an inspections/{id} doc — for inspections that happened
+  // out of band (paper walkthrough, phone walkthrough, anything not
+  // logged through the intake form). The registry treats the cycle as
+  // closed; the inspections collection itself is untouched, so quality
+  // scores and 5-star wins aren't synthesized. The trade is: visibility
+  // of the cadence vs. clean inspection score data — Mark Complete
+  // prioritizes the cadence side. Confirmation prompts so it isn't an
+  // accidental click.
+  async function markCompleteRow(slug) {
+    if (!registryStaff) return;
+    const row = registryRowsCache.find(function (r) { return r.customer_slug === slug; });
+    const label = (row && row.customer_name) || slug;
+    const ok = window.confirm(
+      "Mark " + label + " as inspected today without filling out the form?\n\n" +
+      "This closes the current cycle in the registry but doesn't create an " +
+      "inspection record — use Open Inspection to capture details + score."
+    );
+    if (!ok) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const due = computeDueDateClient(today, (row && row.inspection_cadence_days) || INSPECTION_CADENCE_DAYS);
+    const me = registryStaff;
+    const myEmail = String(me.email || "").toLowerCase();
+    const myName = (me.tech && me.tech.display_name) || myEmail.split("@")[0];
+    try {
+      await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
+        customer_slug:        slug,
+        last_inspection_id:   null,
+        last_inspection_date: today,
+        last_inspector_uid:   me.uid,
+        last_inspector_name:  myName,
+        last_inspector_email: myEmail,
+        assigned_to_uid:      null,
+        assigned_to_email:    null,
+        assigned_to_name:     null,
+        assigned_at:          null,
+        assigned_by_email:    null,
+        due_date:             due,
+        updated_at:           firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await loadAndRenderRegistry();
+    } catch (err) {
+      console.error("[inspections] mark complete failed", err);
+      alert("Couldn't mark complete: " + (err.message || "unknown"));
+    }
   }
 
   async function claimRow(slug) {
