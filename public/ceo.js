@@ -444,6 +444,10 @@
     renderOpenConvosPreview().catch(function (err) {
       console.warn('[ceo] open convos preview failed', err);
     });
+    // Phase Inspection 3 — registry rollup. Soft-fails independently.
+    renderInspectionRollup().catch(function (err) {
+      console.warn('[ceo] inspection rollup failed', err);
+    });
   }
 
   // ---- Section 1: Company Health ----
@@ -1553,6 +1557,78 @@
     return new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric'
     }).format(new Date(ms));
+  }
+
+  /* ============================================================
+   * Phase Inspection 3 — Inspection Program rollup (read-only)
+   * ============================================================ */
+
+  async function renderInspectionRollup() {
+    const root = $('ceo-inspection-rollup');
+    if (!root) return;
+    try {
+      const snap = await db.collection('customer_inspection_state').get();
+      const rows = snap.docs.map(function (d) { return d.data() || {}; });
+      const total = rows.length;
+      if (total === 0) {
+        root.innerHTML =
+          '<div class="ceo-empty" style="padding:24px 12px;">' +
+            '<p class="ceo-empty-headline">No registry yet.</p>' +
+            '<p class="ceo-empty-context">' +
+              'Open /inspections once to bootstrap the customer registry.' +
+            '</p>' +
+          '</div>';
+        return;
+      }
+      const todayMs = Date.now();
+      const CADENCE = 60;
+      let completed = 0, assigned = 0, overdue = 0, unassigned = 0;
+      rows.forEach(function (r) {
+        const lastDate = r.last_inspection_date;
+        const isAssigned = !!r.assigned_to_uid;
+        let status;
+        if (!lastDate) {
+          status = isAssigned ? 'assigned' : 'unassigned';
+        } else {
+          const ms = Date.parse(lastDate + 'T00:00:00Z');
+          const daysSince = Number.isFinite(ms)
+            ? Math.floor((todayMs - ms) / 86400000)
+            : 999;
+          status = daysSince < CADENCE ? 'completed'
+                : isAssigned ? 'assigned' : 'overdue';
+        }
+        if (status === 'completed')       completed++;
+        else if (status === 'assigned')   assigned++;
+        else if (status === 'overdue')    overdue++;
+        else if (status === 'unassigned') unassigned++;
+      });
+      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      const tiles = [
+        { label: 'Completion rate', value: pct + '%',
+          context: completed + ' of ' + total + ' customers on schedule' },
+        { label: 'Overdue',          value: String(overdue),
+          context: overdue === 0 ? 'Nothing past due. Beautiful.'
+                                 : 'Past 60 days with no assignment yet' },
+        { label: 'Assigned',         value: String(assigned),
+          context: 'Owned by an inspector right now' },
+        { label: 'Awaiting first',   value: String(unassigned),
+          context: 'Newly added customers, no inspection yet' }
+      ];
+      root.innerHTML = '<div class="ceo-health-pillars" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:20px 28px;">' +
+        tiles.map(function (t) {
+          return '<div class="ceo-pillar">' +
+                   '<p class="ceo-pillar-label">' + escapeHtml(t.label) + '</p>' +
+                   '<div class="ceo-pillar-value">' + escapeHtml(t.value) + '</div>' +
+                   '<p class="ceo-pillar-context">' + escapeHtml(t.context) + '</p>' +
+                 '</div>';
+        }).join('') +
+      '</div>';
+    } catch (err) {
+      console.warn('[ceo] inspection rollup read failed', err);
+      root.innerHTML = '<p class="ceo-empty-context" style="padding:18px 12px;">' +
+        'Inspection registry isn\'t loading right now.</p>';
+    }
   }
 
   /* ============================================================

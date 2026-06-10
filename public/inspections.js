@@ -1681,6 +1681,355 @@
      Boot
      ==================================================================== */
 
+  /* ============================================================
+   * Phase Inspection 3 — Health Dashboard + Customer Registry
+   *
+   * Loads (and lazily bootstraps) customer_inspection_state docs,
+   * computes status per customer client-side, renders the four
+   * dashboard tiles + completion %, the full registry filterable by
+   * status, and the inspector's personal "my queue" of assignments.
+   *
+   * Status derivation is client-side and stateless: based only on
+   * last_inspection_date and assigned_to_uid. That means "completed"
+   * automatically flips back to "unassigned" or "overdue" the moment
+   * the customer crosses the 60-day cadence — no scheduled job needed.
+   * ============================================================ */
+
+  const INSPECTION_CADENCE_DAYS = 60;
+  let registryStaff = null;
+  let registryFilter = "all";
+  let registryRowsCache = [];
+
+  async function bootInspectionRegistry(staff) {
+    if (!staff) return;
+    if (staff.role !== "admin") return;
+    registryStaff = staff;
+    wireRegistryFilters();
+    await loadAndRenderRegistry();
+  }
+
+  function wireRegistryFilters() {
+    document.querySelectorAll(".insp-reg-filter").forEach(function (b) {
+      if (b.dataset.wired) return;
+      b.dataset.wired = "1";
+      b.addEventListener("click", function () {
+        document.querySelectorAll(".insp-reg-filter").forEach(function (x) { x.classList.remove("is-active"); });
+        b.classList.add("is-active");
+        registryFilter = b.dataset.filter || "all";
+        renderRegistry();
+      });
+    });
+  }
+
+  async function loadAndRenderRegistry() {
+    const db = firebase.firestore();
+    try {
+      // Pull state docs + customers in parallel. We need both: the state
+      // docs hold inspection history; the customers collection is the
+      // source of truth for "every customer Pioneer cleans" — so we can
+      // bootstrap rows for any customer that doesn't have a state doc
+      // yet (first time loading the registry after a fresh customer
+      // was added).
+      const [stateSnap, custSnap] = await Promise.all([
+        db.collection("customer_inspection_state").get(),
+        db.collection("customers").get()
+      ]);
+
+      const stateByCustomer = new Map();
+      stateSnap.docs.forEach(function (d) {
+        stateByCustomer.set(d.id, Object.assign({ _id: d.id }, d.data() || {}));
+      });
+
+      const allCustomers = custSnap.docs
+        .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        .filter(function (c) { return c.active !== false; })
+        .filter(function (c) { return c._id && (c.name || c.display_name); });
+
+      // Lazy bootstrap: for any active customer without a state doc,
+      // create one in batch. Idempotent — re-running is a no-op once
+      // the docs exist.
+      const missing = allCustomers.filter(function (c) { return !stateByCustomer.has(c._id); });
+      if (missing.length) {
+        const batch = db.batch();
+        const nowSentinel = firebase.firestore.FieldValue.serverTimestamp();
+        missing.forEach(function (c) {
+          const ref = db.collection("customer_inspection_state").doc(c._id);
+          batch.set(ref, {
+            customer_slug:           c._id,
+            customer_name:           c.name || c.display_name || c._id,
+            inspection_cadence_days: INSPECTION_CADENCE_DAYS,
+            last_inspection_id:      null,
+            last_inspection_date:    null,
+            last_inspector_uid:      null,
+            last_inspector_name:     null,
+            last_inspector_email:    null,
+            assigned_to_uid:         null,
+            assigned_to_email:       null,
+            assigned_to_name:        null,
+            assigned_at:             null,
+            assigned_by_email:       null,
+            due_date:                null,
+            created_at:              nowSentinel,
+            updated_at:              nowSentinel
+          }, { merge: true });
+          stateByCustomer.set(c._id, {
+            _id:           c._id,
+            customer_slug: c._id,
+            customer_name: c.name || c.display_name || c._id,
+            inspection_cadence_days: INSPECTION_CADENCE_DAYS,
+            last_inspection_date: null,
+            assigned_to_uid: null
+          });
+        });
+        try { await batch.commit(); }
+        catch (err) { console.warn("[inspections] registry bootstrap write failed", err); }
+      }
+
+      // Hydrate name from customers when missing on the state doc.
+      const nameBySlug = {};
+      allCustomers.forEach(function (c) { nameBySlug[c._id] = c.name || c.display_name || c._id; });
+      registryRowsCache = Array.from(stateByCustomer.values()).map(function (s) {
+        return Object.assign({}, s, {
+          customer_name: s.customer_name || nameBySlug[s.customer_slug] || s._id
+        });
+      });
+
+      renderRegistry();
+      renderHealthTotals();
+      renderMyQueue();
+    } catch (err) {
+      console.error("[inspections] registry load failed", err);
+      const list = $("insp-registry-list");
+      if (list) list.innerHTML = '<p class="insp-recent-status">Couldn\'t load registry: ' + regEscape(err.message || "unknown") + '</p>';
+    }
+  }
+
+  function computeRegistryStatus(row, todayMs) {
+    const lastDate = row.last_inspection_date;
+    const assigned = !!row.assigned_to_uid;
+    if (!lastDate) {
+      return assigned ? "assigned" : "unassigned";
+    }
+    const ms = Date.parse(lastDate + "T00:00:00Z");
+    if (!Number.isFinite(ms)) return assigned ? "assigned" : "unassigned";
+    const daysSince = Math.floor((todayMs - ms) / 86400000);
+    if (daysSince < INSPECTION_CADENCE_DAYS) return "completed";
+    if (assigned) return "assigned";
+    return "overdue";
+  }
+
+  function renderHealthTotals() {
+    const card = $("insp-health-card");
+    if (!card) return;
+    card.hidden = false;
+    const todayMs = Date.now();
+    let total = registryRowsCache.length, completed = 0, assigned = 0, overdue = 0, unassigned = 0;
+    registryRowsCache.forEach(function (r) {
+      const st = computeRegistryStatus(r, todayMs);
+      if (st === "completed")       completed++;
+      else if (st === "assigned")   assigned++;
+      else if (st === "overdue")    overdue++;
+      else if (st === "unassigned") unassigned++;
+    });
+    $("insp-h-total").textContent     = String(total);
+    $("insp-h-assigned").textContent  = String(assigned);
+    $("insp-h-completed").textContent = String(completed);
+    $("insp-h-overdue").textContent   = String(overdue);
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    $("insp-h-pct").textContent = pct + "%";
+  }
+
+  function renderMyQueue() {
+    if (!registryStaff) return;
+    const card = $("insp-queue-card");
+    const list = $("insp-queue-list");
+    if (!card || !list) return;
+    const myUid = registryStaff.uid;
+    const myEmail = String((registryStaff.email || "")).toLowerCase();
+    const mine = registryRowsCache.filter(function (r) {
+      return (r.assigned_to_uid && r.assigned_to_uid === myUid)
+          || (r.assigned_to_email && r.assigned_to_email === myEmail);
+    });
+    if (!mine.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    list.innerHTML = mine.map(function (r) {
+      return renderRegistryRowHtml(r, /* showQueueActions */ true);
+    }).join("");
+    wireRegistryRowButtons();
+  }
+
+  function renderRegistry() {
+    const card = $("insp-registry-card");
+    const list = $("insp-registry-list");
+    if (!card || !list) return;
+    card.hidden = false;
+    const todayMs = Date.now();
+    const filtered = registryRowsCache.filter(function (r) {
+      if (registryFilter === "all") return true;
+      return computeRegistryStatus(r, todayMs) === registryFilter;
+    });
+    // Sort: overdue first, then assigned (by due date), then completed.
+    filtered.sort(function (a, b) {
+      const sa = computeRegistryStatus(a, todayMs);
+      const sb = computeRegistryStatus(b, todayMs);
+      const order = { overdue: 0, unassigned: 1, assigned: 2, completed: 3 };
+      if (order[sa] !== order[sb]) return order[sa] - order[sb];
+      // Within same status, oldest inspection first (most urgent).
+      const da = a.last_inspection_date || "0000-00-00";
+      const db_ = b.last_inspection_date || "0000-00-00";
+      return da < db_ ? -1 : da > db_ ? 1 : (a.customer_name || "").localeCompare(b.customer_name || "");
+    });
+    if (!filtered.length) {
+      list.innerHTML = '<p class="insp-recent-status">No customers match this filter.</p>';
+      return;
+    }
+    list.innerHTML = filtered.map(function (r) {
+      return renderRegistryRowHtml(r, /* showQueueActions */ false);
+    }).join("");
+    wireRegistryRowButtons();
+  }
+
+  function renderRegistryRowHtml(r, showQueueActions) {
+    const todayMs = Date.now();
+    const status = computeRegistryStatus(r, todayMs);
+    const lastDate = r.last_inspection_date || "—";
+    const dueDate  = r.due_date || (r.last_inspection_date
+      ? computeDueDateClient(r.last_inspection_date, r.inspection_cadence_days || INSPECTION_CADENCE_DAYS)
+      : "—");
+    const daysSince = r.last_inspection_date
+      ? Math.floor((todayMs - Date.parse(r.last_inspection_date + "T00:00:00Z")) / 86400000) + " days"
+      : "—";
+    const assignedTo = r.assigned_to_name || r.assigned_to_email || "—";
+    const lastInspector = r.last_inspector_name || (r.last_inspector_email ? r.last_inspector_email.split("@")[0] : "—");
+    const meEmail = String((registryStaff && registryStaff.email) || "").toLowerCase();
+    const isMine = r.assigned_to_email === meEmail;
+    let actionsHtml = '';
+    if (showQueueActions) {
+      actionsHtml =
+        '<button type="button" class="insp-reg-btn insp-reg-btn-primary" data-row-action="open" data-slug="' + regAttr(r.customer_slug) + '">Open Inspection</button>' +
+        '<button type="button" class="insp-reg-btn" data-row-action="unassign" data-slug="' + regAttr(r.customer_slug) + '">Release</button>';
+    } else if (status === "assigned") {
+      actionsHtml =
+        (isMine
+          ? '<button type="button" class="insp-reg-btn insp-reg-btn-primary" data-row-action="open" data-slug="' + regAttr(r.customer_slug) + '">Open Inspection</button>'
+          : '<button type="button" class="insp-reg-btn" data-row-action="claim" data-slug="' + regAttr(r.customer_slug) + '">Take Over</button>'
+        );
+    } else {
+      actionsHtml =
+        '<button type="button" class="insp-reg-btn insp-reg-btn-primary" data-row-action="claim" data-slug="' + regAttr(r.customer_slug) + '">Assign to Me</button>';
+    }
+    return (
+      '<div class="insp-reg-row" data-status="' + regAttr(status) + '" data-slug="' + regAttr(r.customer_slug) + '">' +
+        '<div class="insp-reg-name">' + regEscape(r.customer_name || r.customer_slug) + '</div>' +
+        '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Last</span>' + regEscape(lastDate) + '</div>' +
+        '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Days</span>' + regEscape(daysSince) + '</div>' +
+        '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Assigned</span>' + regEscape(assignedTo) +
+          (lastInspector && lastInspector !== "—" ? ' &nbsp;·&nbsp; <em style="color:#94a3b8;">last: ' + regEscape(lastInspector) + '</em>' : '') +
+        '</div>' +
+        '<div class="insp-reg-meta"><span class="insp-reg-meta-key">Due</span>' + regEscape(dueDate) +
+          ' &nbsp;<span class="insp-reg-status-chip s-' + regAttr(status) + '">' + regEscape(status) + '</span>' +
+        '</div>' +
+        '<div class="insp-reg-actions">' + actionsHtml + '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireRegistryRowButtons() {
+    document.querySelectorAll("[data-row-action]").forEach(function (btn) {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = "1";
+      btn.addEventListener("click", function () {
+        const action = btn.getAttribute("data-row-action");
+        const slug = btn.getAttribute("data-slug");
+        if (!slug) return;
+        if (action === "claim")    return claimRow(slug);
+        if (action === "unassign") return unassignRow(slug);
+        if (action === "open")     return openInspectionFor(slug);
+      });
+    });
+  }
+
+  async function claimRow(slug) {
+    if (!registryStaff) return;
+    const me = registryStaff;
+    try {
+      await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
+        customer_slug:     slug,
+        assigned_to_uid:   me.uid,
+        assigned_to_email: String(me.email || "").toLowerCase(),
+        assigned_to_name:  (me.tech && me.tech.display_name) || (me.email || "").split("@")[0],
+        assigned_at:       firebase.firestore.FieldValue.serverTimestamp(),
+        assigned_by_email: String(me.email || "").toLowerCase(),
+        updated_at:        firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await loadAndRenderRegistry();
+    } catch (err) {
+      console.error("[inspections] claim failed", err);
+      alert("Couldn't assign: " + (err.message || "unknown"));
+    }
+  }
+
+  async function unassignRow(slug) {
+    try {
+      await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
+        assigned_to_uid:   null,
+        assigned_to_email: null,
+        assigned_to_name:  null,
+        assigned_at:       null,
+        assigned_by_email: null,
+        updated_at:        firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await loadAndRenderRegistry();
+    } catch (err) {
+      console.error("[inspections] unassign failed", err);
+      alert("Couldn't release: " + (err.message || "unknown"));
+    }
+  }
+
+  function openInspectionFor(slug) {
+    // Navigate to intake with the customer preselected. Same-page
+    // navigation via setting search + reload keeps it simple and lets
+    // the existing ?customer= deep-link path do the heavy lifting.
+    const url = location.pathname + "?customer=" + encodeURIComponent(slug);
+    location.href = url;
+  }
+
+  function preselectCustomerOnIntake(slug) {
+    // Called from the onAuthorized boot after the intake form is wired.
+    // The customer dropdown is populated async by loadCustomers, so
+    // poll briefly until the slug is selectable.
+    let tries = 0;
+    const tick = function () {
+      const sel = $("insp-customer");
+      if (!sel) return;
+      if (sel.querySelector('option[value="' + slug + '"]')) {
+        sel.value = slug;
+        const opt = sel.options[sel.selectedIndex];
+        state.customer_slug = slug;
+        state.customer_name = (opt && opt.dataset && opt.dataset.name) || "";
+        return;
+      }
+      if (tries++ < 40) setTimeout(tick, 100);
+    };
+    tick();
+  }
+
+  function computeDueDateClient(ymd, cadenceDays) {
+    const ms = Date.parse(ymd + "T00:00:00Z");
+    if (!Number.isFinite(ms)) return "—";
+    return new Date(ms + cadenceDays * 86400000).toISOString().slice(0, 10);
+  }
+
+  function regEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function regAttr(s) { return regEscape(s); }
+
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
     wireSignOutButtons();
@@ -1758,10 +2107,24 @@
           loadHubInspections();
           loadSrAssignedDropdown();
 
-          // ?mode=new deep-link straight into the intake.
+          // Phase Inspection 3 — Health Dashboard + Customer Registry +
+          // My Queue. Async, non-blocking; soft-fails if reads error.
+          bootInspectionRegistry(staff).catch(function (err) {
+            console.warn("[inspections] registry boot failed", err);
+          });
+
+          // Deep-link handling. ?mode=new → straight into intake.
+          //                     ?customer=<slug> → intake with that
+          //                     customer pre-selected (used by the
+          //                     registry "Open Inspection" button).
           try {
             const params = new URLSearchParams(location.search || "");
-            if ((params.get("mode") || "").trim() === "new") showIntakeView();
+            const mode = (params.get("mode") || "").trim();
+            const preselectSlug = (params.get("customer") || "").trim();
+            if (mode === "new" || preselectSlug) {
+              showIntakeView();
+              if (preselectSlug) preselectCustomerOnIntake(preselectSlug);
+            }
           } catch (e) { /* ignore */ }
         }
       });

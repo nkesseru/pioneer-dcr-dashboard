@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="inspections.css?v=20260609-inspection-v2-1b" />
+  <link rel="stylesheet" href="inspections.css?v=20260609-inspection-3" />
   <link rel="stylesheet" href="styles/inspections-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -216,6 +216,59 @@
         <!-- Recent inspections — last 5. Each card expands to a
              detail modal. Score < 3 shows the "Areas needing
              attention" broad-category callout (no per-task blame). -->
+        <!-- ========== Phase Inspection 3 — Health Dashboard ========== -->
+        <section class="insp-card insp-health-card" id="insp-health-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">✓</span>
+            <div>
+              <h2 class="insp-step-title">Inspection Health</h2>
+              <p class="insp-step-sub">Every customer gets an inspection every 60 days.</p>
+            </div>
+          </header>
+          <div class="insp-health-grid" id="insp-health-grid">
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-total">—</span><span class="insp-health-label">Total customers</span></div>
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-assigned">—</span><span class="insp-health-label">Assigned</span></div>
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-completed">—</span><span class="insp-health-label">Completed (last 60d)</span></div>
+            <div class="insp-health-tile is-warning"><span class="insp-health-num" id="insp-h-overdue">—</span><span class="insp-health-label">Overdue</span></div>
+            <div class="insp-health-tile is-feature"><span class="insp-health-num" id="insp-h-pct">—</span><span class="insp-health-label">Completion rate</span></div>
+          </div>
+        </section>
+
+        <!-- ========== Phase Inspection 3 — My Inspector Queue ========== -->
+        <section class="insp-card insp-queue-card" id="insp-queue-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">→</span>
+            <div>
+              <h2 class="insp-step-title">My Assigned Inspections</h2>
+              <p class="insp-step-sub">Customers waiting on you.</p>
+            </div>
+          </header>
+          <div class="insp-queue-list" id="insp-queue-list">
+            <p class="insp-recent-status">Nothing assigned to you right now.</p>
+          </div>
+        </section>
+
+        <!-- ========== Phase Inspection 3 — Customer Registry ========== -->
+        <section class="insp-card insp-registry-card" id="insp-registry-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">⬢</span>
+            <div>
+              <h2 class="insp-step-title">Customer Registry</h2>
+              <p class="insp-step-sub">Every customer + their inspection cadence.</p>
+            </div>
+          </header>
+          <div class="insp-registry-filters">
+            <button type="button" class="insp-reg-filter is-active" data-filter="all">All</button>
+            <button type="button" class="insp-reg-filter" data-filter="overdue">Overdue</button>
+            <button type="button" class="insp-reg-filter" data-filter="unassigned">Unassigned</button>
+            <button type="button" class="insp-reg-filter" data-filter="assigned">Assigned</button>
+            <button type="button" class="insp-reg-filter" data-filter="completed">Completed</button>
+          </div>
+          <div class="insp-registry-list" id="insp-registry-list">
+            <p class="insp-recent-status">Loading customers…</p>
+          </div>
+        </section>
+
         <section class="insp-card insp-recent-card">
           <header class="insp-step-head">
             <span class="insp-step-num">★</span>
@@ -564,7 +617,7 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="info-tip.js"></script>
-  <script src="inspections.js?v=20260609-inspection-v2-1b"></script>
+  <script src="inspections.js?v=20260609-inspection-3"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

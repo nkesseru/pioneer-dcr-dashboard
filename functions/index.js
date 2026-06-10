@@ -8171,3 +8171,97 @@ exports.refreshGhlHiringV1 = onRequest({
     res.status(500).json({ ok: false, error: (err && err.message) || "unknown" });
   }
 });
+
+/* ============================================================================
+ * Phase Inspection 3 — onInspectionCreatedV1
+ *
+ * Fires when an admin submits a new inspection. Updates the matching
+ * customer_inspection_state doc so the registry, /inspections Health
+ * panel, and CEO rollup all see "completed" for this cycle without
+ * waiting for a manual write.
+ *
+ *   - last_inspection_id / last_inspection_date / last_inspector_*
+ *     captured from the inspection doc
+ *   - due_date = inspection_date + inspection_cadence_days (default 60)
+ *   - assignment fields cleared (the cycle is closed)
+ *   - inspection_cadence_days preserved if already set on the state doc
+ *     (some customers may have a faster cadence override later)
+ *
+ * Soft-fails on missing customer_slug or write errors; the inspection
+ * doc itself is the source of truth and stays committed regardless.
+ * ========================================================================== */
+
+exports.onInspectionCreatedV1 = onDocumentCreated(
+  { document: "inspections/{inspectionId}", timeoutSeconds: 30 },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+      const data = snap.data() || {};
+      const customerSlug = String(data.customer_slug || "").trim();
+      if (!customerSlug) {
+        logger.warn("[inspection-state] inspection without customer_slug — skipping", {
+          inspection_id: event.params.inspectionId
+        });
+        return;
+      }
+
+      // Default cadence; per-customer override is preserved if the
+      // state doc already has one (read-then-write to keep it idempotent
+      // for future cadence customization).
+      const stateRef = admin.firestore()
+        .collection("customer_inspection_state")
+        .doc(customerSlug);
+      const existing = await stateRef.get();
+      const cadence = (existing.exists && existing.data().inspection_cadence_days) || 60;
+
+      const inspectionDate = String(data.inspection_date || "").trim()
+        || new Date().toISOString().slice(0, 10);
+      const dueDate = computeDueDateYMD(inspectionDate, cadence);
+
+      const update = {
+        customer_slug:        customerSlug,
+        customer_name:        data.customer_name || (existing.exists ? existing.data().customer_name : "") || "",
+        inspection_cadence_days: cadence,
+        last_inspection_id:   event.params.inspectionId,
+        last_inspection_date: inspectionDate,
+        last_inspector_uid:   data.inspector_uid   || null,
+        last_inspector_name:  data.inspector_name  || null,
+        last_inspector_email: data.inspector_email || null,
+        // Cycle closed — clear assignment fields. Next cycle starts
+        // unassigned until an admin claims it.
+        assigned_to_uid:      null,
+        assigned_to_email:    null,
+        assigned_to_name:     null,
+        assigned_at:          null,
+        assigned_by_email:    null,
+        due_date:             dueDate,
+        updated_at:           admin.firestore.FieldValue.serverTimestamp()
+      };
+      if (!existing.exists) {
+        update.created_at = admin.firestore.FieldValue.serverTimestamp();
+      }
+      await stateRef.set(update, { merge: true });
+
+      logger.info("[inspection-state] updated", {
+        customer_slug: customerSlug,
+        last_inspection_date: inspectionDate,
+        due_date: dueDate
+      });
+    } catch (err) {
+      logger.error("[inspection-state] update failed", {
+        inspection_id: event.params && event.params.inspectionId,
+        error: err && err.message
+      });
+    }
+  }
+);
+
+// inspection_date + cadence days → YYYY-MM-DD (UTC math is fine for
+// date-only arithmetic; we never need sub-day precision here).
+function computeDueDateYMD(ymd, cadenceDays) {
+  const ms = Date.parse(ymd + "T00:00:00Z");
+  if (!Number.isFinite(ms)) return null;
+  const due = new Date(ms + cadenceDays * 86400000);
+  return due.toISOString().slice(0, 10);
+}

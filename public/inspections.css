@@ -1176,3 +1176,160 @@
 .insp-detail-item-verdict.tone-great { background: #fef3c7; color: #92400e; }
 .insp-detail-item-verdict.tone-fail  { background: #fee2e2; color: #991b1b; }
 .insp-detail-item-verdict.tone-na    { background: #e2e8f0; color: #334155; }
+
+/* ============================================================
+   Phase Inspection 3 — Health Dashboard + Registry + Queue
+   ============================================================ */
+.insp-health-card { }
+.insp-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.insp-health-tile {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+}
+.insp-health-tile.is-warning {
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+.insp-health-tile.is-warning .insp-health-num { color: #92400e; }
+.insp-health-tile.is-feature {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+.insp-health-tile.is-feature .insp-health-num { color: #166534; }
+.insp-health-num {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: #0b1220;
+  line-height: 1.1;
+}
+.insp-health-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* Inspector queue + registry shared list aesthetic */
+.insp-queue-list,
+.insp-registry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.insp-reg-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1.4fr 1.4fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 13px;
+}
+.insp-reg-row[data-status="overdue"]    { border-left: 3px solid #b91c1c; }
+.insp-reg-row[data-status="assigned"]   { border-left: 3px solid #2563eb; }
+.insp-reg-row[data-status="unassigned"] { border-left: 3px solid #64748b; }
+.insp-reg-row[data-status="completed"]  { border-left: 3px solid #16a34a; }
+.insp-reg-name {
+  font-weight: 700;
+  color: #0b1220;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.insp-reg-meta {
+  font-size: 12px;
+  color: #475569;
+}
+.insp-reg-meta-key {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.insp-reg-status-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.insp-reg-status-chip.s-completed  { background: #dcfce7; color: #166534; }
+.insp-reg-status-chip.s-assigned   { background: #dbeafe; color: #1e40af; }
+.insp-reg-status-chip.s-overdue    { background: #fee2e2; color: #991b1b; }
+.insp-reg-status-chip.s-unassigned { background: #f1f5f9; color: #334155; }
+.insp-reg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.insp-reg-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+.insp-reg-btn:hover { background: #f8fafc; }
+.insp-reg-btn-primary {
+  background: #0b1220;
+  color: #ffffff;
+  border-color: transparent;
+}
+.insp-reg-btn-primary:hover { background: #1e293b; }
+
+.insp-registry-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.insp-reg-filter {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+}
+.insp-reg-filter:hover { background: #f1f5f9; }
+.insp-reg-filter.is-active {
+  background: #0b1220;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+/* Collapse on narrow viewports */
+@media (max-width: 720px) {
+  .insp-reg-row {
+    grid-template-columns: 1fr;
+  }
+  .insp-reg-actions { justify-content: flex-start; }
+}

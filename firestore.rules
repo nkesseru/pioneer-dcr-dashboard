@@ -676,6 +676,46 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ====================================================================
+    // Phase Inspection 3 — customer_inspection_state
+    // ====================================================================
+    // One doc per customer slug. Tracks the inspection cadence: last
+    // inspection date + inspector, current assignment (who owns the
+    // next inspection), and the computed due date. Status (unassigned |
+    // assigned | completed | overdue) is derived at read time from
+    // last_inspection_date + assignment fields — not stored — so
+    // "completed" auto-flips back to "unassigned" when the next cycle
+    // comes due without any scheduled job.
+    //
+    // Writes happen in two places:
+    //   - Admin tier from /inspections (assign-to-me, assign-to-other,
+    //     bootstrap when a customer first enters the registry).
+    //   - functions:onInspectionCreatedV1 (Admin SDK, bypasses rules)
+    //     bumps last_inspection_* and clears assignment when an
+    //     inspection submits.
+    //
+    // Schema:
+    //   customer_slug, customer_name
+    //   inspection_cadence_days        (default 60)
+    //   last_inspection_id             (most recent inspections/{id})
+    //   last_inspection_date           (YYYY-MM-DD)
+    //   last_inspector_uid             (for rotation)
+    //   last_inspector_name
+    //   last_inspector_email
+    //   assigned_to_uid                (null = unassigned)
+    //   assigned_to_email
+    //   assigned_to_name
+    //   assigned_at
+    //   assigned_by_email
+    //   due_date                       (last_inspection_date + cadence)
+    //   created_at, updated_at
+    //
+    // No deletes — historical assignment + completion trail is kept.
+    match /customer_inspection_state/{slug} {
+      allow read, create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
     // Quality Wins — durable record of 5-star inspections that the
     // company is celebrating. Auto-created by inspections.js when an
     // admin submits an inspection with overall_score >= 4.8. Stays
