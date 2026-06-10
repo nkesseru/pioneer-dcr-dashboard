@@ -1855,6 +1855,11 @@
         openThreadDetail(row.getAttribute("data-thread-id"));
       });
     });
+    // Phase 3C UI — fire-and-forget the channels-used batch query so each
+    // thread card gets its In-App / SMS transport chip(s). Best-effort;
+    // failures fall back to cards rendered without transport indicator.
+    const visibleIds = threads.map(function (t) { return t._id; }).filter(Boolean);
+    patchThreadCardsWithTransport(visibleIds);
   }
 
   // Phase 3B.1 — status badge helper. Returns HTML for an inline chip.
@@ -1880,6 +1885,75 @@
            '</span>';
   }
 
+  // Phase 3C UI — transport chip(s). Renders 0/1/2 chips depending on the
+  // channels argument (an array of channel strings or a single channel).
+  //   ['in_app']         → "In-App" chip
+  //   ['sms']            → "SMS" chip
+  //   ['in_app','sms']   → both chips, marked "Both" via wrapper class
+  //   []                 → empty string (no chip — thread has no messages yet)
+  function renderCommTransportChips(channels) {
+    const list = Array.isArray(channels) ? channels : (channels ? [channels] : []);
+    const hasInApp = list.indexOf("in_app") >= 0;
+    const hasSms   = list.indexOf("sms")    >= 0;
+    let html = "";
+    if (hasInApp) html += '<span class="mc-comm-transport-chip is-in_app" title="Delivered via in-app inbox">In-App</span>';
+    if (hasSms)   html += '<span class="mc-comm-transport-chip is-sms" title="Delivered via SMS">SMS</span>';
+    return html;
+  }
+
+  // Phase 3C UI — per-message channel chip for thread detail bubbles.
+  function renderMessageChannelChip(channel) {
+    const value = String(channel || "in_app").toLowerCase();
+    const label = value === "sms" ? "SMS" : "In-App";
+    return '<span class="mc-thread-msg-channel is-' + commEscape(value) + '">' +
+             commEscape(label) +
+           '</span>';
+  }
+
+  // Phase 3C UI — given a list of thread ids, fetches the channels each
+  // has used and patches the rendered thread rows. Single batched query
+  // per chunk of 30 (Firestore 'in' clause cap). Best-effort: if it fails,
+  // the rows simply render without transport chips.
+  async function patchThreadCardsWithTransport(threadIds) {
+    if (!threadIds || !threadIds.length) return;
+    const db = firebase.firestore();
+    const byThread = {};
+    threadIds.forEach(function (id) { byThread[id] = new Set(); });
+
+    // Chunk to respect Firestore 'in' clause cap (30 values).
+    for (let i = 0; i < threadIds.length; i += 30) {
+      const chunk = threadIds.slice(i, i + 30);
+      try {
+        const snap = await db.collection("communication_messages")
+          .where("thread_id", "in", chunk)
+          .get();
+        snap.docs.forEach(function (d) {
+          const data = d.data() || {};
+          const tid = data.thread_id;
+          const ch  = data.channel || "in_app";
+          if (byThread[tid]) byThread[tid].add(ch);
+        });
+      } catch (err) {
+        console.warn("[manager] transport patch query failed", err);
+      }
+    }
+
+    threadIds.forEach(function (tid) {
+      const row = document.querySelector('.mc-comm-thread[data-thread-id="' + cssAttr(tid) + '"]');
+      if (!row) return;
+      const slot = row.querySelector(".mc-comm-thread-transport");
+      if (!slot) return;
+      const channels = Array.from(byThread[tid] || []);
+      slot.innerHTML = renderCommTransportChips(channels);
+    });
+  }
+
+  // CSS attribute selector escape — thread IDs are Firestore docIDs (safe
+  // alphanumeric), but better safe than sorry.
+  function cssAttr(s) {
+    return String(s || "").replace(/(["\\])/g, "\\$1");
+  }
+
   function renderThreadRowHtml(t) {
     const participantNames = (t.participants || [])
       .map(function (p) { return p.name || p.id; })
@@ -1887,6 +1961,9 @@
       .join(" · ");
     const preview = t.last_message_preview || "No messages yet.";
     const when = commFmtAgo(commTsToMs(t.last_message_at || t.updated_at));
+    // Phase 3C UI — mc-comm-thread-transport is an empty slot at render
+    // time; patchThreadCardsWithTransport fills it in after the batched
+    // channels-used query completes (best-effort, non-blocking).
     return (
       '<div class="mc-comm-thread" data-thread-id="' + commEscape(t._id) +
         '" data-category="' + commEscape(t.category || "general") + '"' +
@@ -1897,6 +1974,7 @@
             '<span class="mc-comm-thread-subject">' + commEscape(t.subject || "(no subject)") + '</span>' +
             renderCommPriorityBadge(t.priority) +
             renderCommStatusBadge(t.status) +
+            '<span class="mc-comm-thread-transport"></span>' +
             '<span class="mc-comm-thread-time">' + commEscape(when) + '</span>' +
           '</div>' +
           '<div class="mc-comm-thread-participants">' + commEscape(participantNames || "—") + '</div>' +
@@ -1946,12 +2024,15 @@
         return;
       }
       // Phase 3B.1+3B.2 — category text + priority badge + status badge.
+      // Phase 3C UI — transport chip slot appended; populated below once
+      // the message list resolves (so we know which channels were used).
       // innerHTML so the chip styling shows up; the values are escaped
       // inside the badge helpers.
       const eyebrowEl = $("manager-thread-eyebrow");
       eyebrowEl.innerHTML = commEscape(COMM_CATEGORY_LABEL[thread.category] || "Conversation") +
                             ' ' + renderCommPriorityBadge(thread.priority) +
-                            ' ' + renderCommStatusBadge(thread.status);
+                            ' ' + renderCommStatusBadge(thread.status) +
+                            ' <span class="mc-thread-transport-slot"></span>';
       // Disable Resolve / Close if thread is already terminal.
       const isTerminal = thread.status === "resolved" || thread.status === "closed";
       const resolveBtn = $("manager-thread-action-resolve");
@@ -1976,6 +2057,15 @@
         // Auto-scroll to bottom
         histEl.scrollTop = histEl.scrollHeight;
       }
+      // Phase 3C UI — thread-level transport chip(s) in the eyebrow.
+      // Computed from the channels actually used in the message history.
+      const slot = document.querySelector(".mc-thread-transport-slot");
+      if (slot) {
+        const channelsUsed = Array.from(new Set(
+          (messages || []).map(function (m) { return m.channel || "in_app"; })
+        ));
+        slot.innerHTML = renderCommTransportChips(channelsUsed);
+      }
     } catch (err) {
       console.error("[manager] thread detail failed", err);
       histEl.innerHTML = '<p class="mc-empty">Couldn\'t load: ' +
@@ -1986,10 +2076,16 @@
   function renderMessageBubbleHtml(m) {
     const when = commFmtAgo(commTsToMs(m.created_at));
     const who = m.sender_name || m.sender_id || "—";
+    // Phase 3C UI — channel chip in the bubble meta line so admins can
+    // tell at a glance whether a given message went in-app or via SMS.
+    const channelChip = renderMessageChannelChip(m.channel || "in_app");
     return (
-      '<div class="mc-thread-msg" data-direction="' + commEscape(m.direction || "outbound") + '">' +
+      '<div class="mc-thread-msg" data-direction="' + commEscape(m.direction || "outbound") +
+        '" data-channel="' + commEscape(m.channel || "in_app") + '">' +
         commEscape(m.body || "") +
-        '<div class="mc-thread-msg-meta">' + commEscape(who) + ' · ' + commEscape(when) + '</div>' +
+        '<div class="mc-thread-msg-meta">' +
+          commEscape(who) + ' · ' + commEscape(when) + channelChip +
+        '</div>' +
       '</div>'
     );
   }
@@ -2080,6 +2176,28 @@
     }
   }
 
+  // Phase 3C — Shared SMS poster. Used by both the thread-detail Send SMS
+  // button and the compose-modal "SMS only" / "Both" delivery paths. Pure
+  // network call — caller owns the UI status messaging.
+  async function postSmsForThread(threadId, body) {
+    const url = window.SEND_TWILIO_MESSAGE_URL;
+    if (!url) throw new Error("SMS transport URL not configured (window.SEND_TWILIO_MESSAGE_URL).");
+    const idToken = await firebase.auth().currentUser.getIdToken();
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": "Bearer " + idToken
+      },
+      body: JSON.stringify({ threadId: threadId, messageBody: body })
+    });
+    const json = await r.json().catch(function () { return {}; });
+    if (!r.ok || !json.ok) {
+      throw new Error((json && json.error) || ("HTTP " + r.status));
+    }
+    return json;
+  }
+
   // Phase 3C — Manual outbound SMS via Twilio. The server gates by admin
   // role + recipient phone availability; this client just confirms the
   // intent (SMS is real money + real noise on the tech's phone) and POSTs
@@ -2090,11 +2208,6 @@
     const body = (ta.value || "").trim();
     if (!body) {
       setThreadStatus("Type a message before sending SMS.", "error");
-      return;
-    }
-    const url = window.SEND_TWILIO_MESSAGE_URL;
-    if (!url) {
-      setThreadStatus("SMS transport URL not configured (window.SEND_TWILIO_MESSAGE_URL).", "error");
       return;
     }
     const ok = window.confirm(
@@ -2108,21 +2221,7 @@
     if (sendSmsBtn) sendSmsBtn.disabled = true;
     if (sendBtn)    sendBtn.disabled    = true;
     try {
-      const idToken = await firebase.auth().currentUser.getIdToken();
-      const r = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": "Bearer " + idToken
-        },
-        body: JSON.stringify({ threadId: openThreadId, messageBody: body })
-      });
-      const json = await r.json().catch(function () { return {}; });
-      if (!r.ok || !json.ok) {
-        const errMsg = (json && json.error) || ("HTTP " + r.status);
-        setThreadStatus("SMS failed: " + errMsg, "error");
-        return;
-      }
+      const json = await postSmsForThread(openThreadId, body);
       ta.value = "";
       setThreadStatus("SMS sent (sid " + (json.sid || "?") + ").", "ok");
       await openThreadDetail(openThreadId);
@@ -2188,6 +2287,40 @@
         applyKindDefaults(kindSel.value);
       });
     }
+    // Phase 3C UI — delivery method picker. Updates the hint copy + the
+    // primary send button label so the admin always knows what's about
+    // to happen before they click.
+    const deliverySel = $("manager-comm-new-delivery");
+    if (deliverySel) {
+      deliverySel.addEventListener("change", function () {
+        applyDeliveryHint(deliverySel.value);
+      });
+    }
+  }
+
+  // Phase 3C UI — keep the delivery hint + send button copy in sync with
+  // whichever transport the admin picked. Three states, all explicit.
+  function applyDeliveryHint(method) {
+    const hint = $("manager-comm-new-delivery-hint");
+    const sendBtn = $("manager-comm-new-send");
+    if (hint) hint.setAttribute("data-transport", method || "in_app");
+    const map = {
+      in_app: {
+        hint: "Recipient sees this in their team hub inbox. No phone notification.",
+        send: "Start & Send"
+      },
+      sms: {
+        hint: "Sends ONE SMS to the employee's phone on file. No in-app inbox copy. Use sparingly — A2P campaign approval may still be pending.",
+        send: "Start & Send SMS"
+      },
+      both: {
+        hint: "Sends an in-app inbox copy AND one SMS. The recipient sees the same message in both places.",
+        send: "Start & Send Both"
+      }
+    };
+    const m = map[method] || map.in_app;
+    if (hint) hint.textContent = m.hint;
+    if (sendBtn) sendBtn.textContent = m.send;
   }
 
   function applyKindDefaults(kind) {
@@ -2229,6 +2362,11 @@
     const kindSel = $("manager-comm-new-kind");
     if (kindSel) kindSel.value = "general";
     applyKindDefaults("general");
+    // Phase 3C UI — reset delivery to safe default (In-App only) so the
+    // admin never accidentally sends SMS by re-opening the modal.
+    const delSel = $("manager-comm-new-delivery");
+    if (delSel) delSel.value = "in_app";
+    applyDeliveryHint("in_app");
     const sel = $("manager-comm-new-recipient");
     sel.innerHTML = '<option value="">Loading…</option>';
     const techs = await ensureCommTechCache();
@@ -2247,6 +2385,9 @@
     // Phase 3B.2 — read kind + priority alongside the existing category.
     const kind      = $("manager-comm-new-kind").value;
     const priority  = $("manager-comm-new-priority").value;
+    // Phase 3C UI — delivery method drives whether the first message is
+    // in-app, SMS, or both. Default 'in_app' preserves prior behavior.
+    const delivery  = ($("manager-comm-new-delivery") && $("manager-comm-new-delivery").value) || "in_app";
     const sel       = $("manager-comm-new-recipient");
     const recipientId = (sel.value || "").toLowerCase();
     const recipientName = sel.options[sel.selectedIndex].getAttribute("data-name") || recipientId;
@@ -2255,6 +2396,18 @@
     if (!recipientId) { setNewThreadStatus("Choose a teammate.", "error"); return; }
     if (!subject)     { setNewThreadStatus("Give it a subject.", "error"); return; }
     if (!body)        { setNewThreadStatus("Write the first message.", "error"); return; }
+
+    // Phase 3C UI — explicit confirm before sending SMS or Both. In-app
+    // alone is silent (no confirm), matching the lower-stakes default.
+    if (delivery === "sms" || delivery === "both") {
+      const label = delivery === "sms" ? "SMS only" : "Both In-App and SMS";
+      const ok = window.confirm(
+        "Start this conversation and send via " + label + "?\n\n" +
+        "SMS goes to the employee's phone on file. Use sparingly."
+      );
+      if (!ok) { setNewThreadStatus("Cancelled.", ""); return; }
+    }
+
     const myEmail = (currentUser.email || "").toLowerCase();
     setNewThreadStatus("Starting…");
     $("manager-comm-new-send").disabled = true;
@@ -2271,19 +2424,52 @@
           { type: "tech",  id: recipientId, name: recipientName }
         ]
       });
-      await window.CommThreads.addMessage(tid, {
-        channel:        window.CommThreads.CHANNELS.IN_APP,
-        direction:      window.CommThreads.DIRECTIONS.OUTBOUND,
-        status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
-        sender_type:    "admin",
-        sender_id:      myEmail,
-        sender_name:    currentUser.displayName || myEmail.split("@")[0],
-        recipient_type: "employee",
-        recipient_id:   recipientId,
-        recipient_name: recipientName,
-        body:           body
-      });
-      setNewThreadStatus("Conversation started.", "ok");
+
+      // In-App copy (delivery: in_app or both)
+      if (delivery === "in_app" || delivery === "both") {
+        await window.CommThreads.addMessage(tid, {
+          channel:        window.CommThreads.CHANNELS.IN_APP,
+          direction:      window.CommThreads.DIRECTIONS.OUTBOUND,
+          status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
+          sender_type:    "admin",
+          sender_id:      myEmail,
+          sender_name:    currentUser.displayName || myEmail.split("@")[0],
+          recipient_type: "employee",
+          recipient_id:   recipientId,
+          recipient_name: recipientName,
+          body:           body
+        });
+      }
+
+      // SMS copy (delivery: sms or both). The server handles the
+      // communication_messages doc + thread bump for SMS, so we don't
+      // also call CommThreads.addMessage for this path.
+      if (delivery === "sms" || delivery === "both") {
+        try {
+          const smsResult = await postSmsForThread(tid, body);
+          setNewThreadStatus(
+            delivery === "both"
+              ? "Started — in-app delivered, SMS sent (sid " + (smsResult.sid || "?") + ")."
+              : "Started — SMS sent (sid " + (smsResult.sid || "?") + ").",
+            "ok"
+          );
+        } catch (smsErr) {
+          // Thread + (if 'both') in-app message succeeded; only the SMS
+          // leg failed. Tell the admin explicitly so they know whether to
+          // retry from the thread detail modal.
+          console.error("[manager] new-thread SMS leg failed", smsErr);
+          setNewThreadStatus(
+            "Started, but SMS failed: " + (smsErr.message || "unknown") + (delivery === "both" ? " (in-app delivered)." : "."),
+            "error"
+          );
+          setTimeout(function () { overlay.hidden = true; }, 1800);
+          await loadAndRenderThreads();
+          return;
+        }
+      } else {
+        setNewThreadStatus("Conversation started.", "ok");
+      }
+
       setTimeout(function () { overlay.hidden = true; }, 700);
       await loadAndRenderThreads();
     } catch (err) {

@@ -490,6 +490,26 @@
     .mc-btn:hover { background: var(--mc-accent-2); }
     .mc-btn[disabled] { background: #94a3b8; cursor: not-allowed; }
 
+    /* Phase 3C UI — Send SMS button. Amber accent matches the warning copy
+       so users recognize SMS as a distinct, costlier path than in-app. */
+    .mc-btn-sms {
+      appearance: none;
+      background: #fff;
+      color: #92400e;
+      border: 1.5px solid #f59e0b;
+      padding: 9px 14px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mc-btn-sms:hover { background: #fef3c7; border-color: #d97706; }
+    .mc-btn-sms[disabled] { opacity: 0.45; cursor: not-allowed; border-color: #cbd5e1; color: #94a3b8; }
+    .mc-btn-icon { font-size: 14px; line-height: 1; }
+
     .mc-radio-row {
       display: flex;
       gap: 8px;
@@ -1048,6 +1068,38 @@
     .mc-comm-priority-chip.is-fyi             { background: #f1f5f9; color: #475569; }
     .mc-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
     .mc-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+    /* Phase 3C UI — transport chip. Shows which channels a thread has
+       used. On thread rows: small chip next to priority. In the detail
+       modal eyebrow: same chip style. On individual message bubbles:
+       same shape, smaller weight. SMS is amber (matches the warning
+       copy), in-app is a calm slate. */
+    .mc-comm-transport-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+      margin-left: 4px;
+    }
+    .mc-comm-transport-chip.is-in_app { background: #e0e7ff; color: #3730a3; }
+    .mc-comm-transport-chip.is-sms    { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    /* Per-message bubble channel chip — sits next to sender/time meta. */
+    .mc-thread-msg-channel {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 6px;
+    }
+    .mc-thread-msg-channel.is-in_app { background: #e0e7ff; color: #3730a3; }
+    .mc-thread-msg-channel.is-sms    { background: #fef3c7; color: #92400e; }
     /* Urgent rows get an extra red ring on the rail so the eye catches
        them across the full registry. */
     .mc-comm-thread[data-priority="urgent"] .mc-comm-thread-rail {
@@ -1229,6 +1281,42 @@
       background: #fef3c7;
       border: 1px solid #fcd34d;
       border-radius: 6px;
+    }
+    /* Phase 3C UI — split the thread-detail button row into management
+       actions (Close/Resolve, ghost) on the left and send actions on
+       the right (Send SMS amber, Send Reply primary). This gives Send
+       SMS the same visual weight tier as Send Reply rather than being
+       lost alongside the ghost buttons. */
+    .mc-thread-action-row {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .mc-thread-action-mgmt {
+      display: flex;
+      gap: 8px;
+    }
+    .mc-thread-action-send {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    /* Phase 3C UI — compose-modal delivery hint. Subdued so it reads as
+       help text, not a warning. Body color shifts amber when SMS or Both
+       is selected (set via data-attr from manager.js). */
+    .mc-field-hint {
+      margin: 4px 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--mc-ink-muted, #64748b);
+    }
+    .mc-field-hint[data-transport="sms"],
+    .mc-field-hint[data-transport="both"] {
+      color: #92400e;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -1650,11 +1738,22 @@
         <p class="mc-thread-sms-warning" id="manager-thread-sms-warning">
           SMS transport is configured but A2P campaign approval may still be pending. Use sparingly.
         </p>
-        <div class="mc-modal-btns">
-          <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
-          <button type="button" class="mc-btn-ghost" id="manager-thread-action-resolve">Mark Resolved</button>
-          <button type="button" class="mc-btn-ghost" id="manager-thread-send-sms">Send SMS</button>
-          <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
+        <!-- Two button groups: thread management on the left (ghost,
+             low visual weight) and send actions on the right (Reply
+             primary, SMS as a distinct amber accent so it doesn't get
+             lost amongst the ghost buttons). -->
+        <div class="mc-thread-action-row">
+          <div class="mc-thread-action-mgmt">
+            <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
+            <button type="button" class="mc-btn-ghost" id="manager-thread-action-resolve">Mark Resolved</button>
+          </div>
+          <div class="mc-thread-action-send">
+            <button type="button" class="mc-btn-sms" id="manager-thread-send-sms">
+              <span class="mc-btn-icon" aria-hidden="true">📱</span>
+              <span>Send SMS</span>
+            </button>
+            <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1716,6 +1815,21 @@
             <option value="">Choose a teammate…</option>
           </select>
         </div>
+        <!-- Phase 3C UI — Delivery method picker. Default In-App only.
+             SMS only / Both route the first message through the manual
+             Twilio path. Choosing SMS or Both requires the recipient to
+             have a phone on file (server-side check). -->
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-delivery">Delivery method</label>
+          <select id="manager-comm-new-delivery">
+            <option value="in_app" selected>In-App message only (default)</option>
+            <option value="sms">SMS only</option>
+            <option value="both">Both In-App and SMS</option>
+          </select>
+          <p class="mc-field-hint" id="manager-comm-new-delivery-hint">
+            Recipient sees this in their team hub inbox. No phone notification.
+          </p>
+        </div>
         <div class="mc-field-group">
           <label class="mc-field-question" for="manager-comm-new-subject">Subject</label>
           <input type="text" id="manager-comm-new-subject" maxlength="200" placeholder="What's this about?" />
@@ -1739,6 +1853,6 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="manager.js?v=20260610-phase3c"></script>
+  <script src="manager.js?v=20260610-phase3c-ui"></script>
 </body>
 </html>
