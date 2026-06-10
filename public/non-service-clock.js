@@ -40,10 +40,13 @@
     SUPPLY_STATION: 'supply_station'
   });
 
+  // UI-facing labels. The internal labor_type slug stays "supply_station"
+  // for back-compat with any payroll exports that already shipped, but
+  // every display string says "Supply Pickup" — it's a visit, not a shift.
   const LABOR_TYPE_LABEL = Object.freeze({
     cleaning:       'Cleaning',
     inspection:     'Inspection',
-    supply_station: 'Supply Station'
+    supply_station: 'Supply Pickup'
   });
 
   function db() {

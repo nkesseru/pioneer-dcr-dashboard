@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="styles/supply-station.css" />
+  <link rel="stylesheet" href="styles/supply-station.css?v=20260610-clock-prominent" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#111827" />
@@ -152,6 +152,20 @@
            lock codes the moment they arrive at the storage unit.
            Sign-in is the gate (staff-auth.js); this card never renders
            pre-auth. Tap-to-copy on the code pills + address. -->
+      <!-- Phase Timeclock Add-On — Supply Pickup clock (prominent).
+           Tops the page so techs land on "START HERE" first. A pickup
+           is a single visit, not a shift — copy reflects that. -->
+      <section class="ss-pickup-hero" id="ss-clock-card" data-state="idle" hidden>
+        <div class="ss-pickup-hero-left">
+          <span class="ss-pickup-hero-eyebrow" id="ss-clock-state-label">Not Clocked In</span>
+          <span class="ss-pickup-hero-timer" id="ss-clock-status">Tap Start to log time at the storage unit.</span>
+        </div>
+        <button type="button" class="ss-pickup-hero-btn" id="ss-clock-toggle">
+          <span aria-hidden="true">📦</span>&nbsp;Start Supply Pickup
+        </button>
+        <p class="ss-pickup-hero-err" id="ss-clock-err" hidden role="alert"></p>
+      </section>
+
       <section class="card ss-access-card">
         <header class="ss-access-head">
           <h2 class="ss-access-title">🔐 Supply Station Access</h2>
@@ -219,16 +233,8 @@
         <div class="ss-access-toast" id="ss-access-toast" hidden aria-live="polite"></div>
       </section>
 
-      <!-- Phase Timeclock Add-On — Supply Station shift card.
-           Sits above the supply-request form so an active tech can clock
-           in for paid time spent restocking. Uses the same singleton
-           lock as cleaning + inspection shifts. -->
-      <section class="card ss-clock-card" id="ss-clock-card" hidden>
-        <h2 class="ss-clock-title">Supply Station Shift</h2>
-        <p class="ss-clock-status" id="ss-clock-status">Not clocked in.</p>
-        <button type="button" class="ss-btn" id="ss-clock-toggle">Start Supply Station Shift</button>
-        <p class="ss-clock-err" id="ss-clock-err" hidden role="alert"></p>
-      </section>
+      <!-- Phase Timeclock Add-On — Supply Pickup card moved to the
+           top of the page; see ss-pickup-hero above. -->
 
       <section class="card supply-station-card">
         <form id="supply-station-form" novalidate>
@@ -337,8 +343,8 @@
   <script src="staff-auth.js"></script>
   <script src="mandatory-modal.js"></script>
   <script src="walkthrough.js"></script>
-  <script src="non-service-clock.js?v=20260610-timeclock-addon"></script>
-  <script src="supply-station.js?v=20260610-timeclock-addon"></script>
+  <script src="non-service-clock.js?v=20260610-clock-prominent"></script>
+  <script src="supply-station.js?v=20260610-clock-prominent"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

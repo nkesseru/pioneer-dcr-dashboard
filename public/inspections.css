@@ -1178,37 +1178,126 @@
 .insp-detail-item-verdict.tone-na    { background: #e2e8f0; color: #334155; }
 
 /* ============================================================
-   Phase Timeclock Add-On — inspection shift card
+   Phase Timeclock Add-On — Inspection Clock (prominent hero card)
+   Always visible above hub + intake views. This is the "START HERE"
+   surface; size + color hierarchy should be unmistakable.
    ============================================================ */
-.insp-clock-card {
-  border-top: 3px solid #0b1220;
-}
-.insp-clock-card[data-state="active"] {
-  border-top-color: #16a34a;
-  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 80%);
-}
-.insp-clock-body {
+.insp-clock-hero {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 28px;
   flex-wrap: wrap;
+  padding: 26px 32px;
+  margin-bottom: 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(11, 18, 32, 0.18);
+  border-left: 6px solid #94a3b8;
+  position: relative;
 }
-.insp-clock-status {
-  font-size: 14px;
-  color: #475569;
+.insp-clock-hero[data-state="active"] {
+  background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  border-left-color: #4ade80;
+  box-shadow: 0 6px 24px rgba(20, 83, 45, 0.32);
+}
+.insp-clock-hero[data-state="blocked"] {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+  border-left-color: #fbbf24;
+}
+.insp-clock-hero-left {
   flex: 1;
-  min-width: 220px;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.insp-clock-card[data-state="active"] .insp-clock-status {
-  color: #166534;
-  font-weight: 700;
+.insp-clock-hero-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
 }
-.insp-clock-status strong { color: #0b1220; }
-.insp-clock-err {
-  flex-basis: 100%;
+.insp-clock-hero[data-state="active"] .insp-clock-hero-eyebrow {
+  color: #d1fae5;
+}
+.insp-clock-hero-timer {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: #ffffff;
+}
+.insp-clock-hero[data-state="idle"] .insp-clock-hero-timer {
+  font-size: 17px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+.insp-clock-hero-timer strong { color: #ffffff; }
+.insp-clock-hero-timer-detail {
+  display: block;
   font-size: 13px;
-  color: #b91c1c;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 4px;
+}
+.insp-clock-hero-btn {
+  flex: none;
+  min-width: 220px;
+  background: #ffffff;
+  color: #0b1220;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 16px 26px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.insp-clock-hero-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.insp-clock-hero-btn:active:not(:disabled) { transform: translateY(0); }
+.insp-clock-hero-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.6);
+}
+.insp-clock-hero[data-state="active"] .insp-clock-hero-btn {
+  background: #ffffff;
+  color: #14532d;
+}
+.insp-clock-hero-err {
+  flex-basis: 100%;
   margin: 6px 0 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.92);
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .insp-clock-hero {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 22px 22px;
+    gap: 16px;
+  }
+  .insp-clock-hero-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 22px;
+    font-size: 18px;
+  }
+  .insp-clock-hero-timer { font-size: 26px; }
 }
 
 /* ============================================================

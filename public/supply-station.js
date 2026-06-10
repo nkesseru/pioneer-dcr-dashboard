@@ -345,16 +345,18 @@
   }
 
   function paintSsClock(active) {
-    const card = $("ss-clock-card");
-    const status = $("ss-clock-status");
-    const btn = $("ss-clock-toggle");
-    const errEl = $("ss-clock-err");
-    if (!card || !status || !btn) return;
+    const card    = $("ss-clock-card");
+    const stateEl = $("ss-clock-state-label");
+    const status  = $("ss-clock-status");
+    const btn     = $("ss-clock-toggle");
+    const errEl   = $("ss-clock-err");
+    if (!card || !stateEl || !status || !btn) return;
     if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
 
     if (active && (active.labor_type || "cleaning") === "supply_station") {
       card.setAttribute("data-state", "active");
-      btn.textContent = "End Supply Station Shift";
+      stateEl.textContent = "Pickup In Progress";
+      btn.innerHTML = '<span aria-hidden="true">✓</span>&nbsp;Complete Supply Pickup';
       btn.disabled = false;
       paintSsElapsed(active);
       if (ssClockTickHandle) clearInterval(ssClockTickHandle);
@@ -362,17 +364,19 @@
     } else if (active) {
       const lt = active.labor_type || "cleaning";
       const ltLabel = (window.NonServiceClock.LABOR_TYPE_LABEL[lt] || lt);
-      card.removeAttribute("data-state");
-      btn.textContent = "Start Supply Station Shift";
+      card.setAttribute("data-state", "blocked");
+      stateEl.textContent = "Blocked";
+      btn.innerHTML = '<span aria-hidden="true">📦</span>&nbsp;Start Supply Pickup';
       btn.disabled = true;
-      status.innerHTML = "Already clocked in for <strong>" + escapeText(ltLabel) +
-                         "</strong>. End that shift first.";
+      status.innerHTML = "Already on the clock for <strong>" + escapeText(ltLabel) +
+                         "</strong>. End that first.";
       if (ssClockTickHandle) { clearInterval(ssClockTickHandle); ssClockTickHandle = null; }
     } else {
-      card.removeAttribute("data-state");
-      btn.textContent = "Start Supply Station Shift";
+      card.setAttribute("data-state", "idle");
+      stateEl.textContent = "Not Clocked In";
+      btn.innerHTML = '<span aria-hidden="true">📦</span>&nbsp;Start Supply Pickup';
       btn.disabled = false;
-      status.textContent = "Not clocked in.";
+      status.textContent = "Tap Start to log time at the storage unit.";
       if (ssClockTickHandle) { clearInterval(ssClockTickHandle); ssClockTickHandle = null; }
     }
   }
@@ -388,8 +392,8 @@
     const min = Math.max(0, Math.floor((Date.now() - startedMs) / 60000));
     const hh = Math.floor(min / 60);
     const mm = min % 60;
-    const dur = hh > 0 ? hh + "h " + mm + "m" : mm + "m";
-    status.innerHTML = "On the clock · <strong>" + escapeText(dur) + "</strong>";
+    const dur = hh > 0 ? hh + "h " + (mm < 10 ? "0" : "") + mm + "m" : mm + " min";
+    status.innerHTML = escapeText(dur);
   }
 
   async function onSsClockToggle() {

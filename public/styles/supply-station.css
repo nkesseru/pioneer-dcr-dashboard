@@ -217,37 +217,114 @@
 }
 
 /* ============================================================
-   Phase Timeclock Add-On — Supply Station shift card.
-   Sits above the supply-request form. Distinct from the access card
-   so techs can tell at a glance: top = "log my time", bottom = "send
-   the order."
+   Phase Timeclock Add-On — Supply Pickup hero card.
+   Tops the page. "START HERE" visual hierarchy: dark navy idle,
+   green active, amber when a different shift is blocking.
    ============================================================ */
-.ss-clock-card {
-  padding: 16px 18px;
-  border-top: 3px solid #0b1220;
+.ss-pickup-hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 24px 28px;
+  margin-bottom: 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(11, 18, 32, 0.18);
+  border-left: 6px solid #94a3b8;
 }
-.ss-clock-card[data-state="active"] {
-  border-top-color: #16a34a;
-  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 80%);
+.ss-pickup-hero[data-state="active"] {
+  background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  border-left-color: #4ade80;
+  box-shadow: 0 6px 24px rgba(20, 83, 45, 0.32);
 }
-.ss-clock-title {
-  margin: 0 0 4px;
+.ss-pickup-hero[data-state="blocked"] {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+  border-left-color: #fbbf24;
+}
+.ss-pickup-hero-left {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ss-pickup-hero-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.ss-pickup-hero[data-state="active"] .ss-pickup-hero-eyebrow {
+  color: #d1fae5;
+}
+.ss-pickup-hero-timer {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: #ffffff;
+}
+.ss-pickup-hero[data-state="idle"] .ss-pickup-hero-timer {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+.ss-pickup-hero-timer strong { color: #ffffff; }
+.ss-pickup-hero-btn {
+  flex: none;
+  min-width: 240px;
+  background: #ffffff;
   color: #0b1220;
+  font-family: inherit;
+  font-size: 16.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.ss-clock-status {
-  margin: 0 0 10px;
-  font-size: 14px;
-  color: #475569;
+.ss-pickup-hero-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
-.ss-clock-card[data-state="active"] .ss-clock-status {
-  color: #166534;
-  font-weight: 600;
+.ss-pickup-hero-btn:active:not(:disabled) { transform: translateY(0); }
+.ss-pickup-hero-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.6);
 }
-.ss-clock-status strong { color: #0b1220; }
-.ss-clock-err {
-  margin: 8px 0 0;
+.ss-pickup-hero[data-state="active"] .ss-pickup-hero-btn {
+  color: #14532d;
+}
+.ss-pickup-hero-err {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  padding: 8px 12px;
   font-size: 13px;
-  color: #b91c1c;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.92);
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .ss-pickup-hero {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px 20px;
+    gap: 14px;
+  }
+  .ss-pickup-hero-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 22px;
+    font-size: 17px;
+  }
+  .ss-pickup-hero-timer { font-size: 24px; }
 }

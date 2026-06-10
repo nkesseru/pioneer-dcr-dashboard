@@ -1779,17 +1779,19 @@
   }
 
   function paintInspClock(active) {
-    const card = $("insp-clock-card");
-    const status = $("insp-clock-status");
-    const btn = $("insp-clock-toggle");
-    const errEl = $("insp-clock-err");
-    if (!card || !status || !btn) return;
+    const card    = $("insp-clock-card");
+    const stateEl = $("insp-clock-state-label");
+    const status  = $("insp-clock-status");
+    const btn     = $("insp-clock-toggle");
+    const errEl   = $("insp-clock-err");
+    if (!card || !stateEl || !status || !btn) return;
     if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
 
     if (active && (active.labor_type || "cleaning") === "inspection") {
       // Currently clocked in for an inspection shift — show live timer.
       card.setAttribute("data-state", "active");
-      btn.textContent = "End Inspection Shift";
+      stateEl.textContent = "Clocked In";
+      btn.innerHTML = '<span aria-hidden="true">■</span>&nbsp;End Inspection';
       btn.disabled = false;
       paintInspElapsed(active);
       // Tick every 30s (mirrors service-clock cadence).
@@ -1801,18 +1803,20 @@
       // Clocked in for a DIFFERENT labor type — disable Start, explain.
       const ltLabel = (window.NonServiceClock.LABOR_TYPE_LABEL[active.labor_type || "cleaning"]
                        || active.labor_type || "cleaning");
-      card.removeAttribute("data-state");
-      btn.textContent = "Start Inspection Shift";
+      card.setAttribute("data-state", "blocked");
+      stateEl.textContent = "Blocked";
+      btn.innerHTML = '<span aria-hidden="true">▶</span>&nbsp;Start Inspection';
       btn.disabled = true;
-      status.innerHTML = "Already clocked in for <strong>" + escapeText(ltLabel) +
-                         "</strong>. End that shift first.";
+      status.innerHTML = "Already on the clock for <strong>" + escapeText(ltLabel) +
+                         "</strong>. End that first.";
       if (inspClockTickHandle) { clearInterval(inspClockTickHandle); inspClockTickHandle = null; }
     } else {
       // Not clocked in.
-      card.removeAttribute("data-state");
-      btn.textContent = "Start Inspection Shift";
+      card.setAttribute("data-state", "idle");
+      stateEl.textContent = "Not Clocked In";
+      btn.innerHTML = '<span aria-hidden="true">▶</span>&nbsp;Start Inspection';
       btn.disabled = false;
-      status.textContent = "Not clocked in.";
+      status.textContent = "Tap Start to begin paid inspection time.";
       if (inspClockTickHandle) { clearInterval(inspClockTickHandle); inspClockTickHandle = null; }
     }
   }
@@ -1828,9 +1832,11 @@
     const min = Math.max(0, Math.floor((Date.now() - startedMs) / 60000));
     const hh = Math.floor(min / 60);
     const mm = min % 60;
-    const dur = hh > 0 ? hh + "h " + mm + "m" : mm + "m";
-    const cust = active && active.customer_id ? " · " + active.customer_id : "";
-    status.innerHTML = "On the clock · <strong>" + escapeText(dur) + "</strong>" + escapeText(cust);
+    const dur = hh > 0 ? hh + "h " + (mm < 10 ? "0" : "") + mm + "m" : mm + " min";
+    const cust = active && active.customer_id
+      ? '<span class="insp-clock-hero-timer-detail">at ' + escapeText(active.customer_id) + '</span>'
+      : "";
+    status.innerHTML = escapeText(dur) + cust;
   }
 
   async function onInspClockToggle() {

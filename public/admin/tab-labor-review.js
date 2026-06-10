@@ -132,7 +132,7 @@
     // what kind of paid time it is.
     const lt = session && session.labor_type;
     if (lt === "supply_station") {
-      return "Supply Station";
+      return "Supply Pickup";
     }
     if (lt === "inspection") {
       const c = (session.customer_name || session.customer_slug || "").trim();
