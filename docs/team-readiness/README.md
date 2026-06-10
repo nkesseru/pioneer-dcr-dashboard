@@ -18,6 +18,7 @@
 | [`04-sop-drafts.md`](04-sop-drafts.md) | First-draft SOPs for the 11 most-frequent procedures (Clock In / Clock Out / DCR / Time Adjustment / etc.) | 35 min |
 | [`05-video-recording-guide.md`](05-video-recording-guide.md) | Sequence + script outline for Nick's continuous walkthrough recording | 15 min |
 | [`06-known-gaps.md`](06-known-gaps.md) | Features that are partial / planned / using Deputy / using QuickBooks / still in development | 15 min |
+| [`07-roadmap.md`](07-roadmap.md) | Nova 7 strategic roadmap — what's locked, what's hardening, what's next, and the rollout readiness gates | 10 min |
 
 ---
 
