@@ -342,6 +342,103 @@
              • Request Time Off  → /time-off.html
            Shift Acceptance + Safety Incident remain GHL widgets
            (no Pioneer-native form yet). -->
+      <!-- Phase Employee Trust Layer — My Hours.
+           Lets a tech verify the paid time PioneerOps has logged for the
+           current semi-monthly pay period and request a correction before
+           payroll runs. Submits to the existing
+           createTimeAdjustmentRequestV1 Cloud Function so admin / Kirby
+           sees the request in the same Payroll Exceptions tab they
+           already use. No new approval workflow. -->
+      <section class="card team-hub-section team-hub-my-hours" id="team-hub-my-hours-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">⏱ My Hours</h2>
+          <p class="team-hub-section-sub">
+            Your current payroll hours. Something look wrong? Request an adjustment before payroll.
+          </p>
+        </header>
+
+        <div class="my-hours-summary" id="my-hours-summary">
+          <div class="my-hours-summary-loading">Reading the clock…</div>
+        </div>
+
+        <div class="my-hours-shifts" id="my-hours-shifts"></div>
+
+        <div class="my-hours-foot">
+          <button type="button" class="my-hours-request-btn" id="my-hours-request-btn">
+            Request Adjustment
+          </button>
+          <p class="my-hours-foot-sub">
+            Corrections need Kirby's approval. The audit trail records every change.
+          </p>
+        </div>
+      </section>
+
+      <!-- Phase Employee Trust Layer — Time Adjustment modal.
+           Single modal shared by the top-level "Request Adjustment"
+           button (shift picker visible) and per-shift "Adjust" buttons
+           (shift pre-selected, picker disabled). -->
+      <div class="my-hours-modal-overlay" id="my-hours-modal-overlay" hidden>
+        <div class="my-hours-modal" role="dialog" aria-modal="true" aria-labelledby="my-hours-modal-title">
+          <header class="my-hours-modal-head">
+            <div>
+              <p class="my-hours-modal-eyebrow">Time Adjustment</p>
+              <h3 id="my-hours-modal-title">Request a correction</h3>
+              <p class="my-hours-modal-sub">
+                Kirby will review and either approve or follow up with you.
+              </p>
+            </div>
+            <button type="button" class="my-hours-modal-close" id="my-hours-modal-close" aria-label="Close">×</button>
+          </header>
+
+          <div class="my-hours-modal-fields">
+            <div class="my-hours-field">
+              <label class="my-hours-field-label" for="my-hours-modal-shift">Shift</label>
+              <select id="my-hours-modal-shift"></select>
+            </div>
+
+            <div class="my-hours-modal-grid">
+              <div class="my-hours-field">
+                <label class="my-hours-field-label" for="my-hours-modal-in">Requested clock in</label>
+                <input type="datetime-local" id="my-hours-modal-in" />
+                <p class="my-hours-field-hint" id="my-hours-modal-in-hint"></p>
+              </div>
+              <div class="my-hours-field">
+                <label class="my-hours-field-label" for="my-hours-modal-out">Requested clock out</label>
+                <input type="datetime-local" id="my-hours-modal-out" />
+                <p class="my-hours-field-hint" id="my-hours-modal-out-hint"></p>
+              </div>
+            </div>
+
+            <div class="my-hours-field">
+              <label class="my-hours-field-label" for="my-hours-modal-reason">Reason</label>
+              <select id="my-hours-modal-reason">
+                <option value="forgot_clock_in">Forgot to clock in</option>
+                <option value="forgot_clock_out">Forgot to clock out</option>
+                <option value="phone_issue">Phone issue</option>
+                <option value="other" data-detail="wrong_time">Wrong time</option>
+                <option value="other" data-detail="wrong_location">Wrong location</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div class="my-hours-field">
+              <label class="my-hours-field-label" for="my-hours-modal-notes">
+                Note <span class="my-hours-field-required">(required)</span>
+              </label>
+              <textarea id="my-hours-modal-notes" maxlength="500" rows="3"
+                        placeholder="A line or two so Kirby can verify what happened."></textarea>
+            </div>
+
+            <p class="my-hours-modal-status" id="my-hours-modal-status"></p>
+          </div>
+
+          <footer class="my-hours-modal-foot">
+            <button type="button" class="my-hours-modal-cancel" id="my-hours-modal-cancel">Cancel</button>
+            <button type="button" class="my-hours-modal-submit" id="my-hours-modal-submit">Submit Request</button>
+          </footer>
+        </div>
+      </div>
+
       <section class="card team-hub-section team-hub-requests">
         <header class="team-hub-section-head">
           <h2 class="team-hub-section-title">Requests &amp; Support</h2>
@@ -608,7 +705,7 @@
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
   <script src="comm-threads.js?v=20260609-phase3b"></script>
-  <script src="team-hub.js?v=20260609-phase3b-comm"></script>
+  <script src="team-hub.js?v=20260610-my-hours"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.

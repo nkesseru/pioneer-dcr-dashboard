@@ -1727,6 +1727,544 @@
     return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
   }
 
+  /* ============================================================
+   * Phase Employee Trust Layer — My Hours
+   *
+   * For the signed-in tech, surface the paid sessions inside the
+   * current semi-monthly pay period (matches the function-side
+   * derivation in functions/index.js Phase 29). Each row exposes an
+   * "Adjust" button that opens the shared modal; the global Request
+   * Adjustment button at the bottom opens the same modal with the
+   * shift picker visible.
+   *
+   * Submission goes to window.CREATE_TIME_ADJUSTMENT_REQUEST_URL —
+   * the existing Phase 29 Cloud Function that admin uses today via
+   * the Payroll Exceptions tab. No new approval workflow.
+   * ============================================================ */
+
+  let myHoursStaff = null;
+  let myHoursSessions = [];          // current-period sessions (status === 'completed' usable for requests)
+  let myHoursPendingByKey = {};      // session_id → request doc
+  let myHoursApprovedCount = 0;
+  let myHoursModalShiftId = null;
+
+  const MY_HOURS_REASON_LABEL = {
+    forgot_clock_in:  'Forgot to clock in',
+    forgot_clock_out: 'Forgot to clock out',
+    phone_issue:      'Phone issue',
+    other:            'Other'
+  };
+
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function todayPTDateString() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+  }
+  function myHoursCurrentPeriod() {
+    // Mirrors getSemiMonthlyPeriod in functions/index.js — 1-15 = half A,
+    // 16-EOM = half B. All math in Pacific date space.
+    const today = todayPTDateString();
+    const parts = today.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    if (day <= 15) {
+      return {
+        start_date: year + '-' + pad2(month) + '-01',
+        end_date:   year + '-' + pad2(month) + '-15',
+        label:      monthNames[month - 1] + ' 1–15, ' + year,
+        period_id:  year + '-' + pad2(month) + '-A'
+      };
+    }
+    // Last day of the month
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      start_date: year + '-' + pad2(month) + '-16',
+      end_date:   year + '-' + pad2(month) + '-' + pad2(lastDay),
+      label:      monthNames[month - 1] + ' 16–' + lastDay + ', ' + year,
+      period_id:  year + '-' + pad2(month) + '-B'
+    };
+  }
+
+  function myHoursEscape(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function myHoursTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.seconds === 'number')    return ts.seconds * 1000;
+    if (typeof ts === 'string') { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    if (ts instanceof Date) return ts.getTime();
+    return 0;
+  }
+  function myHoursFormatTime(ts) {
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '—';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    }).format(new Date(ms));
+  }
+  function myHoursFormatDate(ymd) {
+    if (!ymd) return '—';
+    const parts = ymd.split('-');
+    if (parts.length !== 3) return ymd;
+    const d = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      weekday: 'short', month: 'short', day: 'numeric'
+    }).format(d);
+  }
+  function myHoursFormatDuration(min) {
+    const m = Math.max(0, Math.floor(min || 0));
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    if (hh === 0) return mm + 'm';
+    if (mm === 0) return hh + 'h';
+    return hh + 'h ' + pad2(mm) + 'm';
+  }
+  function myHoursToLocalDatetimeValue(ts) {
+    // Convert a Firestore Timestamp to the local time string a
+    // <input type="datetime-local"> expects (YYYY-MM-DDTHH:MM).
+    // Pacific time so the value matches what the tech actually saw.
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date(ms));
+    const map = {};
+    parts.forEach(function (p) { if (p.type !== 'literal') map[p.type] = p.value; });
+    const hh = map.hour === '24' ? '00' : map.hour;
+    return map.year + '-' + map.month + '-' + map.day + 'T' + hh + ':' + map.minute;
+  }
+  function myHoursDatetimeLocalToIso(dtLocal) {
+    // The input gives us "YYYY-MM-DDTHH:MM" interpreted as the user's
+    // local time. We want an ISO timestamp that matches Pacific
+    // wallclock time. Append the right PT offset for that date.
+    if (!dtLocal) return null;
+    // Parse the date portion to pick the offset (PDT -07 or PST -08).
+    const dateOnly = dtLocal.slice(0, 10);
+    // Probe noon Pacific to find the offset for that date.
+    const probe = new Date(dateOnly + 'T12:00:00Z');
+    const tzShort = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', timeZoneName: 'short'
+    }).formatToParts(probe).find(function (p) { return p.type === 'timeZoneName'; });
+    const isPDT = (tzShort && tzShort.value === 'PDT');
+    const offset = isPDT ? '-07:00' : '-08:00';
+    return dtLocal + ':00' + offset;
+  }
+  function myHoursLaborChip(s) {
+    const lt = s.labor_type || 'cleaning';
+    const label = (lt === 'cleaning')      ? 'Cleaning'
+                : (lt === 'inspection')    ? 'Inspection'
+                : (lt === 'supply_station')? 'Supply Pickup'
+                : lt.charAt(0).toUpperCase() + lt.slice(1);
+    return '<span class="my-hours-chip my-hours-chip-' + myHoursEscape(lt) + '">' +
+             myHoursEscape(label) +
+           '</span>';
+  }
+
+  async function bootMyHoursForStaff(staff) {
+    if (!staff || !staff.uid) return;
+    const section = $('team-hub-my-hours-section');
+    if (!section) return;
+    if (!window.firebase || typeof firebase.firestore !== 'function') return;
+    myHoursStaff = staff;
+    section.hidden = false;
+    wireMyHoursButtons();
+    await reloadMyHours();
+  }
+
+  async function reloadMyHours() {
+    if (!myHoursStaff) return;
+    const period = myHoursCurrentPeriod();
+    const db = firebase.firestore();
+    try {
+      // Sessions are owner-readable via the staff_uid match in the
+      // pioneer_service_sessions rule. The (staff_uid, service_date)
+      // composite index ships in firestore.indexes.json.
+      const sessionSnap = await db.collection('pioneer_service_sessions')
+        .where('staff_uid', '==', myHoursStaff.uid)
+        .where('service_date', '>=', period.start_date)
+        .where('service_date', '<=', period.end_date)
+        .orderBy('service_date', 'desc')
+        .limit(80).get();
+      myHoursSessions = sessionSnap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data() || {});
+      });
+
+      // Pending + approved adjustment requests for THIS employee.
+      // Equality on employee_uid uses the auto-built single-field index;
+      // shift-date filtering happens client-side so this works without
+      // a new composite index deploy. Soft-fails — the requests UI
+      // still works, you just won't see existing pending badges.
+      myHoursPendingByKey = {};
+      myHoursApprovedCount = 0;
+      try {
+        const reqSnap = await db.collection('time_adjustment_requests')
+          .where('employee_uid', '==', myHoursStaff.uid)
+          .limit(120).get();
+        reqSnap.docs.forEach(function (d) {
+          const r = d.data() || {};
+          const sd = String(r.shift_date || '');
+          if (sd < period.start_date || sd > period.end_date) return;
+          const st = String(r.status || '').toLowerCase();
+          if (st === 'pending' && r.service_session_id) {
+            myHoursPendingByKey[r.service_session_id] = Object.assign({ _id: d.id }, r);
+          } else if (st === 'approved') {
+            myHoursApprovedCount++;
+          }
+        });
+      } catch (reqErr) {
+        console.warn('[team-hub] my-hours adjustments read failed (non-fatal)', reqErr);
+      }
+
+      renderMyHoursSummary(period);
+      renderMyHoursShifts(period);
+    } catch (err) {
+      console.error('[team-hub] my-hours load failed', err);
+      $('my-hours-summary').innerHTML =
+        '<div class="my-hours-summary-empty">' +
+          'Couldn\'t load your hours right now. Try refreshing.' +
+        '</div>';
+    }
+  }
+
+  function renderMyHoursSummary(period) {
+    const root = $('my-hours-summary');
+    if (!root) return;
+    let totalMin = 0;
+    myHoursSessions.forEach(function (s) {
+      // Prefer effective_minutes (admin already approved a correction)
+      // over paid_minutes, falling back to work_minutes.
+      const m = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+              : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+              : (typeof s.work_minutes === 'number')      ? s.work_minutes
+              : 0;
+      totalMin += Math.max(0, m);
+    });
+    const pendingCount = Object.keys(myHoursPendingByKey).length;
+    const approvedCount = myHoursApprovedCount;
+    root.innerHTML =
+      '<div>' +
+        '<p class="my-hours-summary-eyebrow">Your current payroll period</p>' +
+        '<h3 class="my-hours-summary-period">' + myHoursEscape(period.label) + '</h3>' +
+        '<div class="my-hours-summary-tiles">' +
+          '<div class="my-hours-tile">' +
+            '<span class="my-hours-tile-label">Total hours</span>' +
+            '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(totalMin)) + '</span>' +
+            '<span class="my-hours-tile-value-small">' + myHoursSessions.length + ' shift' +
+              (myHoursSessions.length === 1 ? '' : 's') + '</span>' +
+          '</div>' +
+          '<div class="my-hours-tile my-hours-tile-pending">' +
+            '<span class="my-hours-tile-label">Pending corrections</span>' +
+            '<span class="my-hours-tile-value">' + pendingCount + '</span>' +
+            '<span class="my-hours-tile-value-small">awaiting Kirby</span>' +
+          '</div>' +
+          (approvedCount > 0
+            ? '<div class="my-hours-tile my-hours-tile-approved">' +
+                '<span class="my-hours-tile-label">Approved corrections</span>' +
+                '<span class="my-hours-tile-value">' + approvedCount + '</span>' +
+                '<span class="my-hours-tile-value-small">applied to your hours</span>' +
+              '</div>'
+            : '') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderMyHoursShifts(period) {
+    const root = $('my-hours-shifts');
+    if (!root) return;
+    if (!myHoursSessions.length) {
+      root.innerHTML =
+        '<div class="my-hours-shifts-empty">' +
+          'No shifts logged for this payroll period yet. They\'ll appear here after you clock out.' +
+        '</div>';
+      return;
+    }
+    root.innerHTML = myHoursSessions.map(renderMyHoursShiftRow).join('');
+    document.querySelectorAll('[data-my-hours-shift-action="adjust"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openMyHoursModal(btn.getAttribute('data-shift-id'));
+      });
+    });
+  }
+
+  function renderMyHoursShiftRow(s) {
+    const isActive = s.status === 'active' || s.status === 'paused';
+    const pending = myHoursPendingByKey[s._id];
+    const hasApprovedCorrection = s.has_approved_time_adjustment === true;
+    const labor = s.labor_type || 'cleaning';
+    const effectiveMin = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                      : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+                      : (typeof s.work_minutes === 'number')      ? s.work_minutes
+                      : 0;
+    const ci = s.effective_clock_in || s.clock_in_at;
+    const co = s.effective_clock_out || s.clock_out_at;
+    const customer = (labor === 'inspection' && s.customer_name) ? s.customer_name
+                   : (labor === 'inspection' && s.customer_id)   ? s.customer_id
+                   : (labor === 'supply_station')                ? 'Supply Station'
+                   : (s.customer_name || s.customer_id || '');
+    const driveChip = (typeof s.paid_drive_minutes === 'number' && s.paid_drive_minutes > 0)
+      ? '<span class="my-hours-chip my-hours-chip-drive">+ ' +
+          myHoursEscape(myHoursFormatDuration(s.paid_drive_minutes)) + ' drive</span>'
+      : '';
+    const statusChip = isActive
+      ? '<span class="my-hours-chip my-hours-chip-active">On the clock</span>'
+      : '';
+    const pendingChip = pending
+      ? '<span class="my-hours-chip my-hours-chip-pending">Correction pending</span>'
+      : (hasApprovedCorrection
+          ? '<span class="my-hours-chip my-hours-chip-approved">Correction applied</span>'
+          : '');
+    // Disable Adjust when active OR a pending request already exists OR
+    // the session has no clock_out (can't request a clock-out time we
+    // don't have yet; admin can still fix manually).
+    const canAdjust = !isActive && !pending && !!s.clock_out_at;
+    const btn = '<button type="button" class="my-hours-shift-btn"' +
+                  ' data-my-hours-shift-action="adjust"' +
+                  ' data-shift-id="' + myHoursEscape(s._id) + '"' +
+                  (canAdjust ? '' : ' disabled') +
+                  ' title="' + (canAdjust ? 'Request a correction' :
+                                pending ? 'You already have a pending correction for this shift' :
+                                isActive ? 'Clock out first before requesting' :
+                                'Missing clock-out — Kirby will follow up') + '">Adjust</button>';
+    return (
+      '<div class="my-hours-shift-row"' +
+        ' data-labor="' + myHoursEscape(labor) + '"' +
+        ' data-status="' + myHoursEscape(s.status || 'completed') + '"' +
+        ' data-pending="' + (!!pending) + '">' +
+        '<div class="my-hours-shift-main">' +
+          '<div class="my-hours-shift-top">' +
+            '<span class="my-hours-shift-date">' + myHoursEscape(myHoursFormatDate(s.service_date)) + '</span>' +
+            myHoursLaborChip(s) +
+            driveChip +
+            statusChip +
+            pendingChip +
+          '</div>' +
+          '<div class="my-hours-shift-detail">' +
+            (customer ? '<strong>' + myHoursEscape(customer) + '</strong> · ' : '') +
+            myHoursEscape(myHoursFormatTime(ci)) + ' → ' +
+            myHoursEscape(myHoursFormatTime(co)) + ' · ' +
+            '<strong>' + myHoursEscape(myHoursFormatDuration(effectiveMin)) + '</strong>' +
+          '</div>' +
+        '</div>' +
+        '<div class="my-hours-shift-actions">' + btn + '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ---- Modal wiring ---- */
+
+  function wireMyHoursButtons() {
+    const requestBtn = $('my-hours-request-btn');
+    if (requestBtn && !requestBtn.dataset.wired) {
+      requestBtn.dataset.wired = '1';
+      requestBtn.addEventListener('click', function () { openMyHoursModal(null); });
+    }
+    const closeBtn = $('my-hours-modal-close');
+    if (closeBtn && !closeBtn.dataset.wired) {
+      closeBtn.dataset.wired = '1';
+      closeBtn.addEventListener('click', closeMyHoursModal);
+    }
+    const cancelBtn = $('my-hours-modal-cancel');
+    if (cancelBtn && !cancelBtn.dataset.wired) {
+      cancelBtn.dataset.wired = '1';
+      cancelBtn.addEventListener('click', closeMyHoursModal);
+    }
+    const submitBtn = $('my-hours-modal-submit');
+    if (submitBtn && !submitBtn.dataset.wired) {
+      submitBtn.dataset.wired = '1';
+      submitBtn.addEventListener('click', submitMyHoursAdjustment);
+    }
+    const shiftSel = $('my-hours-modal-shift');
+    if (shiftSel && !shiftSel.dataset.wired) {
+      shiftSel.dataset.wired = '1';
+      shiftSel.addEventListener('change', function () {
+        myHoursModalShiftId = shiftSel.value || null;
+        applyMyHoursModalShift();
+      });
+    }
+    const overlay = $('my-hours-modal-overlay');
+    if (overlay && !overlay.dataset.wired) {
+      overlay.dataset.wired = '1';
+      overlay.addEventListener('click', function (ev) {
+        if (ev.target === overlay) closeMyHoursModal();
+      });
+    }
+  }
+
+  function eligibleSessionsForAdjustment() {
+    return myHoursSessions.filter(function (s) {
+      if (s.status !== 'completed') return false;
+      if (!s.clock_out_at) return false;
+      if (myHoursPendingByKey[s._id]) return false;
+      // The function refuses if the session is in a locked payroll
+      // state. Hide those so the tech doesn't get a confusing rejection.
+      const lockedStates = ['approved_for_payroll', 'exported', 'workweek_locked_by_export'];
+      if (lockedStates.indexOf(s.payroll_state) >= 0) return false;
+      // The function also refuses if there's no assignment_id (non-
+      // cleaning sessions today don't carry one). Surface only the
+      // sessions that can actually be adjusted in V1.
+      if (!s.assignment_id) return false;
+      return true;
+    });
+  }
+
+  function openMyHoursModal(prefillShiftId) {
+    const overlay = $('my-hours-modal-overlay');
+    if (!overlay) return;
+    const eligible = eligibleSessionsForAdjustment();
+    if (!eligible.length) {
+      // No adjustable sessions this period — explain inline rather than
+      // open an empty modal.
+      const status = $('my-hours-modal-status');
+      if (status) {
+        status.textContent = 'No adjustable shifts in this payroll period.';
+        status.setAttribute('data-tone', 'error');
+      }
+      return;
+    }
+    const sel = $('my-hours-modal-shift');
+    sel.innerHTML = eligible.map(function (s) {
+      const label = myHoursFormatDate(s.service_date) + ' · ' +
+                    myHoursFormatTime(s.clock_in_at) + ' → ' +
+                    myHoursFormatTime(s.clock_out_at);
+      return '<option value="' + myHoursEscape(s._id) + '">' + myHoursEscape(label) + '</option>';
+    }).join('');
+    const chosen = (prefillShiftId && eligible.some(function (s) { return s._id === prefillShiftId; }))
+      ? prefillShiftId : eligible[0]._id;
+    sel.value = chosen;
+    myHoursModalShiftId = chosen;
+    sel.disabled = !!prefillShiftId;
+
+    $('my-hours-modal-reason').selectedIndex = 0;
+    $('my-hours-modal-notes').value = '';
+    setMyHoursModalStatus('', null);
+    applyMyHoursModalShift();
+
+    overlay.hidden = false;
+    setTimeout(function () { $('my-hours-modal-in').focus(); }, 50);
+  }
+
+  function applyMyHoursModalShift() {
+    if (!myHoursModalShiftId) return;
+    const s = myHoursSessions.find(function (x) { return x._id === myHoursModalShiftId; });
+    if (!s) return;
+    const inEl = $('my-hours-modal-in');
+    const outEl = $('my-hours-modal-out');
+    const inHint = $('my-hours-modal-in-hint');
+    const outHint = $('my-hours-modal-out-hint');
+    inEl.value = myHoursToLocalDatetimeValue(s.clock_in_at);
+    outEl.value = myHoursToLocalDatetimeValue(s.clock_out_at);
+    if (inHint)  inHint.textContent  = 'Logged: ' + myHoursFormatTime(s.clock_in_at);
+    if (outHint) outHint.textContent = 'Logged: ' + myHoursFormatTime(s.clock_out_at);
+  }
+
+  function closeMyHoursModal() {
+    const overlay = $('my-hours-modal-overlay');
+    if (overlay) overlay.hidden = true;
+    myHoursModalShiftId = null;
+  }
+
+  function setMyHoursModalStatus(msg, tone) {
+    const el = $('my-hours-modal-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    if (tone) el.setAttribute('data-tone', tone);
+    else el.removeAttribute('data-tone');
+  }
+
+  async function submitMyHoursAdjustment() {
+    if (!myHoursStaff || !myHoursModalShiftId) return;
+    const s = myHoursSessions.find(function (x) { return x._id === myHoursModalShiftId; });
+    if (!s) return;
+
+    const inLocal = $('my-hours-modal-in').value;
+    const outLocal = $('my-hours-modal-out').value;
+    const reasonSel = $('my-hours-modal-reason');
+    const notesValue = ($('my-hours-modal-notes').value || '').trim();
+    const reasonValue = reasonSel.value;
+    const reasonDetail = reasonSel.options[reasonSel.selectedIndex].getAttribute('data-detail') || '';
+
+    if (!inLocal || !outLocal) {
+      setMyHoursModalStatus('Set both the requested clock-in and clock-out.', 'error');
+      return;
+    }
+    if (!notesValue) {
+      setMyHoursModalStatus('Add a quick note so Kirby can verify what happened.', 'error');
+      return;
+    }
+
+    const inIso = myHoursDatetimeLocalToIso(inLocal);
+    const outIso = myHoursDatetimeLocalToIso(outLocal);
+    if (!inIso || !outIso) {
+      setMyHoursModalStatus('Couldn\'t parse those times — please re-enter.', 'error');
+      return;
+    }
+    if (new Date(outIso).getTime() <= new Date(inIso).getTime()) {
+      setMyHoursModalStatus('Clock-out has to be after clock-in.', 'error');
+      return;
+    }
+
+    // Notes carry the requested-detail (wrong time / wrong location) so
+    // Kirby can see why "other" was chosen.
+    const fullNotes = reasonDetail
+      ? '[' + reasonDetail.replace(/_/g, ' ') + '] ' + notesValue
+      : notesValue;
+
+    const url = window.CREATE_TIME_ADJUSTMENT_REQUEST_URL;
+    if (!url) {
+      setMyHoursModalStatus('Adjustment endpoint not configured. Tell Nick.', 'error');
+      return;
+    }
+    const submitBtn = $('my-hours-modal-submit');
+    submitBtn.disabled = true;
+    setMyHoursModalStatus('Submitting…', null);
+
+    try {
+      const idToken = await firebase.auth().currentUser.getIdToken();
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + idToken,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify({
+          assignment_id:      s.assignment_id,
+          service_session_id: s._id,
+          requested_clock_in:  inIso,
+          requested_clock_out: outIso,
+          reason: reasonValue,
+          notes:  fullNotes
+        })
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body || body.ok === false) {
+        const msg = (body && (body.error || body.message)) ||
+                    ('Server returned ' + res.status);
+        throw new Error(msg);
+      }
+      setMyHoursModalStatus('Submitted — Kirby will review shortly.', 'ok');
+      setTimeout(closeMyHoursModal, 1100);
+      await reloadMyHours();
+    } catch (err) {
+      console.error('[team-hub] adjustment submit failed', err);
+      setMyHoursModalStatus('Couldn\'t submit: ' + (err.message || 'try again'), 'error');
+      submitBtn.disabled = false;
+    }
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -1778,6 +2316,12 @@
           // communication_messages addressed to this tech, lets them
           // acknowledge or reply inline. Soft-fails; non-blocking.
           bootCommMessagesForStaff(staff);
+          // Phase Employee Trust Layer — My Hours. Surfaces this
+          // employee's paid time for the current payroll period and
+          // lets them request a correction. Routes to the existing
+          // createTimeAdjustmentRequestV1 Cloud Function so admin
+          // review is unchanged.
+          bootMyHoursForStaff(staff);
         }
       });
     } catch (err) {

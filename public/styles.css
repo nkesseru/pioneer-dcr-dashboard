@@ -2315,6 +2315,334 @@ select {
 }
 .team-hub-comm-card-history-item:first-child { border-top: none; }
 
+/* ============================================================
+   Phase Employee Trust Layer — My Hours
+   Reassuring summary at the top, an expandable per-shift list
+   below, and a single "Request Adjustment" CTA at the bottom.
+   ============================================================ */
+.team-hub-my-hours .team-hub-section-sub { color: #475569; }
+.my-hours-summary {
+  background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%);
+  border-radius: 14px;
+  padding: 22px 24px;
+  color: #ffffff;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+.my-hours-summary-loading {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.my-hours-summary-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 4px;
+}
+.my-hours-summary-period {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  margin: 0 0 14px;
+}
+.my-hours-summary-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+}
+.my-hours-tile {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.my-hours-tile-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 4px;
+}
+.my-hours-tile-value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  line-height: 1.1;
+}
+.my-hours-tile-value-small {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.my-hours-tile-pending .my-hours-tile-value { color: #fbbf24; }
+.my-hours-tile-approved .my-hours-tile-value { color: #4ade80; }
+.my-hours-summary-empty {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Shift list */
+.my-hours-shifts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.my-hours-shift-row {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #94a3b8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  align-items: start;
+}
+.my-hours-shift-row[data-labor="inspection"]      { border-left-color: #2563eb; }
+.my-hours-shift-row[data-labor="supply_station"]  { border-left-color: #d97706; }
+.my-hours-shift-row[data-status="active"]         { border-left-color: #16a34a; background: #f0fdf4; }
+.my-hours-shift-row[data-pending="true"]          { background: #fffbeb; border-color: #fde68a; }
+.my-hours-shift-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.my-hours-shift-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.my-hours-shift-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b1220;
+}
+.my-hours-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}
+.my-hours-chip-cleaning      { background: #e0e7ff; color: #3730a3; }
+.my-hours-chip-inspection    { background: #dbeafe; color: #1e40af; }
+.my-hours-chip-supply_station{ background: #fef3c7; color: #92400e; }
+.my-hours-chip-drive         { background: #ede9fe; color: #5b21b6; }
+.my-hours-chip-other         { background: #f1f5f9; color: #334155; }
+.my-hours-chip-active        { background: #dcfce7; color: #166534; }
+.my-hours-chip-pending       { background: #fef3c7; color: #92400e; }
+.my-hours-chip-approved      { background: #dcfce7; color: #166534; }
+.my-hours-shift-detail {
+  font-size: 12.5px;
+  color: #475569;
+  line-height: 1.45;
+}
+.my-hours-shift-detail strong { color: #0b1220; }
+.my-hours-shift-actions { align-self: center; }
+.my-hours-shift-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+.my-hours-shift-btn:hover { background: #f8fafc; }
+.my-hours-shift-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+.my-hours-shifts-empty {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 18px;
+  font-size: 14px;
+  color: #475569;
+  text-align: center;
+}
+
+/* Bottom action row */
+.my-hours-foot {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.my-hours-request-btn {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 12px 22px;
+  border-radius: 10px;
+  background: #0b1220;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+}
+.my-hours-request-btn:hover { background: #1e293b; }
+.my-hours-request-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.my-hours-foot-sub {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ============================================================
+   Phase Employee Trust Layer — Time Adjustment modal
+   ============================================================ */
+.my-hours-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(11, 18, 32, 0.55);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.my-hours-modal-overlay[hidden] { display: none !important; }
+.my-hours-modal {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(11, 18, 32, 0.25);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.my-hours-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 24px 12px;
+}
+.my-hours-modal-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+.my-hours-modal-head h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #0b1220;
+}
+.my-hours-modal-sub {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0 0;
+}
+.my-hours-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.my-hours-modal-fields {
+  padding: 8px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.my-hours-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 540px) {
+  .my-hours-modal-grid { grid-template-columns: 1fr; }
+}
+.my-hours-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.my-hours-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+.my-hours-field-required { color: #b91c1c; font-weight: 600; }
+.my-hours-field-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.my-hours-modal input,
+.my-hours-modal select,
+.my-hours-modal textarea {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1220;
+}
+.my-hours-modal textarea { resize: vertical; }
+.my-hours-modal-status {
+  font-size: 13px;
+  color: #475569;
+  margin: 0;
+  min-height: 16px;
+}
+.my-hours-modal-status[data-tone="error"] { color: #b91c1c; }
+.my-hours-modal-status[data-tone="ok"]    { color: #166534; }
+.my-hours-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px 22px;
+  border-top: 1px solid #e2e8f0;
+}
+.my-hours-modal-cancel,
+.my-hours-modal-submit {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.my-hours-modal-cancel {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+.my-hours-modal-submit {
+  background: #0b1220;
+  color: #ffffff;
+  border: none;
+}
+.my-hours-modal-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Announcements section — cards rendered by team-hub.js. The placeholder
    empty-state styles below still exist for any future use; the new
    .ann-card rules cover the live v1 layout. */
