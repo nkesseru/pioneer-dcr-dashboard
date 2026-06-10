@@ -792,6 +792,19 @@
       }
 
       showSuccess(doc, ref.id);
+      // v1.0 audit fix — refresh the registry so Laura/Jared see the
+      // cycle close immediately on the same page. The Cloud Function
+      // onInspectionCreatedV1 needs ~1-2s to land its state update, so
+      // we delay the read a beat. If the function hasn't fired yet, the
+      // worst case is the operator sees their own write reflected from
+      // an earlier load — a follow-up render will catch up.
+      setTimeout(function () {
+        if (typeof loadAndRenderRegistry === "function") {
+          loadAndRenderRegistry().catch(function (e) {
+            console.warn("[inspections] post-submit registry refresh failed", e);
+          });
+        }
+      }, 2500);
     } catch (err) {
       console.error("[inspections] submit failed", err);
       const msg = (err && err.code === "permission-denied")
@@ -1849,7 +1862,10 @@
     const ms = Date.parse(lastDate + "T00:00:00Z");
     if (!Number.isFinite(ms)) return assigned ? "assigned" : "unassigned";
     const daysSince = Math.floor((todayMs - ms) / 86400000);
-    if (daysSince < INSPECTION_CADENCE_DAYS) return "completed";
+    // v1.0 audit fix — honor per-customer cadence overrides; mirrors
+    // the CEO rollup truth table so both surfaces agree on status.
+    const cadence = Number(row.inspection_cadence_days) || INSPECTION_CADENCE_DAYS;
+    if (daysSince < cadence) return "completed";
     if (assigned) return "assigned";
     return "overdue";
   }
@@ -2008,14 +2024,24 @@
     document.querySelectorAll("[data-row-action]").forEach(function (btn) {
       if (btn.dataset.wired) return;
       btn.dataset.wired = "1";
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", async function () {
         const action = btn.getAttribute("data-row-action");
         const slug = btn.getAttribute("data-slug");
         if (!slug) return;
-        if (action === "claim")         return claimRow(slug);
-        if (action === "unassign")      return unassignRow(slug);
-        if (action === "open")          return openInspectionFor(slug);
-        if (action === "mark-complete") return markCompleteRow(slug);
+        // v1.0 audit fix — disable the clicked button while the write
+        // is in flight so a double-tap can't fire the action twice.
+        // The whole row is about to be re-rendered by loadAndRenderRegistry
+        // anyway, so re-enabling is moot on success; on failure we
+        // restore the button so the operator can retry.
+        if (action === "open") return openInspectionFor(slug);
+        btn.disabled = true;
+        try {
+          if (action === "claim")         await claimRow(slug);
+          else if (action === "unassign") await unassignRow(slug);
+          else if (action === "mark-complete") await markCompleteRow(slug);
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
   }
@@ -2040,25 +2066,32 @@
     );
     if (!ok) return;
     const today = new Date().toISOString().slice(0, 10);
-    const due = computeDueDateClient(today, (row && row.inspection_cadence_days) || INSPECTION_CADENCE_DAYS);
+    const cadence = (row && row.inspection_cadence_days) || INSPECTION_CADENCE_DAYS;
+    const due = computeDueDateClient(today, cadence);
     const me = registryStaff;
     const myEmail = String(me.email || "").toLowerCase();
     const myName = (me.tech && me.tech.display_name) || myEmail.split("@")[0];
     try {
       await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
-        customer_slug:        slug,
-        last_inspection_id:   null,
-        last_inspection_date: today,
-        last_inspector_uid:   me.uid,
-        last_inspector_name:  myName,
-        last_inspector_email: myEmail,
-        assigned_to_uid:      null,
-        assigned_to_email:    null,
-        assigned_to_name:     null,
-        assigned_at:          null,
-        assigned_by_email:    null,
-        due_date:             due,
-        updated_at:           firebase.firestore.FieldValue.serverTimestamp()
+        customer_slug:           slug,
+        // v1.0 audit fix — persist customer_name so the state doc isn't
+        // blank for fresh customers that hit Mark Complete before any
+        // inspection has run. Falls back to the slug if the cache row
+        // is somehow missing the name.
+        customer_name:           (row && row.customer_name) || slug,
+        inspection_cadence_days: cadence,
+        last_inspection_id:      null,
+        last_inspection_date:    today,
+        last_inspector_uid:      me.uid,
+        last_inspector_name:     myName,
+        last_inspector_email:    myEmail,
+        assigned_to_uid:         null,
+        assigned_to_email:       null,
+        assigned_to_name:        null,
+        assigned_at:             null,
+        assigned_by_email:       null,
+        due_date:                due,
+        updated_at:              firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
       await loadAndRenderRegistry();
     } catch (err) {
@@ -2070,9 +2103,14 @@
   async function claimRow(slug) {
     if (!registryStaff) return;
     const me = registryStaff;
+    const row = registryRowsCache.find(function (r) { return r.customer_slug === slug; });
     try {
       await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
         customer_slug:     slug,
+        // v1.0 audit fix — defensive customer_name write so the state
+        // doc is never anonymous after a claim, even for fresh
+        // customers added since the last bootstrap.
+        customer_name:     (row && row.customer_name) || slug,
         assigned_to_uid:   me.uid,
         assigned_to_email: String(me.email || "").toLowerCase(),
         assigned_to_name:  (me.tech && me.tech.display_name) || (me.email || "").split("@")[0],
@@ -2088,6 +2126,9 @@
   }
 
   async function unassignRow(slug) {
+    // v1.0 audit fix — guard against firing after sign-out (session
+    // expiry between page boot and button click).
+    if (!registryStaff) return;
     try {
       await firebase.firestore().collection("customer_inspection_state").doc(slug).set({
         assigned_to_uid:   null,

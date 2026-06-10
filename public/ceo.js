@@ -1581,11 +1581,14 @@
         return;
       }
       const todayMs = Date.now();
-      const CADENCE = 60;
+      const DEFAULT_CADENCE = 60;
       let completed = 0, assigned = 0, overdue = 0, unassigned = 0;
       rows.forEach(function (r) {
         const lastDate = r.last_inspection_date;
         const isAssigned = !!r.assigned_to_uid;
+        // v1.0 audit fix — honor per-customer cadence overrides instead
+        // of hardcoding 60d. Matches the truth table in inspections.js.
+        const cadence = Number(r.inspection_cadence_days) || DEFAULT_CADENCE;
         let status;
         if (!lastDate) {
           status = isAssigned ? 'assigned' : 'unassigned';
@@ -1594,7 +1597,7 @@
           const daysSince = Number.isFinite(ms)
             ? Math.floor((todayMs - ms) / 86400000)
             : 999;
-          status = daysSince < CADENCE ? 'completed'
+          status = daysSince < cadence ? 'completed'
                 : isAssigned ? 'assigned' : 'overdue';
         }
         if (status === 'completed')       completed++;
