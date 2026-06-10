@@ -2330,6 +2330,13 @@ select {
   display: grid;
   grid-template-columns: 1fr;
   gap: 18px;
+  /* Stays visible while the tech scrolls through an expanded shift
+     list — the "How many hours / is payroll right" answer is always
+     in view. Releases when the My Hours section is fully scrolled past. */
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  box-shadow: 0 8px 20px rgba(11, 18, 32, 0.18);
 }
 .my-hours-summary-loading {
   font-size: 14px;
@@ -2347,7 +2354,46 @@ select {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.2px;
-  margin: 0 0 14px;
+  margin: 0;
+}
+.my-hours-summary-closes {
+  margin: 4px 0 14px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.2px;
+}
+.my-hours-summary-closes strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Confidence chip — sits above the period title so it's the FIRST
+   thing the tech reads. Green when no pending corrections; warm
+   amber when at least one is awaiting Kirby. */
+.my-hours-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+.my-hours-confidence-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.my-hours-confidence-ok {
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+.my-hours-confidence-warn {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
 }
 .my-hours-summary-tiles {
   display: grid;
@@ -2477,6 +2523,30 @@ select {
   font-size: 14px;
   color: #475569;
   text-align: center;
+}
+.my-hours-toggle-all {
+  align-self: center;
+  margin: 4px auto 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.my-hours-toggle-all:hover {
+  background: #e2e8f0;
+}
+.my-hours-toggle-hint {
+  text-align: center;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 /* Bottom action row */

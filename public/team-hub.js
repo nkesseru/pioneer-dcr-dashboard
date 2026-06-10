@@ -1747,6 +1747,8 @@
   let myHoursPendingByKey = {};      // session_id → request doc
   let myHoursApprovedCount = 0;
   let myHoursModalShiftId = null;
+  let myHoursExpanded = false;       // false = show only first 5 shifts
+  const MY_HOURS_PREVIEW_LIMIT = 5;
 
   const MY_HOURS_REASON_LABEL = {
     forgot_clock_in:  'Forgot to clock in',
@@ -1955,10 +1957,25 @@
     });
     const pendingCount = Object.keys(myHoursPendingByKey).length;
     const approvedCount = myHoursApprovedCount;
+    // Confidence chip — green when no pending corrections, yellow when
+    // any exist. Gives the tech the "is payroll right?" answer at a
+    // glance before they read anything else.
+    const confidenceChip = (pendingCount > 0)
+      ? '<span class="my-hours-confidence my-hours-confidence-warn">' +
+          '<span class="my-hours-confidence-icon" aria-hidden="true">⚠</span>' +
+          'Pending correction' +
+        '</span>'
+      : '<span class="my-hours-confidence my-hours-confidence-ok">' +
+          '<span class="my-hours-confidence-icon" aria-hidden="true">✓</span>' +
+          'Hours look good' +
+        '</span>';
     root.innerHTML =
       '<div>' +
+        confidenceChip +
         '<p class="my-hours-summary-eyebrow">Your current payroll period</p>' +
         '<h3 class="my-hours-summary-period">' + myHoursEscape(period.label) + '</h3>' +
+        '<p class="my-hours-summary-closes">Payroll closes: <strong>' +
+          myHoursEscape(myHoursFormatDate(period.end_date)) + '</strong></p>' +
         '<div class="my-hours-summary-tiles">' +
           '<div class="my-hours-tile">' +
             '<span class="my-hours-tile-label">Total hours</span>' +
@@ -1992,12 +2009,43 @@
         '</div>';
       return;
     }
-    root.innerHTML = myHoursSessions.map(renderMyHoursShiftRow).join('');
+    // Default to the most recent 5 shifts. "View All" expands to show
+    // every shift in the period. The expanded state is per-render —
+    // a reload (e.g. after submitting a correction) resets to preview
+    // mode, which is the right default UX.
+    const total = myHoursSessions.length;
+    const showAll = myHoursExpanded || total <= MY_HOURS_PREVIEW_LIMIT;
+    const visible = showAll ? myHoursSessions : myHoursSessions.slice(0, MY_HOURS_PREVIEW_LIMIT);
+    let html = visible.map(renderMyHoursShiftRow).join('');
+    if (total > MY_HOURS_PREVIEW_LIMIT) {
+      const hidden = total - MY_HOURS_PREVIEW_LIMIT;
+      html += '<button type="button" class="my-hours-toggle-all" id="my-hours-toggle-all">' +
+                (myHoursExpanded
+                  ? 'Show Recent 5 ▲'
+                  : 'View All Shifts (' + total + ') ▼') +
+              '</button>';
+      if (!myHoursExpanded) {
+        // Hint just under the toggle in muted text so the user knows
+        // what they'd be revealing.
+        html += '<p class="my-hours-toggle-hint">' +
+                  hidden + ' more shift' + (hidden === 1 ? '' : 's') +
+                  ' in this payroll period.' +
+                '</p>';
+      }
+    }
+    root.innerHTML = html;
     document.querySelectorAll('[data-my-hours-shift-action="adjust"]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         openMyHoursModal(btn.getAttribute('data-shift-id'));
       });
     });
+    const toggle = $('my-hours-toggle-all');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        myHoursExpanded = !myHoursExpanded;
+        renderMyHoursShifts(period);
+      });
+    }
   }
 
   function renderMyHoursShiftRow(s) {
