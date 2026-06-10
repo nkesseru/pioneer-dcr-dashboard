@@ -1918,6 +1918,10 @@
     // status than Close so reports can tell the two apart.
     const resolveBtn = $("manager-thread-action-resolve");
     if (resolveBtn) resolveBtn.addEventListener("click", handleThreadResolve);
+    // Phase 3C — Send SMS is the manual outbound Twilio path. Server gates
+    // by admin role + phone-on-file; client just needs to confirm + POST.
+    const sendSmsBtn = $("manager-thread-send-sms");
+    if (sendSmsBtn) sendSmsBtn.addEventListener("click", handleThreadSendSms);
     overlay.addEventListener("click", function (ev) {
       if (ev.target === overlay) closeThreadModal();
     });
@@ -1953,11 +1957,13 @@
       const resolveBtn = $("manager-thread-action-resolve");
       const closeBtn   = $("manager-thread-action-close");
       const sendBtn    = $("manager-thread-send");
+      const sendSmsBtn = $("manager-thread-send-sms");
       if (resolveBtn) resolveBtn.disabled = isTerminal;
       if (closeBtn)   closeBtn.disabled   = isTerminal;
-      // Reply also disabled if terminal — a closed thread shouldn't
+      // Reply + SMS also disabled if terminal — a closed thread shouldn't
       // accept new messages.
-      if (sendBtn) sendBtn.disabled = isTerminal;
+      if (sendBtn)    sendBtn.disabled    = isTerminal;
+      if (sendSmsBtn) sendSmsBtn.disabled = isTerminal;
       $("manager-thread-title").textContent = thread.subject || "Conversation";
       $("manager-thread-meta").textContent =
         (thread.participants || []).map(function (p) { return p.name || p.id; }).join(" · ");
@@ -2071,6 +2077,62 @@
     } catch (err) {
       console.error("[manager] close thread failed", err);
       setThreadStatus("Close failed: " + (err.message || "unknown"), "error");
+    }
+  }
+
+  // Phase 3C — Manual outbound SMS via Twilio. The server gates by admin
+  // role + recipient phone availability; this client just confirms the
+  // intent (SMS is real money + real noise on the tech's phone) and POSTs
+  // the same body that's in the in-app reply textarea.
+  async function handleThreadSendSms() {
+    if (!openThreadId || !currentUser) return;
+    const ta = $("manager-thread-reply-body");
+    const body = (ta.value || "").trim();
+    if (!body) {
+      setThreadStatus("Type a message before sending SMS.", "error");
+      return;
+    }
+    const url = window.SEND_TWILIO_MESSAGE_URL;
+    if (!url) {
+      setThreadStatus("SMS transport URL not configured (window.SEND_TWILIO_MESSAGE_URL).", "error");
+      return;
+    }
+    const ok = window.confirm(
+      "Send this as an SMS to the employee's phone on file?\n\n" +
+      "SMS is a manual transport. Use only when in-app reply isn't sufficient."
+    );
+    if (!ok) return;
+    setThreadStatus("Sending SMS…");
+    const sendSmsBtn = $("manager-thread-send-sms");
+    const sendBtn    = $("manager-thread-send");
+    if (sendSmsBtn) sendSmsBtn.disabled = true;
+    if (sendBtn)    sendBtn.disabled    = true;
+    try {
+      const idToken = await firebase.auth().currentUser.getIdToken();
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ threadId: openThreadId, messageBody: body })
+      });
+      const json = await r.json().catch(function () { return {}; });
+      if (!r.ok || !json.ok) {
+        const errMsg = (json && json.error) || ("HTTP " + r.status);
+        setThreadStatus("SMS failed: " + errMsg, "error");
+        return;
+      }
+      ta.value = "";
+      setThreadStatus("SMS sent (sid " + (json.sid || "?") + ").", "ok");
+      await openThreadDetail(openThreadId);
+      await loadAndRenderThreads();
+    } catch (err) {
+      console.error("[manager] SMS send failed", err);
+      setThreadStatus("SMS failed: " + (err.message || "unknown"), "error");
+    } finally {
+      if (sendSmsBtn) sendSmsBtn.disabled = false;
+      if (sendBtn)    sendBtn.disabled    = false;
     }
   }
 

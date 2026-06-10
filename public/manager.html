@@ -1217,6 +1217,19 @@
       border-top: 1px solid var(--mc-border-soft);
       background: var(--mc-surface);
     }
+    /* Phase 3C — A2P warning copy under the reply textarea. Quiet by
+       default; turns to a soft amber so admins notice but it doesn't
+       outshout the conversation. */
+    .mc-thread-sms-warning {
+      margin: 8px 0 0;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #92400e;
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body class="manager-page">
@@ -1630,9 +1643,17 @@
         <label class="mc-field-question" for="manager-thread-reply-body">Reply</label>
         <textarea id="manager-thread-reply-body" maxlength="2000" placeholder="Type a reply to this conversation…"></textarea>
         <p class="mc-modal-status" id="manager-thread-reply-status"></p>
+        <!-- Phase 3C — Twilio Transport Foundation. Send SMS is a manual,
+             admin-only secondary path. In-app Reply remains the default.
+             The warning copy is intentionally cautious — campaign approval
+             may still be pending on Twilio's A2P 10DLC side. -->
+        <p class="mc-thread-sms-warning" id="manager-thread-sms-warning">
+          SMS transport is configured but A2P campaign approval may still be pending. Use sparingly.
+        </p>
         <div class="mc-modal-btns">
           <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
           <button type="button" class="mc-btn-ghost" id="manager-thread-action-resolve">Mark Resolved</button>
+          <button type="button" class="mc-btn-ghost" id="manager-thread-send-sms">Send SMS</button>
           <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
         </div>
       </div>
@@ -1718,6 +1739,6 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="manager.js?v=20260610-phase3b2"></script>
+  <script src="manager.js?v=20260610-phase3c"></script>
 </body>
 </html>

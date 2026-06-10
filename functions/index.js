@@ -28,6 +28,7 @@ const crypto = require("crypto");
 // bottom of the file (search "generateAndSendDcrEmailV1").
 const dcrEmail = require("./dcrEmail");
 const ghlHiringSync = require("./ghlHiringSync");
+const twilioMessaging = require("./twilioMessaging");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -8271,3 +8272,618 @@ function computeDueDateYMD(ymd, cadenceDays) {
   const due = new Date(ms + cadenceDays * 86400000);
   return due.toISOString().slice(0, 10);
 }
+
+/* ============================================================================
+ * Phase 3C — Twilio Transport Foundation
+ *
+ * Three Cloud Functions form the manual SMS transport layer for the
+ * Communication Threads system:
+ *
+ *   sendTwilioMessageV1       admin → tech outbound SMS, manual trigger only
+ *   twilioInboundWebhookV1    tech  → admin inbound SMS, posted by Twilio
+ *   twilioStatusCallbackV1    Twilio delivery status updates
+ *
+ * Hard constraints (from Phase 3C spec, enforced in code below):
+ *   • Manual send only — no automatic SMS, no broadcast, no mass text.
+ *   • No SMS from CEO action nudges yet.
+ *   • Twilio credentials live ONLY in Firebase Secrets — never logged or
+ *     surfaced to the client.
+ *   • Inbound from unknown phone numbers is dropped (not threaded) — this
+ *     prevents anonymous parties from creating threads + spamming admin.
+ *
+ * Secrets used (set via `firebase functions:secrets:set`):
+ *   TWILIO_ACCOUNT_SID            (shared with emergency SOS path above)
+ *   TWILIO_AUTH_TOKEN             (shared with emergency SOS path above)
+ *   TWILIO_MESSAGING_SERVICE_SID  (new — preferred over TWILIO_FROM_NUMBER
+ *                                  for the messaging service routing)
+ *   TWILIO_PHONE_NUMBER           (new — used for signature validation log
+ *                                  context; also a fallback "from" if the
+ *                                  messaging service SID is empty)
+ * ============================================================================ */
+
+const TWILIO_MESSAGING_SERVICE_SID = defineSecret("TWILIO_MESSAGING_SERVICE_SID");
+const TWILIO_PHONE_NUMBER          = defineSecret("TWILIO_PHONE_NUMBER");
+
+const TWILIO_INBOUND_URL = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/twilioInboundWebhookV1";
+const TWILIO_STATUS_URL  = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/twilioStatusCallbackV1";
+
+function trimPreviewServer(body) {
+  const s = String(body || "").replace(/\s+/g, " ").trim();
+  if (s.length <= 140) return s;
+  return s.slice(0, 137) + "…";
+}
+
+// Sentinel-safe FieldValue.serverTimestamp() shorthand. Used so the three
+// functions below don't sprout six copies of the same admin.firestore call.
+function fvNow() { return admin.firestore.FieldValue.serverTimestamp(); }
+
+/* --------------------- sendTwilioMessageV1 (admin) --------------------- */
+//
+// POST /sendTwilioMessageV1
+//   Authorization: Bearer <id-token>     (admin email required)
+//   { threadId, messageBody,
+//     recipientPhone?  — overrides phone resolution from thread participant
+//     recipientId?     — overrides participant lookup }
+//
+// Resolves the recipient phone, sends one SMS via Twilio Messaging Service,
+// then persists a communication_messages doc (channel=sms, direction=outbound)
+// and bumps the thread status to waiting_on_employee. On Twilio rejection,
+// persists a failed doc instead so the thread audit trail keeps the attempt.
+exports.sendTwilioMessageV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID, TWILIO_PHONE_NUMBER]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[twilio.send] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to send SMS." });
+      return;
+    }
+
+    const body = req.body || {};
+    const threadId    = String(body.threadId    || body.thread_id    || "").trim();
+    const messageBody = String(body.messageBody || body.message_body || body.body || "").trim();
+    const recipientPhoneRaw = body.recipientPhone || body.recipient_phone || "";
+    const recipientIdHint   = String(body.recipientId || body.recipient_id || "").toLowerCase().trim();
+
+    if (!threadId) {
+      res.status(400).json({ ok: false, error: "threadId is required." });
+      return;
+    }
+    if (!messageBody) {
+      res.status(400).json({ ok: false, error: "messageBody is required." });
+      return;
+    }
+    if (messageBody.length > 1600) {
+      // Twilio splits at 1600 chars across multiple segments; we cap here
+      // so a runaway paste from /manager can't accidentally fire 20 segments.
+      res.status(400).json({ ok: false, error: "messageBody too long (max 1600)." });
+      return;
+    }
+
+    let threadRef, threadSnap, threadData;
+    try {
+      threadRef  = db.collection("communication_threads").doc(threadId);
+      threadSnap = await threadRef.get();
+      if (!threadSnap.exists) {
+        res.status(404).json({ ok: false, error: "Thread not found." });
+        return;
+      }
+      threadData = threadSnap.data() || {};
+    } catch (e) {
+      logger.error("[twilio.send] thread load failed", { threadId, error: e && e.message });
+      res.status(500).json({ ok: false, error: "Failed to load thread." });
+      return;
+    }
+
+    if (threadData.status === "closed" || threadData.status === "resolved") {
+      res.status(409).json({ ok: false, error: "Cannot send SMS on a closed/resolved thread." });
+      return;
+    }
+
+    /* ---- Resolve recipient phone + identity ---- */
+    let toPhone = twilioMessaging.normalizePhone(recipientPhoneRaw);
+    let recipientEmail = "";
+    let recipientName  = "";
+
+    if (!toPhone) {
+      // Pick a participant. If recipientId hint was provided, prefer that
+      // participant; otherwise first non-admin/non-executive participant.
+      const participants = Array.isArray(threadData.participants) ? threadData.participants : [];
+      let target = null;
+      if (recipientIdHint) {
+        target = participants.find(function (p) {
+          return String(p.id || "").toLowerCase().trim() === recipientIdHint;
+        }) || null;
+      }
+      if (!target) {
+        target = participants.find(function (p) {
+          const t = String(p.type || "").toLowerCase();
+          return t === "tech" || t === "employee";
+        }) || null;
+      }
+      if (!target) {
+        res.status(400).json({ ok: false, error: "Could not identify a tech participant on this thread." });
+        return;
+      }
+      recipientEmail = String(target.id || "").toLowerCase().trim();
+      recipientName  = String(target.name || "");
+      try {
+        const lookup = await twilioMessaging.findTechPhoneByEmail(db, recipientEmail);
+        if (!lookup) {
+          res.status(400).json({
+            ok: false,
+            error: "No phone number on file for " + (recipientName || recipientEmail) + ". Update cleaning_techs.phone, then try again."
+          });
+          return;
+        }
+        toPhone = lookup.phone;
+        if (!recipientName && lookup.tech) {
+          recipientName = String(lookup.tech.display_name || lookup.tech.tech_display_name || "");
+        }
+      } catch (e) {
+        logger.error("[twilio.send] phone lookup failed", {
+          threadId, email: recipientEmail, error: e && e.message
+        });
+        res.status(500).json({ ok: false, error: "Failed to look up recipient phone." });
+        return;
+      }
+    }
+
+    /* ---- Send via Twilio ---- */
+    const messagingServiceSid = (TWILIO_MESSAGING_SERVICE_SID.value() || "").trim();
+    const fromNumber          = (TWILIO_PHONE_NUMBER.value() || "").trim();
+    if (!messagingServiceSid && !fromNumber) {
+      logger.error("[twilio.send] no messaging service sid OR phone number configured");
+      res.status(500).json({ ok: false, error: "Twilio transport not configured." });
+      return;
+    }
+
+    let client;
+    try {
+      client = twilioMessaging.getClient(TWILIO_ACCOUNT_SID.value(), TWILIO_AUTH_TOKEN.value());
+    } catch (e) {
+      logger.error("[twilio.send] client init failed", { error: e && e.message });
+      res.status(500).json({ ok: false, error: "Twilio client init failed." });
+      return;
+    }
+
+    const senderName = (staff.tech && staff.tech.display_name) || staff.email.split("@")[0];
+
+    let twilioRes = null;
+    let twilioErr = null;
+    try {
+      const createOpts = {
+        body: messageBody,
+        to:   toPhone,
+        statusCallback: TWILIO_STATUS_URL
+      };
+      if (messagingServiceSid) createOpts.messagingServiceSid = messagingServiceSid;
+      else                     createOpts.from = fromNumber;
+      twilioRes = await client.messages.create(createOpts);
+    } catch (e) {
+      twilioErr = e;
+    }
+
+    /* ---- Persist message + thread bump (atomic) ---- */
+    const msgRef = db.collection("communication_messages").doc();
+    const sts    = fvNow();
+    const successful = !twilioErr && twilioRes && twilioRes.sid;
+
+    const messageDoc = {
+      thread_id:      threadId,
+      category:       threadData.category || null,
+      channel:        "sms",
+      direction:      "outbound",
+      status:         successful ? "queued" : "failed",
+      sender_type:    "admin",
+      sender_id:      staff.email,
+      sender_name:    senderName,
+      recipient_type: "employee",
+      recipient_id:   recipientEmail,
+      recipient_name: recipientName,
+      body:           messageBody,
+      created_at:     sts,
+      deliver_after:  sts,
+      delivered_at:   null,
+      read_at:        null,
+      sms_phone:      toPhone,
+      sms_sid:        successful ? twilioRes.sid : null,
+      sms_error:      successful ? null : String((twilioErr && twilioErr.message) || "Twilio rejected the send").slice(0, 500)
+    };
+
+    try {
+      await db.runTransaction(async (tx) => {
+        tx.set(msgRef, messageDoc);
+        // Only bump the thread state on a successful send — a failed send
+        // shouldn't flip "waiting_on_management" to "waiting_on_employee".
+        if (successful) {
+          tx.update(threadRef, {
+            status:                 "waiting_on_employee",
+            updated_at:             sts,
+            last_message_at:        sts,
+            last_message_preview:   trimPreviewServer(messageBody),
+            last_message_direction: "outbound",
+            message_count:          admin.firestore.FieldValue.increment(1)
+          });
+        } else {
+          // Still bump updated_at + message_count so the failed attempt
+          // appears in the thread history. Status stays put.
+          tx.update(threadRef, {
+            updated_at:             sts,
+            last_message_at:        sts,
+            last_message_preview:   trimPreviewServer(messageBody),
+            last_message_direction: "outbound",
+            message_count:          admin.firestore.FieldValue.increment(1)
+          });
+        }
+      });
+    } catch (e) {
+      logger.error("[twilio.send] persist failed", { threadId, error: e && e.message });
+      // Twilio may have already sent the SMS — return success metadata so
+      // the admin sees the SID, but flag the persistence issue.
+      res.status(500).json({
+        ok: false,
+        error: "SMS may have sent, but the database write failed: " + (e && e.message),
+        sid:   successful ? twilioRes.sid : null
+      });
+      return;
+    }
+
+    if (!successful) {
+      logger.warn("[twilio.send] twilio rejected", {
+        threadId, to_redacted: twilioMessaging.redactPhone(toPhone),
+        error: twilioErr && twilioErr.message,
+        code:  twilioErr && twilioErr.code
+      });
+      res.status(502).json({
+        ok: false,
+        error: "Twilio rejected the send: " + (twilioErr && twilioErr.message),
+        code:  twilioErr && twilioErr.code,
+        messageId: msgRef.id
+      });
+      return;
+    }
+
+    logger.info("[twilio.send] ok", {
+      threadId, sid: twilioRes.sid,
+      to_redacted: twilioMessaging.redactPhone(toPhone),
+      sender: staff.email, bytes: messageBody.length
+    });
+    res.json({
+      ok: true,
+      sid: twilioRes.sid,
+      messageId: msgRef.id,
+      to_redacted: twilioMessaging.redactPhone(toPhone)
+    });
+  }
+);
+
+/* --------------------- twilioInboundWebhookV1 (public) --------------------- */
+//
+// POST /twilioInboundWebhookV1   (Twilio-form-encoded; X-Twilio-Signature)
+//
+// Matches the From number to an active cleaning_techs doc. If no match,
+// drops the message silently (200 OK + empty TwiML) — anonymous numbers
+// MUST NOT be allowed to create threads. If matched, finds the most-
+// recently-updated active thread for that tech, OR creates a new "general"
+// thread; then appends an inbound message and bumps thread status to
+// waiting_on_management.
+exports.twilioInboundWebhookV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [TWILIO_AUTH_TOKEN]
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    // Twilio posts application/x-www-form-urlencoded; firebase-functions v2
+    // parses it into req.body as an object.
+    const params = req.body || {};
+    const signature = req.get("X-Twilio-Signature") || "";
+
+    // Signature validation. We accept either signed (production) OR
+    // missing-header (manual curl during testing) but never wrong-signature.
+    const authToken = TWILIO_AUTH_TOKEN.value();
+    if (signature) {
+      const valid = twilioMessaging.validateSignature(authToken, signature, TWILIO_INBOUND_URL, params);
+      if (!valid) {
+        logger.warn("[twilio.inbound] invalid signature; refusing");
+        res.status(403).send("Invalid signature");
+        return;
+      }
+    } else {
+      logger.info("[twilio.inbound] no signature header (manual call?)");
+    }
+
+    const fromRaw   = params.From || "";
+    const bodyText  = String(params.Body || "").trim();
+    const sid       = String(params.MessageSid || "").trim();
+
+    if (!fromRaw || !sid) {
+      res.status(400).send("Missing From or MessageSid");
+      return;
+    }
+
+    const fromPhone = twilioMessaging.normalizePhone(fromRaw);
+    if (!fromPhone) {
+      logger.warn("[twilio.inbound] unparseable From", { from_redacted: twilioMessaging.redactPhone(fromRaw), sid });
+      res.set("Content-Type", "text/xml");
+      res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+      return;
+    }
+
+    let tech = null;
+    try {
+      tech = await twilioMessaging.findTechByPhone(db, fromPhone);
+    } catch (e) {
+      logger.error("[twilio.inbound] tech lookup failed", { error: e && e.message, sid });
+    }
+
+    if (!tech) {
+      // Unknown sender. Log + drop. Returning 200 + empty TwiML so Twilio
+      // doesn't retry; not creating a thread so anonymous parties can't
+      // generate workload for admin.
+      logger.warn("[twilio.inbound] unknown sender; dropping", {
+        from_redacted: twilioMessaging.redactPhone(fromPhone), sid
+      });
+      res.set("Content-Type", "text/xml");
+      res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+      return;
+    }
+
+    const techEmail = String(tech.email || "").toLowerCase().trim();
+    const techName  = String(tech.display_name || tech.tech_display_name || techEmail);
+
+    /* ---- Find or create thread ---- */
+    let threadId   = null;
+    let threadData = null;
+
+    try {
+      const candidates = await db.collection("communication_threads")
+        .where("participant_ids", "array-contains", techEmail)
+        .where("status", "in", ["open", "waiting_on_employee", "waiting_on_management"])
+        .limit(20).get();
+
+      if (!candidates.empty) {
+        let bestId = null;
+        let bestData = null;
+        let bestTs = -1;
+        candidates.forEach(function (d) {
+          const data = d.data() || {};
+          const ts = (data.updated_at && data.updated_at.toMillis && data.updated_at.toMillis()) || 0;
+          if (ts > bestTs) { bestTs = ts; bestId = d.id; bestData = data; }
+        });
+        threadId   = bestId;
+        threadData = bestData;
+      }
+    } catch (e) {
+      logger.error("[twilio.inbound] thread query failed", { error: e && e.message, sid });
+    }
+
+    if (!threadId) {
+      // Create a new general thread. Status starts at waiting_on_management
+      // — the inbound message IS the first message, and admin owes a reply.
+      const newRef = db.collection("communication_threads").doc();
+      const subject = bodyText
+        ? (bodyText.length > 80 ? bodyText.slice(0, 77) + "…" : bodyText)
+        : ("SMS from " + techName);
+      threadData = {
+        category:               "general",
+        status:                 "waiting_on_management",
+        priority:               "action_required",
+        message_type:           "general",
+        subject:                subject,
+        source_type:            "twilio_inbound",
+        source_id:              sid,
+        participants:           [{ type: "tech", id: techEmail, name: techName }],
+        participant_ids:        [techEmail],
+        created_by:             techEmail,
+        created_at:             fvNow(),
+        updated_at:             fvNow(),
+        closed_at:              null,
+        closed_by:              null,
+        last_message_at:        null,
+        last_message_preview:   null,
+        last_message_direction: null,
+        message_count:          0
+      };
+      try {
+        await newRef.set(threadData);
+        threadId = newRef.id;
+      } catch (e) {
+        logger.error("[twilio.inbound] thread create failed", { error: e && e.message, sid });
+        res.status(500).send("Internal error");
+        return;
+      }
+    }
+
+    /* ---- Append inbound message + bump thread ---- */
+    const msgRef    = db.collection("communication_messages").doc();
+    const threadRef = db.collection("communication_threads").doc(threadId);
+    const sts       = fvNow();
+    const messageDoc = {
+      thread_id:      threadId,
+      category:       threadData.category || "general",
+      channel:        "sms",
+      direction:      "inbound",
+      status:         "delivered",
+      sender_type:    "tech",
+      sender_id:      techEmail,
+      sender_name:    techName,
+      recipient_type: "admin",
+      recipient_id:   "",
+      recipient_name: "Pioneer Management",
+      body:           bodyText || "(empty SMS body)",
+      created_at:     sts,
+      deliver_after:  sts,
+      delivered_at:   sts,
+      read_at:        null,
+      sms_phone:      fromPhone,
+      sms_sid:        sid,
+      sms_error:      null
+    };
+
+    try {
+      await db.runTransaction(async (tx) => {
+        tx.set(msgRef, messageDoc);
+        tx.update(threadRef, {
+          status:                 "waiting_on_management",
+          updated_at:             sts,
+          last_message_at:        sts,
+          last_message_preview:   trimPreviewServer(bodyText || "(empty SMS body)"),
+          last_message_direction: "inbound",
+          message_count:          admin.firestore.FieldValue.increment(1)
+        });
+      });
+    } catch (e) {
+      logger.error("[twilio.inbound] persist failed", { error: e && e.message, sid });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    logger.info("[twilio.inbound] persisted", {
+      threadId, sid, tech: techEmail,
+      from_redacted: twilioMessaging.redactPhone(fromPhone),
+      bytes: bodyText.length
+    });
+
+    // Reply with empty TwiML so Twilio doesn't auto-send an SMS back.
+    res.set("Content-Type", "text/xml");
+    res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+  }
+);
+
+/* --------------------- twilioStatusCallbackV1 (public) --------------------- */
+//
+// POST /twilioStatusCallbackV1   (Twilio-form-encoded; X-Twilio-Signature)
+//
+// Looks up the communication_messages doc by sms_sid and updates its status.
+// Twilio fires this multiple times per send (queued → sent → delivered);
+// we always overwrite with the latest. Errors update sms_error.
+exports.twilioStatusCallbackV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 15,
+    secrets: [TWILIO_AUTH_TOKEN]
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    const params = req.body || {};
+    const signature = req.get("X-Twilio-Signature") || "";
+    const authToken = TWILIO_AUTH_TOKEN.value();
+    if (signature) {
+      const valid = twilioMessaging.validateSignature(authToken, signature, TWILIO_STATUS_URL, params);
+      if (!valid) {
+        logger.warn("[twilio.status] invalid signature; refusing");
+        res.status(403).send("Invalid signature");
+        return;
+      }
+    }
+
+    const sid          = String(params.MessageSid || "").trim();
+    const twilioStatus = String(params.MessageStatus || params.SmsStatus || "").trim().toLowerCase();
+    const errorCode    = String(params.ErrorCode || "").trim();
+    const errorMessage = String(params.ErrorMessage || "").trim();
+
+    if (!sid || !twilioStatus) {
+      res.status(400).send("Missing MessageSid or MessageStatus");
+      return;
+    }
+
+    let snap;
+    try {
+      snap = await db.collection("communication_messages")
+        .where("sms_sid", "==", sid)
+        .limit(1).get();
+    } catch (e) {
+      logger.error("[twilio.status] query failed", { error: e && e.message, sid });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    if (snap.empty) {
+      // Twilio may post status for a SID we never wrote (manual curl, race).
+      // Acknowledge so Twilio doesn't keep retrying.
+      logger.warn("[twilio.status] unknown sid", { sid, twilioStatus });
+      res.status(200).send("OK");
+      return;
+    }
+
+    /* Map Twilio MessageStatus → our MESSAGE_STATUS enum + side fields.
+       Twilio status flow: accepted → queued → sending → sent → delivered
+       (or → failed / undelivered at any step). We collapse all
+       pre-terminal states to 'queued'. */
+    let nextStatus = null;
+    let setDeliveredAt = false;
+    let setError = null;
+
+    switch (twilioStatus) {
+      case "accepted":
+      case "queued":
+      case "scheduled":
+      case "sending":
+      case "sent":
+        nextStatus = "queued";
+        break;
+      case "delivered":
+        nextStatus = "delivered";
+        setDeliveredAt = true;
+        break;
+      case "undelivered":
+      case "failed":
+        nextStatus = "failed";
+        setError = errorCode
+          ? ("[" + errorCode + "] " + (errorMessage || twilioStatus))
+          : (errorMessage || ("Twilio: " + twilioStatus));
+        break;
+      default:
+        // Unknown status — log + leave the doc alone rather than corrupt it.
+        logger.warn("[twilio.status] unmapped status", { sid, twilioStatus });
+        res.status(200).send("OK");
+        return;
+    }
+
+    const ref = snap.docs[0].ref;
+    const update = {
+      status:     nextStatus,
+      updated_at: fvNow()
+    };
+    if (setDeliveredAt) update.delivered_at = fvNow();
+    if (setError)       update.sms_error    = setError.slice(0, 500);
+
+    try {
+      await ref.update(update);
+    } catch (e) {
+      logger.error("[twilio.status] update failed", { sid, error: e && e.message });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    logger.info("[twilio.status] ok", { sid, twilioStatus, nextStatus });
+    res.status(200).send("OK");
+  }
+);
+

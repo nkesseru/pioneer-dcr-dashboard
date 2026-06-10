@@ -89,4 +89,11 @@
   // (server-side role check). The GHL integration token is held only in
   // the GHL_PRIVATE_INTEGRATION_TOKEN Firebase secret — never exposed here.
   window.REFRESH_GHL_HIRING_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `sendTwilioMessageV1`.
+  // Used by /manager.html (thread detail modal → "Send SMS" button) to
+  // trigger one manual outbound SMS to the employee's phone on file.
+  // Admin-only (server-side role check). Twilio credentials live only in
+  // the TWILIO_* Firebase Secrets — never exposed here.
+  window.SEND_TWILIO_MESSAGE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
 })();
