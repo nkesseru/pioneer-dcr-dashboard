@@ -448,6 +448,12 @@
     renderInspectionRollup().catch(function (err) {
       console.warn('[ceo] inspection rollup failed', err);
     });
+    // Phase Customer Economics v1 — Revenue Per Labor Hour card.
+    // Reads customer_economics/current. Soft-fails independently —
+    // sync runs daily via syncFinancialPulseV1.
+    renderCustomerEconomics().catch(function (err) {
+      console.warn('[ceo] customer economics failed', err);
+    });
   }
 
   // ---- Section 1: Company Health ----
@@ -1962,6 +1968,277 @@
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape' && composeMode) closeCompose();
     });
+  }
+
+  /* ---------------- Customer Economics (Phase Customer Economics v1) ---------------- */
+
+  // Reads customer_economics/current and renders the Revenue Per Labor
+  // Hour card. Handles four states:
+  //   not_connected → CTA to /manager to connect QB
+  //   error         → small error banner with the reason
+  //   stale         → renders normally + freshness chip turns muted
+  //   fresh         → full render
+  async function renderCustomerEconomics() {
+    const bodyEl = $('ceo-economics-body');
+    const periodEl = $('ceo-economics-period');
+    const refreshBtn = $('ceo-economics-refresh');
+    if (!bodyEl) return;
+
+    let snap;
+    try {
+      const doc = await db.collection('customer_economics').doc('current').get();
+      if (!doc.exists) {
+        bodyEl.innerHTML = econEmptyHtml(
+          'No Customer Economics snapshot yet.',
+          'The daily sync runs at 7 AM Pacific. Once QuickBooks is connected, this card will populate on the next sync.'
+        );
+        if (periodEl) periodEl.textContent = '';
+        return;
+      }
+      snap = Object.assign({ _id: doc.id }, doc.data() || {});
+    } catch (err) {
+      console.warn('[ceo] customer_economics read failed', err);
+      bodyEl.innerHTML = econEmptyHtml('Couldn\'t load Customer Economics.', err.message || 'unknown');
+      return;
+    }
+
+    // Freshness chip
+    if (periodEl) {
+      const ageText = econFreshnessLabel(snap);
+      periodEl.textContent = ageText;
+    }
+
+    // Wire refresh — admin only. Owners + executives always; admins by the
+    // server-side check on refreshFinancialPulseV1.
+    if (refreshBtn && window.REFRESH_FINANCIAL_PULSE_URL) {
+      refreshBtn.hidden = false;
+      refreshBtn.onclick = function () { handleEconRefresh(refreshBtn); };
+    }
+
+    if (snap.status === 'not_connected') {
+      bodyEl.innerHTML = econEmptyHtml(
+        'QuickBooks not connected.',
+        (snap.error_message || 'Connect from /manager to enable Customer Economics.') +
+          '<br><a class="ceo-econ-cta" href="/manager.html#qbo-connect">Open /manager</a>'
+      );
+      return;
+    }
+    if (snap.status === 'error') {
+      bodyEl.innerHTML = econEmptyHtml('Customer Economics sync error.', snap.error_message || 'unknown');
+      return;
+    }
+
+    const company = snap.company || {};
+    const target  = Number(snap.target_rplh || 62);
+    const gap     = Number(company.gap_to_target || 0);
+    const avg     = Number(company.avg_rplh || 0);
+    const needsImprovement = gap < 0;
+
+    bodyEl.innerHTML =
+      econSummaryHtml(company, target, avg, gap, needsImprovement) +
+      econLeversHtml(company, needsImprovement) +
+      econColumnsHtml(snap) +
+      econRecommendationsHtml(snap) +
+      econExcludedHtml(snap);
+  }
+
+  function econFmtCurrency(n) {
+    const v = Math.round(Number(n) || 0);
+    return '$' + v.toLocaleString();
+  }
+  function econFmtCurrencyCents(n) {
+    const v = Number(n) || 0;
+    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function econFmtHours(n) {
+    const v = Number(n) || 0;
+    return (Math.round(v * 10) / 10).toFixed(1) + ' hrs';
+  }
+  function econEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function econFreshnessLabel(snap) {
+    if (!snap || !snap.snapshot_at) return snap && snap.period_start
+      ? (snap.period_start + ' → ' + snap.period_end)
+      : '';
+    const ts = snap.snapshot_at && snap.snapshot_at.toMillis
+      ? snap.snapshot_at.toMillis()
+      : (snap.snapshot_at._seconds ? snap.snapshot_at._seconds * 1000 : 0);
+    if (!ts) return '';
+    const ageMin = (Date.now() - ts) / 60000;
+    const periodLabel = snap.period_start + ' → ' + snap.period_end;
+    if (ageMin < 60) return periodLabel + ' · fresh';
+    const hours = Math.floor(ageMin / 60);
+    if (hours < 36) return periodLabel + ' · ' + hours + 'h ago';
+    const days = Math.floor(hours / 24);
+    return periodLabel + ' · ' + days + 'd ago';
+  }
+
+  function econEmptyHtml(title, sub) {
+    return '<div class="ceo-econ-empty"><div style="font-weight:600;margin-bottom:6px">'
+         + econEsc(title) + '</div><div>' + sub + '</div></div>';
+  }
+
+  function econSummaryHtml(company, target, avg, gap, needsImprovement) {
+    const gapClass = needsImprovement ? 'is-bad' : 'is-good';
+    const gapText  = (gap >= 0 ? '+' : '') + econFmtCurrencyCents(gap) + '/hr';
+    const subAvg   = (Number(company.customers_at_or_above_target || 0))
+                   + ' of ' + (Number(company.customers_at_or_above_target || 0) + Number(company.customers_below_target || 0))
+                   + ' customers at or above target';
+    return (
+      '<div class="ceo-econ-summary">' +
+        '<div class="ceo-econ-summary-item">' +
+          '<span class="ceo-econ-summary-label">Company Average</span>' +
+          '<span class="ceo-econ-summary-value">' + econFmtCurrencyCents(avg) + '/hr</span>' +
+          '<span class="ceo-econ-summary-sub">Revenue Per Labor Hour</span>' +
+        '</div>' +
+        '<div class="ceo-econ-summary-item">' +
+          '<span class="ceo-econ-summary-label">Target</span>' +
+          '<span class="ceo-econ-summary-value">' + econFmtCurrencyCents(target) + '/hr</span>' +
+          '<span class="ceo-econ-summary-sub">' + econEsc(subAvg) + '</span>' +
+        '</div>' +
+        '<div class="ceo-econ-summary-item">' +
+          '<span class="ceo-econ-summary-label">Gap to Target</span>' +
+          '<span class="ceo-econ-summary-value ' + gapClass + '">' + econEsc(gapText) + '</span>' +
+          '<span class="ceo-econ-summary-sub">' +
+            (needsImprovement ? 'Below target' : 'At or above target') +
+          '</span>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function econLeversHtml(company, needsImprovement) {
+    if (!needsImprovement) {
+      return (
+        '<div class="ceo-econ-levers" style="grid-template-columns:1fr">' +
+          '<div class="ceo-econ-lever">' +
+            '<span class="ceo-econ-lever-label">Status</span>' +
+            '<span class="ceo-econ-lever-value">Company average is at or above target. Keep it up.</span>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+    const inc = Number(company.improvement_required_monthly_increase || 0);
+    const red = Number(company.improvement_required_labor_reduction || 0);
+    return (
+      '<div class="ceo-econ-levers">' +
+        '<div class="ceo-econ-lever">' +
+          '<span class="ceo-econ-lever-label">To Reach Target — Increase Monthly Revenue</span>' +
+          '<span class="ceo-econ-lever-value">' + econFmtCurrency(inc) + '</span>' +
+        '</div>' +
+        '<div class="ceo-econ-lever-or">OR</div>' +
+        '<div class="ceo-econ-lever">' +
+          '<span class="ceo-econ-lever-label">Reduce Labor</span>' +
+          '<span class="ceo-econ-lever-value">' + econFmtHours(red) + '/month</span>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function econCustomerRowHtml(c, target) {
+    const rplh = Number(c.rplh || 0);
+    const cls  = rplh >= target ? 'is-good' : 'is-bad';
+    const name = econEsc(c.qbo_name || c.pioneer_name || '(unknown)');
+    return (
+      '<li class="ceo-econ-list-row">' +
+        '<span class="ceo-econ-list-name">' + name + '</span>' +
+        '<span class="ceo-econ-list-rplh ' + cls + '">' + econFmtCurrencyCents(rplh) + '/hr</span>' +
+      '</li>'
+    );
+  }
+
+  function econColumnsHtml(snap) {
+    const target = Number(snap.target_rplh || 62);
+    const top    = (snap.top_customers    || []).map(function (c) { return econCustomerRowHtml(c, target); }).join('');
+    const bottom = (snap.bottom_customers || []).map(function (c) { return econCustomerRowHtml(c, target); }).join('');
+    return (
+      '<div class="ceo-econ-cols">' +
+        '<div>' +
+          '<p class="ceo-econ-col-title">Top 3 Customers</p>' +
+          '<ul class="ceo-econ-list">' + (top || '<li class="ceo-econ-list-row"><span class="ceo-econ-list-name">—</span></li>') + '</ul>' +
+        '</div>' +
+        '<div>' +
+          '<p class="ceo-econ-col-title">Bottom 3 Customers</p>' +
+          '<ul class="ceo-econ-list">' + (bottom || '<li class="ceo-econ-list-row"><span class="ceo-econ-list-name">—</span></li>') + '</ul>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function econRecommendationsHtml(snap) {
+    const recs = snap.recommendations || [];
+    if (!recs.length) return '';
+    const items = recs.map(function (c) {
+      const name = econEsc(c.qbo_name || c.pioneer_name || '(unknown)');
+      const rplh = econFmtCurrencyCents(c.rplh || 0);
+      const gap  = econFmtCurrencyCents(c.gap_to_target || 0);
+      const inc  = econFmtCurrency(c.required_monthly_increase || 0);
+      const red  = econFmtHours(c.required_labor_reduction || 0);
+      return (
+        '<div class="ceo-econ-rec">' +
+          '<div class="ceo-econ-rec-head">' +
+            '<span>' + name + '</span>' +
+            '<span style="color:#b91c1c">' + rplh + '/hr · gap ' + gap + '</span>' +
+          '</div>' +
+          '<div class="ceo-econ-rec-detail">' +
+            'Raise monthly billing by <strong>' + inc + '</strong> ' +
+            '<span style="opacity:0.6;padding:0 6px">OR</span> ' +
+            'cut <strong>' + red + '/month</strong>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    return (
+      '<div class="ceo-econ-recs">' +
+        '<p class="ceo-econ-col-title" style="margin-top:8px">Top ' + recs.length + ' Opportunities</p>' +
+        items +
+      '</div>'
+    );
+  }
+
+  function econExcludedHtml(snap) {
+    const n = Number(snap.customer_count_excluded || 0);
+    if (!n) return '';
+    return '<p class="ceo-econ-excluded">' + n + ' customer'
+         + (n === 1 ? '' : 's')
+         + ' excluded (low labor signal, mapping, or unbilled). '
+         + 'Included: ' + Number(snap.customer_count_included || 0) + '.</p>';
+  }
+
+  async function handleEconRefresh(btn) {
+    const url = window.REFRESH_FINANCIAL_PULSE_URL;
+    if (!url) return;
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Refreshing…';
+    try {
+      const idToken = await firebase.auth().currentUser.getIdToken();
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + idToken
+        },
+        body: JSON.stringify({})
+      });
+      const json = await r.json().catch(function () { return {}; });
+      if (!r.ok || !json.ok) {
+        btn.textContent = 'Failed';
+        console.warn('[ceo] economics refresh failed', json);
+        setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1800);
+        return;
+      }
+      await renderCustomerEconomics();
+      btn.textContent = 'Refreshed';
+      setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1200);
+    } catch (err) {
+      console.warn('[ceo] economics refresh threw', err);
+      btn.textContent = 'Failed';
+      setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1800);
+    }
   }
 
   /* ---------------- Boot ---------------- */

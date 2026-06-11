@@ -881,6 +881,220 @@
       color: var(--ceo-charcoal);
     }
 
+    /* ---- Customer Economics (Phase Customer Economics v1) ----
+       Quiet, focused panel for Revenue Per Labor Hour. Visual rhythm
+       matches the health card above + the pulse card below. Improvement
+       Summary up top is the hero; per-customer columns below.        */
+    .ceo-economics-card {
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-border-soft, #e6e2d6);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 40px 48px 28px;
+      margin-bottom: 56px;
+    }
+    .ceo-economics-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .ceo-economics-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 8px;
+    }
+    .ceo-economics-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+    .ceo-economics-meta {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .ceo-economics-period {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-economics-refresh {
+      appearance: none;
+      background: transparent;
+      border: 1px solid var(--ceo-border-soft, #d4cfbf);
+      color: var(--ceo-charcoal);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .ceo-economics-refresh:hover { background: var(--ceo-sage-tint, #f4f0e4); }
+    .ceo-economics-refresh[disabled] { opacity: 0.5; cursor: not-allowed; }
+    /* Improvement Summary — the primary executive takeaway. */
+    .ceo-econ-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 32px;
+      padding: 28px 32px;
+      background: var(--ceo-sage-tint, #f4f0e4);
+      border-radius: var(--ceo-radius-m, 14px);
+      margin-bottom: 32px;
+    }
+    .ceo-econ-summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ceo-econ-summary-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-summary-value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      line-height: 1;
+    }
+    .ceo-econ-summary-value.is-good { color: var(--ceo-sage-deep, #4d7a3f); }
+    .ceo-econ-summary-value.is-bad  { color: #b91c1c; }
+    .ceo-econ-summary-sub {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    /* "To Reach Target" callout — the two-lever recommendation. */
+    .ceo-econ-levers {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 24px;
+      align-items: center;
+      padding: 20px 28px;
+      background: #fff;
+      border: 1px dashed var(--ceo-border-soft, #d4cfbf);
+      border-radius: var(--ceo-radius-m, 14px);
+      margin-bottom: 36px;
+    }
+    .ceo-econ-lever {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ceo-econ-lever-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-lever-value {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+    }
+    .ceo-econ-lever-or {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      text-align: center;
+    }
+    /* Top / Bottom / Recommendations row layout */
+    .ceo-econ-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 24px;
+    }
+    .ceo-econ-col-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 12px;
+    }
+    .ceo-econ-list { list-style: none; padding: 0; margin: 0; }
+    .ceo-econ-list-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 14px;
+    }
+    .ceo-econ-list-row:last-child { border-bottom: none; }
+    .ceo-econ-list-name { color: var(--ceo-charcoal); }
+    .ceo-econ-list-rplh { font-weight: 600; }
+    .ceo-econ-list-rplh.is-good { color: var(--ceo-sage-deep, #4d7a3f); }
+    .ceo-econ-list-rplh.is-bad  { color: #b91c1c; }
+    .ceo-econ-recs { margin-top: 8px; }
+    .ceo-econ-rec {
+      padding: 14px 16px;
+      background: #fff8eb;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 10px;
+    }
+    .ceo-econ-rec-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin-bottom: 4px;
+    }
+    .ceo-econ-rec-detail {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-excluded {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-economics-disclosure {
+      margin: 16px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-style: italic;
+    }
+    .ceo-econ-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-size: 14px;
+    }
+    .ceo-econ-cta {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 18px;
+      background: var(--ceo-sage-deep, #4d7a3f);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    @media (max-width: 720px) {
+      .ceo-economics-card { padding: 28px 20px 20px; }
+      .ceo-econ-summary { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
+      .ceo-econ-levers { grid-template-columns: 1fr; gap: 12px; }
+      .ceo-econ-cols   { grid-template-columns: 1fr; }
+    }
+
     /* ---- Leadership Pulse ---- */
     .ceo-pulse-card {
       background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-sage-tint) 100%);
@@ -1005,6 +1219,29 @@
             <!-- pillars injected by ceo.js -->
           </div>
         </div>
+      </section>
+
+      <!-- 1A2. CUSTOMER ECONOMICS — Revenue Per Labor Hour (Phase Customer Economics v1).
+           Reads customer_economics/current. The Company Improvement
+           Summary at the top is the primary executive takeaway: where
+           the company sits vs target, and the two levers to close the
+           gap (raise revenue OR cut labor). Top/Bottom/Recommendations
+           below for the per-customer view. -->
+      <section class="ceo-economics-card" id="ceo-economics">
+        <div class="ceo-economics-head">
+          <div>
+            <p class="ceo-economics-eyebrow">Customer Economics</p>
+            <h2 class="ceo-economics-title">Revenue Per Labor Hour</h2>
+          </div>
+          <div class="ceo-economics-meta">
+            <span class="ceo-economics-period" id="ceo-economics-period">—</span>
+            <button type="button" class="ceo-economics-refresh" id="ceo-economics-refresh" hidden>↻ Refresh</button>
+          </div>
+        </div>
+        <div class="ceo-economics-body" id="ceo-economics-body">
+          <p class="ceo-loading">Loading Customer Economics…</p>
+        </div>
+        <p class="ceo-economics-disclosure">Not profitability. Overhead allocation not included.</p>
       </section>
 
       <!-- 1B. TODAY'S CEO ACTIONS -->
@@ -1200,6 +1437,6 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="ceo.js?v=20260610-phase3b2"></script>
+  <script src="ceo.js?v=20260610-econ-v1"></script>
 </body>
 </html>

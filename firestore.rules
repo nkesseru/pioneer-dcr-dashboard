@@ -1820,6 +1820,13 @@ service cloud.firestore {
     match /quickbooks_oauth_states/{stateToken} {
       allow read, write: if false;
     }
+    // Admin-readable status mirror (NO tokens — populated by qboAuth.js
+    // explicit allowlist). Lets the /manager UI render connection state
+    // without ever exposing the access_token to the browser.
+    match /quickbooks_status/{docId} {
+      allow read:  if isPioneerAdmin();
+      allow write: if false;
+    }
     // Phase Customer Economics — denormalized snapshots. Admins read
     // for the /ceo card; nobody writes from the client (Cloud Functions
     // only). History collection is admin read-only too so audit trail

@@ -38,6 +38,11 @@ const INTUIT_REVOKE_URL    = "https://developer.api.intuit.com/v2/oauth2/tokens/
 
 const SCOPE = "com.intuit.quickbooks.accounting";
 const AUTH_DOC_PATH = "quickbooks_auth/connection";
+// Parallel "safe fields only" status doc that admins can READ from
+// the /manager UI. Lives in a separate collection so the rules can
+// allow admin reads without ever exposing the tokens, which live in
+// AUTH_DOC_PATH (server-only).
+const STATUS_DOC_PATH = "quickbooks_status/current";
 const STATE_COLL    = "quickbooks_oauth_states";
 const STATE_TTL_MS  = 15 * 60 * 1000;  // 15 minutes
 const ACCESS_REFRESH_BUFFER_MS = 10 * 60 * 1000; // refresh if < 10 min remaining
@@ -146,6 +151,12 @@ function tokenExpiryFromNow(seconds) {
 
 // Persist the initial connection (after callback) OR the refreshed token
 // set. Refresh tokens ROTATE on every refresh call — always overwrite both.
+//
+// Two writes:
+//   quickbooks_auth/connection  full doc including tokens; SERVER-ONLY.
+//   quickbooks_status/current   safe fields only; admin-readable so the
+//                               /manager UI can show connection status
+//                               without ever exposing tokens.
 async function saveConnection(opts) {
   const now = admin.firestore.FieldValue.serverTimestamp();
   const doc = {
@@ -166,6 +177,24 @@ async function saveConnection(opts) {
     doc.connected_by = String(opts.connectedBy || "").toLowerCase();
   }
   await db().doc(AUTH_DOC_PATH).set(doc, { merge: true });
+
+  // Mirror safe fields to status doc. NO tokens, NO secrets — explicit
+  // allowlist of fields so a future schema change to the connection doc
+  // can't accidentally leak a new sensitive field via this path.
+  const statusDoc = {
+    status:                "connected",
+    realm_id:              doc.realm_id,
+    environment:           doc.environment,
+    expires_at:            doc.expires_at,
+    refresh_expires_at:    doc.refresh_expires_at,
+    last_refreshed_at:     doc.last_refreshed_at,
+    updated_at:            now
+  };
+  if (opts.isInitial) {
+    statusDoc.connected_at = now;
+    statusDoc.connected_by = String(opts.connectedBy || "").toLowerCase();
+  }
+  await db().doc(STATUS_DOC_PATH).set(statusDoc, { merge: true });
 }
 
 async function loadConnection() {
@@ -175,12 +204,15 @@ async function loadConnection() {
 }
 
 async function markDisconnected(reason) {
-  await db().doc(AUTH_DOC_PATH).set({
-    status:        "disconnected",
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const patch = {
+    status:            "disconnected",
     disconnect_reason: String(reason || "manual"),
-    disconnected_at: admin.firestore.FieldValue.serverTimestamp(),
-    updated_at:    admin.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+    disconnected_at:   now,
+    updated_at:        now
+  };
+  await db().doc(AUTH_DOC_PATH).set(patch, { merge: true });
+  await db().doc(STATUS_DOC_PATH).set(patch, { merge: true });
 }
 
 /* ----------------------------- Public API ----------------------------- */

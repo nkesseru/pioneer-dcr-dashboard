@@ -1567,6 +1567,133 @@
     });
   }
 
+  // Phase Customer Economics v1 — QuickBooks connection card on /manager.
+  // Status text from quickbooks_auth/connection, plus two buttons:
+  //   Connect QuickBooks       → POSTs to quickbooksOAuthStartV1, opens
+  //                              the Intuit authorize URL in a new tab
+  //   Refresh Customer Economics → POSTs to refreshFinancialPulseV1
+  function wireQboConnect() {
+    const display = $("manager-qbo-display");
+    const connectBtn = $("manager-qbo-connect");
+    const refreshBtn = $("manager-economics-refresh");
+    const status     = $("manager-qbo-status");
+    if (!display) return;
+
+    async function loadStatus() {
+      try {
+        const db = firebase.firestore();
+        // Read from the admin-safe mirror, NOT quickbooks_auth/connection.
+        // The mirror has no tokens — see qboAuth.saveConnection() server-side.
+        const snap = await db.collection("quickbooks_status").doc("current").get();
+        if (!snap.exists) {
+          display.classList.remove("mc-loading");
+          display.innerHTML = '<strong style="color:var(--mc-critical, #b00020)">Not connected.</strong> ' +
+                              'Click <em>Connect QuickBooks</em> to authorize.';
+          if (refreshBtn) refreshBtn.hidden = true;
+          return;
+        }
+        const data = snap.data() || {};
+        if (data.status !== "connected") {
+          display.classList.remove("mc-loading");
+          display.innerHTML = '<strong>Status: ' + (data.status || "unknown") + '</strong>'
+                            + (data.disconnect_reason ? '<br><small>' + data.disconnect_reason + '</small>' : '');
+          if (refreshBtn) refreshBtn.hidden = true;
+          return;
+        }
+        const connectedAt = data.connected_at && data.connected_at.toDate ? data.connected_at.toDate() : null;
+        display.classList.remove("mc-loading");
+        display.innerHTML =
+          '<strong style="color:var(--mc-good, #1d7d3a)">Connected.</strong> ' +
+          'Realm: <code>' + String(data.realm_id || "?") + '</code> · ' +
+          'Env: <code>' + String(data.environment || "production") + '</code>' +
+          (connectedAt ? '<br><small>Connected ' + connectedAt.toLocaleDateString() + '</small>' : '');
+        if (refreshBtn) refreshBtn.hidden = false;
+      } catch (err) {
+        console.warn("[manager] QBO connection read failed", err);
+        display.classList.remove("mc-loading");
+        display.textContent = "Couldn't read connection status.";
+      }
+    }
+    loadStatus();
+
+    if (connectBtn) {
+      connectBtn.addEventListener("click", async function () {
+        const url = window.QUICKBOOKS_OAUTH_START_URL;
+        if (!url) {
+          alert("OAuth start URL not configured (window.QUICKBOOKS_OAUTH_START_URL).");
+          return;
+        }
+        if (!currentUser) { alert("Not signed in."); return; }
+        connectBtn.disabled = true;
+        const originalLabel = connectBtn.textContent;
+        connectBtn.textContent = "Connecting…";
+        try {
+          const idToken = await currentUser.getIdToken();
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+            body: "{}"
+          });
+          const body = await res.json().catch(function () { return {}; });
+          if (!res.ok || !body.ok || !body.authorize_url) {
+            const msg = (body && body.error) || ("HTTP " + res.status);
+            alert("Couldn't start OAuth: " + msg);
+            return;
+          }
+          window.open(body.authorize_url, "_blank");
+          if (status) {
+            status.hidden = false;
+            status.textContent = "Authorize in the opened tab; return here to refresh status.";
+          }
+        } catch (err) {
+          console.error("[manager] QBO connect failed", err);
+          alert("Couldn't start OAuth: " + (err.message || "unknown"));
+        } finally {
+          connectBtn.disabled = false;
+          connectBtn.textContent = originalLabel;
+          setTimeout(loadStatus, 1500);
+        }
+      });
+    }
+
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async function () {
+        const url = window.REFRESH_FINANCIAL_PULSE_URL;
+        if (!url) { alert("Refresh URL not configured."); return; }
+        if (!currentUser) { alert("Not signed in."); return; }
+        refreshBtn.disabled = true;
+        const originalLabel = refreshBtn.textContent;
+        refreshBtn.textContent = "Refreshing…";
+        if (status) { status.hidden = false; status.textContent = "Pulling latest from QuickBooks…"; }
+        try {
+          const idToken = await currentUser.getIdToken();
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+            body: "{}"
+          });
+          const body = await res.json().catch(function () { return {}; });
+          if (!res.ok || !body.ok) {
+            const msg = (body && body.error) || ("HTTP " + res.status);
+            if (status) { status.textContent = "Refresh failed: " + msg; status.style.color = "var(--mc-critical, #b00020)"; }
+          } else {
+            if (status) {
+              status.textContent = "Synced (status: " + (body.status || "ok") +
+                                   (typeof body.included === "number" ? ", " + body.included + " customers" : "") + ")";
+              status.style.color = "var(--mc-good, #1d7d3a)";
+            }
+          }
+        } catch (err) {
+          console.error("[manager] economics refresh failed", err);
+          if (status) { status.textContent = "Refresh failed: " + (err.message || "unknown"); status.style.color = "var(--mc-critical, #b00020)"; }
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = originalLabel;
+        }
+      });
+    }
+  }
+
   /* ---- Phase 1C — Leadership Messages (office_manager inbox) ----
      CEO-composed notes for the office manager role. Filtered to:
        recipientType === "office_manager"
@@ -1689,6 +1816,7 @@
     if (weeklyForm) weeklyForm.addEventListener("submit", submitWeeklyReview);
     wireBottleneckChoices();
     wireHiringRefresh();
+    wireQboConnect();
 
     // Phase 1B — pipeline action delegation. One listener on the
     // pipeline section catches every per-card button click and routes

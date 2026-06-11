@@ -30,6 +30,8 @@ const dcrEmail = require("./dcrEmail");
 const ghlHiringSync = require("./ghlHiringSync");
 const twilioMessaging = require("./twilioMessaging");
 const qboAuth = require("./qboAuth");
+const qboApi  = require("./qboApi");
+const customerEconomics = require("./customerEconomics");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -9110,6 +9112,275 @@ exports.quickbooksOAuthCallbackV1 = onRequest(
       '<p>Environment: <code>' + environment + '</code></p>' +
       '<p>You can close this tab. Customer Economics will start populating on the next sync.</p>'
     );
+  }
+);
+
+/* ============================================================================
+ * Phase Customer Economics v1 — Sync + Manual Refresh
+ *
+ * syncFinancialPulseV1     scheduled 07:00 PT daily. Pulls QB customers +
+ *                          invoices (last 30 days), pulls Pioneer cleaning
+ *                          sessions, computes RPLH, writes
+ *                          customer_economics/current + history doc.
+ *
+ * refreshFinancialPulseV1  admin-only HTTPS. Same sync core, run on demand.
+ *
+ * Fails soft when QuickBooks isn't connected — writes a snapshot with
+ * status: "not_connected" so the CEO card renders a "Connect QB" call-to-
+ * action instead of a stale dashboard.
+ * ============================================================================ */
+
+const ECONOMICS_CURRENT_DOC = "customer_economics/current";
+const ECONOMICS_HISTORY_COLL = "customer_economics_history";
+const ECONOMICS_TARGET_CONFIG = "pioneer_config/customer_economics";
+
+// YYYY-MM-DD in the America/Los_Angeles zone. Used as the history doc id
+// + period_end label. Stays stable across the calendar day even if the
+// sync runs multiple times.
+function pacificYmd(d) {
+  d = d || new Date();
+  // Use Intl with a fixed format; the resulting parts are { year, month, day }.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d);
+  const m = {};
+  parts.forEach(function (p) { m[p.type] = p.value; });
+  return m.year + "-" + m.month + "-" + m.day;
+}
+
+function addDaysYmd(ymd, deltaDays) {
+  const ms = Date.parse(ymd + "T12:00:00Z");
+  if (!Number.isFinite(ms)) return ymd;
+  const d = new Date(ms + deltaDays * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+async function readTargetRplh() {
+  try {
+    const snap = await db.doc(ECONOMICS_TARGET_CONFIG).get();
+    if (!snap.exists) return customerEconomics.FALLBACK_TARGET_RPLH;
+    const data = snap.data() || {};
+    const v = Number(data.target_rplh);
+    return (Number.isFinite(v) && v > 0) ? v : customerEconomics.FALLBACK_TARGET_RPLH;
+  } catch (_e) {
+    return customerEconomics.FALLBACK_TARGET_RPLH;
+  }
+}
+
+async function readAliasDocs() {
+  try {
+    const snap = await db.collection("customer_aliases").get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (_e) {
+    return [];
+  }
+}
+
+async function readPioneerSessionsInWindow(periodStartYmd, periodEndYmd) {
+  // pioneer_service_sessions stored clock_out_at as a Timestamp. Query
+  // by clock_out_at within window, status=completed. Labor-type filtering
+  // happens client-side in aggregateLaborByCustomer (cleaning only).
+  const startTs = admin.firestore.Timestamp.fromMillis(Date.parse(periodStartYmd + "T00:00:00Z"));
+  const endTs   = admin.firestore.Timestamp.fromMillis(Date.parse(periodEndYmd   + "T23:59:59Z"));
+  try {
+    const snap = await db.collection("pioneer_service_sessions")
+      .where("status", "==", "completed")
+      .where("clock_out_at", ">=", startTs)
+      .where("clock_out_at", "<=", endTs)
+      .get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (err) {
+    logger.warn("[economics] pioneer_service_sessions query failed; trying fallback range scan", {
+      error: err && err.message
+    });
+    // If the composite index is missing, fall back to a simpler query
+    // and filter client-side. Slower, but never blocks the sync.
+    try {
+      const snap = await db.collection("pioneer_service_sessions")
+        .where("status", "==", "completed")
+        .limit(5000).get();
+      const startMs = startTs.toMillis();
+      const endMs   = endTs.toMillis();
+      return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        .filter(function (s) {
+          const co = s.clock_out_at && s.clock_out_at.toMillis ? s.clock_out_at.toMillis() : 0;
+          return co >= startMs && co <= endMs;
+        });
+    } catch (err2) {
+      logger.error("[economics] pioneer_service_sessions fallback also failed", { error: err2 && err2.message });
+      return [];
+    }
+  }
+}
+
+// Build a "not connected" snapshot — shipped on every sync when OAuth
+// is missing, so the CEO card renders a clear call-to-action.
+function buildNotConnectedSnapshot(reason) {
+  const ymd = pacificYmd(new Date());
+  return {
+    snapshot_date: ymd,
+    period:        "trailing_30d",
+    period_start:  addDaysYmd(ymd, -30),
+    period_end:    ymd,
+    status:        "not_connected",
+    error_message: String(reason || "QuickBooks not connected. Connect from /manager."),
+    label:         "Customer Economics",
+    subtitle:      "Revenue Per Labor Hour",
+    disclosure:    "Not profitability. Overhead allocation not included.",
+    target_rplh:   customerEconomics.FALLBACK_TARGET_RPLH,
+    company: null,
+    top_customers: [],
+    bottom_customers: [],
+    recommendations: [],
+    customer_count_included: 0,
+    customer_count_excluded: 0,
+    excluded_customers: []
+  };
+}
+
+async function writeSnapshot(snap, triggeredBy) {
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const docToWrite = Object.assign({}, snap, {
+    snapshot_at:   sts,
+    triggered_by:  String(triggeredBy || "schedule")
+  });
+  await db.doc(ECONOMICS_CURRENT_DOC).set(docToWrite);
+  // History is keyed by snapshot date — re-running on same day overwrites.
+  // This is intentional: a manual refresh later in the day produces a
+  // single authoritative snapshot for that date.
+  await db.collection(ECONOMICS_HISTORY_COLL).doc(snap.snapshot_date).set(docToWrite);
+  return docToWrite;
+}
+
+// Shared core — used by both the scheduled function and the manual
+// refresh endpoint.
+async function runFinancialPulseSync(opts) {
+  const triggeredBy = String((opts && opts.triggeredBy) || "schedule");
+  const periodEndYmd   = pacificYmd(new Date());
+  const periodStartYmd = addDaysYmd(periodEndYmd, -30);
+  const targetRplh = await readTargetRplh();
+
+  // Preflight — if OAuth isn't connected OR secrets are empty, write the
+  // not_connected snapshot and return. This is the path admins will hit
+  // until they complete the Intuit OAuth handshake.
+  const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+  const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+  if (!clientId || !clientSecret) {
+    logger.warn("[economics] QBO secrets missing — writing not_connected");
+    const snap = buildNotConnectedSnapshot("QBO secrets not configured.");
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: "secrets_missing" };
+  }
+
+  let probe;
+  try {
+    probe = await qboApi.probeConnection({ clientId: clientId, clientSecret: clientSecret });
+  } catch (err) {
+    probe = { connected: false, error: err && err.message };
+  }
+  if (!probe.connected) {
+    logger.warn("[economics] QBO not connected — writing not_connected", { reason: probe.error });
+    const snap = buildNotConnectedSnapshot(probe.error || "Not connected.");
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: probe.error };
+  }
+
+  // Pull everything we need in parallel.
+  let qboCustomers, qboInvoices, pioneerSessions, aliasDocs;
+  try {
+    [qboCustomers, qboInvoices, pioneerSessions, aliasDocs] = await Promise.all([
+      qboApi.fetchActiveCustomers({ clientId: clientId, clientSecret: clientSecret }),
+      qboApi.fetchInvoicesInWindow({ clientId: clientId, clientSecret: clientSecret }, periodStartYmd, periodEndYmd),
+      readPioneerSessionsInWindow(periodStartYmd, periodEndYmd),
+      readAliasDocs()
+    ]);
+  } catch (err) {
+    logger.error("[economics] data fetch failed", { error: err && err.message });
+    const snap = Object.assign(buildNotConnectedSnapshot("QBO data fetch failed: " + (err && err.message)), {
+      status: "error"
+    });
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: false, status: "error", error: err && err.message };
+  }
+
+  const snap = customerEconomics.buildSnapshot({
+    targetRplh:      targetRplh,
+    qboCustomers:    qboCustomers,
+    qboInvoices:     qboInvoices,
+    pioneerSessions: pioneerSessions,
+    aliasDocs:       aliasDocs,
+    periodStartYmd:  periodStartYmd,
+    periodEndYmd:    periodEndYmd
+  });
+  snap.status = "fresh";
+
+  await writeSnapshot(snap, triggeredBy);
+
+  logger.info("[economics] sync ok", {
+    triggered_by: triggeredBy,
+    included:     snap.customer_count_included,
+    excluded:     snap.customer_count_excluded,
+    avg_rplh:     snap.company && snap.company.avg_rplh,
+    target_rplh:  snap.target_rplh
+  });
+  return {
+    ok: true,
+    status: "fresh",
+    included: snap.customer_count_included,
+    excluded: snap.customer_count_excluded,
+    avg_rplh: snap.company && snap.company.avg_rplh
+  };
+}
+
+exports.syncFinancialPulseV1 = onSchedule(
+  {
+    schedule: "0 7 * * *",
+    timeZone: "America/Los_Angeles",
+    timeoutSeconds: 300,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (_event) => {
+    try {
+      await runFinancialPulseSync({ triggeredBy: "schedule" });
+    } catch (err) {
+      logger.error("[economics] scheduled sync crashed", { error: err && err.message });
+    }
+  }
+);
+
+exports.refreshFinancialPulseV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 300,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[economics.refresh] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required." });
+      return;
+    }
+
+    try {
+      const result = await runFinancialPulseSync({ triggeredBy: "manual:" + staff.email });
+      res.json(result);
+    } catch (err) {
+      logger.error("[economics.refresh] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
   }
 );
 

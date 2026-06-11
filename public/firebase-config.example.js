@@ -96,4 +96,16 @@
   // Admin-only (server-side role check). Twilio credentials live only in
   // the TWILIO_* Firebase Secrets — never exposed here.
   window.SEND_TWILIO_MESSAGE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `quickbooksOAuthStartV1`.
+  // Used by /manager.html (Financial Pulse card → "Connect QuickBooks"
+  // button) to initiate the OAuth 2 handshake with Intuit. Returns an
+  // authorize URL the admin must visit in a new tab.
+  window.QUICKBOOKS_OAUTH_START_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `refreshFinancialPulseV1`.
+  // Used by /manager.html and /ceo.html refresh buttons to trigger an
+  // on-demand Customer Economics sync. Daily scheduled sync runs at
+  // 07:00 PT without this URL.
+  window.REFRESH_FINANCIAL_PULSE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
 })();
