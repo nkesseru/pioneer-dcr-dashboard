@@ -133,8 +133,8 @@ Reviewer reads are independent of candidate effort. Nick attends calibration + c
 
 | Milestone | Date | Same as April's path? |
 |---|---|---|
-| Reviewer 3 identified | by 2026-06-14 (Saturday) | new |
-| Intent meeting | Friday 2026-06-13 | shifted +1 day from April plan (was Fri 06-12) |
+| Reviewer 3 identified | by Sunday 2026-06-14 | new |
+| Intent meeting | Friday 2026-06-12 | same as the original April plan |
 | Cycle begins (Day 1 Challenge Battery) | Monday 2026-06-15 | same |
 | Week 4 ends (8 Vital Reads + 1 closed Loop) | Sunday 2026-07-12 | same |
 | Evidence pack submitted | Friday 2026-07-17 | same |
