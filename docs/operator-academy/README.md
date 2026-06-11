@@ -15,6 +15,7 @@ The training program for the people who will help commercial cleaning companies 
 | `certification-registry.md` | The canonical list of all certified PioneerOps Operators. Lineage IDs assigned + tracked here. |
 | `apprentice-progress-tracker.md` | Canonical exemplar Apprentice tracker. Copy [`templates/apprentice-progress-tracker-template.md`](./templates/apprentice-progress-tracker-template.md) per new Apprentice. |
 | `certification-cycles/` | Cycle-by-cycle records of certification attempts. Each cycle is an executable validation of the framework. |
+| `founder-pilot-start-here.md` | **🛎 Operator Candidate #001 starts here.** Single doorway for the Founder Pilot. 60 minutes of Day 0 actions + reading sequence + Week 1 schedule. Read first if you are the candidate. |
 | `academy-showcase.md` | **The 15-minute guided tour.** Read this if you've never seen the Academy before. Walks a founder, investor, or candidate through what exists and what's next. |
 | `academy-state-of-the-union.md` | **The current honest audit.** What exists, what's missing, what to build next. Read this on day one of inheriting or evaluating the Academy. |
 | `academy-next-milestone.md` | **The single highest-leverage next action.** Operational answer to "what unlocks the first certified Operator?" Read before authoring anything new. |
