@@ -37,11 +37,11 @@ An operator who turns into a "prompt button" is failing. The good operator gets 
 
 ## Planned lessons
 
-- `01-prompt-patterns.md` — the patterns that actually produce useful first drafts
-- `02-ai-for-analysis.md` — feeding data to Claude, getting honest analysis back
-- `03-ai-for-drafting.md` — emails, decks, briefs, with editorial discipline
-- `04-building-small-tools.md` — Cursor sessions, scripts, dashboards
-- `05-ai-judgment.md` — when AI is wrong, when AI is dangerous, when to put it down
+- [`01-prompt-patterns.md`](./01-prompt-patterns.md) — ⭐ **GOLD STANDARD CANDIDATE.** How an Operator uses AI as operational leverage. NOT a prompting class — a leverage class. *(LIVE — passes Pioneer Test under Constitution v1.1; Gold Standard checklist 18/18; certification pending review)*
+- `02-ai-for-analysis.md` — feeding data to Claude, getting honest analysis back *(planned)*
+- `03-ai-for-drafting.md` — emails, decks, briefs, with editorial discipline *(planned)*
+- `04-building-small-tools.md` — Cursor sessions, scripts, dashboards *(planned)*
+- `05-ai-judgment.md` — when AI is wrong, when AI is dangerous, when to put it down *(planned)*
 
 ## Mandatory artifact
 

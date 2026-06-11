@@ -57,6 +57,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** A customer CEO mentions Pioneer at a trade group meeting. Three calls come in the next week.
 - **Common mistake.** Asking for referrals before the customer is ready. You cannot rush advocacy. It happens when the customer is winning.
 
+### AI Force Multiplier
+
+- **Definition.** The ratio of analytical work an Operator delivers per hour using AI vs the unaided baseline. AI-fluent Operators run at 3–5×.
+- **Why it matters.** The math determines portfolio capacity. The Operator I bar requires 1.5–2×; Operator II requires 3×; Operator III requires 4×.
+- **Example.** Maria's Cascade workflow compressed a week of unaided work into 90 minutes. A 30–40× single-task multiplier, averaging closer to 4× across her weekly portfolio.
+- **Common mistake.** Treating the multiplier as the goal. The multiplier is the consequence of doing the work right; chasing it directly leads to corner-cutting on verification.
+
 ### AI Judgment
 
 - **Definition.** Knowing when AI helps and when AI misleads. A skill, not a tool.
@@ -81,6 +88,17 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** An improvement claim without a baseline is unverifiable. The Academy's certification standard rests on baseline-to-current deltas.
 - **Example.** A cleaning company captures two weeks of inspection-coverage data before launching a new inspection cadence. That two-week capture is the baseline. Six months later, the new coverage rate is meaningful only against it.
 - **Common misunderstanding.** Treating the baseline as a one-time setup task. The baseline is the foundation of the entire engagement; bad baselines kill every claim that follows.
+
+# B
+
+### Breadth/Judgment Split
+
+- **Definition.** The doctrinal division of labor between AI (breadth — exhaustive reading, pattern detection, drafting, anomaly flagging) and the Operator (judgment — deciding what matters, validating, weighing field reality, signing, owning).
+- **Why it matters.** Without the split clearly held in mind, Operators either refuse AI (losing the leverage) or defer to it (losing the credibility).
+- **Example.** April's Mission Control workflow — AI does the Sunday-night portfolio scan; April does the Monday-morning judgment.
+- **Common mistake.** Letting the split drift toward AI as a model improves. Each generation of AI does more breadth well; the Operator's judgment domain must be re-affirmed, not eroded.
+
+---
 
 # C
 
@@ -297,9 +315,28 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** Pioneer recommends a closeout workflow change. Inaction cost: "$5,300/month in stretched AR while we wait." That makes Friday's decision feel urgent instead of someday-ish.
 - **Common mistake.** Skipping the inaction cost because it feels confrontational. Without it, the recommendation is a suggestion — and suggestions don't get approved.
 
+### Interrogation Discipline
+
+- **Definition.** The Operator's reflex to ask AI follow-up questions — disconfirming evidence, alternative hypotheses, what's missing from the records, where confidence is weakest. Distinguished from amateur "prompting."
+- **Why it matters.** First-answer acceptance is the AI-era version of marrying the first plausible story. The Interrogation Discipline is the Operator's habit of refusing to.
+- **Example.** Maria's "What would make this hypothesis wrong?" question after AI's first response on Cascade. The follow-up surfaced the Jordan vs Brett distinction AI had averaged away.
+- **Common mistake.** Treating Interrogation as a checklist. The discipline is a reflex, not a script. The reflex must fire even when AI's first answer feels obviously correct.
+
+- **Definition.** The dollar value of what continues to be lost each month while a recommendation is not approved or executed.
+- **Why it matters.** "We should fix this" loses to the status quo every time. "This is costing you $4,100 a month while we discuss it" wins. The inaction cost is the only argument the status quo reliably loses to.
+- **Example.** Pioneer recommends a closeout workflow change. Inaction cost: "$5,300/month in stretched AR while we wait." That makes Friday's decision feel urgent instead of someday-ish.
+- **Common mistake.** Skipping the inaction cost because it feels confrontational. Without it, the recommendation is a suggestion — and suggestions don't get approved.
+
 ---
 
 # L
+
+### Junior-Analyst Review
+
+- **Definition.** The reviewing posture an Operator takes toward AI output — treating it as a junior analyst's draft. Promising, fast, occasionally brilliant, never autonomous. Reviewed for accuracy, framing, field reality, and missing context.
+- **Why it matters.** Without the Junior-Analyst Review posture, the Operator either dismisses AI (wasting the leverage) or defers to it (staking their signature on unverified work).
+- **Example.** Maria editing AI's Cascade memo — cutting the generic opener, removing the executive-briefing offer, fixing the 3-point percentage error, attributing the complaint correctly.
+- **Common mistake.** Reviewing AI output less rigorously than a real junior analyst's. Operators who would catch a junior's percentage error often miss AI's because the AI sounds confident.
 
 ### Leakage
 
@@ -361,6 +398,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Without a planned curve, operators either over-attach (and become bottlenecks) or under-attach (and lose the relationship). The curve makes the dynamic visible and deliberate.
 - **Example.** Dan's involvement on Anderson Building Services dropped from weekly calls to monthly calls over six months, while the strategic value of those monthly calls rose.
 - **Common mistake.** Treating withdrawal as abandonment. Withdrawal is a reallocation — less time on weekly reads, more time on the harder quarterly calls.
+
+### Operator Signature (in the AI context)
+
+- **Definition.** The Operator's name on any customer-facing artifact, signaling that the Operator has personally verified, edited, and owned every claim. AI does not get a signature.
+- **Why it matters.** Per Constitution Pillar 5: *"The signature is the Operator's. Signatures are not delegated."* This is the credibility account in code form.
+- **Example.** Maria's Cascade memo was AI-drafted but Maria-signed. The signing was preceded by the Verification Pass + the personal-voice rewrite.
+- **Common mistake.** Sending AI-drafted, AI-voiced output under the Operator's name. The customer reads it as not-from-you, and the credibility account takes the withdrawal.
 
 ### Operating Rhythm
 
@@ -504,6 +548,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** The Vital Read is the unit of work that makes Mission Control useful. Without a defined scan structure, MC becomes overwhelming and gets skipped.
 - **Example.** Steve Anderson's weekly Vital Read: cash → margin (Top/Bottom 3) → exposure → operational feed scan. Total: ~6 minutes.
 - **Common mistake.** Calling any opening of Mission Control a "vital read." The read has structure. Random opening is not a read.
+
+### Verification Pass
+
+- **Definition.** A discrete, named step in any AI-assisted workflow where the Operator traces every claim in the AI output back to its underlying record. Pillar 8 made operational.
+- **Why it matters.** Without a named Verification Pass, the Operator's confidence in AI output drifts upward unconsciously. The named step forces the doctrine into the work.
+- **Example.** Maria's 15-minute verification step on the Cascade memo — every claim, every number, every name traceable to a specific record. Caught a 3-point percentage error and a misattributed complaint.
+- **Common mistake.** Skipping the Verification Pass under time pressure. Time pressure is exactly when AI output is most likely to mislead.
 
 ### Verification
 
