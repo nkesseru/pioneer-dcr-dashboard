@@ -1,5 +1,13 @@
 # 03 — Certification Ladder
 
+> ⚠️ **HISTORICAL — SUPERSEDED.** This document was authored before Constitution v1.1, before Gold Standard doctrine, and before the four foundation lessons existed. It is preserved for transparency but is no longer the authoritative certification specification.
+>
+> **Current authoritative framework:** [`operator-certification-framework.md`](../operator-certification-framework.md). Read that first.
+>
+> The new framework defines 4 tiers (Operator I, II, III, Executive Advisor) instead of the 5 below. The Apprentice tier is now a pre-certification status, not a credential. Forward mapping is in the new framework's Section 14.
+
+---
+
 Five tiers. Each tier is a real promotion (in title, scope, and compensation). Operators climb when they meet the bar — not on a calendar.
 
 ## The five tiers
