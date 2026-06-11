@@ -1,5 +1,7 @@
 # Operator Certification Framework
 
+**Version 1.1** · See the [Amendment Log](#17-amendment-log) at the end of this document for the change history.
+
 > **The senior, authoritative specification of how the PioneerOps Operator Academy certifies people.** Supersedes the earlier [Certification Ladder](./00-academy-overview/03-certification-ladder.md), which is now historical and being phased out.
 >
 > **Authority:** [Academy Thesis](./ACADEMY-THESIS.md) Section 17 (Certification Philosophy) and [Constitution v1.1](./CONSTITUTION.md) (Certification Standard). Where this framework conflicts with the Thesis or Constitution, the senior doctrine governs.
@@ -691,6 +693,122 @@ The renewal calendar starts on certification date. Renewal evidence is captured 
 
 ---
 
+## 7.5 Bootstrap Phase Reviewer Provisions
+
+> **Added in Framework v1.1.** Active. Sunset condition specified below.
+
+### The problem this section addresses
+
+Section 7 Step 3 requires the **Secondary Reviewer** be a "Senior Operator (at or above target tier) not directly involved with the candidate's day-to-day work."
+
+At Framework v1 publication, **no Operators have been certified at any tier**. The requirement is therefore structurally unsatisfiable for the first certifications. Without explicit provision, the framework cannot run a first cycle.
+
+This section creates a time-bounded exception: a **Bootstrap Reviewer** role that meets the framework's intent (independent, capable, credible review) without requiring a credential that does not yet exist.
+
+### Bootstrap Reviewer eligibility
+
+A Bootstrap Reviewer is an individual who:
+
+1. Has demonstrated **equivalent capability** through documented field practice for the target tier (specifics below)
+2. Has read all senior governance docs end-to-end ([Thesis](./ACADEMY-THESIS.md), [Constitution v1.1](./CONSTITUTION.md), this Framework, [Academy Gold Standard](./academy-gold-standard.md), [Financial Pulse Operating System](../financial-pulse-framework/01-financial-pulse-operating-system.md))
+3. Has been independently confirmed by the Academy lead as capable of grading at the target tier
+4. Is **not** the candidate's direct manager AND **not** their day-to-day customer-success counterpart on the same account
+
+### Equivalent capability by target tier
+
+For each target tier, a Bootstrap Reviewer must demonstrate the equivalent-capability criteria below. The Academy lead is the final arbiter of whether a proposed Bootstrap Reviewer meets the bar.
+
+| Target tier | Bootstrap Reviewer must demonstrate |
+|---|---|
+| **Operator I** | At least 12 months of documented customer-facing work in commercial cleaning, field services, or B2B SaaS customer success; familiarity with the foundation lessons' content; can pass the foundation lesson quizzes ≥ 7/10 |
+| **Operator II** | At least 24 months of documented customer-success leadership; at least 12 QBR-equivalent meetings delivered; demonstrated portfolio NRR > 100% (or equivalent retention metric); capability to deliver any foundation-lesson role-play scenario as the customer-CEO actor |
+| **Operator III** | At least 36 months of executive-level customer leadership; documented mentorship of others through their development; demonstrated strategic-account ownership |
+| **Executive Advisor** | At least 60 months of customer-success / operational leadership; multiple direct reports who themselves meet the equivalent-capability bar; published or otherwise documented thought leadership in the operational space |
+
+**Note:** Equivalent capability is judged on demonstrated practice, not credentials. A 24-month senior CSM at another company with the right outcome record qualifies; a 36-month CSM whose portfolio didn't retain does not.
+
+### Bootstrap Phase scope
+
+| Phase boundary | Specification |
+|---|---|
+| Begins | At publication of Framework v1.1 (2026-06-11) |
+| Active | For each tier independently, until 3 Operators are certified at or above that tier under the standard framework |
+| Ends per tier | When the Academy lead announces "Bootstrap sunset for tier N" via a formal amendment to this section |
+
+Tier sunsets are tier-specific. Operator I bootstrap may end years before Executive Advisor bootstrap.
+
+### Bootstrap-specific safeguards
+
+During Bootstrap Phase, every certification is subject to additional protections that compensate for the absence of certified peers as reviewers:
+
+#### Safeguard 1 — Triple-Reviewer Minimum
+
+In addition to Primary Reviewer + Bootstrap Secondary Reviewer, the Academy lead serves as a **third reviewer** (rather than only the standard two-reviewer + lead-decision model).
+
+All three reviewers complete the [reviewer-evaluation template](./templates/certification-reviewer-evaluation.md) independently. The Academy lead's role expands from "decision based on two reviewers" to "third reviewer + decision."
+
+The reviewer-evaluation form is filled out by the Academy lead BEFORE seeing the other two reviewers' submissions, to preserve independence.
+
+#### Safeguard 2 — Stricter Evidence Requirements
+
+Bootstrap-period candidates must produce evidence packs that **exceed** the standard Section 2–5 bars by approximately 20% in artifact volume.
+
+- Operator I (standard 8 Vital Reads) → Bootstrap requires 10
+- Operator II (standard 8 QBRs) → Bootstrap requires 10
+- Operator II (standard 12 Loop entries) → Bootstrap requires 15
+- All tier-specific bars proportionally elevated
+
+The Academy lead documents the elevated targets at certification scheduling time.
+
+#### Safeguard 3 — Public Review
+
+Bootstrap-phase decisions are published in the [Certification Registry](./certification-registry.md) **with full reviewer rating context** — not just pass/fail. Specifically:
+
+- Each reviewer's section-by-section ratings (anonymized to position, e.g., "Primary," "Bootstrap Secondary," "Academy Lead")
+- The Pioneer Test outcome
+- The specific safeguards applied
+- The decision rationale paragraph
+
+This is more transparency than the standard framework requires. It compensates for the unavailability of standard peer review.
+
+#### Safeguard 4 — Sunset Re-Review
+
+**Every Bootstrap-Phase certification must be re-reviewed against the standard framework once Bootstrap Phase ends for that tier.**
+
+The re-review:
+
+- Is conducted by two certified Senior Operators (now available)
+- Uses the candidate's then-current evidence (12–24 months of accumulated practice since original certification)
+- Either **confirms** the original certification, OR **downgrades** per [Section 9 (Demotion Process)](#9-demotion-process)
+
+Bootstrap certifications are valid until the re-review. They are not provisional. But the re-review IS a structural commitment to ensuring the Bootstrap exception did not under-bar anyone.
+
+### Bootstrap Reviewer roster
+
+The Academy lead maintains a list of approved Bootstrap Reviewers for each tier. The roster is internal (not in the public registry).
+
+Roster entries include:
+
+- Reviewer name
+- Approved for tier(s)
+- Date approved
+- Equivalent capability evidence (link or summary)
+- Conflict-of-interest declarations (which Pioneer staff they cannot review for)
+
+A Bootstrap Reviewer's status is revoked if any of the eligibility criteria lapse, or if their reviews show systematic over- or under-rating during cohort calibration.
+
+### When this section is amended
+
+Amendments to this section follow the standard framework amendment process ([Section 16](#16-amendment-process-for-this-framework)). The most likely amendments:
+
+- Sunsets per tier (when 3 certified Operators exist at or above)
+- Refinements to equivalent-capability bars based on field experience
+- Removal of the entire section once all tiers have sunset
+
+When the last tier sunsets, this section moves to historical with a note in the Amendment Log.
+
+---
+
 ## 8. Renewal Process
 
 Certifications expire. Renewal is evidence-based.
@@ -925,6 +1043,36 @@ Initial publication. Defines 4 tiers (Operator I, II, III, Executive Advisor) wi
 **Predicted result:** the Academy can certify its first cohort under this framework without ambiguity about what to prove. Reviewers can grade consistently. Candidates can prepare specifically. The credential's eventual market value rests on this foundation.
 
 **Verification:** by Q4 2026, has at least 1 Operator II been certified under this framework, with the evidence pack defensible against an external review? If yes, the framework is working as designed. If no, the framework needs amendment to address whatever blocked certification.
+
+### v1.1 — 2026-06-11 · Bootstrap Phase Reviewer Provisions
+
+**The problem this amendment addresses.** Framework v1 Section 7 Step 3 requires the Secondary Reviewer be a "Senior Operator (at or above target tier)." At v1 publication, no Operators have been certified at any tier. The requirement was structurally unsatisfiable for the first certifications, blocking the entire system.
+
+**Evidence prompting the amendment.** The [Academy Audit on 2026-06-11](./audits/audit-2026-06-11.md) surfaced this as a critical gap. The Director-mode audit on the same date confirmed it as the single biggest blocker between the framework's existence and its ability to certify a first candidate.
+
+**Diagnosis (not patch).** The framework's principle is **independent, capable, credible review by someone with sufficient experience to judge the candidate's work at the target tier**. The principle does not require a credential per se — it requires the capability the credential signals. During the period before any credentials exist, equivalent demonstrated capability satisfies the principle.
+
+**Amendment changes:**
+
+- Added Section 7.5 — Bootstrap Phase Reviewer Provisions
+- Created the Bootstrap Reviewer role with equivalent-capability criteria per tier
+- Specified Bootstrap Phase scope (begins at v1.1 publication; ends per tier when 3 Operators are certified at or above that tier)
+- Added four safeguards: Triple-Reviewer Minimum, Stricter Evidence Requirements, Public Review, Sunset Re-Review
+- Specified roster maintenance + revocation process
+
+**Predicted result:** the first certification cycle can run within 30 days of this amendment, using a named Bootstrap Reviewer to satisfy Section 7 Step 3. The triple-reviewer safeguard compensates for the absence of certified peer review. The sunset re-review structurally commits to validating Bootstrap certifications once the framework matures.
+
+**Verification:** by Q4 2026, has at least 1 Bootstrap-Phase certification been completed? If yes, does the resulting evidence pack survive the eventual sunset re-review? If yes to both, Section 7.5 is working as designed. If the re-review downgrades the Bootstrap certification, Section 7.5 needs amendment to tighten the equivalent-capability bar.
+
+**Sunset condition tracking.** Tier-by-tier sunsets recorded here as they occur. Today:
+- Operator I bootstrap: Active. Sunset target: ~Q4 2027 (estimated, 3 certifications down the line)
+- Operator II bootstrap: Active. Sunset target: ~Q2 2028
+- Operator III bootstrap: Active. Sunset target: ~Q4 2029
+- Executive Advisor bootstrap: Active. Sunset target: TBD
+
+### v1.0 — 2026-06-11 · Initial publication
+
+(Same content as the v1.0 entry above; renamed for chronological clarity in the log.)
 
 ---
 
