@@ -1,25 +1,34 @@
 ---
 doc_type: operational-execution-plan
-status: active
+status: superseded-for-cycle-1
 created: 2026-06-11
 author: Nick (with Claude)
 governance_tier: 3
-scope: shortest path to first Operator I certification
+scope: generic Operator I path (originally written with April as Cycle 1 candidate)
 companion_to:
   - [operator-certification-framework.md](./operator-certification-framework.md)
   - [academy-next-milestone.md](./academy-next-milestone.md)
   - [operator-i-gap-analysis.md](./operator-i-gap-analysis.md)
-candidate: April
+candidate_original: April
+candidate_cycle_1: Nick Kesseru (see [founder-pilot-plan.md](./founder-pilot-plan.md) — decided 2026-06-11)
+candidate_cycle_2: April
 target_tier: Operator I
 target_start: 2026-06-15 (Monday)
 target_decision: 2026-07-27 (6 weeks)
 ---
 
-# Operator I Launch Plan — April
+> **🛎 Status note (2026-06-11):** Cycle 1 candidate changed to **Nick Kesseru** (Founder Pilot). See [`founder-pilot-plan.md`](./founder-pilot-plan.md) for the Cycle 1 adaptation and [`founder-fast-track.md`](./founder-fast-track.md) for the compressed schedule. April becomes Cycle 2 candidate. The Operator I bar, evidence requirements, and 6-week wall clock are unchanged from this launch plan. This file remains the **generic Operator I path** referenced by both cycles.
 
-**The objective.** April enters the Academy as an Apprentice on Monday 2026-06-15. Six weeks later, on or before Monday 2026-07-27, she is either certified as Pioneer's first Operator I or has a documented decision for why not.
+# Operator I Launch Plan — Generic Path
+
+**The objective** (now generic).  An Operator I candidate enters the Academy as an Apprentice. Six weeks later, they are either certified as a real Operator I or have a documented decision for why not.
+
+**Cycle 1 (Nick Kesseru, Founder Pilot):** target start 2026-06-15, target decision 2026-07-24. See [`founder-pilot-plan.md`](./founder-pilot-plan.md).
+**Cycle 2 (April):** begins after Cycle 1 closes (~2026-08-03 earliest).
 
 **No new doctrine. No new lessons. No new frameworks.** This plan executes the existing corpus exactly as written.
+
+> Below is the original April-named plan, retained verbatim because the Operator I bar it describes is identical for Nick's Cycle 1 — only the candidate name and reviewer constellation differ. Read `founder-pilot-plan.md` for the founder-context adaptation.
 
 ---
 
