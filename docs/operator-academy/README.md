@@ -8,7 +8,8 @@ The training program for the people who will help commercial cleaning companies 
 
 | File / Folder | What lives there |
 |---|---|
-| `CONSTITUTION.md` | The Academy's founding document. **Read this before anything else.** |
+| `ACADEMY-THESIS.md` | **Senior governing doctrine.** The strategic Why, What, and Whom of the Academy. Read for context and direction. |
+| `CONSTITUTION.md` | **Operational working standard.** The rules every lesson, template, and certification must follow. Read before authoring anything. |
 | `operator-glossary.md` | The shared language of the Academy. Every term defined the same way. |
 | `00-academy-overview/` | Mission, who this is for, competency model, certification ladder, 30/60/90, coaching rhythm, scorecard, graduation standards, **Customer Journey**. |
 | `01-saas-foundations/` | Customer lifecycle, activation, retention — the CSM craft. |

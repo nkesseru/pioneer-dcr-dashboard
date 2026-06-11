@@ -1,6 +1,8 @@
 # PioneerOps Operator Academy — Constitution
 
-> **Read this first. Every lesson, template, and assessment in the Academy must be measured against the principles below. If any of them is in conflict, the Constitution wins.**
+> **Governance.** This Constitution is the **operational working standard** of the PioneerOps Operator Academy. The [Academy Thesis](./ACADEMY-THESIS.md) is the **senior governing doctrine**; this Constitution implements its principles as the rules and standards that govern lessons, templates, certification, coaching, and day-to-day curriculum authoring. Where this Constitution conflicts with the Thesis, **the Thesis governs**. Amendments to this Constitution should respect the Thesis Section 19 amendment standard.
+
+> **Read this before authoring any lesson.** Every lesson, template, and assessment in the Academy must be measured against the principles below.
 
 The Academy lead is the custodian of this document. Amendments require explicit sign-off and a written rationale. Stale or contradicted principles are worse than no principles at all — keep this short, sharp, and current.
 
