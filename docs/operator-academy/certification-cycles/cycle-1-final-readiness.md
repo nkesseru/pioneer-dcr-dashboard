@@ -1,18 +1,41 @@
 ---
 doc_type: operational-readiness-report
-status: active
+status: superseded-for-cycle-1
 created: 2026-06-11
 governance_tier: 4
-scope: state of Cycle 1 readiness after Tier B items 1–9 fully built
+scope: state of Cycle 1 readiness after Tier B items 1–9 fully built (original April-cycle assumptions)
 companion_to:
   - [cycle-1-readiness-report.md](./cycle-1-readiness-report.md)
   - [../operator-i-launch-plan.md](../operator-i-launch-plan.md)
   - [../operator-i-gap-analysis.md](../operator-i-gap-analysis.md)
+  - [../founder-pilot-plan.md](../founder-pilot-plan.md)
+  - [../founder-fast-track.md](../founder-fast-track.md)
 cycle_target_start: 2026-06-15 (Monday)
 cycle_target_decision: 2026-07-27
 report_date: 2026-06-11 (Thursday)
 supersedes: cycle-1-readiness-report.md
+candidate_original: April
+candidate_revised: Nick Kesseru (Founder Pilot, decided 2026-06-11)
 ---
+
+> **🛎 Status note (2026-06-11):** This report was written for the April candidate. The candidate is now Nick Kesseru (Founder Pilot). Key assumption deltas summarized at the top; the body remains accurate for the artifacts-built / scorecard-built / templates-built dimensions.
+>
+> **Assumption deltas to apply when reading this report:**
+>
+> | Assumption | Original (April) | Revised (Nick Founder Pilot) |
+> |---|---|---|
+> | Candidate identity | April | Nick Kesseru |
+> | Candidate Operator I bar | Standard | Standard (unchanged — same evidence requirements) |
+> | Reviewer constellation | Nick + Mike + Kirby | Mike + Kirby + Reviewer 3 (TO BE NAMED) |
+> | Acting Academy Lead | Nick | Mike or Kirby |
+> | Acting Trainer | Nick | The other of Mike or Kirby |
+> | Hard blockers count | 4 | 7 (Reviewer 3 + Acting role assignments + Vital Read account choice replace the prior "April Intent" / "Feed access" blockers) |
+> | Candidate-hour estimate | ~30 hr | ~18 hr (compression via Day 1 Challenge Battery + archival evidence + no learning curve) |
+> | Total cycle person-hours | ~58 | ~62 (slight increase due to 5 active roles instead of 4) |
+> | Earliest decision date | Friday 2026-07-24 | Friday 2026-07-24 (unchanged — wall clock bound by 4-week Vital Read floor) |
+> | Probability profile | April's execution + reviewer calibration | Nick's recursion (writing the bar he certifies against) + 3rd reviewer credibility |
+>
+> See [`founder-pilot-plan.md`](../founder-pilot-plan.md) for the full Founder Pilot adaptation and [`founder-fast-track.md`](../founder-fast-track.md) for the compressed schedule. The 9 Tier B artifacts + 7 prior derivative artifacts apply identically to both candidates.
 
 # Cycle 1 Final Readiness Report
 

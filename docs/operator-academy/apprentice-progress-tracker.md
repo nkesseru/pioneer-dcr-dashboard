@@ -1,5 +1,7 @@
 # Apprentice Progress Tracker
 
+> **🛎 Cycle 1 Apprentice (2026-06-11):** the Cycle 1 Apprentice is **Nick Kesseru** (Founder Pilot — see [`founder-pilot-plan.md`](./founder-pilot-plan.md)). Nick's actual weekly tracker will be `apprentice-tracker-nick-kesseru.md` (created by Acting Academy Lead at the Intent meeting, using [the template](./templates/apprentice-progress-tracker-template.md)). The body of *this* file remains a **canonical exemplar with primed placeholders** — usable as the reference layout for Cycle 1 (Nick) and Cycle 2 (April) and every Apprentice that follows. The exemplar nature is unchanged; only the Cycle 1 candidate identity is now Nick rather than the originally implied April.
+
 > **Operational tracking, not curriculum.** A single Apprentice's path from Academy entry through Operator I certification and on to Operator II readiness, lived weekly.
 >
 > **Use this document as the canonical exemplar.** When a new Apprentice starts, copy [`templates/apprentice-progress-tracker-template.md`](./templates/apprentice-progress-tracker-template.md) into their own file. This file demonstrates the format with the first Apprentice's data (or a primed placeholder if no Apprentice yet).
