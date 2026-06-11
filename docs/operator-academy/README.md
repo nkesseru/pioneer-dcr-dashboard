@@ -12,6 +12,7 @@ The training program for the people who will help commercial cleaning companies 
 | `CONSTITUTION.md` | **Operational working standard.** The rules every lesson, template, and certification must follow. Read before authoring anything. |
 | `academy-gold-standard.md` | **The quality bar for flagship lessons.** What future curriculum must imitate. Read before authoring; review against it before publishing. |
 | `operator-certification-framework.md` | **The credentialing system.** Four tiers (Operator I, II, III, Executive Advisor). Demonstrated capability, never participation. |
+| `certification-registry.md` | The canonical list of all certified PioneerOps Operators. Lineage IDs assigned + tracked here. |
 | `operator-glossary.md` | The shared language of the Academy. Every term defined the same way. |
 | `00-academy-overview/` | Mission, who this is for, competency model, certification ladder, 30/60/90, coaching rhythm, scorecard, graduation standards, **Customer Journey**. |
 | `01-saas-foundations/` | Customer lifecycle, activation, retention — the CSM craft. |
