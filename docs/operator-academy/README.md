@@ -13,6 +13,7 @@ The training program for the people who will help commercial cleaning companies 
 | `academy-gold-standard.md` | **The quality bar for flagship lessons.** What future curriculum must imitate. Read before authoring; review against it before publishing. |
 | `operator-certification-framework.md` | **The credentialing system.** Four tiers (Operator I, II, III, Executive Advisor). Demonstrated capability, never participation. |
 | `certification-registry.md` | The canonical list of all certified PioneerOps Operators. Lineage IDs assigned + tracked here. |
+| `apprentice-progress-tracker.md` | Canonical exemplar Apprentice tracker. Copy [`templates/apprentice-progress-tracker-template.md`](./templates/apprentice-progress-tracker-template.md) per new Apprentice. |
 | `academy-state-of-the-union.md` | **The current honest audit.** What exists, what's missing, what to build next. Read this on day one of inheriting or evaluating the Academy. |
 | `academy-checkpoint-v1.md` | Versioned state marker — initial snapshot. |
 | `academy-checkpoint-v1.5.md` | **Current snapshot.** Post-audit. Marks the Academy as audit-clean and unblocked for first certification cycle. |
