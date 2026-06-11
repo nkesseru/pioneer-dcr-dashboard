@@ -103,6 +103,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** A tech finishes ACME's nightly clean, submits DCR with photos. Customer admin sees it the next morning.
 - **Common mistake.** Treating it as paperwork. DCRs are a customer-trust mechanism.
 
+### Direct Labor
+
+- **Definition.** Wages paid to cleaning techs for hours worked on a specific customer's site. Wages only — does not include payroll burden.
+- **Why it matters.** The biggest cost most cleaning customers carry. Usually 35–45% of customer revenue.
+- **Example.** Tech earns $17/hr. Spends 60 hours at Riverside Office in October. Direct labor = $1,020.
+- **Common misunderstanding.** "Labor cost" is NOT just wages. It is wages plus payroll burden. The two together are the real labor cost on a customer.
+
 ### Discovery
 
 - **Definition.** The conversation where the operator learns what the customer actually needs (versus what they said they wanted on the sales call).
@@ -142,6 +149,20 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 ---
 
 # G
+
+### Gross Margin (per customer)
+
+- **Definition.** Gross profit divided by customer revenue, expressed as a percentage.
+- **Why it matters.** Lets you compare customers of different sizes on the same scale. "We're a 50%-gross-margin shop" is a real conversation.
+- **Example.** Riverside Office: $3,644 gross profit ÷ $5,040 revenue = 72% gross margin.
+- **Common misunderstanding.** A high gross margin sounds amazing. Remember overhead has not been taken out yet. Net margin will be much lower.
+
+### Gross Profit (per customer)
+
+- **Definition.** Customer revenue minus direct labor minus payroll burden minus supplies. Stops there.
+- **Why it matters.** The honest "what's left from this customer" number before overhead. The bottom of the Customer Economics waterfall.
+- **Example.** Riverside Office: $5,040 − $1,020 − $286 − $90 = $3,644 gross profit.
+- **Common misunderstanding.** Gross profit is NOT net profit. Net subtracts office rent, owner salary, insurance, software, vehicles, marketing.
 
 ### GRR (Gross Revenue Retention)
 
@@ -205,12 +226,33 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # P
 
+### Payroll Burden
+
+- **Definition.** Costs the employer pays on top of wages — payroll taxes, workers' comp insurance, PTO accrual, sick leave accrual, retirement match if any, health benefits if any.
+- **Why it matters.** Typically 25–35% of wages. If you skip it, your Customer Economics math is wrong by 10+ margin points.
+- **Example.** Tech earns $17/hr. Burden rate is 28%. Loaded rate is $17 × 1.28 = $21.76/hr.
+- **Common misunderstanding.** Burden is not overhead. It is a direct cost of every labor hour. It scales with hours worked on a customer.
+
 ### Pioneer Test
 
 - **Definition.** The publish gate every lesson and decision must pass: "Would Nick actually teach it this way?"
 - **Why it matters.** Without it, the Academy drifts toward generic SaaS training. The Pioneer Test keeps the work sharp and real.
 - **Example.** A lesson on activation comes back from review. Reviewer says "this reads like a HubSpot blog post." It fails the Pioneer Test. Rewrite.
 - **Common mistake.** Skipping the test because the lesson is "technically correct." Correct is not enough. It must be ours.
+
+### Profit Leakage
+
+- **Definition.** Money the company should be earning from a customer but isn't, because of operational issues — scope creep, re-cleans, callouts, wage drift without rate adjustment.
+- **Why it matters.** Most leakage is fixable once you can see it. Without Customer Economics, it stays invisible.
+- **Example.** Customer asks for "just one extra wipe-down" each night. 15 min × 22 nights × $21.76 loaded wage = $120/month silent leak.
+- **Common misunderstanding.** Profit leakage is not the customer's fault. It is the contract's fault for not pricing for the actual scope.
+
+### Profitable Growth
+
+- **Definition.** Revenue growth that comes with stable or rising gross margin per customer.
+- **Why it matters.** The opposite — unprofitable growth — feels successful but eats the company alive. Most cleaning company failures look like rapid revenue growth followed by sudden cash collapse.
+- **Example.** ACME Cleaning grew revenue 18% while gross profit fell 2%. Unprofitable growth.
+- **Common misunderstanding.** Treating revenue growth and profit growth as the same direction. They often move opposite.
 
 ---
 
@@ -244,6 +286,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 ---
 
 # S
+
+### Scope Creep
+
+- **Definition.** The customer's expected work grows over time without the contract rate going up.
+- **Why it matters.** The single biggest source of profit leakage in commercial cleaning. Usually invisible until Customer Economics surfaces it.
+- **Example.** Customer's office expanded 1,200 sq ft a year ago. Cleaning rate stayed the same. Tech now spends 10 extra hours/month with no rate increase.
+- **Common misunderstanding.** Scope creep is not always asked for explicitly. Sometimes it's accommodation — a manager said "sure" once and it became a standing expectation.
 
 ### SOP (Standard Operating Procedure)
 

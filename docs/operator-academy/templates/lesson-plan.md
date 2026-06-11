@@ -25,7 +25,7 @@ If a section feels hard to fill in, that is the signal you do not understand the
 
 ---
 
-## Action → Metric → Outcome
+## Action → Metric → Outcome (Pillar 1)
 
 The single most important line in this lesson. Fill it in before writing anything else.
 
@@ -40,6 +40,27 @@ The single most important line in this lesson. Fill it in before writing anythin
 > | Drive the customer to first complete clock-in week within 14 days | TTV days | Higher 12-month retention |
 
 If you cannot fill this triple in plainly, stop. The lesson is not ready to write.
+
+---
+
+## Economic Reality Chain (Pillar 7) — required if the lesson has any financial dimension
+
+If the lesson touches money, margin, cost, pricing, billing, AR, AP, payroll, or any other financial flow — the four-link chain must appear explicitly. Operators must be able to trace operations into the financials.
+
+> **Does this lesson have a financial dimension?** Yes / No
+> If yes — fill in the chain below. If no — write "N/A — purely operational" and continue.
+
+| Operational Event | Operational Metric | Financial Consequence | Business Outcome |
+|---|---|---|---|
+| Something that happens in the field | The number that captures it | The dollar effect | The business future shaped |
+| | | | |
+
+> Example (lesson on scope creep):
+> | Event | Metric | Consequence | Outcome |
+> |---|---|---|---|
+> | Customer adds nightly conference-room wipe-down without rate change | Labor hours rise; revenue flat | RPLH drops 8%; gross margin -$106/mo | Tech wage raise delayed; turnover risk |
+
+If the lesson has a financial dimension and this chain is empty, the lesson cannot be published. See [Constitution Pillar 7](../CONSTITUTION.md).
 
 ---
 
@@ -189,6 +210,7 @@ Every lesson must pass these checks **before** publishing. If any box is uncheck
 - [ ] **Would Nick teach it this way?** If no, rewrite.
 - [ ] **Does it teach an outcome, not a feature?** If feature talk, rewrite.
 - [ ] **Is the Action → Metric → Outcome triple filled in?** If not, stop.
+- [ ] **Economic Reality Chain present (or marked N/A)?** If the lesson has any financial dimension, the four-link chain must be filled in. (Constitution Pillar 7.)
 - [ ] **All 11 elements present?** Every section filled. No "TBD."
 - [ ] **Reading level 8th–10th grade?** Read it aloud. Short sentences. No MBA jargon.
 - [ ] **Pioneer + customer examples are different?** Both must be real.
