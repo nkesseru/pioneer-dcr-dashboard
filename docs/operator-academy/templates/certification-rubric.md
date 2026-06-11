@@ -1,5 +1,21 @@
 # Certification Rubric
 
+> ⚠️ **HISTORICAL — SUPERSEDED.** This generic rubric was authored before the [Operator Certification Framework](../operator-certification-framework.md) defined the tier-specific evaluation forms.
+>
+> **For active certifications, use these instead (all in `templates/`):**
+>
+> 1. [`certification-intent.md`](./certification-intent.md) — Step 1: declare intent
+> 2. [`certification-self-assessment.md`](./certification-self-assessment.md) — competency rating against the 34-competency model
+> 3. [`certification-evidence-pack.md`](./certification-evidence-pack.md) — Step 2: evidence pack cover sheet
+> 4. [`certification-reviewer-evaluation.md`](./certification-reviewer-evaluation.md) — Step 3: each reviewer's evaluation (replaces this rubric)
+> 5. [`certification-decision.md`](./certification-decision.md) — Step 4: Academy lead's decision record
+> 6. [`certification-renewal-evidence.md`](./certification-renewal-evidence.md) — renewal cycle evidence
+> 7. [`certification-demotion-notice.md`](./certification-demotion-notice.md) — demotion process
+>
+> This file is preserved for transparency but is no longer the active grading instrument. Lesson-specific rubrics in lesson files (e.g., Q10 scoring criteria) remain authoritative for those questions.
+
+---
+
 Used for Apprentice / Operator I / Operator II / Senior / Lead certification reviews. Copy + customize per tier.
 
 This rubric is the integrity layer. Reviewers commit to scoring strictly. The Academy's value depends on every "passed" certification meaning what it says.
