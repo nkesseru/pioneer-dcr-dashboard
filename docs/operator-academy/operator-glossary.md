@@ -62,7 +62,23 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 ---
 
+# B
+
+### Baseline
+
+- **Definition.** The captured current state of a business or process before any intervention is made. The "before" snapshot every improvement claim must be measured against.
+- **Why it matters.** An improvement claim without a baseline is unverifiable. The Academy's certification standard rests on baseline-to-current deltas.
+- **Example.** A cleaning company captures two weeks of inspection-coverage data before launching a new inspection cadence. That two-week capture is the baseline. Six months later, the new coverage rate is meaningful only against it.
+- **Common misunderstanding.** Treating the baseline as a one-time setup task. The baseline is the foundation of the entire engagement; bad baselines kill every claim that follows.
+
 # C
+
+### Cash Conversion
+
+- **Definition.** The time between work completed and cash collected. For field businesses, often governed by documentation quality, closeout speed, and first-pass invoice acceptance.
+- **Why it matters.** Long cash conversion silently constrains growth — payroll and supplies must run while invoices age. The vital can be a growth ceiling no one has named.
+- **Example.** A restoration contractor's average days-to-invoice stretched from 6 to 19 because closeout packets were incomplete. The cash crunch was caused by an operational habit, not a sales problem.
+- **Common misunderstanding.** Treating cash conversion as a finance metric. It is an operational metric expressed in financial terms.
 
 ### Churn
 
@@ -91,6 +107,34 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Operators can name where every account sits. Everything they do should move accounts forward.
 - **Example.** ACME is at "Habit." Next gate is "Adoption." Operator's plan for the next 30 days is built around that gate.
 - **Common mistake.** Treating it as a one-way road. Accounts can slip backwards. A customer at Adoption who loses a champion can fall back to Habit fast.
+
+### Closeout
+
+- **Definition.** The full operational record of a completed job — documentation, photos, sign-offs, scope verification — that proves the work happened and supports invoicing.
+- **Why it matters.** Closeout quality determines whether revenue can be recognized AND whether the work can be defended against a dispute.
+- **Example.** A telecom contractor's closeout packets were rejected at a 22% first-pass rate. Each rejection meant a 19-day delay in invoicing.
+- **Common mistake.** Treating closeout as paperwork. Closeout IS the proof of delivery. Without it: no revenue, no defense.
+
+### Compounding Intelligence
+
+- **Definition.** The accumulated organizational knowledge of what works in a specific business, built through closed improvement loops with verified results.
+- **Why it matters.** Companies that run loops and record results get smarter every quarter. Companies that don't repeat the same fixes forever.
+- **Example.** A cleaning company that recorded every supply-overuse fix attempt — including the three that failed — eventually had a four-fix playbook that worked across buildings. The playbook lived in the records, not in any one person's head.
+- **Common mistake.** Treating compounding as an automatic effect of time. Compounding requires deliberate capture of what was learned.
+
+### Constraint
+
+- **Definition.** The single bottleneck that limits a system's output more than any other. The thing that, when relaxed, lets the whole system produce more.
+- **Why it matters.** Improving anything OTHER than the constraint produces local efficiency and global nothing.
+- **Example.** A landscape company's "training problem" turned out to be a sequencing problem — inspections were scheduled adjacent to mow jobs paying production rates, so inspections got rushed. The constraint was the incentive, not the skill.
+- **Common mistake.** Looking for the biggest pain rather than the binding constraint. Loud problems are often downstream of the real bottleneck.
+
+### Cost of Poor Quality
+
+- **Definition.** The total price of work that didn't hold the first time — rework, callbacks, remobilization, penalties, credits, churn attributable to quality.
+- **Why it matters.** Almost never a line item on a standard P&L, which is exactly why it persists. Operators surface it.
+- **Example.** A utility contractor's rework cost was hidden across multiple labor and supply lines. Aggregated, it equaled 6% of annual revenue.
+- **Common mistake.** Confusing it with customer complaints. Many high-cost-of-poor-quality businesses have no formal complaint pattern because the rework happens before the customer would notice.
 
 ---
 
@@ -128,6 +172,20 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # E
 
+### Evidence Record
+
+- **Definition.** A documented set of operational loops a person has completed — baseline, diagnosis, action, verification — used to back certification claims.
+- **Why it matters.** The Academy certifies demonstrated capability. The evidence record is the documentation that capability was demonstrated.
+- **Example.** An Operator's certification portfolio includes seven complete loops, two of which failed verification (and were re-diagnosed). Both successes and failures count as evidence.
+- **Common mistake.** Curating only the wins. An evidence record without failed verifications is either inexperience or hiding — both are disqualifying at higher tiers.
+
+### Exposure (Operational Exposure)
+
+- **Definition.** The quantified risk a business carries in operational gaps — uncaptured work, missing compliance records, undefendable disputes, audit vulnerability.
+- **Why it matters.** Exposure is invisible until a customer dispute, regulatory audit, or due-diligence review surfaces it. By then it is too late to fix.
+- **Example.** A subcontractor at audit could not produce safety-meeting records for 14 of 60 weeks. The customer required them by contract. The records' absence cost the next contract renewal.
+- **Common mistake.** Treating exposure as a compliance issue. Exposure is the financial value of what cannot be defended.
+
 ### Expansion
 
 - **Definition.** An existing customer paying Pioneer more — by adding a module, adding a location, or moving to a higher tier.
@@ -139,12 +197,19 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # F
 
+### Field Reality (Field Interface)
+
+- **Definition.** What actually happens at 2 a.m. in a building, on a pole, or in a trench — versus what the process map says should happen. The Operator's primary source of truth.
+- **Why it matters.** Doctrine, software, and training must bend toward field reality, not the other way around. The field interface is where data quality is determined; bad design there cannot be fixed downstream.
+- **Example.** A cleaning company's scope sheet predated a tenant remodel and omitted two new exam rooms. The diagram said "complete service." The field said "we don't clean those rooms." The field was right.
+- **Common mistake.** Treating the field interface as the output side of a system. It is the input side — and the most leveraged design surface in any operational platform.
+
 ### First Value
 
-- **Definition.** The first moment a customer experiences a real outcome from PioneerOps — not just usage, but a result.
-- **Why it matters.** Customers stay because they hit First Value. Customers churn when they don't.
-- **Example.** ACME's owner pulls Mission Control on a Monday and catches a $4,200 labor leak. That is First Value.
-- **Common mistake.** Confusing First Value with the activation event. Activation is the technical milestone. First Value is the emotional one.
+- **Definition.** The first moment a customer experiences a concrete, undeniable business win from PioneerOps — not "logged in," not "first usage." A real, felt result, achieved inside the provisional-trust window every new system gets.
+- **Why it matters.** Customers retain what demonstrably improves their business. First Value is the gate. Hit it fast, every later improvement runs downhill. Miss it, every later improvement runs uphill.
+- **Example.** A cleaning company evaluated PioneerOps and was unmoved by feature demos. They committed when a two-week baseline showed 40% of their complaints came from buildings with no inspection record at all — a blind spot they could not unsee.
+- **Common mistake.** Confusing First Value with activation. Activation is technical. First Value is emotional. An activated customer who feels nothing is at churn risk dressed in green.
 
 ---
 
@@ -184,6 +249,24 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 ---
 
+# L
+
+### Leakage
+
+- **Definition.** Money the business is silently losing because operational behavior is not aligned with its economic intent. Labor leakage, revenue leakage, margin leakage, cash leakage.
+- **Why it matters.** Leakage is the most common diagnosis once visibility lands. It is also the most fixable.
+- **Example.** A cleaning company's clock-in drift across three buildings equaled roughly a janitor's monthly wage — labor leakage hiding in minutes.
+- **Common mistake.** Treating leakage as theft. Most leakage is the system making the wrong thing easy. The fix is structural, not disciplinary.
+
+### Loop, The
+
+- **Definition.** The Academy's master mechanism for operational improvement: **Visibility → Measurement → Diagnosis → Action → Verification → Refinement.** Six stages run in order; skip any stage and the loop produces ritual instead of results.
+- **Why it matters.** Operational excellence is not a personality trait. It is what happens when the loop is run faithfully, at speed.
+- **Example.** A cleaning company "fixed" supply overuse three separate times across two years — memo, vendor change, storage lockup. None included verification. The fourth attempt ran the full loop and the problem stayed dead.
+- **Common mistake.** Thinking of the loop as a quality-improvement framework. It is the Academy's universal working method, applied at every scale from a single building to the institution itself.
+
+---
+
 # M
 
 ### Mission Control
@@ -214,6 +297,20 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** This is the highest-leverage period in the customer's life. Sloppy onboarding = lost customer.
 - **Example.** ACME's onboarding plan: data import by day 5, training by day 10, activation by day 14, first CEO walkthrough by day 30.
 - **Common mistake.** Treating onboarding as setup. It is the start of the relationship. Make it count.
+
+### Operating Rhythm
+
+- **Definition.** The standing cadence on which the Loop runs against a business — metrics reviewed, deviations diagnosed, actions tracked to verification.
+- **Why it matters.** Improvement is not an event; it is a cadence. The rhythm, not the software, is what the customer is actually buying.
+- **Example.** An Operator installs a Monday morning Vital review with the cleaning company owner. Same day every week, same six numbers, same expectation: deviations become diagnoses by Wednesday.
+- **Common mistake.** Confusing rhythm with reporting. A report nobody reads is not a rhythm. A rhythm includes the decision and the action that follows the reading.
+
+### Operational Truth
+
+- **Definition.** The objective reality of how a business actually behaves — where the labor goes, what the quality is, which customers are profitable. The version of the business that is true regardless of who tells the story.
+- **Why it matters.** Most organizations run on a folklore version of operational truth. The gap between folklore and truth is where margin dies.
+- **Example.** A cleaning company believed it served 28 customers profitably. The Customer Economics view revealed three large accounts were being serviced below cost, subsidized by a dozen small ones. Folklore said "we are healthy." Truth said "we are leaking."
+- **Common mistake.** Mistaking the loudest opinion for operational truth. The truth is in the records, not in the room.
 
 ### Operator
 
@@ -269,6 +366,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # R
 
+### Reconstruction
+
+- **Definition.** Assembling "what happened" after the fact from photos, texts, recollection, and arguments. The failure mode of Stage 1 (Visibility) of the Loop.
+- **Why it matters.** Reconstructed truth is negotiated truth — it loses disputes and resists improvement. The fix is to make the work itself the record.
+- **Example.** A cleaning company tried to verify whether an inspector had walked a site three weeks ago. The inspector remembered. The customer disagreed. No record existed. The dispute became the customer's narrative because no other version could be defended.
+- **Common mistake.** Believing the reconstruction is "close enough." Close enough loses to "documented and timestamped" every time.
+
 ### Recurring Revenue Base
 
 - **Definition.** The dollar value of the customer's recurring monthly invoices. Their "floor."
@@ -311,6 +415,17 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Shorter TTV correlates strongly with higher 12-month retention. The fastest gate the operator controls.
 - **Example.** ACME signed March 1. Hit activation March 14. TTV = 14 days. Strong sign.
 - **Common mistake.** Optimizing for activation speed by cutting corners on data setup. Bad data → bad first week → false activation.
+
+---
+
+# V
+
+### Verification
+
+- **Definition.** The act of re-measuring a metric against a **pre-declared expectation** after an intervention, to determine whether reality actually moved.
+- **Why it matters.** Without verification, action is gambling. Verification is what makes the difference between organizations that improve and organizations that accumulate rituals.
+- **Example.** A landscape company changed irrigation inspection scheduling. The pre-declared expectation: complaint volume drops 50% next season. Verification at season end: complaints fell 80%. The action stayed. If verification had shown no change, the action would have been reversed.
+- **Common mistake.** Confusing "we did the thing" with "the thing worked." Doing is not proving. The expected result must be written down BEFORE — otherwise every outcome gets retroactively claimed as intended.
 
 ---
 
