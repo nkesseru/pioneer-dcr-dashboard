@@ -18,11 +18,11 @@ This is the pillar where most operator hours go. Master this and you've mastered
 
 ## Planned lessons
 
-- `01-discovery.md` — the first call, what to ask, what to listen for, setting up the 24-month relationship
-- `02-onboarding.md` — the 30-day implementation playbook, data import, roster setup, first-week training
-- `03-qbr-delivery.md` — the 30-minute structure that customer CEOs actually pay attention to
-- `04-renewals-and-expansion.md` — timing, framing, the math behind the play
-- `05-difficult-conversations.md` — churn-risk saves, price increases, service-issue accountability
+- `01-discovery.md` — the first call, what to ask, what to listen for, setting up the 24-month relationship *(planned)*
+- `02-onboarding.md` — the 30-day implementation playbook, data import, roster setup, first-week training *(planned)*
+- [`03-qbr-delivery.md`](./03-qbr-delivery.md) — **flagship lesson.** The 30-minute structure that customer CEOs pay attention to. Turning operational truth into priced executive decisions. *(LIVE — passes Pioneer Test under Constitution v1.1)*
+- `04-renewals-and-expansion.md` — timing, framing, the math behind the play *(planned)*
+- `05-difficult-conversations.md` — churn-risk saves, price increases, service-issue accountability *(planned)*
 
 ## Mandatory artifacts (across the pillar)
 

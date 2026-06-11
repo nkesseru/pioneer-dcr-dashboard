@@ -23,6 +23,17 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 ---
 
+# 9
+
+### 90-Second Rule
+
+- **Definition.** Any operator finding, however complex, must have a faithful 90-second version that a CEO can absorb between meetings. If the Operator cannot produce it, the analysis is unfinished.
+- **Why it matters.** Compression is comprehension's proof. Inability to compress a finding to 90 seconds means the Operator hasn't decided what matters; the CEO won't either.
+- **Example.** Jay's 90-second version of Northwest Janitorial's renewal case: "You pay $14,500. We've delivered $88,000 in verified savings this year. Competitor is $11,300 but cannot defend compliance records. You'd save $38,400/year and lose audit defense worth more. Stay."
+- **Common mistake.** Treating the 90-second version as the only version. The long version exists too — it is the appendix, not the opener.
+
+---
+
 # A
 
 ### Activation Event
@@ -122,6 +133,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** A cleaning company that recorded every supply-overuse fix attempt — including the three that failed — eventually had a four-fix playbook that worked across buildings. The playbook lived in the records, not in any one person's head.
 - **Common mistake.** Treating compounding as an automatic effect of time. Compounding requires deliberate capture of what was learned.
 
+### Credibility Account
+
+- **Definition.** The running balance of an Operator's trust with a customer CEO, deposited and withdrawn through every QBR and major recommendation.
+- **Why it matters.** A high credibility account makes future recommendations approved in the hallway. A low one means every recommendation gets re-litigated.
+- **Example.** Three years into the relationship, April's CEO had stopped questioning her recommendations. He referenced her by name when other vendors challenged her advice. The account had compounded.
+- **Common mistake.** Spending the account on small wins. Don't deposit toward a confrontation you haven't had yet — save the credibility for the big call.
+
 ### Constraint
 
 - **Definition.** The single bottleneck that limits a system's output more than any other. The thing that, when relaxed, lets the whole system produce more.
@@ -139,6 +157,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 ---
 
 # D
+
+### Decision-Forcing Function
+
+- **Definition.** A conversation whose explicit purpose is to produce decisions, not transmit information. The QBR is the canonical example.
+- **Why it matters.** Most CSM meetings are information-forcing — they produce slides, not decisions. Operators force decisions.
+- **Example.** A QBR that opens "three decisions by the end of this conversation" has named itself a decision-forcing function and bound itself to produce them.
+- **Common mistake.** Calling a meeting a QBR when no decision is required. That makes it a status meeting wearing a QBR badge.
 
 ### DCR (Daily Cleaning Report)
 
@@ -249,6 +274,17 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 ---
 
+# I
+
+### Inaction Cost (Cost of Inaction)
+
+- **Definition.** The dollar value of what continues to be lost each month while a recommendation is not approved or executed.
+- **Why it matters.** "We should fix this" loses to the status quo every time. "This is costing you $4,100 a month while we discuss it" wins. The inaction cost is the only argument the status quo reliably loses to.
+- **Example.** Pioneer recommends a closeout workflow change. Inaction cost: "$5,300/month in stretched AR while we wait." That makes Friday's decision feel urgent instead of someday-ish.
+- **Common mistake.** Skipping the inaction cost because it feels confrontational. Without it, the recommendation is a suggestion — and suggestions don't get approved.
+
+---
+
 # L
 
 ### Leakage
@@ -264,6 +300,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Operational excellence is not a personality trait. It is what happens when the loop is run faithfully, at speed.
 - **Example.** A cleaning company "fixed" supply overuse three separate times across two years — memo, vendor change, storage lockup. None included verification. The fourth attempt ran the full loop and the problem stayed dead.
 - **Common mistake.** Thinking of the loop as a quality-improvement framework. It is the Academy's universal working method, applied at every scale from a single building to the institution itself.
+
+### Loop Closure
+
+- **Definition.** The act of reporting back, at the next QBR, on every prediction made in the prior QBR — what was predicted, what verified, and the credibility implications of each.
+- **Why it matters.** Loop closure is the credibility deposit. Operators who close loops compound trust. Operators who don't reset their credibility every QBR to zero.
+- **Example.** "Three predictions last quarter. One landed exactly. One overshot. One undershot. Net $88,000 in verified savings. Here is the record."
+- **Common mistake.** Closing only the wins. Honesty about failures is what makes the wins credible.
 
 ---
 
@@ -426,6 +469,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Without verification, action is gambling. Verification is what makes the difference between organizations that improve and organizations that accumulate rituals.
 - **Example.** A landscape company changed irrigation inspection scheduling. The pre-declared expectation: complaint volume drops 50% next season. Verification at season end: complaints fell 80%. The action stayed. If verification had shown no change, the action would have been reversed.
 - **Common mistake.** Confusing "we did the thing" with "the thing worked." Doing is not proving. The expected result must be written down BEFORE — otherwise every outcome gets retroactively claimed as intended.
+
+### Verification Date
+
+- **Definition.** A specific calendar date, written down before the action is taken, on which a metric will be re-measured against the pre-declared expected result.
+- **Why it matters.** Per Thesis First Principle P9: an intervention without a verification date is a hypothesis that was never tested. The date is the closure mechanism.
+- **Example.** "Change supply ordering on March 1. Predicted result: $4,300/month savings. Verification: May 1. If we hit, change stays. If not, reverse."
+- **Common mistake.** Setting verification dates and not honoring them. Verification only works when it actually happens. Dates without follow-through are theater.
 
 ---
 
