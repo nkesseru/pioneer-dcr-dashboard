@@ -19,12 +19,14 @@ This is the largest pillar by competency count. Operators cannot fake their way 
 
 ## Planned lessons
 
-- `01-data-model.md` — techs, customers, assignments, sessions, the relationships
-- `02-time-and-payroll.md` — clock workflows, service sessions, payroll periods, time adjustments, verification layer
-- `03-inspections-and-dcr.md` — Inspection v2.1 scoring, DCR submission, Customer Quality Score, cadence
-- `04-communication-threads.md` — categories, priorities, message types, status machine, SMS transport
-- `05-mission-control.md` — CEO Actions, Leadership Pulse, Customer Economics card, Financial Pulse card, Hiring Funnel
-- `06-admin-tools.md` — roles, customer aliases, payroll exports, Deputy bridge, GHL sync, QBO connection
+The Pillar 03 ordering leads with **Mission Control as a Diagnostic Instrument** — the lesson that makes every other platform lesson actionable.
+
+- [`01-mission-control-diagnostics.md`](./01-mission-control-diagnostics.md) — ⭐ **GOLD STANDARD candidate.** MC as the diagnostic instrument that surfaces operational truth. The Weekly Vital Read. The Operator Withdrawal Curve. *(LIVE — Pioneer Test PASS; Gold Standard checklist 18/18; certification pending review)*
+- `02-data-model.md` — techs, customers, assignments, sessions, the relationships *(planned)*
+- `03-time-and-payroll.md` — clock workflows, service sessions, payroll periods, time adjustments, verification layer *(planned)*
+- `04-inspections-and-dcr.md` — Inspection v2.1 scoring, DCR submission, Customer Quality Score, cadence *(planned)*
+- `05-communication-threads.md` — categories, priorities, message types, status machine, SMS transport *(planned)*
+- `06-admin-tools.md` — roles, customer aliases, payroll exports, Deputy bridge, GHL sync, QBO connection *(planned)*
 
 ## Required hands-on work
 

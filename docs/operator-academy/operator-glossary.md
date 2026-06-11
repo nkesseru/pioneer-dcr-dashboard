@@ -165,6 +165,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** A QBR that opens "three decisions by the end of this conversation" has named itself a decision-forcing function and bound itself to produce them.
 - **Common mistake.** Calling a meeting a QBR when no decision is required. That makes it a status meeting wearing a QBR badge.
 
+### Diagnostic Instrument
+
+- **Definition.** A tool with a specific purpose, read by someone trained to interpret it — like a stethoscope, a blood-pressure cuff, or Mission Control. Distinguished from a "dashboard" by the discipline of reading.
+- **Why it matters.** Dashboards get looked at. Instruments get read. The latter produces action; the former produces glancing. The vocabulary distinction shapes the behavior.
+- **Example.** A cardiologist reads an ECG. A cleaning company CEO reads Mission Control. Both are diagnostic acts requiring trained interpretation.
+- **Common mistake.** Calling Mission Control a "dashboard" in front of a CEO. The word infects the behavior — dashboards get glanced at; instruments get studied.
+
 ### DCR (Daily Cleaning Report)
 
 - **Definition.** Pioneer's structured end-of-shift report submitted by a cleaning tech after each customer site.
@@ -185,6 +192,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Bad discovery means everything that follows is built on the wrong problem.
 - **Example.** Customer said "we want better scheduling." Discovery revealed the real problem was tech turnover. The operator's onboarding plan changed completely.
 - **Common mistake.** Treating discovery as a checklist of questions. It is a real conversation. Follow the interesting answers.
+
+### Drift Catch
+
+- **Definition.** Catching a vital before it crosses an action-worthy threshold. The leading indicator before the deviation is forced into attention.
+- **Why it matters.** Drift Catches are the highest-leverage saves an Operator or CEO can make. Catching a 3-week downward trend at $58 RPLH (still above target $54) prevents the drop to $51 that would require crisis response.
+- **Example.** April's Riverside catch was a Drift Catch — she caught a $13 drop while still profitable, not a crisis after the customer was already losing money.
+- **Common mistake.** Only acting on red flags. Yellow flags caught early prevent red flags entirely.
 
 ### DSO (Days Sales Outstanding)
 
@@ -341,6 +355,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** ACME's onboarding plan: data import by day 5, training by day 10, activation by day 14, first CEO walkthrough by day 30.
 - **Common mistake.** Treating onboarding as setup. It is the start of the relationship. Make it count.
 
+### Operator Withdrawal Curve
+
+- **Definition.** The deliberate, planned reduction of operator involvement in a customer's routine Loops over time, paired with deepening involvement on harder strategic decisions.
+- **Why it matters.** Without a planned curve, operators either over-attach (and become bottlenecks) or under-attach (and lose the relationship). The curve makes the dynamic visible and deliberate.
+- **Example.** Dan's involvement on Anderson Building Services dropped from weekly calls to monthly calls over six months, while the strategic value of those monthly calls rose.
+- **Common mistake.** Treating withdrawal as abandonment. Withdrawal is a reallocation — less time on weekly reads, more time on the harder quarterly calls.
+
 ### Operating Rhythm
 
 - **Definition.** The standing cadence on which the Loop runs against a business — metrics reviewed, deviations diagnosed, actions tracked to verification.
@@ -392,7 +413,14 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Definition.** Revenue growth that comes with stable or rising gross margin per customer.
 - **Why it matters.** The opposite — unprofitable growth — feels successful but eats the company alive. Most cleaning company failures look like rapid revenue growth followed by sudden cash collapse.
 - **Example.** ACME Cleaning grew revenue 18% while gross profit fell 2%. Unprofitable growth.
-- **Common misunderstanding.** Treating revenue growth and profit growth as the same direction. They often move opposite.
+- **Common mistake.** Treating revenue growth and profit growth as the same direction. They often move opposite.
+
+### Pulse Check
+
+- **Definition.** A 60-second sub-scan of one specific vital on Mission Control, run between Vital Reads when a single signal warrants attention. Smaller and faster than the full read.
+- **Why it matters.** Between Mondays, a vital may surface a worry that doesn't warrant a full read. A Pulse Check catches it without breaking the weekly rhythm.
+- **Example.** Steve sees an inspection score drop on Thursday afternoon. He opens Mission Control, checks only the Operational Exposure card, sees the building, decides whether to act. 90 seconds.
+- **Common mistake.** Confusing Pulse Checks with reactive panic. A Pulse Check is calm — "let me look at one thing." Panic opens every card and trusts none.
 
 ---
 
@@ -434,6 +462,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # S
 
+### Self-Sustaining Loop
+
+- **Definition.** A Loop the customer's own people run without operator involvement. The terminal state of Pillar 4 (Scaling Through Systems) applied to a customer.
+- **Why it matters.** Self-sustaining Loops are how the operator's role gets MORE valuable while spending LESS time on routine work. The operator graduates from "reads the dashboard" to "advises on the hard calls."
+- **Example.** Steve Anderson catching Acme's inspection coverage drift on his own, two weeks after his first Vital Read. The Loop ran without the operator on the call.
+- **Common mistake.** Skipping the Self-Sustaining stage. Operators who stay attached forever become a single point of failure for the customer's diagnostic capability.
+
 ### Scope Creep
 
 - **Definition.** The customer's expected work grows over time without the contract rate going up.
@@ -462,6 +497,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 ---
 
 # V
+
+### Vital Read
+
+- **Definition.** A structured 5-minute scan of Mission Control's key vitals, run on a fixed weekly rhythm (typically Monday morning). Produces zero or more Loop entries.
+- **Why it matters.** The Vital Read is the unit of work that makes Mission Control useful. Without a defined scan structure, MC becomes overwhelming and gets skipped.
+- **Example.** Steve Anderson's weekly Vital Read: cash → margin (Top/Bottom 3) → exposure → operational feed scan. Total: ~6 minutes.
+- **Common mistake.** Calling any opening of Mission Control a "vital read." The read has structure. Random opening is not a read.
 
 ### Verification
 
