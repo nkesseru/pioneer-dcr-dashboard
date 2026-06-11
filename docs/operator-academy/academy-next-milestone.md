@@ -1,20 +1,34 @@
 ---
 doc_type: operational-decision-memo
-status: active
+status: superseded-by-founder-pilot
 created: 2026-06-11
 author: Nick (with Claude)
 governance_tier: 3
-scope: single-action answer
+scope: single-action answer (revised candidate)
 companion_to:
   - [academy-state-of-the-union.md](./academy-state-of-the-union.md)
   - [certification-cycles/cycle-1-mock-april.md](./certification-cycles/cycle-1-mock-april.md)
+  - [founder-pilot-plan.md](./founder-pilot-plan.md)
 ---
+
+> **🛎 Status note (2026-06-11):** Cycle 1 candidate changed to **Nick Kesseru** (Founder Pilot). The single highest-leverage action is updated: see new answer below. April becomes Cycle 2.
 
 # Academy Next Milestone
 
 **The question.** What is the single highest-leverage action required to produce the first certified Operator — assuming all current assets are frozen?
 
-**The answer.** Put one 45-minute meeting on the calendar this week: **Nick + April, Intent Form review**. That's it. That single calendar invite tips every other domino.
+**The revised answer (2026-06-11, post-candidate-swap).** **Identify Bootstrap Reviewer 3** — the only person who is not Nick, not Mike, not Kirby, and meets the equivalent-capability bar for an Operator I reviewer under the Triple-Reviewer Safeguard. Without this person, the Founder Pilot cannot honor framework §7.5. See [`founder-pilot-plan.md` §2c](./founder-pilot-plan.md) for the candidate pool.
+
+**The original answer (retained for context, no longer the live unlock).** Put one 45-minute meeting on the calendar this week: **Nick + April, Intent Form review**. That single calendar invite tips every other domino.
+
+The original answer was correct *when April was the candidate*. With Nick as candidate, the central operational bottleneck shifts from "schedule the Intent meeting" to "find Reviewer 3" because:
+
+- Mike + Kirby cover 2 of the 3 reviewer slots.
+- Nick cannot review his own cycle.
+- The Bootstrap Triple-Reviewer Safeguard is non-negotiable doctrine.
+- Without Reviewer 3, the Intent meeting can still happen but the cycle cannot complete.
+
+The 45-minute Intent meeting still matters — but it is now the *second* domino. The first domino is Reviewer 3 identification.
 
 ---
 
