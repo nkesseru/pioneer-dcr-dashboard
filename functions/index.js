@@ -29,6 +29,7 @@ const crypto = require("crypto");
 const dcrEmail = require("./dcrEmail");
 const ghlHiringSync = require("./ghlHiringSync");
 const twilioMessaging = require("./twilioMessaging");
+const qboAuth = require("./qboAuth");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -8884,6 +8885,231 @@ exports.twilioStatusCallbackV1 = onRequest(
 
     logger.info("[twilio.status] ok", { sid, twilioStatus, nextStatus });
     res.status(200).send("OK");
+  }
+);
+
+/* ============================================================================
+ * Phase Customer Economics v1 — QuickBooks Online OAuth foundation
+ *
+ * Two HTTPS endpoints implement the OAuth 2 authorization-code flow:
+ *
+ *   quickbooksOAuthStartV1     admin-gated. Generates a CSRF state token,
+ *                              persists it (with 15-min TTL), and returns
+ *                              the Intuit authorize URL the admin should
+ *                              navigate to.
+ *
+ *   quickbooksOAuthCallbackV1  public (Intuit redirects here). Validates
+ *                              the state token, exchanges the authorization
+ *                              code for access + refresh tokens, and writes
+ *                              quickbooks_auth/connection. Returns a small
+ *                              HTML success page.
+ *
+ * Future sync functions call qboAuth.getValidAccessToken() — it auto-
+ * refreshes if the access_token is near expiry.
+ *
+ * Secrets:
+ *   QBO_CLIENT_ID
+ *   QBO_CLIENT_SECRET
+ *   QBO_REDIRECT_URI         (must EXACTLY match what's set in the Intuit
+ *                             Developer app's Redirect URIs list)
+ *   QBO_ENVIRONMENT          ("production" or "sandbox" — drives API base)
+ *
+ * Setup checklist (Intuit Developer Portal — Nick's side):
+ *   1. Register an app under https://developer.intuit.com/
+ *   2. Add the production scope: com.intuit.quickbooks.accounting
+ *   3. Add this redirect URI EXACTLY (no trailing slash):
+ *      https://us-central1-pioneer-dcr-hub.cloudfunctions.net/quickbooksOAuthCallbackV1
+ *   4. Copy the Client ID + Client Secret into Firebase Secrets.
+ *   5. Visit /manager → admin tool to trigger quickbooksOAuthStartV1
+ *      (or POST to the endpoint with a bearer token + open the returned
+ *       authorize URL in a browser).
+ * ============================================================================ */
+
+const QBO_CLIENT_ID     = defineSecret("QBO_CLIENT_ID");
+const QBO_CLIENT_SECRET = defineSecret("QBO_CLIENT_SECRET");
+const QBO_REDIRECT_URI  = defineSecret("QBO_REDIRECT_URI");
+const QBO_ENVIRONMENT   = defineSecret("QBO_ENVIRONMENT");
+
+exports.quickbooksOAuthStartV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 15,
+    secrets: [QBO_CLIENT_ID, QBO_REDIRECT_URI]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST" && req.method !== "GET") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[qbo.oauth.start] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to connect QuickBooks." });
+      return;
+    }
+
+    const clientId    = (QBO_CLIENT_ID.value()    || "").trim();
+    const redirectUri = (QBO_REDIRECT_URI.value() || "").trim();
+    if (!clientId)    { res.status(500).json({ ok: false, error: "QBO_CLIENT_ID secret is empty." });    return; }
+    if (!redirectUri) { res.status(500).json({ ok: false, error: "QBO_REDIRECT_URI secret is empty." }); return; }
+
+    try {
+      const state = qboAuth.generateState();
+      await qboAuth.storeState(state, staff.email);
+      const authorizeUrl = qboAuth.buildAuthorizeUrl({
+        clientId:    clientId,
+        redirectUri: redirectUri,
+        state:       state
+      });
+      logger.info("[qbo.oauth.start] state issued", { email: staff.email });
+      res.json({ ok: true, authorize_url: authorizeUrl, state: state });
+    } catch (err) {
+      logger.error("[qbo.oauth.start] failed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
+exports.quickbooksOAuthCallbackV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (req, res) => {
+    // Intuit redirects here with GET ?code=...&state=...&realmId=...
+    if (req.method !== "GET") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    const code    = String(req.query.code    || "").trim();
+    const state   = String(req.query.state   || "").trim();
+    const realmId = String(req.query.realmId || "").trim();
+    const errorParam = String(req.query.error || "").trim();
+
+    function htmlPage(title, body, status) {
+      res.set("Content-Type", "text/html; charset=utf-8");
+      res.status(status || 200).send(
+        '<!doctype html><meta charset="utf-8">' +
+        '<title>' + title + '</title>' +
+        '<style>body{font:14px/1.5 system-ui,sans-serif;max-width:560px;' +
+        'margin:60px auto;padding:0 20px;color:#1e293b}h1{font-size:20px;' +
+        'margin-bottom:12px}.ok{color:#15803d}.err{color:#b91c1c}' +
+        'code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style>' +
+        body
+      );
+    }
+
+    if (errorParam) {
+      logger.warn("[qbo.oauth.callback] intuit returned error", { error: errorParam });
+      return htmlPage(
+        "QuickBooks connection — error",
+        '<h1 class="err">QuickBooks rejected the connection</h1>' +
+        '<p>Intuit returned: <code>' + String(errorParam).replace(/[<>]/g, "") + '</code></p>' +
+        '<p>Try again from /manager.</p>',
+        400
+      );
+    }
+
+    if (!code || !state || !realmId) {
+      return htmlPage(
+        "QuickBooks connection — missing params",
+        '<h1 class="err">Missing OAuth parameters</h1>' +
+        '<p>Expected <code>code</code>, <code>state</code>, <code>realmId</code> in the redirect.</p>',
+        400
+      );
+    }
+
+    // Validate state token — defends against CSRF and old-tab replays.
+    let stateResult;
+    try {
+      stateResult = await qboAuth.consumeState(state);
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] state consume threw", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — error",
+        '<h1 class="err">Could not validate the OAuth state.</h1><p>Try again from /manager.</p>',
+        500
+      );
+    }
+    if (!stateResult.ok) {
+      logger.warn("[qbo.oauth.callback] invalid state", { reason: stateResult.reason });
+      return htmlPage(
+        "QuickBooks connection — invalid state",
+        '<h1 class="err">OAuth state invalid: ' + stateResult.reason + '</h1>' +
+        '<p>This handshake may have expired or been intercepted. Start a fresh connection from /manager.</p>',
+        400
+      );
+    }
+
+    const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+    const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+    const redirectUri  = (QBO_REDIRECT_URI.value()  || "").trim();
+    const environment  = ((QBO_ENVIRONMENT.value()  || "production") + "").toLowerCase().trim();
+    if (!clientId || !clientSecret || !redirectUri) {
+      return htmlPage(
+        "QuickBooks connection — server misconfigured",
+        '<h1 class="err">QBO secrets are missing.</h1>' +
+        '<p>Set <code>QBO_CLIENT_ID</code>, <code>QBO_CLIENT_SECRET</code>, and <code>QBO_REDIRECT_URI</code> via <code>firebase functions:secrets:set</code>.</p>',
+        500
+      );
+    }
+
+    let tokens;
+    try {
+      tokens = await qboAuth.exchangeCodeForTokens({
+        clientId:     clientId,
+        clientSecret: clientSecret,
+        code:         code,
+        redirectUri:  redirectUri
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] token exchange failed", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — token exchange failed",
+        '<h1 class="err">Intuit refused the token exchange.</h1>' +
+        '<p><code>' + String((err && err.message) || "unknown").slice(0, 200).replace(/[<>]/g, "") + '</code></p>' +
+        '<p>Verify the Redirect URI in the Intuit Developer app matches <code>' + redirectUri + '</code> exactly, then retry.</p>',
+        502
+      );
+    }
+
+    try {
+      await qboAuth.saveConnection({
+        realmId:      realmId,
+        tokens:       tokens,
+        environment:  environment,
+        connectedBy:  stateResult.created_by,
+        isInitial:    true
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] connection persist failed", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — persist failed",
+        '<h1 class="err">Couldn\'t save the connection.</h1>' +
+        '<p>Tokens were issued by Intuit but the Firestore write failed. Check function logs.</p>',
+        500
+      );
+    }
+
+    logger.info("[qbo.oauth.callback] connected", {
+      realm_id: realmId, environment: environment, by: stateResult.created_by
+    });
+    return htmlPage(
+      "QuickBooks connected",
+      '<h1 class="ok">QuickBooks Online connected.</h1>' +
+      '<p>Realm ID: <code>' + realmId.replace(/[<>]/g, "") + '</code></p>' +
+      '<p>Environment: <code>' + environment + '</code></p>' +
+      '<p>You can close this tab. Customer Economics will start populating on the next sync.</p>'
+    );
   }
 );
 

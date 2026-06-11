@@ -1810,6 +1810,40 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Phase Customer Economics — QuickBooks OAuth state + connection.
+    // Server-only. Tokens NEVER reach the client. Cloud Functions write
+    // via Admin SDK (bypasses rules). Default-deny below would catch
+    // these anyway, but explicit rules are kept here as documentation.
+    match /quickbooks_auth/{docId} {
+      allow read, write: if false;
+    }
+    match /quickbooks_oauth_states/{stateToken} {
+      allow read, write: if false;
+    }
+    // Phase Customer Economics — denormalized snapshots. Admins read
+    // for the /ceo card; nobody writes from the client (Cloud Functions
+    // only). History collection is admin read-only too so audit trail
+    // is auditable from the dashboard.
+    match /customer_economics/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /customer_economics_history/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /financial_pulse/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /financial_pulse_history/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    // Note: pioneer_config/customer_economics.target_rplh uses the
+    // existing pioneer_config rules block above (line ~288). No change
+    // needed — admins already read + write that collection.
+
     // Default-deny everything else.
     match /{document=**} {
       allow read, write: if false;
