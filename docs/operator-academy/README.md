@@ -16,6 +16,7 @@ The training program for the people who will help commercial cleaning companies 
 | `apprentice-progress-tracker.md` | Canonical exemplar Apprentice tracker. Copy [`templates/apprentice-progress-tracker-template.md`](./templates/apprentice-progress-tracker-template.md) per new Apprentice. |
 | `certification-cycles/` | Cycle-by-cycle records of certification attempts. Each cycle is an executable validation of the framework. |
 | `academy-state-of-the-union.md` | **The current honest audit.** What exists, what's missing, what to build next. Read this on day one of inheriting or evaluating the Academy. |
+| `academy-next-milestone.md` | **The single highest-leverage next action.** Operational answer to "what unlocks the first certified Operator?" Read before authoring anything new. |
 | `academy-checkpoint-v1.md` | Versioned state marker — initial snapshot. |
 | `academy-checkpoint-v1.5.md` | **Current snapshot.** Post-audit. Marks the Academy as audit-clean and unblocked for first certification cycle. |
 | `operator-glossary.md` | The shared language of the Academy. Every term defined the same way. |
