@@ -16,11 +16,17 @@ This is a foundational lesson. Do not rush it. A graduate Operator must be able 
 
 ---
 
-## Action → Metric → Outcome
+## Action → Metric → Outcome (Pillar 1)
 
 | Action | Metric | Outcome |
 |---|---|---|
 | Surface customer-level RPLH and drive action on the gap to target | Company Average RPLH (moves toward target) | Profitable customer mix, sustainable margin, a CEO who knows where the money lives |
+
+## Economic Reality Chain (Pillar 7)
+
+| Operational Event | Operational Metric | Financial Consequence | Business Outcome |
+|---|---|---|---|
+| Labor hours rise on a customer while revenue stays flat (scope creep, slow tech, re-cleans) | RPLH falls for that customer | Margin per service hour drops; some customers cross break-even into "paying to clean" | Cash compression; delayed wage increases; the best techs leave; growth stalls |
 
 ---
 
@@ -718,6 +724,7 @@ Per the [Constitution](../CONSTITUTION.md), no lesson ships without all 11 boxes
 - [x] **Would Nick teach it this way?** Yes. The Riverside vs Dental Plaza contrast is the conversation Nick has had with operators internally. Diagnostic-before-prescription matches his coaching style. The "raise rates is the LAST lever" framing is a Pioneer principle.
 - [x] **Does it teach an outcome, not a feature?** Yes. The Action → Metric → Outcome triple drives the lesson. PioneerOps appears only as the source of the numbers; the lesson is about what the operator does with them.
 - [x] **Is the Action → Metric → Outcome triple filled in?** Yes. Surface RPLH → Company Avg RPLH moves to target → profitable customer mix + sustainable margin.
+- [x] **Economic Reality Chain present?** Yes. Labor rises while revenue flat → RPLH falls → margin per hour drops → cash compression + tech turnover + stalled growth.
 - [x] **All 11 elements present?** Yes. Plain English (1), Why it matters (2), Pioneer example (3), Customer example (4), Common mistake (5), Vocabulary (6), Visual diagram (7), Exercise (8), Role-play (9), Quiz (10), Coaching discussion (11).
 - [x] **Reading level 8th–10th grade?** Yes. Short sentences. Tables and bullets dominate. The only multi-paragraph stretches are the customer story (intentional — operators need to feel the stakes).
 - [x] **Pioneer + customer examples are different?** Yes. Pioneer example is Riverside vs Dental Plaza (internal). Customer example is ACME Cleaning (external, fictional but realistic).

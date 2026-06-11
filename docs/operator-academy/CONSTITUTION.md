@@ -137,6 +137,31 @@ Use plain language. Avoid MBA jargon.
 
 ---
 
+### Pillar 7 — Economic Reality
+
+**Operational behavior eventually appears in the financials.**
+
+Every operational choice — a scope decision, a route assignment, a missed inspection, a callout, a rate negotiation — eventually shows up in dollars. Operators who cannot trace the line from operations to financials are guessing.
+
+Every lesson should help Operators connect:
+
+> **Operational Event → Operational Metric → Financial Consequence → Business Outcome**
+
+| Link | Plain meaning |
+|---|---|
+| **Operational Event** | Something happened in the field. A tech missed a shift. A customer added a request. A re-clean was needed. |
+| **Operational Metric** | A number captures the event. Missed shifts count, labor hours logged, callouts logged, re-cleans recorded. |
+| **Financial Consequence** | The metric eventually moves a dollar number. Overtime cost rises. Customer Economics shifts. Margin compresses. |
+| **Business Outcome** | The financial consequence shapes the business's future. Margin compression delays a hire. Lost margin closes a location. |
+
+If a lesson has any financial dimension, this chain must appear explicitly. If the lesson is purely operational (process, communication, judgment), the chain still applies as the background lens — the Operator should always be able to answer "and where does this show up in the financials, eventually?"
+
+Operators who think only operationally miss money. Operators who think only financially miss the work. Operators who hold both at once produce results.
+
+This pillar pairs tightly with **Pillar 1 — Software as a Science.** Pillar 1 is the Operator's chain (Action → Metric → Outcome). Pillar 7 is the business's chain (Event → Metric → Consequence → Outcome). Operators must hold both.
+
+---
+
 ## Teaching Philosophy
 
 The Academy should feel like:
