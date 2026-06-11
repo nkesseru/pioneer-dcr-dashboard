@@ -1,5 +1,9 @@
 # Lesson 05.3 — QBR Delivery: Turning Operational Truth into Executive Decisions
 
+> ⭐ **ACADEMY GOLD STANDARD v1** ⭐
+>
+> This lesson is the Academy's reference implementation of Constitution v1.1. It is the quality bar future lessons must meet to be considered flagship. See [`academy-gold-standard.md`](../academy-gold-standard.md) for the patterns this lesson exemplifies and the bar new authors must clear.
+
 > Pillar 05 — Customer Success · Competency 05.3 · Target level after this lesson: **3 (Expert)**
 >
 > **Flagship lesson.** This is the lesson where the Academy's training pays off. Every prior lesson — RPLH, Customer Economics, the Loop, the Six Vitals, the Economic Reality chain — comes to a single 30-minute conversation with a customer CEO. Get this right and the customer renews in the hallway. Get it wrong and every renewal is a fight.
@@ -123,12 +127,34 @@ The QBR is where the Operator makes the math work — by naming the outcomes, pr
 | **Pillar 1 — Outcomes, not features** | The opening sentence names outcomes, not screens |
 | **Pillar 2 — Diagnostician** | Every observation is followed by a cause, not a complaint |
 | **Pillar 3 — First Value / Journey** | The CEO sees where they sit on the journey, what the next gate is |
+| **Pillar 4 — Scaling Through Systems** | The QBR is a SYSTEM (spine, prep discipline, follow-up artifact, verification dates) — not a performance |
 | **Pillar 5 — AI division of labor** | AI prepared the prep; the Operator carries the judgment and the signature |
 | **Pillar 7 — Economic Reality** | Every finding has a price; every recommendation has an inaction cost |
 | **Pillar 8 — Work Becomes the Record** | Every claim points back to a record the CEO can audit |
 | **Thesis 16 — Executive Communication** | Lead with the conclusion. 90-second rule. Three recommendations. Hallway-passable. |
 
-If a QBR doesn't fire all seven, it isn't a QBR — it's a meeting.
+If a QBR doesn't fire all eight, it isn't a QBR — it's a meeting.
+
+### The QBR as a System (Pillar 4)
+
+**The QBR is not a charismatic moment. It is a system.**
+
+A system that produces decisions on schedule. A system that compounds credibility across quarters. A system that does not depend on any one Operator's charm or the CEO's mood.
+
+The same Operator delivering the same spine with the same prep discipline will produce roughly the same approval rate across customers. That is the test of Pillar 4. If your QBR results vary wildly by your mood, the day of the week, or whether the CEO had coffee — you have not yet built a system. You have a performance.
+
+Performances do not scale. Systems do.
+
+**What makes the QBR a system:**
+
+- The 30-minute spine (fixed structure across customers)
+- The prep discipline (the 8-minute prep test, the named hostile scenario)
+- The artifact (the 6-slide or 2-page doc, the 24-hour follow-up)
+- The verification dates (machinery, not memory)
+- The loop closure (every QBR closes the loop from the prior one)
+- The replicable rubric (the scoring criteria for Q10 are the operator's self-test)
+
+A new Operator inheriting an existing account should be able to deliver a credible QBR within 60 days of the handoff — because the system is documented. If they can't, the prior Operator built a performance instead of a system. That's a coaching gap, not an organizational mystery.
 
 ---
 
@@ -342,6 +368,40 @@ The QBR is the single most common place Operators fail in the field. The mistake
 > **Why it fails:** A QBR is not a sales call. The moment you pitch, the CEO downgrades your credibility account from "advisor" to "vendor."
 >
 > **Upgrade:** Pitch in a separate conversation, scheduled for a separate week. Let the QBR be clean.
+
+### Mistake 9 — The QBR That Fails Because the Record Can't Support the Claim (Pillar 8)
+
+This is the doctrine-grade failure mode. The lesson where Pillar 8 becomes felt instead of stated.
+
+> **The story.** Sara, a Pioneer operator, delivered a Q2 QBR to a mid-size cleaning company. Her headline finding: "Your labor efficiency improved 12% this quarter."
+>
+> The CEO sat forward. "Twelve percent? Show me where."
+>
+> Sara had built the 12% number from a Mission Control summary. The number was correct in aggregate. But the underlying records lived in three different systems and her synthesis had used a sampling approach. When the CEO asked to walk through it building-by-building, the records didn't align cleanly enough for her to defend a single building's number in under 60 seconds.
+>
+> The CEO didn't accuse her of anything. He just said: *"Let me know when you can show me the receipts."*
+>
+> He ended the QBR at minute 12. Sara had just made a withdrawal from the credibility account she couldn't deposit back into for two more quarters. The renewal conversation 60 days later was uphill.
+>
+> **What went wrong:** Sara made a claim her records could not defend in real time. The 12% was true in spirit but unprovable on demand — and a QBR demand IS real time.
+>
+> **What Pillar 8 says:** *Unrecorded work is unprovable work.* The corollary: *Imprecisely recorded work is imprecisely provable work.* If you cannot trace a claim back to a defensible record in under 60 seconds while the CEO watches, the claim is not ready to make.
+>
+> **The three Pillar 8 questions** every Operator must answer BEFORE the QBR:
+>
+> 1. Can I support every claim with a specific record the customer can audit?
+> 2. Was the record created BY the work, or reconstructed AFTER it?
+> 3. If the customer's lawyer or auditor asked for proof of any claim, could I produce it inside 60 seconds?
+>
+> If any answer is no, the claim doesn't make the QBR.
+>
+> **The recovery move:** if you're already mid-QBR and the CEO challenges a claim you can't defend, the correct response is the hardest sentence in the operator's toolkit:
+>
+> > *"You're right to push. Let me come back with the building-level records. Can I do it by Friday?"*
+>
+> Then you do — and you take the credibility deposit for the disclosure even though you took the withdrawal for the miss.
+
+The Pillar 8 mistake is the only Common Mistake in this lesson with no "sounds like / upgrade" pair. That's intentional. The mistake is not a sentence — it is a missing artifact. The fix lives in the prep, not the delivery.
 
 ---
 
@@ -584,8 +644,28 @@ If any answer is no, the QBR is not ready. Tighten the record before the convers
 | **Task** | Build and deliver a complete QBR for one of your owned accounts, using the 30-minute spine. Record the delivery. |
 | **Inputs** | 90 days of operational data on the account (PioneerOps + QuickBooks); previous QBR's predictions; the account's contract state and renewal timeline |
 | **Output** | (a) Maximum 6-slide deck OR 2-page doc; (b) Recorded 30-minute QBR delivery (mock or real); (c) 24-hour follow-up doc; (d) 1-page Operator self-review |
-| **Time** | 90 minutes prep · 30 minutes delivery · 15 minutes self-review |
+| **Total time** | ~3 hours 5 minutes (see breakdown below) |
 | **Success looks like** | Trainer watches the recording and says: "I would let you deliver this to a real customer CEO tomorrow." |
+
+### Time breakdown (honest)
+
+The exercise was previously scoped at 135 minutes. It does not actually fit in 135 minutes for any operator delivering it for the first time. Honest timing:
+
+| Stage | Time |
+|---|---|
+| **Part 1 — Build the artifact (2 hours)** | |
+| Data assembly (PioneerOps + QuickBooks 90-day pull) | 30 min |
+| Pattern identification + Pillar 7 pricing + draft synthesis | 45 min |
+| Compression to 6-slide / 2-page artifact + verify every number | 30 min |
+| Rehearse 90-second compression version | 15 min |
+| **Part 2 — Deliver + close the loop (~65 min)** | |
+| Delivery (recorded, 30 minutes hard cap) | 30 min |
+| 24-hour follow-up doc (drafted same day) | 20 min |
+| Self-review against the rubric | 15 min |
+
+Operators who try to compress Part 1 below 2 hours will produce shaky QBRs. Operators who try to extend Part 2 beyond 65 minutes are over-thinking the delivery — the prep was supposed to do that work.
+
+For the trainer: schedule Part 1 and Part 2 on separate days. Same-day delivery on top of same-day prep produces worse outcomes than rest.
 
 ### Required structure for the QBR artifact
 
@@ -624,6 +704,22 @@ A single page sent within 24 hours of the QBR. Contains:
 - One line: "Reach out if anything in the above doesn't match what you remember from our conversation."
 
 That last line is a Pillar 8 record — it makes the CEO's response (or non-response) part of the record. Silence becomes consent. Disagreement becomes documented disagreement.
+
+### What the 24-hour follow-up doc must NOT contain
+
+The follow-up doc is a Pillar 8 record. Soft language corrupts the record. The discipline:
+
+| Don't write | Why it fails | Write instead |
+|---|---|---|
+| "Sorry for taking your time today." | Apology language anchors the conversation as imposition, not value. | Open directly with the three recommendations. |
+| "Aiming to have results by May 15." | "Aiming" hedges the verification date. Hedged dates evaporate. | "Verification: May 15." Period. |
+| "Let me know if you have any questions!" | Invites questions instead of producing decisions. | "Reach out if anything above doesn't match what you remember." |
+| "Looking forward to our next conversation!" | Closing pleasantry adds no information; CEO scans past it. | End on the next QBR date, full stop. |
+| A 4-paragraph preamble before the recommendations | Buries the lede. CEO scans for the asks; preamble delays them. | Lead with the three recommendations. Preamble is optional appendix. |
+| Multiple pages of supporting math | The doc is for the CEO, not the bookkeeper. Math belongs in the deck. | Keep to one page. Numbers as bullets, not paragraphs. |
+| Smiley faces, exclamation points (more than 1), informal slang | Erodes the doc's status as a Pillar 8 record. | Professional tone. A QBR doc gets read three times in the next 18 months. |
+
+**The 30-second scan test:** the CEO should be able to scan the doc in 30 seconds and walk away knowing: the three recommendations, the three inaction costs, the three verification dates, and the next QBR date. If they can't, the doc has too much chrome.
 
 ### Submission
 
@@ -883,6 +979,22 @@ You have 90 seconds with the CEO in a hallway. You need to convey the entire con
 - Ends with a specific ask of the CEO
 
 This question is the lesson's hardest. If the Operator can deliver this compression cleanly, they are at level 3.
+
+#### Scoring rubric for Q10 (mandatory — all five required for pass)
+
+The 90-second compression is the lesson's diagnostic centerpiece. Two trainers must score this question identically. Use this rubric exactly.
+
+| Criterion | Pass bar | How to verify |
+|---|---|---|
+| **Time** | 80–95 seconds (timed strictly) | Stopwatch. Under 80 = rushed and lacking substance. Over 95 = compression failed. |
+| **Opens with three asks** | First sentence names exactly three decisions to be made | Listen for a number ("three") in the first 8 seconds. |
+| **Names a failure before any win** | At least one failed prediction is named before any verified win | Catch the sequencing. Wins first = fail this criterion. |
+| **Carries at least one inaction cost in dollars** | At least one specific dollar number tied to inaction | Listen for "$X/month" or "$Y per year" with a named cause. |
+| **Ends with specific CEO ask + date** | Closes with a specific decision request and a calendar date | "I need your decision on these three by Friday" or equivalent. |
+
+**Scoring rule:** all five must hit. Four out of five = re-attempt next week. Three or fewer = lesson needs re-delivery before re-test.
+
+**Calibration note for trainers:** before grading any operator on this question, the trainer should deliver their OWN 90-second version to a peer and have it scored against this rubric. A trainer who cannot pass the rubric should not be grading it.
 
 ---
 
