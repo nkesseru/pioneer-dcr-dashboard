@@ -22,11 +22,11 @@ This is non-negotiable. If a candidate refuses, end the hiring process.
 
 ## Planned lessons
 
-- `01-service-models.md` — recurring nightly vs day porter vs specialty
-- `02-labor-economics.md` — RPLH, productivity benchmarks, scheduling realities
-- `03-quality-systems.md` — inspections, DCR submissions, customer feedback loops
-- `04-billing-and-ar.md` — monthly recurring, payment behavior, recurring revenue base
-- `05-pain-points.md` — the operational failure modes that determine whether a cleaning company makes it
+- `01-service-models.md` — recurring nightly vs day porter vs specialty *(planned)*
+- [`02-revenue-per-labor-hour.md`](./02-revenue-per-labor-hour.md) — **the foundational lesson.** What RPLH is, why it matters, how to act on it, how to discuss it with a customer owner. *(LIVE — passes Pioneer Test)*
+- `03-quality-systems.md` — inspections, DCR submissions, customer feedback loops *(planned)*
+- `04-billing-and-ar.md` — monthly recurring, payment behavior, recurring revenue base *(planned)*
+- `05-pain-points.md` — the operational failure modes that determine whether a cleaning company makes it *(planned)*
 
 ## Reading list
 
