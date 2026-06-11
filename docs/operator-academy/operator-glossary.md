@@ -36,6 +36,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 
 # A
 
+### Apprentice
+
+- **Definition.** Pre-certification status held while a candidate is in initial Academy training. Apprentices do not own customer accounts; they pair with Senior Operators, complete foundation quizzes, build initial portfolio evidence, and practice role-play scenarios under coaching.
+- **Why it matters.** The Certification Framework treats Apprentice as a status, not a credential — automatic promotion to Operator I when the bar is met. Without the formal status, Pioneer would have no language for "in training but not yet credentialed."
+- **Example.** A new hire whose first 30 days are spent shadowing Senior Operators while completing the four foundation lessons is an Apprentice. Their first owned-account assignment marks their promotion to Operator I (subject to certification review).
+- **Common mistake.** Treating Apprentice as a tier you can stay at indefinitely. The status is meant to be exited within a defined window; an Apprentice who is still apprenticing at 6 months is a coaching gap or a hiring mismatch.
+
 ### Activation Event
 
 - **Definition.** The single moment a customer goes from "set up" to "actually using PioneerOps." For Pioneer, that means a complete week of clock-ins logged + first DCR submitted + first inspection completed.
@@ -88,8 +95,6 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** An improvement claim without a baseline is unverifiable. The Academy's certification standard rests on baseline-to-current deltas.
 - **Example.** A cleaning company captures two weeks of inspection-coverage data before launching a new inspection cadence. That two-week capture is the baseline. Six months later, the new coverage rate is meaningful only against it.
 - **Common misunderstanding.** Treating the baseline as a one-time setup task. The baseline is the foundation of the entire engagement; bad baselines kill every claim that follows.
-
-# B
 
 ### Breadth/Judgment Split
 
@@ -345,6 +350,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** A cleaning company's clock-in drift across three buildings equaled roughly a janitor's monthly wage — labor leakage hiding in minutes.
 - **Common mistake.** Treating leakage as theft. Most leakage is the system making the wrong thing easy. The fix is structural, not disciplinary.
 
+### Lineage ID
+
+- **Definition.** A permanent unique identifier assigned to every certified PioneerOps Operator: `POPS-OP-{Tier}-{YYYY}-{seq}`. The Tier portion updates on each promotion; the year and sequential ID remain fixed.
+- **Why it matters.** Lineage IDs make the credential portable across employers and verifiable independently of Pioneer. They are the seed of the eventual external credentialing body (per Thesis Vision).
+- **Example.** `POPS-OP-II-2026-0001` — the first Operator II ever certified, in 2026. When that Operator is promoted to Operator III in 2027, their Lineage ID becomes `POPS-OP-III-2026-0001` — the year of original certification stays.
+- **Common mistake.** Reassigning a retired Lineage ID to a new Operator. Doctrine explicitly forbids this — retired IDs stay retired, preserving lineage continuity in the registry.
+
 ### Loop, The
 
 - **Definition.** The Academy's master mechanism for operational improvement: **Visibility → Measurement → Diagnosis → Action → Verification → Refinement.** Six stages run in order; skip any stage and the loop produces ritual instead of results.
@@ -392,6 +404,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Example.** ACME's onboarding plan: data import by day 5, training by day 10, activation by day 14, first CEO walkthrough by day 30.
 - **Common mistake.** Treating onboarding as setup. It is the start of the relationship. Make it count.
 
+### Operator Mindset
+
+- **Definition.** The eight dispositions defined in Thesis Section 13 that, together with method, make someone an Operator: truth over comfort, ownership of outcomes, calm inside ambiguity, economic conscience, respect for the field, skepticism of own dashboards, bias toward simplification, long loops held open.
+- **Why it matters.** Frameworks can be taught in weeks; the mindset takes longer and matters more. An Operator who holds the eight dispositions applies the method when it is inconvenient — which is the only time it matters.
+- **Example.** An Operator who discovered a billing error that overcharged a loyal customer for months. Truth over comfort meant disclosing and refunding it unprompted. Short-term cost: real money. Long-term consequence: the customer began handing over competitor buildings without bidding.
+- **Common mistake.** Treating the dispositions as personality traits rather than trainable habits. They are coached the same way method is coached: standards relentlessly held, modeling, repeated practice.
+
 ### Operator Withdrawal Curve
 
 - **Definition.** The deliberate, planned reduction of operator involvement in a customer's routine Loops over time, paired with deepening involvement on harder strategic decisions.
@@ -405,6 +424,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 - **Why it matters.** Per Constitution Pillar 5: *"The signature is the Operator's. Signatures are not delegated."* This is the credibility account in code form.
 - **Example.** Maria's Cascade memo was AI-drafted but Maria-signed. The signing was preceded by the Verification Pass + the personal-voice rewrite.
 - **Common mistake.** Sending AI-drafted, AI-voiced output under the Operator's name. The customer reads it as not-from-you, and the credibility account takes the withdrawal.
+
+### Operational Vital
+
+- **Definition.** Umbrella term for the six categories of financial vitals that constitute the operational scoreboard of any cleaning or field-services business: Labor Efficiency, Margin Integrity, Revenue Quality & Leakage, Cash Conversion, Cost of Poor Quality, Operational Exposure.
+- **Why it matters.** The taxonomy is doctrine — every operational issue maps to at least one Operational Vital. A claim that something matters but doesn't move a Vital is suspicious; either the Vital is wrong or the claim is.
+- **Example.** A customer's inspection coverage dropping is an Operational Exposure issue. A tech's clock-in drift is a Labor Efficiency issue. The categorization is what allows shared diagnostic language.
+- **Common mistake.** Inventing a seventh Vital. The doctrine is explicit — six is the complete top-level taxonomy. New observations slot into existing Vitals; new Vitals require Constitutional amendment.
 
 ### Operating Rhythm
 
@@ -430,6 +456,13 @@ If a term cannot fit this shape, the term is probably tangled. Untangle it.
 ---
 
 # P
+
+### Pillar 8 Discontinuity
+
+- **Definition.** A pattern from the Financial Pulse Pattern Library: a vital reading shows a sharp single-period change (>3 standard deviations) that doesn't have a corresponding raw-event explanation in the underlying records. Signals either a record gap (something happened we didn't capture) or a calculation bug.
+- **Why it matters.** AI's confidence on incomplete records is the most expensive failure mode in operational analytics. The Pillar 8 Discontinuity pattern is the system actively watching for cases where it can't explain its own movements — and forcing human attention before action.
+- **Example.** Lisa's Hilltop Office case (AI Operator lesson): MC flagged $36 RPLH; she paused, discovered QBO sync had been stale for 5 days due to a Friday failure, and the "real" RPLH was much closer to target after the dispute resolution. Pillar 8 Discontinuity prevented a wrong recommendation.
+- **Common mistake.** Treating a Pillar 8 Discontinuity as confirmation that something operationally interesting happened. Often it is confirmation that the RECORDS are broken — which is its own important finding, but a different one than a real operational change.
 
 ### Payroll Burden
 
