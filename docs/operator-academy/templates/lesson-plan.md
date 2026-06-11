@@ -207,10 +207,13 @@ Three to five questions. Open-ended. Not leading.
 
 Every lesson must pass these checks **before** publishing. If any box is unchecked, the lesson is not ready.
 
-- [ ] **Would Nick teach it this way?** If no, rewrite.
-- [ ] **Does it teach an outcome, not a feature?** If feature talk, rewrite.
-- [ ] **Is the Action → Metric → Outcome triple filled in?** If not, stop.
-- [ ] **Economic Reality Chain present (or marked N/A)?** If the lesson has any financial dimension, the four-link chain must be filled in. (Constitution Pillar 7.)
+- [ ] **Would Nick teach it this way?** If no, rewrite. (Pioneer Test — see Constitution.)
+- [ ] **Does it teach an outcome, not a feature?** If feature talk, rewrite. (Pillar 1.)
+- [ ] **Is the Action → Metric → Outcome triple filled in?** If not, stop. (Pillar 1.)
+- [ ] **Economic Reality Chain present (or marked N/A)?** If the lesson has any financial dimension, the four-link chain must be filled in. (Pillar 7.)
+- [ ] **Does it respect Work Becomes the Record?** If the lesson touches data capture, workflows, or compliance — does it answer "is the record created BY the work, or reconstructed AFTER?" (Pillar 8.)
+- [ ] **Does it name an Operational Vital (when financial)?** Lessons touching diagnosis, executive communication, or customer success name which vital they exercise: Labor Efficiency, Margin Integrity, Revenue Quality & Leakage, Cash Conversion, Cost of Poor Quality, or Operational Exposure.
+- [ ] **Is the diagnostician identity present?** Operator-as-clinician, not operator-as-trainer. Diagnose before prescribe. (Pillar 2.)
 - [ ] **All 11 elements present?** Every section filled. No "TBD."
 - [ ] **Reading level 8th–10th grade?** Read it aloud. Short sentences. No MBA jargon.
 - [ ] **Pioneer + customer examples are different?** Both must be real.
