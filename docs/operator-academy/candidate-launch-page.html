@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Welcome to the PioneerOps Operator Academy</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-soft: #4a4a4a;
+    --text-dim: #6b7280;
+    --border: #e5e7eb;
+    --accent: #d97706;
+    --accent-soft: #fef3e2;
+    --accent-deep: #b45309;
+    --success: #15803d;
+    --success-soft: #f0fdf4;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.65;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-deep); }
+  a:hover { color: var(--accent); }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #fff8ed 0%, #fef3e2 100%);
+    padding: 80px 24px 60px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.8rem;
+    color: var(--accent-deep);
+    font-weight: 700;
+    margin: 0 0 16px;
+  }
+  .hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0 0 16px;
+    line-height: 1.2;
+    color: var(--text);
+  }
+  .hero p {
+    font-size: 1.15rem;
+    color: var(--text-soft);
+    max-width: 560px;
+    margin: 0 auto 32px;
+  }
+  .hero .start-cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 36px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.05rem;
+    box-shadow: var(--shadow-lg);
+    transition: transform 0.15s, background 0.15s;
+    min-height: 56px;
+    line-height: 1.5;
+  }
+  .hero .start-cta:hover {
+    background: var(--accent-deep);
+    transform: translateY(-2px);
+    color: #fff;
+  }
+  .hero .start-meta {
+    display: block;
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  /* Sections */
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+  section { margin-bottom: 64px; }
+  section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+  section p {
+    color: var(--text-soft);
+    margin: 0 0 16px;
+  }
+
+  /* What this is */
+  .three-up {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-top: 24px;
+  }
+  .three-up .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .three-up .card h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent-deep);
+  }
+  .three-up .card p {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text-soft);
+  }
+
+  /* Time commitment */
+  .commitment {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: var(--shadow);
+  }
+  .commitment-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+  }
+  .commitment-row:last-child { border-bottom: none; }
+  .commitment-label {
+    font-weight: 700;
+    color: var(--accent-deep);
+    font-size: 0.95rem;
+  }
+  .commitment-value { color: var(--text); }
+  .commitment-value small {
+    display: block;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-top: 4px;
+  }
+
+  /* Progress path */
+  .path {
+    position: relative;
+    padding-left: 32px;
+  }
+  .path::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
+    background: var(--border);
+  }
+  .path-step {
+    position: relative;
+    padding: 16px 20px 16px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .path-step::before {
+    content: '';
+    position: absolute;
+    left: -28px;
+    top: 24px;
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    border: 3px solid var(--bg);
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .path-step.current::before { background: var(--success); box-shadow: 0 0 0 2px var(--success); }
+  .path-step .step-num {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent-deep);
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .path-step h4 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    color: var(--text);
+  }
+  .path-step p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-soft);
+  }
+  .path-step .step-meta {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .path-step a {
+    color: var(--accent-deep);
+    font-weight: 600;
+  }
+
+  /* Start banner */
+  .start-banner {
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #fff 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 32px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+  .start-banner h2 {
+    margin: 0 0 12px;
+    font-size: 1.5rem;
+  }
+  .start-banner p {
+    margin: 0 0 24px;
+    color: var(--text-soft);
+  }
+  .start-banner .start-cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 40px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.05rem;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s, background 0.15s;
+    min-height: 56px;
+    line-height: 1.5;
+  }
+  .start-banner .start-cta:hover {
+    background: var(--accent-deep);
+    transform: translateY(-2px);
+    color: #fff;
+  }
+
+  /* FAQ */
+  .faq-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .faq-item summary {
+    padding: 18px 22px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text);
+    list-style: none;
+    position: relative;
+    user-select: none;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after {
+    content: '+';
+    position: absolute;
+    right: 22px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent);
+    font-size: 1.3rem;
+    font-weight: 700;
+    transition: transform 0.2s;
+  }
+  .faq-item[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+  .faq-item summary:hover { background: var(--accent-soft); }
+  .faq-body {
+    padding: 0 22px 18px;
+    color: var(--text-soft);
+    font-size: 0.95rem;
+  }
+  .faq-body p { margin: 0 0 10px; }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    background: var(--surface);
+  }
+  footer a { color: var(--text-soft); }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    .hero { padding: 56px 20px 44px; }
+    .hero h1 { font-size: 1.85rem; }
+    .hero p { font-size: 1rem; }
+    main { padding: 40px 20px; }
+    section { margin-bottom: 48px; }
+    section h2 { font-size: 1.25rem; }
+    .commitment-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    .commitment-label { font-size: 0.85rem; }
+    .path { padding-left: 24px; }
+    .path::before { left: 7px; }
+    .path-step::before { left: -22px; width: 12px; height: 12px; }
+    .start-banner { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <p class="hero-eyebrow">Pioneer Operator Academy</p>
+  <h1>Welcome, Laura.</h1>
+  <p>You're about to start the path to becoming a Pioneer Operator. Below is exactly what the Academy is, how much time it will ask of you, and where to begin today.</p>
+  <a href="./html/01-saas-foundations/01-saas-language-foundations.html" class="start-cta">Start Lesson 1 → SaaS Language Foundations</a>
+  <span class="start-meta">90 minutes · plain English · designed for you</span>
+</header>
+
+<main>
+
+<section>
+  <h2>What this is</h2>
+  <p>The Pioneer Operator Academy is a training program for the people who help commercial cleaning companies actually transform — not just adopt our software. It's a real credential, not a participation certificate. You earn it by demonstrating capability across cleaning operations, customer success, financial diagnostics, and executive conversation.</p>
+  <p>You're entering at <strong>Pillar 01 — SaaS Foundations</strong>. The Academy assumes you bring strong operational instincts. It gives you the language, the diagnostic patterns, and the evidence record that turn those instincts into a profession.</p>
+
+  <div class="three-up">
+    <div class="card">
+      <h3>It's a craft, not a course</h3>
+      <p>You won't memorize PowerPoint slides. You'll do real work on real accounts, recorded, reviewed, and graded against a published bar.</p>
+    </div>
+    <div class="card">
+      <h3>It's honest</h3>
+      <p>Pass/fail decisions are evidence-based, not effort-based. Showing up doesn't earn the credential. The work does. Failures are part of the record.</p>
+    </div>
+    <div class="card">
+      <h3>It's yours</h3>
+      <p>Once you earn Operator I, the credential is yours under your name with a unique Lineage ID. It's the start of a recognized profession.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Time commitment</h2>
+  <div class="commitment">
+    <div class="commitment-row">
+      <span class="commitment-label">Today</span>
+      <span class="commitment-value">
+        90 minutes
+        <small>Read the vocabulary doc, take Lesson 01 (SaaS Language Foundations), do the exercise.</small>
+      </span>
+    </div>
+    <div class="commitment-row">
+      <span class="commitment-label">Apprentice phase</span>
+      <span class="commitment-value">
+        First 30 days
+        <small>Work alongside the Pioneer team. Take the other foundation lessons. Get your two owned accounts assigned.</small>
+      </span>
+    </div>
+    <div class="commitment-row">
+      <span class="commitment-label">Operator I cycle</span>
+      <span class="commitment-value">
+        ~30 hours over 6 weeks
+        <small>≈ 5 hours/week added to your regular role. Includes 8 Vital Reads, 3 Loop entries, a Customer Economics analysis, two role-plays, and the evidence pack.</small>
+      </span>
+    </div>
+    <div class="commitment-row">
+      <span class="commitment-label">Decision</span>
+      <span class="commitment-value">
+        Week 6
+        <small>Three reviewers independently score your evidence pack. One calibration meeting. One written decision: Pass, Conditional Pass, or Not Yet.</small>
+      </span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Your progress path</h2>
+  <div class="path">
+    <div class="path-step current">
+      <p class="step-num">You are here</p>
+      <h4>1 · Welcome page (this page)</h4>
+      <p>Orientation. Time commitment. Path overview. The Start button is below this.</p>
+      <span class="step-meta">5 min</span>
+    </div>
+
+    <div class="path-step">
+      <p class="step-num">Step 1</p>
+      <h4>2 · SaaS Language Foundations (Pillar 01)</h4>
+      <p>Read the 20-term <a href="./html/01-saas-foundations/operator-vocabulary.html">operator vocabulary</a> (30 min) → take the foundation <a href="./html/01-saas-foundations/01-saas-language-foundations.html">lesson</a> (60 min). Do the exercise. Submit to your trainer.</p>
+      <span class="step-meta">~90 min today</span>
+    </div>
+
+    <div class="path-step">
+      <p class="step-num">Step 2</p>
+      <h4>3 · Apprentice Phase</h4>
+      <p>First 30 days at Pioneer. Work alongside the team. Read the remaining foundation lessons. Identify your two owned customer accounts.</p>
+      <span class="step-meta">30 days</span>
+    </div>
+
+    <div class="path-step">
+      <p class="step-num">Step 3</p>
+      <h4>4 · Intent meeting</h4>
+      <p>Sit with the Academy Lead. Sign the <a href="./html/templates/certification-intent.html">Intent Form</a>. Lineage ID reserved. The 6-week cycle begins.</p>
+      <span class="step-meta">45 min</span>
+    </div>
+
+    <div class="path-step">
+      <p class="step-num">Step 4</p>
+      <h4>5 · Operator I Cycle (Weeks 1–6)</h4>
+      <p>Weekly Vital Reads. Loop entries. Customer Economics analysis. Two role-plays. Evidence pack. The full path is in <a href="./html/founder-pilot-plan.html">the cycle plan</a>.</p>
+      <span class="step-meta">~30 hours over 6 weeks</span>
+    </div>
+
+    <div class="path-step">
+      <p class="step-num">Step 5</p>
+      <h4>6 · Decision Day</h4>
+      <p>Three independent reviewers. One calibration meeting. One written decision. If Pass: Lineage ID issued, you become a certified Operator I.</p>
+      <span class="step-meta">Week 6</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="start-banner">
+    <h2>Ready to begin?</h2>
+    <p>Lesson 1 is 60 minutes. Read it in your browser — no GitHub, no markdown, no setup. After the lesson there's a short exercise you'll send to your trainer.</p>
+    <a href="./html/01-saas-foundations/01-saas-language-foundations.html" class="start-cta">Start Lesson 1 →</a>
+  </div>
+</section>
+
+<section>
+  <h2>Common questions</h2>
+
+  <details class="faq-item">
+    <summary>Do I need a SaaS background to do this?</summary>
+    <div class="faq-body">
+      <p>No. Lesson 01 is built specifically for operators who are intelligent and operationally strong but new to SaaS language. The 20 terms in the vocabulary doc are explained in plain English with cleaning-industry parallels. By the end of the lesson you'll hold them as cleanly as someone who has worked in SaaS for years.</p>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>What if I don't pass the quizzes?</summary>
+    <div class="faq-body">
+      <p>Each lesson's quiz has a 7-out-of-10 bar. If you score below 7, you can retake it once after re-reading the lesson. The point of the quiz isn't to filter you out — it's to make sure the concepts landed before you build on them. Most candidates pass on the first attempt; some don't, and that's normal.</p>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>What does the Apprentice Phase actually look like?</summary>
+    <div class="faq-body">
+      <p>For 30 days you'll work alongside the Pioneer team. You'll attend customer calls, watch Vital Reads delivered by certified Operators (eventually), and start drafting your own work for feedback. You'll read the foundation lessons in <a href="./html/founder-pilot-plan.html">the order specified by the framework</a>. Your trainer meets with you every Friday for a debrief.</p>
+      <p>You're not being evaluated for certification during Apprentice Phase. You're being prepared for it.</p>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>How is the certification actually decided?</summary>
+    <div class="faq-body">
+      <p>Three independent reviewers each fill a scorecard against the 9-category Operator I bar — competencies, lessons, practical demonstrations, portfolio evidence, business outcomes, role-plays, executive communication, financial pulse, and cannot-do exclusions. They submit independently, then meet for a single 60-minute calibration meeting where the composite decision is recorded.</p>
+      <p>The decision rule during the early Bootstrap Phase is "worst of three" — if any reviewer scores Not Yet on a category, that's the floor. This protects the credential's integrity while the institution is still being built.</p>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>What happens after I'm certified?</summary>
+    <div class="faq-body">
+      <p>You receive a Lineage ID (e.g. <code>POPS-OP-I-2026-002</code>) recorded in the public certification registry. Your title becomes Operator I. The renewal calendar starts. After ~12 months and the right evidence, you can pursue Operator II — the standard "graduate" operator that Pioneer aims to produce.</p>
+      <p>Operator II requires QBR delivery, recorded executive briefings, and verifiable business outcomes across a portfolio. The path is documented; the bar is real.</p>
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>Who do I ask if I get stuck?</summary>
+    <div class="faq-body">
+      <p>Your trainer is your default contact for anything lesson-related, scheduling, or process questions. For doctrine questions — what does Pillar 7 mean, what's the Pioneer Test really asking — re-read the relevant doc first, then ask. The Academy is designed so the docs answer most questions; tribal knowledge is intentionally being reduced.</p>
+    </div>
+  </details>
+</section>
+
+</main>
+
+<footer>
+  <p>Pioneer Operator Academy · candidate launch page · built 2026-06-12</p>
+  <p>Repo home: <a href="https://github.com/nkesseru/pioneer-dcr-dashboard/tree/feature/academy-foundation-v1/docs/operator-academy">docs/operator-academy/</a></p>
+</footer>
+
+</body>
+</html>
