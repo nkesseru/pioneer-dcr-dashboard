@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Founder Pilot — Start Here</title>
+<style>
+  :root {
+    --bg: #fafbfc;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-soft: #4a4a4a;
+    --text-dim: #6b7280;
+    --border: #e5e7eb;
+    --accent: #d97706;
+    --accent-soft: #fef3e2;
+    --accent-deep: #b45309;
+    --success: #15803d;
+    --success-soft: #f0fdf4;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.65;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-deep); }
+  a:hover { color: var(--accent); }
+
+  .hero {
+    background: linear-gradient(135deg, #fff8ed 0%, #fef3e2 100%);
+    padding: 80px 24px 60px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.8rem;
+    color: var(--accent-deep);
+    font-weight: 700;
+    margin: 0 0 16px;
+  }
+  .hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0 0 16px;
+    line-height: 1.2;
+    color: var(--text);
+  }
+  .hero p {
+    font-size: 1.15rem;
+    color: var(--text-soft);
+    max-width: 580px;
+    margin: 0 auto 32px;
+  }
+  .hero .start-cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 36px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.05rem;
+    box-shadow: var(--shadow-lg);
+    transition: transform 0.15s, background 0.15s;
+    min-height: 56px;
+    line-height: 1.5;
+  }
+  .hero .start-cta:hover {
+    background: var(--accent-deep);
+    transform: translateY(-2px);
+    color: #fff;
+  }
+  .hero .start-meta {
+    display: block;
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+  section { margin-bottom: 64px; }
+  section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+  section p { color: var(--text-soft); margin: 0 0 16px; }
+
+  .three-up {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-top: 24px;
+  }
+  .three-up .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .three-up .card h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent-deep);
+  }
+  .three-up .card p {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text-soft);
+  }
+
+  .checklist {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: var(--shadow);
+  }
+  .checklist-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 96px;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+  }
+  .checklist-row:last-child { border-bottom: none; }
+  .checklist-num {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    text-align: center;
+    line-height: 24px;
+    font-weight: 700;
+    font-size: 0.8rem;
+  }
+  .checklist-label {
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.97rem;
+  }
+  .checklist-label small {
+    display: block;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-top: 4px;
+    font-weight: 400;
+  }
+  .checklist-time {
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    text-align: right;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .schedule-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .schedule-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+  }
+  .schedule-row:last-child { border-bottom: none; }
+  .schedule-day {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    color: var(--accent-deep);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .schedule-detail {
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  .schedule-detail strong { color: var(--accent-deep); }
+
+  .feedback-prompt {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .feedback-prompt h4 {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-size: 1rem;
+  }
+  .feedback-prompt p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+  }
+
+  .link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .link-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s;
+    box-shadow: var(--shadow);
+    color: var(--text);
+  }
+  .link-card:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .link-card-title {
+    font-weight: 600;
+    color: var(--accent-deep);
+    font-size: 0.92rem;
+    margin: 0 0 4px;
+  }
+  .link-card-desc {
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    margin: 0;
+  }
+
+  .start-banner {
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #fff 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 32px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+  .start-banner h2 { margin: 0 0 12px; font-size: 1.5rem; }
+  .start-banner p { margin: 0 0 24px; color: var(--text-soft); }
+  .start-banner .start-cta {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 40px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.05rem;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s, background 0.15s;
+    min-height: 56px;
+    line-height: 1.5;
+  }
+  .start-banner .start-cta:hover {
+    background: var(--accent-deep);
+    transform: translateY(-2px);
+    color: #fff;
+  }
+
+  .laura-link-bar {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .laura-link-bar span {
+    color: var(--text-soft);
+    font-size: 0.93rem;
+  }
+  .laura-link-bar a {
+    background: var(--surface);
+    color: var(--accent-deep);
+    border: 1px solid var(--accent);
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .laura-link-bar a:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    background: var(--surface);
+  }
+  footer a { color: var(--text-soft); }
+
+  @media (max-width: 640px) {
+    .hero { padding: 56px 20px 44px; }
+    .hero h1 { font-size: 1.85rem; }
+    .hero p { font-size: 1rem; }
+    main { padding: 40px 20px; }
+    section { margin-bottom: 48px; }
+    section h2 { font-size: 1.25rem; }
+    .checklist-row { grid-template-columns: 24px 1fr; }
+    .checklist-time { grid-column: 2; text-align: left; justify-self: start; }
+    .schedule-row { grid-template-columns: 1fr; gap: 4px; }
+    .start-banner { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <p class="hero-eyebrow">Founder Pilot · Operator Candidate #001</p>
+  <h1>Founder Pilot — Start Here.</h1>
+  <p>You're running yourself through the Academy before Laura. The point isn't certification — the point is finding every gap in the system so her cycle is smoother than yours.</p>
+  <a href="./founder-pilot-html.html" class="start-cta">Open the Founder Pilot console →</a>
+  <span class="start-meta">No login · static pilot · ~18 hours over 6 weeks · Operator I bar</span>
+</header>
+
+<main>
+
+<section>
+  <h2>What this is</h2>
+  <p>The Founder Pilot is Pioneer's first certification cycle, with you as the candidate. The Academy you wrote is now the bar you certify against. The decision rule is the same as Laura's will be. The evidence requirements don't change. The reviewer triangle doesn't change.</p>
+  <p>You're not the author for the next six weeks. You're the candidate. The recursion is the point — if the founder can pass the bar he wrote, the credential is defensible from the top.</p>
+
+  <div class="three-up">
+    <div class="card">
+      <h3>No login required yet</h3>
+      <p>This is a static Academy pilot, served as plain HTML. No accounts, no portal, no auth. Your progress is saved in the Founder Pilot console's local storage only.</p>
+    </div>
+    <div class="card">
+      <h3>You're stress-testing</h3>
+      <p>Every friction point you hit becomes either a Framework v1.2 amendment or a Laura-cycle improvement. Capture honestly — surface what doesn't work.</p>
+    </div>
+    <div class="card">
+      <h3>Laura is next</h3>
+      <p>Cycle 2 is hers. Your goal is to make her path easier by walking yours first. Every gap you find is a gap she doesn't have to find.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Day 0 checklist (Thursday 2026-06-11 → Friday 2026-06-12)</h2>
+  <p>Six actions. ~60 minutes total. Six of seven hard blockers clear in this hour.</p>
+  <div class="checklist">
+    <div class="checklist-row">
+      <span class="checklist-num">1</span>
+      <div class="checklist-label">
+        Identify Bootstrap Reviewer 3 candidates
+        <small>Open the pilot plan §2c. Pick two of the five candidate-pool options you'll actually contact this week.</small>
+      </div>
+      <span class="checklist-time">15 min</span>
+    </div>
+    <div class="checklist-row">
+      <span class="checklist-num">2</span>
+      <div class="checklist-label">
+        Assign Acting Academy Lead + Acting Trainer
+        <small>Mike or Kirby for each. Coin flip if no preference. Tell them both.</small>
+      </div>
+      <span class="checklist-time">5 min</span>
+    </div>
+    <div class="checklist-row">
+      <span class="checklist-num">3</span>
+      <div class="checklist-label">
+        Pick the 2 Vital Read accounts
+        <small>Two Pioneer customers you'll treat as if you were their CSM, OR Pioneer internal operations as two "customer" views. Decide before Friday's Intent.</small>
+      </div>
+      <span class="checklist-time">10 min</span>
+    </div>
+    <div class="checklist-row">
+      <span class="checklist-num">4</span>
+      <div class="checklist-label">
+        Reserve Lineage ID POPS-OP-I-2026-001
+        <small>One-line edit to the registry. Status: "In Progress · Nick Kesseru · Founder Pilot · started 2026-06-15".</small>
+      </div>
+      <span class="checklist-time">5 min</span>
+    </div>
+    <div class="checklist-row">
+      <span class="checklist-num">5</span>
+      <div class="checklist-label">
+        Send 3 messages (templates ready in the console)
+        <small>Acting Academy Lead, Acting Trainer, and the two Reviewer 3 candidates. Pre-written. Copy / paste / send.</small>
+      </div>
+      <span class="checklist-time">15 min</span>
+    </div>
+    <div class="checklist-row">
+      <span class="checklist-num">6</span>
+      <div class="checklist-label">
+        Intent meeting Friday afternoon
+        <small>45-min meeting with Acting Academy Lead. Draft + sign Intent Form in the room. Calendar holds locked for Weeks 1–4 Vital Reads + Week 6 calibration.</small>
+      </div>
+      <span class="checklist-time">45 min</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Week 1 overview (2026-06-15 → 2026-06-21)</h2>
+  <div class="schedule-table">
+    <div class="schedule-row">
+      <span class="schedule-day">Mon AM</span>
+      <span class="schedule-detail"><strong>Day 1 Challenge Battery</strong> — 4 quizzes (RPLH, Customer Economics, MC Diagnostics, QBR Delivery) graded same day by Acting Trainer using answer keys. 1 hour each, all morning.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Mon PM</span>
+      <span class="schedule-detail"><strong>Customer Economics analysis</strong> on a real Pioneer customer + Financial Pulse verbal quiz + self-rating first pass + Pioneer Test reflection first draft. End of Monday: 5 of 10 evidence pack items closed or in draft.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Tue</span>
+      <span class="schedule-detail">Operational Feed log starts (5 events by EOD).</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Wed</span>
+      <span class="schedule-detail">Vital Read prep on the 2 named accounts. Identify red-flag vitals to focus on.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Thu</span>
+      <span class="schedule-detail">Loop entry #1 created with 7-day verification date.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Fri AM</span>
+      <span class="schedule-detail"><strong>Weekly Vital Read #1 + #2</strong> on the 2 named accounts. Recorded per the recording standard.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Fri PM</span>
+      <span class="schedule-detail">Live review with Acting Trainer of one recording. One specific change for Week 2.</span>
+    </div>
+    <div class="schedule-row">
+      <span class="schedule-day">Weekend</span>
+      <span class="schedule-detail">Refine self-rating if Vital Reads changed any calls. Let Pioneer Test reflection sit until Week 4.</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Founder feedback checklist</h2>
+  <p>You're not just running the cycle — you're auditing the Academy as you go. Capture these as you hit them. They feed Laura's cycle, not yours.</p>
+
+  <div class="feedback-prompt">
+    <h4>Friction surfaced</h4>
+    <p>What made you think "ugh, this is awkward"? Was it a missing template, a confusing workflow, a step that took 3× longer than it should have?</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Gaps found</h4>
+    <p>What did you need that didn't exist? What did you have to improvise? Capture even small ones — Laura won't have your context to improvise from.</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Surprises (positive)</h4>
+    <p>What landed better than expected? Which artifact actually helped? Which workflow was clearer than you remembered writing it?</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Surprises (negative)</h4>
+    <p>What felt fine on paper but didn't survive contact with real work? Where did the doctrine sound right but the operation broke?</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Time estimates</h4>
+    <p>Where did you over- or under-estimate? The fast-track says ~18 hours for the founder. If reality is 24 hours, Laura's projected 30 is probably 40+. Update assumptions.</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Things to tell Laura specifically</h4>
+    <p>What advice would you give Laura before her Day 0 that you wish you'd had on yours? Those become the next version of <a href="./candidate-launch-page.html">her launch page</a>.</p>
+  </div>
+
+  <div class="feedback-prompt">
+    <h4>Framework v1.2 candidates</h4>
+    <p>What doctrine, framework, or template would you actually change? Defer the change itself until Cycle 1 closes — but capture the candidate now while it's fresh.</p>
+  </div>
+
+  <p style="margin-top: 20px; font-size: 0.9rem; color: var(--text-dim);">Recommend a single markdown file: <code>founder-pilot-feedback-log.md</code> at the repo root, captured daily in 2–3 sentences per category.</p>
+</section>
+
+<section>
+  <h2>Lessons + reference docs (rendered HTML only)</h2>
+  <p>Every link below opens a clean HTML page, not raw markdown. Lesson HTMLs have a back-link banner at the top.</p>
+  <div class="link-grid">
+    <a class="link-card" href="./html/01-saas-foundations/operator-vocabulary.html">
+      <p class="link-card-title">Pillar 01 · Operator Vocabulary</p>
+      <p class="link-card-desc">20 SaaS terms operationalized. Reference for the lesson + every other doc.</p>
+    </a>
+    <a class="link-card" href="./html/01-saas-foundations/01-saas-language-foundations.html">
+      <p class="link-card-title">Pillar 01 · SaaS Language Foundations</p>
+      <p class="link-card-desc">60–90 min foundation lesson. Pioneer Test + Gold Standard pass.</p>
+    </a>
+    <a class="link-card" href="./html/02-cleaning-operations/02-revenue-per-labor-hour.html">
+      <p class="link-card-title">Lesson 02.2 · Revenue Per Labor Hour</p>
+      <p class="link-card-desc">RPLH definition, drivers, conversation patterns, customer scenarios.</p>
+    </a>
+    <a class="link-card" href="./html/02-cleaning-operations/03-customer-economics.html">
+      <p class="link-card-title">Lesson 02.3 · Customer Economics</p>
+      <p class="link-card-desc">Gross margin per customer, scope creep loop, owner conversation drills.</p>
+    </a>
+    <a class="link-card" href="./html/03-pioneerops-platform-mastery/01-mission-control-diagnostics.html">
+      <p class="link-card-title">Lesson 03.1 · Mission Control Diagnostics</p>
+      <p class="link-card-desc">Vital Read structure, Withdrawal Curve, Pillar 8 reflex, self-sustaining test.</p>
+    </a>
+    <a class="link-card" href="./html/05-customer-success/03-qbr-delivery.html">
+      <p class="link-card-title">Lesson 05.3 · QBR Delivery (read for context)</p>
+      <p class="link-card-desc">Quiz NOT required at Operator I, but read it — sets the bar for the next tier.</p>
+    </a>
+    <a class="link-card" href="./html/founder-pilot-plan.html">
+      <p class="link-card-title">Founder Pilot Plan</p>
+      <p class="link-card-desc">Role conflicts resolved, 4-quadrant requirements classification, reviewer constellation.</p>
+    </a>
+    <a class="link-card" href="./html/founder-fast-track.html">
+      <p class="link-card-title">Founder Fast Track</p>
+      <p class="link-card-desc">Compressed schedule, ~18-hour budget, Day 1 Challenge Battery details.</p>
+    </a>
+    <a class="link-card" href="./html/templates/operator-i-evidence-pack-index.html">
+      <p class="link-card-title">Operator I Evidence Pack Index</p>
+      <p class="link-card-desc">The 10 evidence rows you'll fill across the 6 weeks.</p>
+    </a>
+    <a class="link-card" href="./html/templates/operator-i-reviewer-scorecard.html">
+      <p class="link-card-title">Operator I Reviewer Scorecard</p>
+      <p class="link-card-desc">9-category grading instrument. Three reviewers fill independently.</p>
+    </a>
+    <a class="link-card" href="./html/cycle-operations.html">
+      <p class="link-card-title">Cycle Operations Workflows</p>
+      <p class="link-card-desc">11 procedural workflows tying templates into a runnable system.</p>
+    </a>
+    <a class="link-card" href="./html/academy-system-completion-audit.html">
+      <p class="link-card-title">Academy System Completion Audit</p>
+      <p class="link-card-desc">End-to-end gap audit + 98% completion score + launch readiness.</p>
+    </a>
+  </div>
+</section>
+
+<section>
+  <div class="start-banner">
+    <h2>Open the Founder Pilot console</h2>
+    <p>Live checkboxes, copy-button message templates, day-by-day schedule, fallback paths. Your progress saves locally as you work.</p>
+    <a href="./founder-pilot-html.html" class="start-cta">Open console →</a>
+  </div>
+
+  <div class="laura-link-bar">
+    <span>Want to see what Laura sees? Her landing page is live.</span>
+    <a href="./candidate-launch-page.html">View Laura's page →</a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>Pioneer Operator Academy · Founder Pilot · Operator Candidate #001 · built 2026-06-12</p>
+  <p><a href="https://academy-pioneerops.web.app/">academy-pioneerops.web.app</a></p>
+</footer>
+
+</body>
+</html>
