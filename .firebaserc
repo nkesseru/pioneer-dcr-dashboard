@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "pioneer-dcr-hub"
-  }
+  },
+  "targets": {
+    "pioneer-dcr-hub": {
+      "hosting": {
+        "main": [
+          "pioneer-dcr-hub"
+        ],
+        "academy": [
+          "academy-pioneerops"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
