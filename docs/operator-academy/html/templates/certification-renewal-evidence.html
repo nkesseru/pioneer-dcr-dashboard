@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Renewal Evidence — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="renewal-evidence">Renewal Evidence</h1>
+<p>Used at the certification renewal cycle (annual for Operator I + II; biennial for Operator III + Executive Advisor).</p>
+<p>Renewal is <strong>evidence-based</strong>, like initial certification. Showing up does not renew the credential. Recent work does.</p>
+<p>The renewal pack is smaller than the initial pack. It's a focused proof that the Operator has maintained the bar over the renewal period.</p>
+<hr />
+<h2 id="operator">Operator</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full name</td>
+<td></td>
+</tr>
+<tr>
+<td>Lineage ID</td>
+<td>POPS-OP-{Tier}-{YYYY}-{seq}</td>
+</tr>
+<tr>
+<td>Current tier</td>
+<td></td>
+</tr>
+<tr>
+<td>Tier first certified</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>This renewal due</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Renewal pack submitted</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Reviewing Academy lead</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="recent-business-outcomes-tier-bar-maintained">Recent Business Outcomes (Tier Bar Maintained)</h2>
+<p>The Operator demonstrates their tier bars have been maintained over the renewal period (trailing 12 months for annual renewals; trailing 24 months for biennial).</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Tier bar</th>
+<th>Actual (renewal period)</th>
+<th>Maintained?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NRR</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>GRR</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Customer health avg</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Customer NPS</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>QBRs delivered per quarter</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Verified Loop outcomes</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Tier-specific outcomes (mentorship for III, segment NRR for EA, etc.)</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<p>If any "Maintained" is No — explanation required + the renewal may convert to a "Renew with Caution" or Demotion outcome.</p>
+<blockquote>
+<p>Explanation if any tier bar slipped:</p>
+</blockquote>
+<hr />
+<h2 id="recent-loop-evidence">Recent Loop Evidence</h2>
+<p>The Operator provides honest evidence of recent closed Loops.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Loop summary</th>
+<th>Customer (anonymized)</th>
+<th>Pre-declared prediction</th>
+<th>Verified result</th>
+<th>Honest outcome?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>4</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<p>Bar: at least <strong>4 closed Loops per renewal year</strong>. More for higher tiers.</p>
+<p>At least one of the Loops above must include a <strong>verified failure</strong> — a prediction that did not land, named honestly. Renewal packs containing only successes are a curation flag (see Framework Section 9).</p>
+<table>
+<thead>
+<tr>
+<th>Failed-prediction Loop included?</th>
+<th>Yes / No</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>If No, explain why this renewal cycle had no failed predictions</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="recent-self-assessment-comparison">Recent Self-Assessment Comparison</h2>
+<p>The Operator's competency self-rating, compared to their last assessment:</p>
+<table>
+<thead>
+<tr>
+<th>Pillar</th>
+<th>Last assessment summary</th>
+<th>This renewal summary</th>
+<th>Direction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01 SaaS Foundations</td>
+<td>(e.g., 5/5 at level 2+)</td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>02 Cleaning Operations</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>03 Platform Mastery</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>04 AI Operator</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>05 Customer Success</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>06 Revenue Operations</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+<tr>
+<td>07 Executive Advisor</td>
+<td></td>
+<td></td>
+<td>Same / Improved / Regressed</td>
+</tr>
+</tbody>
+</table>
+<p>If any pillar shows "Regressed", the Operator explains.</p>
+<blockquote>
+<p>Explanation for any regressed pillar:</p>
+</blockquote>
+<hr />
+<h2 id="currency-with-doctrine">Currency with Doctrine</h2>
+<p>The Operator confirms they have read and can articulate every Constitution / Thesis / Framework amendment since their last renewal.</p>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Version at last renewal</th>
+<th>Current version</th>
+<th>Read end-to-end since?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ACADEMY-THESIS</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>CONSTITUTION</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Operator Certification Framework</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Academy Gold Standard</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Financial Pulse Operating System</td>
+<td></td>
+<td></td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>One amendment the Operator can name + articulate in their own words (test of currency):</p>
+</blockquote>
+<hr />
+<h2 id="recent-pioneer-test-application">Recent Pioneer Test Application</h2>
+<p>The Operator names one piece of their own recent work that they applied the Pioneer Test to AND one piece they had to revise after the test caught a gap.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Work</th>
+<th>Pioneer Test outcome</th>
+<th>What changed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pass</td>
+<td></td>
+<td>Pass</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>Revision</td>
+<td></td>
+<td>Initial fail</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="tier-specific-renewal-items">Tier-Specific Renewal Items</h2>
+<h3 id="operator-iii-renewals-add">Operator III renewals add:</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>At least 1 Operator I successfully mentored to II in the renewal period</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>At least 1 Academy contribution (lesson improvement, role-play scenario, etc.)</td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="executive-advisor-renewals-add">Executive Advisor renewals add:</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>At least 1 Operator graduate per year of the renewal period</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>At least 1 doctrine contribution per renewal period</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Continued industry-facing activity</td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="operators-renewal-reflection">Operator's Renewal Reflection</h2>
+<p>The Operator answers, in their own voice (one paragraph each):</p>
+<h3 id="whats-better-about-my-work-since-the-last-renewal">What's better about my work since the last renewal?</h3>
+<blockquote></blockquote>
+<h3 id="whats-worse-harder-or-where-ive-drifted">What's worse, harder, or where I've drifted?</h3>
+<blockquote></blockquote>
+<h3 id="where-am-i-planning-to-grow-in-the-next-renewal-cycle">Where am I planning to grow in the next renewal cycle?</h3>
+<blockquote></blockquote>
+<hr />
+<table>
+<thead>
+<tr>
+<th>Operator signature</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="for-academy-lead-use">For Academy Lead Use</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer for this renewal</td>
+<td></td>
+</tr>
+<tr>
+<td>Pioneer Test on the renewal pack</td>
+<td>Pass / Fail</td>
+</tr>
+<tr>
+<td>Tier bars maintained?</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Renewal decision</td>
+<td>Renew / Renew with Caution / Demote / Decertify</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Academy lead notes (1 paragraph):</p>
+</blockquote>
+<h3 id="renewal-outcomes-detail">Renewal Outcomes Detail</h3>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Renew</strong></td>
+<td>Certificate continues for another period. Updated renewal date set.</td>
+</tr>
+<tr>
+<td><strong>Renew with Caution</strong></td>
+<td>Certificate continues with a documented improvement plan + a 6-month interim review.</td>
+</tr>
+<tr>
+<td><strong>Demote</strong></td>
+<td>Per Framework Section 9. Operator drops one tier (or two for curation, or revoke for disqualifying).</td>
+</tr>
+<tr>
+<td><strong>Decertify</strong></td>
+<td>Credential revoked entirely. Lineage ID retired with reason in registry.</td>
+</tr>
+</tbody>
+</table>
+<p>| Next renewal date (if renewed) | YYYY-MM-DD |
+| Interim review date (if Caution) | YYYY-MM-DD |
+| Effective date of demotion (if applicable) | YYYY-MM-DD |</p>
+<blockquote>
+<p>Academy lead's renewal statement (one paragraph; candidate-facing tone):</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Academy lead signature</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/certification-renewal-evidence.md</code>
+</footer>
+</body>
+</html>

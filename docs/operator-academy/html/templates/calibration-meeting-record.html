@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calibration Meeting Record — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="calibration-meeting-record">Calibration Meeting Record</h1>
+<p><strong>The artifact that decides the cycle.</strong> Three scorecards on one screen → one decision recorded here → Lineage ID issued or not.</p>
+<p><strong>Duration:</strong> 60 minutes hard cap. Discussions that need more time produce a Conditional Pass with named gaps, not a longer meeting.</p>
+<p><strong>Filled by:</strong> the Acting Academy Lead (or Academy Lead post-Bootstrap), in the meeting, on screen visible to all three reviewers.</p>
+<hr />
+<h2 id="1-meeting-metadata">1. Meeting metadata</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cycle identifier</td>
+<td>(e.g., Cycle 1 — Nick Kesseru — Operator I — Founder Pilot)</td>
+</tr>
+<tr>
+<td>Candidate</td>
+<td></td>
+</tr>
+<tr>
+<td>Target tier</td>
+<td>Operator I / II / III / Executive Advisor</td>
+</tr>
+<tr>
+<td>Meeting date</td>
+<td></td>
+</tr>
+<tr>
+<td>Meeting start time</td>
+<td></td>
+</tr>
+<tr>
+<td>Meeting end time</td>
+<td></td>
+</tr>
+<tr>
+<td>Facilitator</td>
+<td>(Acting Academy Lead — must NOT be the candidate's primary trainer)</td>
+</tr>
+<tr>
+<td>Reviewers present</td>
+<td>All 3 required for Bootstrap; ≥ 2 of 2 + Academy Lead post-Bootstrap</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-reviewer-scorecards-received">2. Reviewer scorecards received</h2>
+<p>Each reviewer submits their independently-completed <a href="./operator-i-reviewer-scorecard.html">scorecard</a> by 24 hours before this meeting. No coordination allowed before submission.</p>
+<table>
+<thead>
+<tr>
+<th>Reviewer</th>
+<th>Scorecard received?</th>
+<th>Date submitted</th>
+<th>COI form on file?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer 1</td>
+<td>Y / N</td>
+<td></td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td>Y / N</td>
+<td></td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Reviewer 3 (Bootstrap only)</td>
+<td>Y / N</td>
+<td></td>
+<td>Y / N</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If any "N":</strong> the meeting does not proceed. Reschedule when complete.</p>
+<h2 id="3-composite-scorecard-summary">3. Composite scorecard summary</h2>
+<p>Each reviewer states their overall decision and the single biggest evidence point that drove it. <strong>5 minutes per reviewer. Hard cap.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Reviewer</th>
+<th>Overall decision</th>
+<th>Single biggest evidence point</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer 1</td>
+<td>Pass / Conditional / Not Yet</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td>Pass / Conditional / Not Yet</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 3</td>
+<td>Pass / Conditional / Not Yet</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-category-by-category-disagreements">4. Category-by-category disagreements</h2>
+<p>For each of the 9 scorecard categories, list any category where reviewers' scores differ.</p>
+<p><strong>Discipline 5 from the onboarding kit applies:</strong> each disagreement is named in one sentence. Resolved by re-reading evidence against the bar, not by debate. <strong>No paragraphs. No relitigating evidence after the fact.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Disagreement (1 sentence each)</th>
+<th>Resolution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 · Competencies</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2 · Lessons</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3 · Practical demonstrations</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4 · Portfolio evidence</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>5 · Business outcomes</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6 · Role-play assessments</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7 · Executive comms</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>8 · Financial Pulse capabilities</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>9 · Cannot-do exclusions</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-hard-fail-flags">5. Hard-fail flags</h2>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>Cited by any reviewer?</th>
+<th>Evidence ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Any quiz &lt; 7/10 AND no retake</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Zero closed Loops</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer Economics arithmetic fails Pillar 7</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>No verified business outcome</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Pioneer Test reflection fails the Pioneer Test</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Fails 2 of 2 chosen roleplays</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Any competency at level 0</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>&lt; 15 of 34 competencies at level 2+</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Cannot-do exclusion violation (over-reaching to higher-tier work)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>If any hard-fail trigger is "Y" by any reviewer:</strong> the cycle outcome is automatically at minimum Not Yet for that category. Final decision still applies the worst-of-three rule.</p>
+<h2 id="6-composite-decision">6. Composite decision</h2>
+<p><strong>The decision rule:</strong> the final decision is the <strong>worst</strong> of the three reviewers' decisions, not the average. This is the Bootstrap Triple-Reviewer Safeguard.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Worst reviewer decision</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+<tr>
+<td><strong>Composite cycle decision</strong></td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+</tbody>
+</table>
+<p>If hard-fail flags surfaced AND any reviewer cites them as binding: composite decision is Not Yet regardless of other scores.</p>
+<h3 id="decision-details">Decision details</h3>
+<p><strong>If Pass:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lineage ID to issue</td>
+<td>POPS-OP-{I/II/III/EA}-{YYYY}-{NNN}</td>
+</tr>
+<tr>
+<td>Effective date</td>
+<td>(date of this meeting)</td>
+</tr>
+<tr>
+<td>Title change effective date</td>
+<td></td>
+</tr>
+<tr>
+<td>Registry update committed by</td>
+<td>(Acting Academy Lead)</td>
+</tr>
+<tr>
+<td>Next renewal date</td>
+<td>(= effective date + 1 year for Operator I/II, + 2 years for III/EA)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If Conditional Pass:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Named gaps (≤ 2)</td>
+<td>1. <br>2.</td>
+</tr>
+<tr>
+<td>Remediation window</td>
+<td>14 days from this meeting (per <a href="../operator-certification-framework.html">framework §7 Step 4</a>)</td>
+</tr>
+<tr>
+<td>Remediation due date</td>
+<td></td>
+</tr>
+<tr>
+<td>Re-review reviewer</td>
+<td>Single reviewer (typically Academy Lead) re-reviews remediation; full panel does NOT reconvene</td>
+</tr>
+<tr>
+<td>Lineage ID reserved at</td>
+<td>(status: "Conditional Pass · pending remediation" until cleared)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If Not Yet:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary reason</td>
+<td>(one sentence)</td>
+</tr>
+<tr>
+<td>Remediation plan</td>
+<td>(3 specific bars to clear)</td>
+</tr>
+<tr>
+<td>Earliest re-test window</td>
+<td>(4 weeks for Operator I, 8 weeks for higher tiers per framework §8)</td>
+</tr>
+<tr>
+<td>Lineage ID status</td>
+<td>Released back to pool (not consumed)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-public-review-trigger-bootstrap-only">7. Public Review trigger (Bootstrap only)</h2>
+<p>Per <a href="../operator-certification-framework.html">framework §7.5 Safeguard 3</a>, Bootstrap-phase certifications receive Public Review:</p>
+<ul>
+<li class="task"><input type="checkbox" disabled> Cycle record file authored within 48 hours of this meeting</li>
+<li class="task"><input type="checkbox" disabled> Cycle record file distributed to Pioneer leadership (internal-public review)</li>
+<li class="task"><input type="checkbox" disabled> 7-day review window opens on (date)</li>
+<li class="task"><input type="checkbox" disabled> No leadership-raised concerns by end of window OR concerns resolved</li>
+<li class="task"><input type="checkbox" disabled> Decision finalized after review window closes</li>
+</ul>
+<p><strong>Post-Bootstrap:</strong> skip §7. Decision is final at end of this meeting.</p>
+<h2 id="8-framework-v12-amendment-candidates-surfaced">8. Framework v1.2 amendment candidates surfaced</h2>
+<p>This cycle is also a stress-test of the framework. Capture amendment candidates that surfaced during scoring or calibration. These feed the <a href="../operator-certification-framework.html">framework amendment process</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Amendment candidate</th>
+<th>Why surfaced</th>
+<th>Defer to Cycle 2 retro?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>Y / N</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-meeting-close">9. Meeting close</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Composite decision communicated to candidate by</td>
+<td>(Acting Academy Lead delivers within 24 hours via <a href="./certification-decision.html">decision template</a>)</td>
+</tr>
+<tr>
+<td>Cycle record file location</td>
+<td><code>certification-cycles/cycle-{N}-{candidate}-{tier}.md</code></td>
+</tr>
+<tr>
+<td>Cycle record file due date</td>
+<td>(within 48 hours of this meeting)</td>
+</tr>
+<tr>
+<td>Reviewer COI forms attached to cycle record</td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Reviewer scorecards attached to cycle record</td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>All artifacts archived</td>
+<td>Y / N (per the archive workflow in <a href="../cycle-operations.html"><code>cycle-operations.md</code></a>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Meeting record signed by:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Facilitator (Academy Lead)</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="what-this-record-is-not">What this record is NOT</h2>
+<ul>
+<li><strong>Not the cycle record.</strong> That's a separate, fuller artifact (see <a href="../cycle-operations.html">cycle-operations.md</a> workflow). This is the input.</li>
+<li><strong>Not the decision letter to the candidate.</strong> That's <a href="./certification-decision.html"><code>certification-decision.md</code></a>, filled separately by Academy Lead within 24 hours.</li>
+<li><strong>Not where disagreements get rehashed in detail.</strong> Reviewers cited evidence in their independent scorecards. This meeting cites those scorecards, not new opinions.</li>
+</ul>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/calibration-meeting-record.md</code>
+</footer>
+</body>
+</html>

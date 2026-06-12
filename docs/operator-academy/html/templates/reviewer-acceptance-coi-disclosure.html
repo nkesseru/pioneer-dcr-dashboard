@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reviewer Acceptance + Conflict-of-Interest Disclosure — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="reviewer-acceptance-conflict-of-interest-disclosure">Reviewer Acceptance + Conflict-of-Interest Disclosure</h1>
+<p>Filled by <strong>each reviewer</strong> at the start of each certification cycle they participate in. One form per reviewer per cycle.</p>
+<p><strong>Why this form exists:</strong> the <a href="./bootstrap-reviewer-onboarding-kit.html">Bootstrap Reviewer onboarding kit</a> and <a href="../operator-certification-framework.html">framework §7 Step 3</a> require independence. Independence is only meaningful if relationships are disclosed in writing before reviewing begins.</p>
+<p><strong>When it's filled:</strong> within 72 hours of receiving the reviewer ask. Before the candidate submits any evidence.</p>
+<p><strong>Where it's filed:</strong> appended to the cycle record file (<code>certification-cycles/cycle-{N}-{candidate}.md</code>) at decision time. Reviewers keep their own copy.</p>
+<hr />
+<h2 id="reviewer">Reviewer</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer name</td>
+<td></td>
+</tr>
+<tr>
+<td>Cycle identifier</td>
+<td>(e.g., Cycle 1 — Nick Kesseru — Operator I — Founder Pilot)</td>
+</tr>
+<tr>
+<td>Candidate name</td>
+<td></td>
+</tr>
+<tr>
+<td>Date acceptance received</td>
+<td></td>
+</tr>
+<tr>
+<td>Date this form filled</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="role-accepted">Role accepted</h2>
+<p>Check exactly one. If multiple apply (e.g., Acting Trainer + Reviewer 1), check the primary role and note the secondary in the next field.</p>
+<ul>
+<li class="task"><input type="checkbox" disabled> Bootstrap Reviewer 1 (also Acting Trainer)</li>
+<li class="task"><input type="checkbox" disabled> Bootstrap Reviewer 2 (also Acting Academy Lead)</li>
+<li class="task"><input type="checkbox" disabled> Bootstrap Reviewer 3 (independent — must meet equivalent-capability bar per <a href="../operator-certification-framework.html">framework §7.5</a>)</li>
+<li class="task"><input type="checkbox" disabled> Senior Operator Reviewer (post-Bootstrap, when ≥ 3 Operators certified at target tier)</li>
+<li class="task"><input type="checkbox" disabled> Academy Lead Reviewer (post-Bootstrap)</li>
+</ul>
+<p><strong>Additional role(s) in this cycle:</strong></p>
+<h2 id="equivalent-capability-declaration-bootstrap-reviewers-only">Equivalent-capability declaration (Bootstrap Reviewers only)</h2>
+<p>Per framework §7.5, a Bootstrap Reviewer must declare equivalent capability for the target tier. Skip this section if you are a post-Bootstrap Senior Operator Reviewer.</p>
+<table>
+<thead>
+<tr>
+<th>Capability area</th>
+<th>Declaration (1 sentence)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cleaning operations experience</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer success / executive conversation experience</td>
+<td></td>
+</tr>
+<tr>
+<td>Financial diagnostic / Six Vitals fluency</td>
+<td></td>
+</tr>
+<tr>
+<td>Why your judgment is credible for <strong>this candidate at this tier</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="conflict-of-interest-disclosure">Conflict-of-Interest Disclosure</h2>
+<p>Disclose every relationship the candidate has with you that is <strong>not arms-length professional</strong>. Disclosing does not disqualify you. Failing to disclose does.</p>
+<table>
+<thead>
+<tr>
+<th>Relationship type</th>
+<th>Applies?</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct employment (you employ the candidate, or candidate employs you)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Equity stake (you hold equity in the candidate's company or vice versa)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Co-ownership or business partnership</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Family relationship (immediate or extended)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Romantic / personal relationship (current or within past 12 months)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Prior mentorship (you mentored the candidate at any point)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer of the candidate's business (or vice versa) within past 12 months</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Financial obligation in either direction (debt, contract, deferred comp)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>Other relationship that a third party would consider material</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Description of any "Yes" answers (one paragraph):</strong></p>
+<h2 id="independence-affirmations">Independence Affirmations</h2>
+<p>I affirm the following. Check each box. Unchecked boxes mean the affirmation does not yet apply — flag to Academy Lead before reviewing begins.</p>
+<ul>
+<li class="task"><input type="checkbox" disabled> I have read the <a href="./bootstrap-reviewer-onboarding-kit.html">Bootstrap Reviewer onboarding kit</a> end-to-end.</li>
+<li class="task"><input type="checkbox" disabled> I have read <a href="../operator-certification-framework.html">framework §2</a> (Operator I bar) — or the tier-equivalent section if reviewing a different tier.</li>
+<li class="task"><input type="checkbox" disabled> I have skimmed the <a href="../CONSTITUTION.html">Constitution §"Pioneer Test"</a> and Pillars 7 + 8.</li>
+<li class="task"><input type="checkbox" disabled> I will fill my <a href="./operator-i-reviewer-scorecard.html">reviewer scorecard</a> <strong>independently</strong> — no coordination with other reviewers before submission.</li>
+<li class="task"><input type="checkbox" disabled> I will cite specific evidence (timestamp, file, page) for every Pass score I assign.</li>
+<li class="task"><input type="checkbox" disabled> I will apply the <a href="./pioneer-test-grading-rubric.html">Pioneer Test grading rubric</a> to my own scorecard before submitting it.</li>
+<li class="task"><input type="checkbox" disabled> I understand the final cycle decision is the <strong>worst of three</strong> reviewer decisions, not the average.</li>
+<li class="task"><input type="checkbox" disabled> I understand that an honest Not Yet is the system working as designed.</li>
+<li class="task"><input type="checkbox" disabled> I commit ~10 hours over the cycle's review weeks (typically Weeks 5–6 of a 6-week cycle).</li>
+<li class="task"><input type="checkbox" disabled> I will not discuss this candidate's cycle or evidence with anyone outside the reviewer + Academy Lead group until the decision is delivered.</li>
+</ul>
+<h2 id="signature">Signature</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer signature (typed name)</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="academy-lead-acknowledgment">Academy Lead acknowledgment</h2>
+<p>Filled by the Academy Lead (Acting or otherwise) upon receipt of this form.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Acknowledged by</td>
+<td></td>
+</tr>
+<tr>
+<td>Date acknowledged</td>
+<td></td>
+</tr>
+<tr>
+<td>Conflict severity assessment</td>
+<td>None / Minor (proceed) / Material (proceed with Academy Lead memo) / Disqualifying (reviewer replaced)</td>
+</tr>
+<tr>
+<td>Decision</td>
+<td>Reviewer confirmed for this cycle / Reviewer replaced</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="what-this-form-is-not">What this form is NOT</h2>
+<ul>
+<li><strong>Not new doctrine.</strong> Operationalizes the existing independence requirement in framework §7 Step 3 and the Bootstrap clause §7.5 (Triple-Reviewer Safeguard).</li>
+<li><strong>Not a disqualification gate.</strong> Most disclosures result in "proceed" or "proceed with memo." Only material, undisclosable conflicts (active financial entanglement, romantic relationship) disqualify.</li>
+<li><strong>Not negotiable.</strong> A reviewer who refuses to disclose cannot review. No exceptions.</li>
+</ul>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/reviewer-acceptance-coi-disclosure.md</code>
+</footer>
+</body>
+</html>

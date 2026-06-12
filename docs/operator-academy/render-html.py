@@ -27,6 +27,9 @@ FILES = [
     "founder-pilot-plan.md",
     "founder-fast-track.md",
     "certification-registry.md",
+    # Cycle operations (Academy Completion Mode additions)
+    "cycle-operations.md",
+    "academy-system-completion-audit.md",
     # Templates (operational instruments the candidate uses)
     "templates/bootstrap-reviewer-onboarding-kit.md",
     "templates/operator-i-reviewer-scorecard.md",
@@ -39,6 +42,18 @@ FILES = [
     "templates/roleplay-rubric-mc-diagnostics-scenario-a.md",
     "templates/pioneer-test-grading-rubric.md",
     "templates/apprentice-progress-tracker-template.md",
+    # Completion-audit additions
+    "templates/reviewer-acceptance-coi-disclosure.md",
+    "templates/calibration-meeting-record.md",
+    "templates/cycle-record.md",
+    # Existing certification process templates surfaced by the audit
+    "templates/certification-intent.md",
+    "templates/certification-decision.md",
+    "templates/certification-evidence-pack.md",
+    "templates/certification-reviewer-evaluation.md",
+    "templates/certification-self-assessment.md",
+    "templates/certification-renewal-evidence.md",
+    "templates/certification-demotion-notice.md",
     # Foundation lessons (Day 1 Challenge Battery targets)
     "02-cleaning-operations/02-revenue-per-labor-hour.md",
     "02-cleaning-operations/03-customer-economics.md",

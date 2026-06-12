@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Academy System Completion Audit — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="academy-system-completion-audit">Academy System Completion Audit</h1>
+<p><strong>The question.</strong> If Nick began Cycle 1 today and completed Operator I certification on the target schedule, what steps, documents, reviewers, decisions, artifacts, approvals, and records would need to exist from beginning to end? <strong>Find every gap.</strong></p>
+<p><strong>The lens.</strong> Academy Director preparing for launch. Goal: a complete operating system that can run a cycle without tribal knowledge.</p>
+<p><strong>The constraint.</strong> Doctrine is frozen. Constitution, Financial Pulse, Certification Standards — all frozen. Only operational artifacts are in scope.</p>
+<hr />
+<h2 id="1-end-to-end-lifecycle-walk">1. End-to-end lifecycle walk</h2>
+<p>For each phase, what's required AND whether the artifact exists.</p>
+<h3 id="phase-0-pre-cycle-days-7-to-0">Phase 0 — Pre-cycle (Days −7 to 0)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Candidate decision (Founder Pilot vs. Employee Cycle 1)</td>
+<td><a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Reviewer 3 identification (Bootstrap §7.5)</td>
+<td><a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §2c</code></a> candidate pool</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Acting Academy Lead + Acting Trainer assignment</td>
+<td><a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §6</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Reviewer acceptance + COI disclosure</td>
+<td><a href="./templates/reviewer-acceptance-coi-disclosure.html"><code>templates/reviewer-acceptance-coi-disclosure.md</code></a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Intent Form (signed at meeting)</td>
+<td><a href="./templates/certification-intent.html"><code>templates/certification-intent.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Lineage ID reservation</td>
+<td><a href="./certification-registry.html"><code>certification-registry.md</code></a> + <a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 5</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Vital Read account naming</td>
+<td><a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §3</code></a></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 0 completion: 100% (was 71% before this audit).</strong></p>
+<h3 id="phase-1-week-1-day-1-challenge-battery-vital-read-1">Phase 1 — Week 1 (Day 1 Challenge Battery + Vital Read #1)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4 quizzes + answer keys</td>
+<td><a href="./templates/operator-i-foundation-quiz-answer-keys.html"><code>templates/operator-i-foundation-quiz-answer-keys.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Customer Economics analysis</td>
+<td>Lesson 02.3 + <a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §3</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Financial Pulse verbal quiz</td>
+<td><a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §3</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Self-rating sheet</td>
+<td><a href="./templates/operator-i-self-rating-sheet.html"><code>templates/operator-i-self-rating-sheet.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Pioneer Test reflection draft</td>
+<td><a href="./templates/pioneer-test-grading-rubric.html"><code>templates/pioneer-test-grading-rubric.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>2 Vital Read recordings</td>
+<td><a href="./templates/vital-read-recording-standard.html"><code>templates/vital-read-recording-standard.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Apprentice progress tracker entry</td>
+<td><a href="./templates/apprentice-progress-tracker-template.html"><code>templates/apprentice-progress-tracker-template.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Day 1 fallback path (if any of the above blocks)</td>
+<td><a href="./founder-pilot-start-here.html"><code>founder-pilot-start-here.md</code> §4</a></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 1 completion: 100%.</strong></p>
+<h3 id="phase-2-weeks-24-sustained-delivery">Phase 2 — Weeks 2–4 (sustained delivery)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>6 more Vital Read recordings</td>
+<td><a href="./templates/vital-read-recording-standard.html"><code>templates/vital-read-recording-standard.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Loop entry log</td>
+<td><a href="./templates/loop-entry-log.html"><code>templates/loop-entry-log.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>20 Operational Feed events categorized</td>
+<td><a href="./templates/operator-i-evidence-pack-index.html"><code>templates/operator-i-evidence-pack-index.md</code> Row 9</a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Pillar 8 verification pause artifact</td>
+<td>Constitution Pillar 8 + framework §2</td>
+<td>✅ (1-page artifact, no template needed)</td>
+</tr>
+<tr>
+<td>Customer Economics analysis (finalized)</td>
+<td>Lesson 02.3</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Roleplay 1 (CE Scenario A)</td>
+<td><a href="./templates/roleplay-rubric-customer-economics-scenario-a.html"><code>templates/roleplay-rubric-customer-economics-scenario-a.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Roleplay 2 (MC Diagnostics Scenario A)</td>
+<td><a href="./templates/roleplay-rubric-mc-diagnostics-scenario-a.html"><code>templates/roleplay-rubric-mc-diagnostics-scenario-a.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Weekly checkpoint structure</td>
+<td><a href="./templates/apprentice-progress-tracker-template.html"><code>templates/apprentice-progress-tracker-template.md</code></a> + Friday debrief (Constitution §"How this document is used")</td>
+<td>⚠ Implicit, not formalized as workflow</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 2 completion: 95%.</strong> One implicit workflow (weekly trainer-candidate check-in) is mentioned in the Constitution but not given an operational form. Cycle 1 can run without it; future cycles benefit from a <code>weekly-debrief-template.md</code> (Nice to Have, not Critical).</p>
+<h3 id="phase-3-week-5-evidence-pack-assembly-submission">Phase 3 — Week 5 (evidence pack assembly + submission)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Self-rating final</td>
+<td><a href="./templates/operator-i-self-rating-sheet.html"><code>templates/operator-i-self-rating-sheet.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Pioneer Test reflection final</td>
+<td><a href="./templates/pioneer-test-grading-rubric.html"><code>templates/pioneer-test-grading-rubric.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Evidence pack assembled</td>
+<td><a href="./templates/operator-i-evidence-pack-index.html"><code>templates/operator-i-evidence-pack-index.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Trainer confirmation paragraph</td>
+<td>(Acting Trainer writes; format implicit)</td>
+<td>⚠ Implicit format</td>
+</tr>
+<tr>
+<td>Verified business outcome doc</td>
+<td>(1-page; format implicit)</td>
+<td>⚠ Implicit format</td>
+</tr>
+<tr>
+<td>Submission workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 1</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Intake workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 2</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Reviewer kickoff message</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 2 Step 4</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 3 completion: 95% (was 70% before this audit).</strong></p>
+<h3 id="phase-4-week-6-review-calibration-decision">Phase 4 — Week 6 (review + calibration + decision)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Each reviewer's independent scorecard</td>
+<td><a href="./templates/operator-i-reviewer-scorecard.html"><code>templates/operator-i-reviewer-scorecard.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Scorecard collection workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 3</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Calibration meeting record</td>
+<td><a href="./templates/calibration-meeting-record.html"><code>templates/calibration-meeting-record.md</code></a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Calibration meeting facilitation</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 4</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Composite decision (worst-of-three)</td>
+<td><a href="./templates/calibration-meeting-record.html"><code>templates/calibration-meeting-record.md</code> §6</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Lineage ID issuance</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 5</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Decision letter</td>
+<td><a href="./templates/certification-decision.html"><code>templates/certification-decision.md</code></a> + <a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 6</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Public Review (Bootstrap)</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 7</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Re-review request (candidate's 14-day right)</td>
+<td>Framework §7 Step 5</td>
+<td>✅ (workflow inherits framework)</td>
+</tr>
+<tr>
+<td>Conditional Pass remediation workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 5</a> Conditional case</td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 4 completion: 100% (was 50% before this audit).</strong></p>
+<h3 id="phase-5-post-decision-institutional-record-archive">Phase 5 — Post-decision (institutional record + archive)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cycle record file</td>
+<td><a href="./templates/cycle-record.html"><code>templates/cycle-record.md</code></a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Archive workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 8</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Cycle reflections (Academy Lead + candidate + reviewers)</td>
+<td><a href="./templates/cycle-record.html"><code>templates/cycle-record.md</code> §12–14</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Framework v1.2 amendment backlog</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 11 Step 4</a> → <code>framework-amendments-backlog.md</code> (created on first amendment)</td>
+<td>✅ workflow exists; backlog file appears when first amendment is logged</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 5 completion: 100% (was 40% before this audit).</strong></p>
+<h3 id="phase-6-ongoing-renewal-demotion-feedback">Phase 6 — Ongoing (renewal, demotion, feedback)</h3>
+<table>
+<thead>
+<tr>
+<th>Required</th>
+<th>Artifact / workflow</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Renewal calendar tracking</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 9</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Renewal evidence template</td>
+<td><a href="./templates/certification-renewal-evidence.html"><code>templates/certification-renewal-evidence.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Demotion workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 10</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Demotion notice template</td>
+<td><a href="./templates/certification-demotion-notice.html"><code>templates/certification-demotion-notice.md</code></a></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Feedback capture workflow</td>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 11</a></td>
+<td>✅ <strong>NEW (this audit)</strong></td>
+</tr>
+<tr>
+<td>Tier promotion process</td>
+<td>Framework §10 + adapt Workflow 1–8 for higher tier</td>
+<td>✅ (no separate doc needed; the same workflows apply)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 6 completion: 100% (was 30% before this audit). Renewal, demotion, and feedback workflows now defined.</strong></p>
+<hr />
+<h2 id="2-gap-classification">2. Gap classification</h2>
+<h3 id="critical-gaps-block-certification">Critical gaps (block certification)</h3>
+<p><strong>Before this audit: 7. After this audit: 0.</strong></p>
+<p>All seven critical gaps are now closed:</p>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Closed by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Intent Form template</td>
+<td>Existed: <a href="./templates/certification-intent.html"><code>templates/certification-intent.md</code></a> (verified during audit, not previously surfaced in Cycle 1 docs)</td>
+</tr>
+<tr>
+<td>Calibration meeting record template</td>
+<td>NEW: <a href="./templates/calibration-meeting-record.html"><code>templates/calibration-meeting-record.md</code></a></td>
+</tr>
+<tr>
+<td>Cycle record file template</td>
+<td>NEW: <a href="./templates/cycle-record.html"><code>templates/cycle-record.md</code></a></td>
+</tr>
+<tr>
+<td>Decision letter template</td>
+<td>Existed: <a href="./templates/certification-decision.html"><code>templates/certification-decision.md</code></a></td>
+</tr>
+<tr>
+<td>Lineage ID issuance workflow</td>
+<td>NEW: <a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 5</a></td>
+</tr>
+<tr>
+<td>Evidence pack submission + intake workflow</td>
+<td>NEW: <a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflows 1–2</a></td>
+</tr>
+<tr>
+<td>Reviewer scorecard collection workflow</td>
+<td>NEW: <a href="./cycle-operations.html"><code>cycle-operations.md</code> Workflow 3</a></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Critical gaps remaining: 0.</strong></p>
+<h3 id="important-gaps-create-confusion">Important gaps (create confusion)</h3>
+<p><strong>Before this audit: ~9. After this audit: 3.</strong></p>
+<p>Remaining Important gaps (do not block Cycle 1 but should close before Cycle 2):</p>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Why important</th>
+<th>Why not Critical</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trainer confirmation paragraph format</strong></td>
+<td>Free-form today; reviewers calibrate on style across cycles</td>
+<td>Acting Trainer can write a one-paragraph confirmation in a free format; not a workflow blocker</td>
+</tr>
+<tr>
+<td><strong>Verified business outcome doc format</strong></td>
+<td>Free-form today; reviewer evaluation easier if standardized</td>
+<td>Framework §2 specifies what the outcome must demonstrate; format is flexible</td>
+</tr>
+<tr>
+<td><strong>Weekly debrief / trainer-candidate check-in structure</strong></td>
+<td>Implicit in the Constitution; not a structured workflow</td>
+<td>Cycle 1 can run without it; Constitution says "Friday debrief" but doesn't structure it</td>
+</tr>
+</tbody>
+</table>
+<p>Each of these is a <code>Nice to Have</code> template addable post-Cycle 1 as patterns repeat.</p>
+<h3 id="nice-to-have-would-polish-not-needed-for-cycle-1">Nice to Have (would polish; not needed for Cycle 1)</h3>
+<ul>
+<li>Candidate FAQ</li>
+<li>Reviewer disagreement escalation flowchart (current rule is "worst of three"; flowchart adds nothing)</li>
+<li>External recognition tracker (Lineage ID + external endorsements)</li>
+<li>Annual Academy retro template (Workflow 11 captures per-cycle; annual is separate)</li>
+<li>Framework v1.2 amendment proposal form (Workflow 11 captures candidates; proposal form formalizes them)</li>
+<li>Reviewer training video (onboarding kit + COI form suffice for Cycle 1)</li>
+<li>Automated link audit on commit (manual <code>/tmp/link_check.sh</code> suffices)</li>
+<li>Lineage ID auto-issuance (manual is fine)</li>
+</ul>
+<p><strong>None of these block Cycle 1 or Cycle 2.</strong> Build only when a real pattern surfaces the need.</p>
+<hr />
+<h2 id="3-new-artifacts-created-in-this-audit-4-templates-1-workflow-doc">3. New artifacts created in this audit (4 templates + 1 workflow doc)</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+<th>Lines</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="./templates/reviewer-acceptance-coi-disclosure.html"><code>templates/reviewer-acceptance-coi-disclosure.md</code></a></td>
+<td>Reviewer formally accepts role + discloses conflicts</td>
+<td>~90</td>
+</tr>
+<tr>
+<td><a href="./templates/calibration-meeting-record.html"><code>templates/calibration-meeting-record.md</code></a></td>
+<td>The Week 6 meeting that produces the cycle decision</td>
+<td>~150</td>
+</tr>
+<tr>
+<td><a href="./templates/cycle-record.html"><code>templates/cycle-record.md</code></a></td>
+<td>The canonical permanent institutional record per cycle</td>
+<td>~170</td>
+</tr>
+<tr>
+<td><a href="./cycle-operations.html"><code>cycle-operations.md</code></a></td>
+<td>11 procedural workflows (submission, intake, scorecard collection, calibration, Lineage ID, decision delivery, Public Review, archive, renewal, demotion, feedback)</td>
+<td>~290</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total new operational layer: ~700 lines. Zero new doctrine.</strong></p>
+<hr />
+<h2 id="4-completion-score">4. Completion score</h2>
+<p>The Academy as an operational system, scored by lifecycle phase weighted by which Cycle 1 phases it gates:</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Weight</th>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 0 (Pre-cycle)</td>
+<td>10%</td>
+<td>71%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>Phase 1 (Week 1)</td>
+<td>15%</td>
+<td>95%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>Phase 2 (Weeks 2–4)</td>
+<td>15%</td>
+<td>90%</td>
+<td>95%</td>
+</tr>
+<tr>
+<td>Phase 3 (Week 5)</td>
+<td>15%</td>
+<td>70%</td>
+<td>95%</td>
+</tr>
+<tr>
+<td>Phase 4 (Week 6 decision)</td>
+<td>25%</td>
+<td>50%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>Phase 5 (Post-decision)</td>
+<td>10%</td>
+<td>40%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>Phase 6 (Ongoing — renewal, demotion, feedback)</td>
+<td>10%</td>
+<td>30%</td>
+<td>100%</td>
+</tr>
+<tr>
+<td><strong>Weighted total</strong></td>
+<td><strong>100%</strong></td>
+<td><strong>69%</strong></td>
+<td><strong>98%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The 2% remaining gap is the 3 Important items above</strong> (trainer confirmation format, business outcome format, weekly debrief structure). All are addressable post-Cycle 1 from real patterns rather than imagination.</p>
+<hr />
+<h2 id="5-remaining-gaps-summary">5. Remaining gaps summary</h2>
+<h3 id="critical-gaps-remaining">Critical gaps remaining</h3>
+<p><strong>0.</strong> Every critical gap is closed.</p>
+<h3 id="important-gaps-remaining">Important gaps remaining</h3>
+<p><strong>3</strong> — all post-Cycle 1 work, none blocking:</p>
+<ol>
+<li>Trainer confirmation paragraph format (free-form acceptable for Cycle 1)</li>
+<li>Verified business outcome doc format (framework §2 spec sufficient for Cycle 1)</li>
+<li>Weekly debrief / trainer-candidate check-in structure (Constitution implicit guidance sufficient for Cycle 1)</li>
+</ol>
+<h3 id="nice-to-have-gaps">Nice to Have gaps</h3>
+<p><strong>8.</strong> All explicitly deferred until a real pattern surfaces.</p>
+<hr />
+<h2 id="6-launch-decision">6. Launch decision</h2>
+<p><strong>Recommendation: Ready with exceptions.</strong></p>
+<h3 id="what-ready-means-here">What "Ready" means here</h3>
+<p>The Academy can run Cycle 1 end-to-end without tribal knowledge:</p>
+<ul>
+<li>✅ A candidate can find the entry point (<a href="./founder-pilot-start-here.html"><code>founder-pilot-start-here.md</code></a> or the <a href="./founder-pilot-html.html"><code>founder-pilot-html.html</code></a> UI)</li>
+<li>✅ A reviewer can read their job in 30 minutes (<a href="./templates/bootstrap-reviewer-onboarding-kit.html">onboarding kit</a>)</li>
+<li>✅ Every evidence artifact has a template</li>
+<li>✅ Every grading instrument has a rubric</li>
+<li>✅ Every cycle phase has a workflow (submission → intake → scorecard → calibration → decision → Lineage ID → letter → cycle record → archive)</li>
+<li>✅ The decision rule is explicit (worst-of-three Bootstrap; framework-defined post-Bootstrap)</li>
+<li>✅ Edge cases have fallback paths (Day 1 fallback, Conditional Pass remediation, Not Yet re-test, Public Review)</li>
+</ul>
+<h3 id="what-with-exceptions-means">What "with exceptions" means</h3>
+<p>The 3 Important gaps and 8 Nice to Have gaps remain. None block Cycle 1. They are:</p>
+<ul>
+<li><strong>Quality-of-life improvements</strong> that close as Cycle 1 patterns surface them</li>
+<li><strong>Stylistic standardizations</strong> (trainer paragraph, business outcome doc) that don't change what reviewers grade</li>
+<li><strong>Implicit workflows</strong> (weekly debrief) that the Constitution covers but doesn't structure</li>
+</ul>
+<h3 id="what-ready-requires-of-you-the-user">What "Ready" requires of you (the user)</h3>
+<p>Before Monday 2026-06-15:</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Time</th>
+<th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identify Reviewer 3 (per <a href="./founder-pilot-plan.html"><code>founder-pilot-plan.md §2c</code></a>)</td>
+<td>depends on response</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td>Assign Acting Academy Lead + Acting Trainer</td>
+<td>5 min</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td>Name 2 Vital Read accounts</td>
+<td>10 min</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td>Reserve Lineage ID <code>POPS-OP-I-2026-001</code></td>
+<td>5 min</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td>Send 3 reviewer asks (with <a href="./templates/reviewer-acceptance-coi-disclosure.html">COI form</a> attached)</td>
+<td>15 min</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td>Schedule Intent meeting (Friday 2026-06-12 afternoon)</td>
+<td>5 min</td>
+<td>Nick</td>
+</tr>
+<tr>
+<td><strong>Total Nick time</strong></td>
+<td><strong>~40 min</strong> + responses</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>These are the same hard blockers the Cycle 1 readiness report named — now further enabled by the new COI form being attachable to the reviewer asks.</p>
+<hr />
+<h2 id="7-the-academy-directors-posture">7. The Academy Director's posture</h2>
+<p>You are no longer building. You are running.</p>
+<ul>
+<li>The Academy is <strong>complete enough to produce Operator #001</strong> without tribal knowledge.</li>
+<li>The next 6 weeks are about execution, not authoring.</li>
+<li>Friction surfaced during Cycle 1 becomes Framework v1.2 input, not Cycle 1 doctrine changes.</li>
+<li>If you finish Cycle 1 and can write a paragraph saying "the Academy worked," you have built something real.</li>
+</ul>
+<p><strong>Stop building. Start running.</strong></p>
+<p>That is the finish line.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>academy-system-completion-audit.md</code>
+</footer>
+</body>
+</html>

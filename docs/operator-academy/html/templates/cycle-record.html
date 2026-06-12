@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cycle Record — Template — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="cycle-record-template">Cycle Record — Template</h1>
+<p><strong>Copy this template to <code>certification-cycles/cycle-{N}-{candidate-slug}-{tier}.md</code> at the start of every cycle.</strong> Fill incrementally; finalize within 48 hours of the calibration meeting.</p>
+<p>This is the <strong>permanent institutional record</strong> of the cycle. Used by:
+- Future Operators researching how cycles ran
+- Future reviewers calibrating their own scoring
+- Renewal reviewers checking the original decision basis
+- Auditors and researchers studying the Academy's evolution</p>
+<p>Every cycle produces one. No cycle exists without a record.</p>
+<hr />
+<h2 id="1-cycle-metadata">1. Cycle metadata</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cycle number</td>
+<td>(e.g., 1)</td>
+</tr>
+<tr>
+<td>Cycle name</td>
+<td>(e.g., Founder Pilot, Employee Cycle 1)</td>
+</tr>
+<tr>
+<td>Candidate</td>
+<td></td>
+</tr>
+<tr>
+<td>Candidate's manager (for Bootstrap) or sponsor</td>
+<td></td>
+</tr>
+<tr>
+<td>Target tier</td>
+<td>Operator I / II / III / Executive Advisor</td>
+</tr>
+<tr>
+<td>Cycle start date</td>
+<td>(date of Intent meeting)</td>
+</tr>
+<tr>
+<td>Cycle decision date</td>
+<td>(date of calibration meeting)</td>
+</tr>
+<tr>
+<td>Cycle duration (days)</td>
+<td></td>
+</tr>
+<tr>
+<td>Bootstrap Phase active for this tier at cycle start?</td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Lineage ID issued</td>
+<td>POPS-OP-{tier}-{YYYY}-{NNN} or "released — not consumed"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-roles">2. Roles</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Person</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Academy Lead (Acting or actual)</td>
+<td></td>
+</tr>
+<tr>
+<td>Trainer (Acting or actual)</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 1</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 3 (Bootstrap only)</td>
+<td></td>
+</tr>
+<tr>
+<td>Roleplay #1 customer-player</td>
+<td></td>
+</tr>
+<tr>
+<td>Roleplay #2 customer-player</td>
+<td></td>
+</tr>
+<tr>
+<td>Calibration facilitator</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-evidence-pack-location">3. Evidence pack location</h2>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Location (link or path)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Evidence pack index</td>
+<td></td>
+</tr>
+<tr>
+<td>8 Vital Read recordings</td>
+<td></td>
+</tr>
+<tr>
+<td>Loop entry log</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer Economics analysis</td>
+<td></td>
+</tr>
+<tr>
+<td>Self-rating sheet</td>
+<td></td>
+</tr>
+<tr>
+<td>Trainer confirmation paragraph</td>
+<td></td>
+</tr>
+<tr>
+<td>Pioneer Test reflection</td>
+<td></td>
+</tr>
+<tr>
+<td>Pillar 8 verification pause artifact</td>
+<td></td>
+</tr>
+<tr>
+<td>Operational Feed review log</td>
+<td></td>
+</tr>
+<tr>
+<td>Verified business outcome</td>
+<td></td>
+</tr>
+<tr>
+<td>Apprentice progress tracker</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-quiz-scores">4. Quiz scores</h2>
+<table>
+<thead>
+<tr>
+<th>Lesson</th>
+<th>Score / 10</th>
+<th>Pass (≥ 7)?</th>
+<th>Retake taken?</th>
+<th>Final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.2 RPLH</td>
+<td></td>
+<td>Y / N</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>02.3 Customer Economics</td>
+<td></td>
+<td>Y / N</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>03.1 MC Diagnostics</td>
+<td></td>
+<td>Y / N</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+<tr>
+<td>05.3 QBR Delivery</td>
+<td></td>
+<td>Y / N (not required at Operator I)</td>
+<td>Y / N</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-practical-demonstrations">5. Practical demonstrations</h2>
+<table>
+<thead>
+<tr>
+<th>Demonstration</th>
+<th>Required</th>
+<th>Delivered</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vital Reads</td>
+<td>8 (2 accounts × 4 weeks)</td>
+<td>/ 8</td>
+<td></td>
+</tr>
+<tr>
+<td>Loop entries created</td>
+<td>≥ 3</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Loop entries closed</td>
+<td>≥ 1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Customer Economics analyses</td>
+<td>≥ 1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Operational Feed events categorized</td>
+<td>≥ 20</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Pillar 8 verification pauses</td>
+<td>≥ 1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Roleplay 1 (CE Scenario A)</td>
+<td>Pass</td>
+<td>Pass / Fail / Re-attempt</td>
+<td></td>
+</tr>
+<tr>
+<td>Roleplay 2 (MC Diagnostics Scenario A)</td>
+<td>Pass</td>
+<td>Pass / Fail / Re-attempt</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-reviewer-scorecards-links">6. Reviewer scorecards (links)</h2>
+<table>
+<thead>
+<tr>
+<th>Reviewer</th>
+<th>Scorecard link</th>
+<th>Date submitted</th>
+<th>Overall decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer 1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 3</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-calibration-meeting-record">7. Calibration meeting record</h2>
+<p>Link to the filled <a href="../templates/calibration-meeting-record.html">calibration-meeting-record.md</a> for this cycle:</p>
+<p>(path)</p>
+<h2 id="8-composite-decision">8. Composite decision</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decision</td>
+<td>Pass / Conditional Pass / Not Yet</td>
+</tr>
+<tr>
+<td>Decision rationale (1 paragraph)</td>
+<td></td>
+</tr>
+<tr>
+<td>Lineage ID action</td>
+<td>Issued / Reserved pending remediation / Released</td>
+</tr>
+<tr>
+<td>Decision letter delivered to candidate on</td>
+<td></td>
+</tr>
+<tr>
+<td>Decision letter location</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="if-conditional-pass">If Conditional Pass</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Named gap 1</td>
+<td></td>
+</tr>
+<tr>
+<td>Named gap 2</td>
+<td></td>
+</tr>
+<tr>
+<td>Remediation due</td>
+<td></td>
+</tr>
+<tr>
+<td>Re-review reviewer</td>
+<td></td>
+</tr>
+<tr>
+<td>Remediation outcome</td>
+<td>Cleared / Not cleared / In progress</td>
+</tr>
+</tbody>
+</table>
+<h3 id="if-not-yet">If Not Yet</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary reason</td>
+<td></td>
+</tr>
+<tr>
+<td>Three bars to clear</td>
+<td>1. <br>2. <br>3.</td>
+</tr>
+<tr>
+<td>Earliest re-test window</td>
+<td></td>
+</tr>
+<tr>
+<td>Cycle 2 candidate notes</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-public-review-bootstrap-only">9. Public Review (Bootstrap only)</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pioneer leadership notified on</td>
+<td></td>
+</tr>
+<tr>
+<td>Notification artifact</td>
+<td>(link to memo or message)</td>
+</tr>
+<tr>
+<td>Review window opened</td>
+<td></td>
+</tr>
+<tr>
+<td>Review window closed</td>
+<td></td>
+</tr>
+<tr>
+<td>Leadership concerns raised?</td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Concern resolution (if Y)</td>
+<td></td>
+</tr>
+<tr>
+<td>Decision finalized post-review on</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Post-Bootstrap cycles:</strong> skip §9.</p>
+<h2 id="10-framework-v12-amendment-candidates">10. Framework v1.2 amendment candidates</h2>
+<p>Captured during the cycle and/or calibration meeting. These feed the next framework revision cycle. <strong>Do not implement amendments during a live cycle.</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Candidate amendment</th>
+<th>Why surfaced</th>
+<th>Severity (Cycle 1.1 / 1.2 / 2.0)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="11-reviewer-time-accounting">11. Reviewer time accounting</h2>
+<p>For Bootstrap audit + future calibration:</p>
+<table>
+<thead>
+<tr>
+<th>Reviewer</th>
+<th>Estimated hours per onboarding kit</th>
+<th>Actual hours</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer 1</td>
+<td>~10</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td>~10</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 3</td>
+<td>~10</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Acting Academy Lead</td>
+<td>~6</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Acting Trainer</td>
+<td>~7</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Candidate</td>
+<td>~18–30</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="12-cycle-reflections-academy-lead-1-paragraph">12. Cycle reflections (Academy Lead, 1 paragraph)</h2>
+<p>What the Academy Lead learned about the Academy by running this cycle. Not about the candidate — about the system.</p>
+<h2 id="13-candidate-reflections-1-paragraph">13. Candidate reflections (1 paragraph)</h2>
+<p>What the candidate learned about themselves AND the Academy by going through. Not a marketing testimonial; an honest debrief.</p>
+<h2 id="14-reviewer-reflections-1-paragraph-each">14. Reviewer reflections (1 paragraph each)</h2>
+<table>
+<thead>
+<tr>
+<th>Reviewer</th>
+<th>Reflection (1 paragraph: where did your scoring feel solid vs. uncertain?)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer 1</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 2</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer 3</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="15-archive">15. Archive</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All evidence pack artifacts archived to</td>
+<td>(per <a href="../cycle-operations.html"><code>cycle-operations.md</code></a> archive workflow)</td>
+</tr>
+<tr>
+<td>All recordings retained for</td>
+<td>(per archive workflow retention policy)</td>
+</tr>
+<tr>
+<td>All forms (COI, scorecards, calibration record) attached to this file</td>
+<td>Y / N</td>
+</tr>
+<tr>
+<td>Cycle record committed to repo on</td>
+<td></td>
+</tr>
+<tr>
+<td>Cycle record file is read-only after</td>
+<td>(date)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="what-this-record-is-not">What this record is NOT</h2>
+<ul>
+<li><strong>Not the decision letter to the candidate.</strong> That's <a href="./certification-decision.html"><code>certification-decision.md</code></a>, separate, delivered within 24 hours of the calibration meeting.</li>
+<li><strong>Not the calibration record.</strong> That's <a href="./calibration-meeting-record.html"><code>calibration-meeting-record.md</code></a>, attached here.</li>
+<li><strong>Not editable after archive date.</strong> Errors are corrected by appending a v1.1 addendum, not editing the original.</li>
+<li><strong>Not a marketing artifact.</strong> This is operational truth. Wins and losses both go in, with names and numbers.</li>
+</ul>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/cycle-record.md</code>
+</footer>
+</body>
+</html>

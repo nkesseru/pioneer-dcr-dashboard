@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Certification Self-Assessment — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="certification-self-assessment">Certification Self-Assessment</h1>
+<p>The candidate rates themselves on every competency in the <a href="../00-academy-overview/02-competency-model.html">34-competency model</a>, using the 0–3 scale from the model:</p>
+<ul>
+<li><strong>0</strong> — Unaware</li>
+<li><strong>1</strong> — Aware (can describe; cannot do)</li>
+<li><strong>2</strong> — Competent (can do solo on typical customer with supervision available)</li>
+<li><strong>3</strong> — Expert (can do solo on strategic customer AND can teach it to someone at level 1)</li>
+</ul>
+<p>The candidate's self-rating is one of three inputs the reviewers use. Reviewers may rate higher or lower based on evidence. The candidate's honesty here — including rating themselves DOWN where appropriate — is itself an evidence signal.</p>
+<p>This form is required for every tier certification AND every renewal.</p>
+<hr />
+<h2 id="candidate">Candidate</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full name</td>
+<td></td>
+</tr>
+<tr>
+<td>Lineage ID</td>
+<td></td>
+</tr>
+<tr>
+<td>Current tier</td>
+<td></td>
+</tr>
+<tr>
+<td>Target tier</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Reviewer who will see this</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="tier-bar-reminder">Tier Bar Reminder</h2>
+<p>Before rating, the candidate reads the bar for their target tier from the framework:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Competencies at level 2+</th>
+<th>Competencies at level 3</th>
+<th>Specific level-3 competencies required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Operator I</td>
+<td>15 of 34</td>
+<td>0 required</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Operator II</td>
+<td>34 of 34</td>
+<td>8 minimum</td>
+<td>02.2 (Labor Econ), 03.5 (Mission Control), 04.5 (AI Judgment), 05.3 (QBR), 07.1 (CEO Conversation)</td>
+</tr>
+<tr>
+<td>Operator III</td>
+<td>34 of 34</td>
+<td>18 minimum</td>
+<td>All in Pillar 02, 03, 05, 07</td>
+</tr>
+<tr>
+<td>Executive Advisor</td>
+<td>34 of 34</td>
+<td>34 of 34</td>
+<td>All; at least 8 at "Master + Doctrine" level</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-01-saas-foundations">Pillar 01 — SaaS Foundations</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01.1</td>
+<td>Customer lifecycle (acquire → ... → churn)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.2</td>
+<td>Activation &amp; time-to-value</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.3</td>
+<td>Retention mechanics (NRR, GRR, NDR)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.4</td>
+<td>Health scoring</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.5</td>
+<td>Renewal motion</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-02-cleaning-operations">Pillar 02 — Cleaning Operations</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.1</td>
+<td>Service models (recurring, day porter, specialty)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.2</td>
+<td>Labor economics (RPLH, productivity, scheduling)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.3</td>
+<td>Quality systems (inspections, DCRs, feedback)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.4</td>
+<td>Billing patterns (recurring, AR, recurring base)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.5</td>
+<td>Operational pain points (callouts, supplies, complaints)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-03-pioneerops-platform-mastery">Pillar 03 — PioneerOps Platform Mastery</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>03.1</td>
+<td>Core data model</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.2</td>
+<td>Time tracking + payroll workflows</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.3</td>
+<td>Inspections + DCR systems</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.4</td>
+<td>Communication threads + SMS transport</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.5</td>
+<td>Mission Control + financial layers</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.6</td>
+<td>Admin tools (roles, aliases, integrations)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-04-ai-operator">Pillar 04 — AI Operator</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>04.1</td>
+<td>Prompt patterns</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.2</td>
+<td>Analysis with AI</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.3</td>
+<td>Drafting with AI</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.4</td>
+<td>Building small tools</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.5</td>
+<td>AI judgment (when AI is wrong)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-05-customer-success">Pillar 05 — Customer Success</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>05.1</td>
+<td>Discovery</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.2</td>
+<td>Onboarding &amp; implementation</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.3</td>
+<td>QBR delivery</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.4</td>
+<td>Renewals &amp; expansion conversations</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.5</td>
+<td>Difficult conversations</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-06-revenue-operations">Pillar 06 — Revenue Operations</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>06.1</td>
+<td>Pipeline hygiene</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.2</td>
+<td>Pricing &amp; packaging</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.3</td>
+<td>Expansion plays</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.4</td>
+<td>Forecasting</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pillar-07-executive-advisor">Pillar 07 — Executive Advisor</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Level (0–3)</th>
+<th>One-line defense</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>07.1</td>
+<td>CEO-level conversation</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.2</td>
+<td>Industry context for commercial cleaning</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.3</td>
+<td>Strategic recommendations</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.4</td>
+<td>Pushback &amp; disagreement</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="summary-tally">Summary Tally</h2>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Self-assessed</th>
+<th>Target tier bar</th>
+<th>Met?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Competencies at level 2+</td>
+<td>of 34</td>
+<td>(per table above)</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Competencies at level 3</td>
+<td>of 34</td>
+<td>(per table above)</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Specific level-3 competencies required for target tier</td>
+<td>List the IDs you rated level 3</td>
+<td>(per table above)</td>
+<td>Yes / No</td>
+</tr>
+</tbody>
+</table>
+<p>If any "Met?" answer is No, the candidate should NOT submit a certification intent until the gap closes. Renewal is different — see Section 8 of the framework.</p>
+<hr />
+<h2 id="candidate-reflection">Candidate Reflection</h2>
+<h3 id="three-competencies-the-candidate-is-most-confident-in">Three competencies the candidate is most confident in</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Why this level is honest</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="three-competencies-the-candidate-is-least-confident-in-named-honestly">Three competencies the candidate is least confident in (named honestly)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Why this level is honest</th>
+<th>What they're doing to close the gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>This section is required at every tier. A self-assessment without honest weaknesses signals either inexperience or curation.</p>
+<hr />
+<table>
+<thead>
+<tr>
+<th>Candidate signature</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="for-reviewer-use">For Reviewer Use</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer name</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer's overall assessment of self-rating honesty</td>
+<td>Honest / Slightly under-rated / Slightly over-rated / Significantly off</td>
+</tr>
+<tr>
+<td>Reviewer's specific disagreements (if any)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Reviewer notes:</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Reviewer signature</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/certification-self-assessment.md</code>
+</footer>
+</body>
+</html>
