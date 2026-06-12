@@ -1,0 +1,1759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apprentice Progress Tracker Template — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="apprentice-progress-tracker-template">Apprentice Progress Tracker Template</h1>
+<blockquote>
+<p><strong>Copy this file when a new Apprentice starts.</strong> Rename to <code>apprentice-progress-tracker-{lastname}.md</code> and place at <code>docs/operator-academy/</code>. Fill Sections 1–5 immediately. Update the rest as the apprenticeship proceeds.</p>
+<p>Reference exemplar: <a href="../apprentice-progress-tracker.html"><code>apprentice-progress-tracker.md</code></a> — shows the format with primed/placeholder content.</p>
+<p><strong>Authority:</strong> <a href="../operator-certification-framework.html">Operator Certification Framework</a> Section 11 (Apprentice pre-certification status).</p>
+</blockquote>
+<hr />
+<h2 id="1-apprentice-profile">1. Apprentice Profile</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full name</td>
+<td></td>
+</tr>
+<tr>
+<td>Hire date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Background category</td>
+<td>Cleaning Industry Veteran / SaaS CSM / High-Coachability Generalist / Internal Rotation</td>
+</tr>
+<tr>
+<td>Prior industry experience</td>
+<td></td>
+</tr>
+<tr>
+<td>Prior SaaS / CSM experience</td>
+<td></td>
+</tr>
+<tr>
+<td>AI tool experience</td>
+<td>None / Aware / Comfortable / Fluent</td>
+</tr>
+<tr>
+<td>Cleaning industry experience</td>
+<td>None / Some / Deep</td>
+</tr>
+<tr>
+<td>Reports to</td>
+<td></td>
+</tr>
+<tr>
+<td>Why this candidate (manager's note)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="background-context">Background context</h3>
+<blockquote></blockquote>
+<hr />
+<h2 id="2-lineage-id-placeholder">2. Lineage ID Placeholder</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lineage ID (assigned at Operator I certification)</td>
+<td><code>POPS-OP-I-{YYYY}-{TBD}</code></td>
+</tr>
+<tr>
+<td>Current placeholder ID (Apprentice-track only)</td>
+<td><code>APPRENTICE-{YYYY}-{seq}</code></td>
+</tr>
+<tr>
+<td>Mentor lineage</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-start-date">3. Start Date</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Apprenticeship start date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Estimated Operator I certification window</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Estimated Operator II certification window</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Apprenticeship 6-month review deadline</td>
+<td>YYYY-MM-DD</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-target-certification-level">4. Target Certification Level</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Immediate target</td>
+<td>Operator I</td>
+</tr>
+<tr>
+<td>Stretch target</td>
+<td>Operator II</td>
+</tr>
+<tr>
+<td>Long-arc target</td>
+<td>Operator III / Executive Advisor</td>
+</tr>
+<tr>
+<td>Estimated immediate cert date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Reasoning</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-assigned-trainer-reviewer">5. Assigned Trainer / Reviewer</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Person</th>
+<th>Lineage ID</th>
+<th>Tenure with Apprentice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary trainer</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Proposed secondary reviewer</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Academy lead</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6-required-lessons">6. Required Lessons</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Lesson</th>
+<th>Read end-to-end</th>
+<th>Quiz score</th>
+<th>Quiz date</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><a href="../02-cleaning-operations/02-revenue-per-labor-hour.html">02.2 Revenue Per Labor Hour</a></td>
+<td>[ ]</td>
+<td>__/10</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td><a href="../02-cleaning-operations/03-customer-economics.html">02.3 Customer Economics</a></td>
+<td>[ ]</td>
+<td>__/10</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td><a href="../03-pioneerops-platform-mastery/01-mission-control-diagnostics.html">03.1 Mission Control Diagnostics</a></td>
+<td>[ ]</td>
+<td>__/10</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td>4</td>
+<td><a href="../04-ai-operator/01-prompt-patterns.html">04.1 AI Operator</a></td>
+<td>[ ]</td>
+<td>__/10</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td>5</td>
+<td><a href="../05-customer-success/03-qbr-delivery.html">05.3 QBR Delivery</a></td>
+<td>[ ]</td>
+<td>__/10</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="doctrine-reading">Doctrine reading</h3>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Read end-to-end</th>
+<th>Date</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../ACADEMY-THESIS.html">Academy Thesis</a></td>
+<td>[ ]</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="../CONSTITUTION.html">Constitution v1.1</a></td>
+<td>[ ]</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="../operator-certification-framework.html">Operator Certification Framework</a></td>
+<td>[ ]</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="../operator-glossary.html">Operator Glossary</a></td>
+<td>[ ] (full pass)</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="../../financial-pulse-framework/01-financial-pulse-operating-system.html">Financial Pulse Operating System</a></td>
+<td>[ ]</td>
+<td>YYYY-MM-DD</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="quiz-bars-reminder">Quiz bars (reminder)</h3>
+<ul>
+<li>Operator I: ≥ 7/10 on at least 3 of 4 foundation lesson quizzes</li>
+<li>Operator II: ≥ 8/10 on at least 4 quizzes; ≥ 9/10 on QBR Delivery (Q10 compression rubric pass)</li>
+</ul>
+<hr />
+<h2 id="7-required-practical-demonstrations">7. Required Practical Demonstrations</h2>
+<h3 id="operator-i-tier">Operator I tier</h3>
+<table>
+<thead>
+<tr>
+<th>Demonstration</th>
+<th>Bar</th>
+<th>Current count</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weekly Vital Read solo on owned accounts</td>
+<td>≥ 8 reads total</td>
+<td>__</td>
+<td>8</td>
+</tr>
+<tr>
+<td>Loop entries created</td>
+<td>≥ 3 with verification dates</td>
+<td>__</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Loop entries closed</td>
+<td>≥ 1 (including honest failures)</td>
+<td>__</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Customer Economics analysis</td>
+<td>≥ 1 on real owned account</td>
+<td>__</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Operational Feed events reviewed</td>
+<td>≥ 20 categorized</td>
+<td>__</td>
+<td>20</td>
+</tr>
+<tr>
+<td>Pillar 8 verification pauses</td>
+<td>≥ 1 documented</td>
+<td>__</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="operator-ii-tier">Operator II tier</h3>
+<table>
+<thead>
+<tr>
+<th>Demonstration</th>
+<th>Bar</th>
+<th>Current count</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>QBRs delivered to customer CEOs</td>
+<td>≥ 8, rubric pass on ≥ 6</td>
+<td>__</td>
+<td>8</td>
+</tr>
+<tr>
+<td>Customer Economics analyses</td>
+<td>≥ 5 distinct accounts</td>
+<td>__</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Customer CEOs taught the Vital Read</td>
+<td>≥ 3</td>
+<td>__</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Self-Sustaining Loops verified</td>
+<td>≥ 1</td>
+<td>__</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Total Loop entries</td>
+<td>≥ 12 in cert period</td>
+<td>__</td>
+<td>12</td>
+</tr>
+<tr>
+<td>Loop closures</td>
+<td>≥ 8 (including verified failures)</td>
+<td>__</td>
+<td>8</td>
+</tr>
+<tr>
+<td>Churn-risk save</td>
+<td>≥ 1 documented</td>
+<td>__</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Expansion deal closed</td>
+<td>≥ 1</td>
+<td>__</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Pillar 8 Discontinuity handled</td>
+<td>≥ 1 documented</td>
+<td>__</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-required-evidence-pack-items">8. Required Evidence Pack Items</h2>
+<h3 id="universal-every-tier">Universal (every tier)</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Completed <a href="./certification-intent.html">Certification Intent</a></li>
+<li class="task"><input type="checkbox" disabled> Completed <a href="./certification-self-assessment.html">Self-Assessment</a></li>
+<li class="task"><input type="checkbox" disabled> Direct manager's written recommendation</li>
+<li class="task"><input type="checkbox" disabled> Secondary reviewer's written recommendation</li>
+<li class="task"><input type="checkbox" disabled> Loop entry log (including failed and open Loops)</li>
+<li class="task"><input type="checkbox" disabled> At least one named failure with recovery move documented</li>
+</ul>
+<h3 id="operator-i-tier_1">Operator I tier</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> All four foundation lesson quiz scores</li>
+<li class="task"><input type="checkbox" disabled> 8 recorded Weekly Vital Reads</li>
+<li class="task"><input type="checkbox" disabled> 1 Customer Economics analysis with reviewer-defensible math</li>
+<li class="task"><input type="checkbox" disabled> Self-rating across 34 competencies</li>
+<li class="task"><input type="checkbox" disabled> Pioneer Test reflection (one paragraph)</li>
+</ul>
+<h3 id="operator-ii-tier_1">Operator II tier</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Implementation case study</li>
+<li class="task"><input type="checkbox" disabled> Recorded customer kickoff (45 min)</li>
+<li class="task"><input type="checkbox" disabled> Recorded QBR delivery (rubric score ≥ 4/5)</li>
+<li class="task"><input type="checkbox" disabled> AI-assisted analytical artifact + prompt log</li>
+<li class="task"><input type="checkbox" disabled> Executive briefing recording (15 min)</li>
+<li class="task"><input type="checkbox" disabled> Difficult conversation transcript or recording</li>
+<li class="task"><input type="checkbox" disabled> Customer health model in active weekly use</li>
+<li class="task"><input type="checkbox" disabled> Self-Sustaining Loop evidence</li>
+</ul>
+<hr />
+<h2 id="9-required-role-plays">9. Required Role-plays</h2>
+<h3 id="operator-i-cert">Operator I cert</h3>
+<table>
+<thead>
+<tr>
+<th>Lesson</th>
+<th>Scenario A</th>
+<th>Practiced</th>
+<th>Passed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.3 Customer Economics</td>
+<td>"Revenue is up. We're crushing it."</td>
+<td>Date:</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>03.1 MC Diagnostics</td>
+<td>"First Vital Read with skeptical CEO"</td>
+<td>Date:</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>04.1 AI Operator</td>
+<td>"Pre-meeting AI workflow with Pillar 8 catch"</td>
+<td>Date:</td>
+<td>[ ]</td>
+</tr>
+</tbody>
+</table>
+<p>Bar: Pass ≥ 2 of 3.</p>
+<h3 id="operator-ii-cert-additional">Operator II cert (additional)</h3>
+<table>
+<thead>
+<tr>
+<th>Lesson</th>
+<th>Scenario A</th>
+<th>Practiced</th>
+<th>Passed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>05.3 QBR Delivery</td>
+<td>"The CEO who came to leave"</td>
+<td>Date:</td>
+<td>[ ]</td>
+</tr>
+</tbody>
+</table>
+<p>Bar: Pass all 4 Scenario A + at least 2 stretch (B/C/D).</p>
+<h3 id="stretch-scenarios">Stretch scenarios</h3>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Practiced</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.3 — Confused CFO joins</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.1 — 4-week handoff observation</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.1 — Research without starting hypothesis</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.3 — Open-minded CEO (expansion finding)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10-required-financial-pulse-capabilities">10. Required Financial Pulse Capabilities</h2>
+<h3 id="knowledge-recall">Knowledge (recall)</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Apprentice</th>
+<th>Operator I bar</th>
+<th>Operator II bar</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Names all 6 Operational Vitals</td>
+<td>[ ]</td>
+<td>Required</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Margin Integrity thresholds</td>
+<td>[ ]</td>
+<td>Required</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Operational Exposure thresholds</td>
+<td>[ ]</td>
+<td>Required</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Labor Efficiency thresholds</td>
+<td>[ ]</td>
+<td>Optional</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Cash Conversion thresholds</td>
+<td>[ ]</td>
+<td>Optional</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Revenue Quality thresholds</td>
+<td>[ ]</td>
+<td>Optional</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+<tr>
+<td>Cost of Poor Quality thresholds</td>
+<td>[ ]</td>
+<td>Optional</td>
+<td>Required</td>
+<td>Date:</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pattern-library-recognition-of-14">Pattern Library recognition (of 14)</h3>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Current</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Operator I (≥ 5 patterns)</td>
+<td>__ of 14</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Operator II (≥ 10 patterns)</td>
+<td>__ of 14</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Patterns acted on with verification</td>
+<td>__</td>
+<td>Tier-specific</td>
+</tr>
+</tbody>
+</table>
+<h3 id="application">Application</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Driven Vital Read with customer (≥ 2 customers, weekly, 4 weeks each) — Operator I</li>
+<li class="task"><input type="checkbox" disabled> Used FP signals to drive ≥ 2 verified business outcomes — Operator II</li>
+<li class="task"><input type="checkbox" disabled> Handled ≥ 1 Pillar 8 Discontinuity — Operator II</li>
+</ul>
+<hr />
+<h2 id="11-required-mission-control-capabilities">11. Required Mission Control Capabilities</h2>
+<h3 id="reading">Reading</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Maps each MC card to its Loop stage</li>
+<li class="task"><input type="checkbox" disabled> Can run 5-minute Weekly Vital Read against any customer's MC</li>
+<li class="task"><input type="checkbox" disabled> Can drill into underlying records (Pillar 8)</li>
+<li class="task"><input type="checkbox" disabled> Can name what MC does NOT show</li>
+</ul>
+<h3 id="teaching">Teaching</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Taught Vital Read to ≥ 1 customer CEO (Operator I)</li>
+<li class="task"><input type="checkbox" disabled> Taught Vital Read to ≥ 3 customer CEOs (Operator II)</li>
+<li class="task"><input type="checkbox" disabled> Documented Operator Withdrawal Curve for ≥ 1 customer</li>
+</ul>
+<h3 id="verification">Verification</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Caught ≥ 1 case where MC reading was misleading due to incomplete records</li>
+<li class="task"><input type="checkbox" disabled> Paused before acting on MC reading pending record verification</li>
+</ul>
+<hr />
+<h2 id="12-required-ai-operator-capabilities">12. Required AI Operator Capabilities</h2>
+<h3 id="force-multiplier-ratio">Force Multiplier Ratio</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>FMR target</th>
+<th>Current</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Apprentice end</td>
+<td>1.5×</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>Operator I bar</td>
+<td>1.5–2×</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>Operator II bar</td>
+<td>3×</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>Operator III bar</td>
+<td>4×</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-practices">Required practices</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Personal prompt library (≥ 6 use-case-specific prompts)</li>
+<li class="task"><input type="checkbox" disabled> Run Interrogation Discipline (≥ 5 documented instances)</li>
+<li class="task"><input type="checkbox" disabled> Executed named Verification Pass on AI output (every customer-facing artifact)</li>
+<li class="task"><input type="checkbox" disabled> Caught ≥ 1 AI error before sending to customer (number: __)</li>
+<li class="task"><input type="checkbox" disabled> Rewrote ≥ 5 AI drafts in own voice before sending</li>
+<li class="task"><input type="checkbox" disabled> Time reinvestment to field presence + relationship documented</li>
+</ul>
+<h3 id="cannot-do-must-not">Cannot do (must NOT)</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Sent AI-drafted output to customer without voice rewrite</li>
+<li class="task"><input type="checkbox" disabled> Recommended action on AI output without Pillar 8 verification</li>
+<li class="task"><input type="checkbox" disabled> Delegated decision to AI</li>
+</ul>
+<p><strong>Any "Cannot do" item checked = automatic disqualifying flag for next cert/renewal.</strong></p>
+<hr />
+<h2 id="13-coaching-cadence">13. Coaching Cadence</h2>
+<table>
+<thead>
+<tr>
+<th>Cadence</th>
+<th>Activity</th>
+<th>Day</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weekly</td>
+<td>Trainer 1:1</td>
+<td>Monday</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Weekly</td>
+<td>Friday debrief</td>
+<td>Friday</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Weekly</td>
+<td>Customer call observation OR participation</td>
+<td>Varies</td>
+<td>30–90 min</td>
+</tr>
+<tr>
+<td>Bi-weekly</td>
+<td>Role-play practice</td>
+<td>Wednesday</td>
+<td>45 min</td>
+</tr>
+<tr>
+<td>Monthly</td>
+<td>Academy lead progress review</td>
+<td>Last Friday</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Monthly</td>
+<td>Field ride-along</td>
+<td>Per schedule</td>
+<td>4–8 hours</td>
+</tr>
+<tr>
+<td>Quarterly</td>
+<td>Mock certification attempt</td>
+<td>Per schedule</td>
+<td>Half day</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cadence-audit">Cadence audit</h3>
+<table>
+<thead>
+<tr>
+<th>Week</th>
+<th>Monday 1:1</th>
+<th>Friday debrief</th>
+<th>Customer call</th>
+<th>Role-play (bi-weekly)</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>W1</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>n/a</td>
+<td></td>
+</tr>
+<tr>
+<td>W2</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td></td>
+</tr>
+<tr>
+<td>W3</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>n/a</td>
+<td></td>
+</tr>
+<tr>
+<td>W4</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td>[ ]</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>(Continue weekly.)</p>
+<hr />
+<h2 id="14-weekly-progress-log">14. Weekly Progress Log</h2>
+<h3 id="week-1">Week 1</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Entry</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lessons read this week</td>
+<td></td>
+</tr>
+<tr>
+<td>Quizzes attempted (scores)</td>
+<td></td>
+</tr>
+<tr>
+<td>Practical demonstrations attempted</td>
+<td></td>
+</tr>
+<tr>
+<td>Loop entries created / closed</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer interactions</td>
+<td></td>
+</tr>
+<tr>
+<td>AI workflows attempted</td>
+<td></td>
+</tr>
+<tr>
+<td>Trainer's keep-doing</td>
+<td></td>
+</tr>
+<tr>
+<td>Trainer's change-this</td>
+<td></td>
+</tr>
+<tr>
+<td>Apprentice's own learning</td>
+<td></td>
+</tr>
+<tr>
+<td>Apprentice's named failure</td>
+<td></td>
+</tr>
+<tr>
+<td>Action items for next week</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="week-2">Week 2</h3>
+<p><em>(copy structure above)</em></p>
+<p><em>(continue weekly)</em></p>
+<hr />
+<h2 id="15-competency-scorecard">15. Competency Scorecard</h2>
+<p>Scale: 0 (Unaware) / 1 (Aware) / 2 (Competent) / 3 (Expert).</p>
+<h3 id="pillar-01-saas-foundations">Pillar 01 — SaaS Foundations</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01.1</td>
+<td>Customer lifecycle</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>01.2</td>
+<td>Activation &amp; TTV</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>01.3</td>
+<td>Retention mechanics</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>01.4</td>
+<td>Health scoring</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>01.5</td>
+<td>Renewal motion</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-02-cleaning-operations">Pillar 02 — Cleaning Operations</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.1</td>
+<td>Service models</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>02.2</td>
+<td>Labor economics</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>02.3</td>
+<td>Quality systems</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>02.4</td>
+<td>Billing patterns</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>02.5</td>
+<td>Operational pain points</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-03-pioneerops-platform-mastery">Pillar 03 — PioneerOps Platform Mastery</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>03.1</td>
+<td>Core data model</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>03.2</td>
+<td>Time tracking + payroll</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>03.3</td>
+<td>Inspections + DCR</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>03.4</td>
+<td>Communication threads</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>03.5</td>
+<td>Mission Control + financial layers</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>03.6</td>
+<td>Admin tools</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-04-ai-operator">Pillar 04 — AI Operator</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>04.1</td>
+<td>Prompt patterns</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>04.2</td>
+<td>Analysis with AI</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>04.3</td>
+<td>Drafting with AI</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>04.4</td>
+<td>Building small tools</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>04.5</td>
+<td>AI judgment</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-05-customer-success">Pillar 05 — Customer Success</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>05.1</td>
+<td>Discovery</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>05.2</td>
+<td>Onboarding &amp; implementation</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>05.3</td>
+<td>QBR delivery</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>05.4</td>
+<td>Renewals &amp; expansion</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>05.5</td>
+<td>Difficult conversations</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-06-revenue-operations">Pillar 06 — Revenue Operations</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>06.1</td>
+<td>Pipeline hygiene</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>06.2</td>
+<td>Pricing &amp; packaging</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>06.3</td>
+<td>Expansion plays</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>06.4</td>
+<td>Forecasting</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-07-executive-advisor">Pillar 07 — Executive Advisor</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Self</th>
+<th>Trainer</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>07.1</td>
+<td>CEO-level conversation</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>07.2</td>
+<td>Industry context</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>07.3</td>
+<td>Strategic recommendations</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+<tr>
+<td>07.4</td>
+<td>Pushback &amp; disagreement</td>
+<td>__</td>
+<td>__</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="competency-tally">Competency tally</h3>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Apprentice end</th>
+<th>Operator I bar</th>
+<th>Operator II bar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Level 1+</td>
+<td>All 34</td>
+<td>All 34</td>
+<td>All 34</td>
+</tr>
+<tr>
+<td>Level 2+</td>
+<td>≥ 8</td>
+<td>≥ 15</td>
+<td>All 34</td>
+</tr>
+<tr>
+<td>Level 3+</td>
+<td>0</td>
+<td>0</td>
+<td>≥ 8</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="16-red-yellow-green-readiness-status">16. Red / Yellow / Green Readiness Status</h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Status</th>
+<th>Trend</th>
+<th>Note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Foundation lessons completed</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td>↑ / → / ↓</td>
+<td></td>
+</tr>
+<tr>
+<td>Quiz scores</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Practical demonstrations</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Role-play passes</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Evidence pack assembly</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Coachability</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Customer empathy</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Executive presence</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>AI fluency</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Operational judgment</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Written communication</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Pioneer Test self-application</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Pillar 8 verification discipline</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Honest failure naming</td>
+<td>🟢 / 🟡 / 🔴</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th><strong>Current overall status</strong></th>
+<th>🟢 / 🟡 / 🔴</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Last updated</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Next review</td>
+<td>YYYY-MM-DD</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="17-certification-gate-checklist">17. Certification Gate Checklist</h2>
+<h3 id="operator-i-gate">Operator I Gate</h3>
+<h4 id="knowledge">Knowledge</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> All four foundation lessons read</li>
+<li class="task"><input type="checkbox" disabled> Quiz scores ≥ 7/10 on at least 3 of 4 lessons</li>
+<li class="task"><input type="checkbox" disabled> Constitution v1.1 read</li>
+<li class="task"><input type="checkbox" disabled> Glossary read in full pass</li>
+<li class="task"><input type="checkbox" disabled> Cert Framework read</li>
+</ul>
+<h4 id="practical">Practical</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> 8 recorded Weekly Vital Reads</li>
+<li class="task"><input type="checkbox" disabled> ≥ 3 Loop entries with verification dates</li>
+<li class="task"><input type="checkbox" disabled> ≥ 1 Loop entry fully closed (including failures)</li>
+<li class="task"><input type="checkbox" disabled> ≥ 1 Customer Economics analysis</li>
+<li class="task"><input type="checkbox" disabled> ≥ 1 Pillar 8 verification pause</li>
+<li class="task"><input type="checkbox" disabled> ≥ 1 verified positive business outcome</li>
+</ul>
+<h4 id="role-play">Role-play</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> Passed ≥ 2 of 3 Scenario A role-plays</li>
+<li class="task"><input type="checkbox" disabled> Named trap avoided in each pass</li>
+</ul>
+<h4 id="evidence-pack">Evidence pack</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> All universal items present</li>
+<li class="task"><input type="checkbox" disabled> All Operator I tier items present</li>
+<li class="task"><input type="checkbox" disabled> ≥ 1 honest named failure documented</li>
+<li class="task"><input type="checkbox" disabled> Pioneer Test self-application completed</li>
+</ul>
+<h4 id="doctrine">Doctrine</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> Can recite Pioneer Test (4 questions)</li>
+<li class="task"><input type="checkbox" disabled> Can name all 6 Vitals</li>
+<li class="task"><input type="checkbox" disabled> Can describe Loop (6 stages, in order)</li>
+<li class="task"><input type="checkbox" disabled> Can explain Pillar 8 discipline</li>
+<li class="task"><input type="checkbox" disabled> Can describe AI Breadth/Judgment/Truth division</li>
+</ul>
+<h3 id="operator-ii-gate-stretch">Operator II Gate (stretch)</h3>
+<h4 id="cumulative">Cumulative</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> All Operator I gates passed at higher bar</li>
+<li class="task"><input type="checkbox" disabled> 8+ QBRs delivered, rubric pass on ≥ 6</li>
+<li class="task"><input type="checkbox" disabled> 5+ Customer Economics analyses</li>
+<li class="task"><input type="checkbox" disabled> 1+ Self-Sustaining Loop verified</li>
+<li class="task"><input type="checkbox" disabled> 1+ churn-risk save documented</li>
+<li class="task"><input type="checkbox" disabled> 1+ expansion deal closed</li>
+<li class="task"><input type="checkbox" disabled> 1+ Pillar 8 Discontinuity handled</li>
+<li class="task"><input type="checkbox" disabled> All Scenario A passed</li>
+<li class="task"><input type="checkbox" disabled> ≥ 2 stretches passed</li>
+</ul>
+<h4 id="business-outcomes-12-month-trailing">Business outcomes (12-month trailing)</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> NRR ≥ 105%</li>
+<li class="task"><input type="checkbox" disabled> GRR ≥ 90%</li>
+<li class="task"><input type="checkbox" disabled> Customer NPS ≥ 50</li>
+<li class="task"><input type="checkbox" disabled> Health average ≥ 75</li>
+</ul>
+<h4 id="portfolio-artifacts">Portfolio artifacts</h4>
+<ul>
+<li class="task"><input type="checkbox" disabled> Implementation case study</li>
+<li class="task"><input type="checkbox" disabled> Executive briefing recorded</li>
+<li class="task"><input type="checkbox" disabled> Difficult conversation documented</li>
+<li class="task"><input type="checkbox" disabled> Customer health model in active use</li>
+</ul>
+<hr />
+<h2 id="18-reviewer-signoff-section">18. Reviewer Signoff Section</h2>
+<h3 id="primary-trainer-signoff">Primary Trainer Signoff</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary trainer name</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Recommendation</td>
+<td>Schedule cert / Wait / Decline</td>
+</tr>
+<tr>
+<td>Trainer's defense</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<blockquote></blockquote>
+<h3 id="secondary-reviewer-confirmation">Secondary Reviewer Confirmation</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Secondary reviewer name</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Recommendation</td>
+<td>Pass / Conditional / No Pass — Gap-Driven / No Pass — Disqualifying</td>
+</tr>
+<tr>
+<td>Reviewer's defense</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<blockquote></blockquote>
+<h3 id="academy-lead-final-decision">Academy Lead Final Decision</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Academy lead name</td>
+<td></td>
+</tr>
+<tr>
+<td>Date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Final decision</td>
+<td>Pass / Conditional / No Pass — Gap-Driven / No Pass — Disqualifying</td>
+</tr>
+<tr>
+<td>Lineage ID assigned</td>
+<td><code>POPS-OP-I-{YYYY}-{seq}</code></td>
+</tr>
+<tr>
+<td>Registry entry created</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>Compensation adjustment effective</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Next renewal date</td>
+<td>YYYY-MM-DD</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Academy lead's certification statement:</p>
+</blockquote>
+<hr />
+<h2 id="19-renewal-next-level-notes">19. Renewal / Next-Level Notes</h2>
+<h3 id="renewal">Renewal</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>First renewal due</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Renewal evidence reference</td>
+<td><a href="./certification-renewal-evidence.html"><code>certification-renewal-evidence.md</code></a></td>
+</tr>
+<tr>
+<td>Continuing coaching cadence</td>
+<td></td>
+</tr>
+<tr>
+<td>Renewal trigger watch</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="path-to-next-tier">Path to next tier</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Account portfolio expansion</td>
+<td>__ accounts currently</td>
+</tr>
+<tr>
+<td>QBR cadence ramping</td>
+<td>__ delivered last quarter</td>
+</tr>
+<tr>
+<td>Self-Sustaining Loops in flight</td>
+<td>__ customers</td>
+</tr>
+<tr>
+<td>Mentor pairing for stretch</td>
+<td></td>
+</tr>
+<tr>
+<td>Estimated next cert window</td>
+<td>YYYY-MM-DD</td>
+</tr>
+</tbody>
+</table>
+<h3 id="path-to-operator-iii-longer-arc">Path to Operator III (longer arc)</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Strategic account ownership</td>
+<td>Not yet</td>
+</tr>
+<tr>
+<td>Apprentice mentorship</td>
+<td>Not yet</td>
+</tr>
+<tr>
+<td>Academy contribution</td>
+<td>Not yet</td>
+</tr>
+<tr>
+<td>Estimated Operator III window</td>
+<td><em>(months out)</em></td>
+</tr>
+</tbody>
+</table>
+<h3 id="academy-leads-long-arc-note">Academy lead's long-arc note</h3>
+<blockquote></blockquote>
+<hr />
+<table>
+<thead>
+<tr>
+<th>Document version</th>
+<th>1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Last updated</td>
+<td>YYYY-MM-DD</td>
+</tr>
+<tr>
+<td>Custodianship</td>
+<td>Academy lead</td>
+</tr>
+<tr>
+<td>Update cadence</td>
+<td>Weekly Friday debrief; monthly with Academy lead</td>
+</tr>
+<tr>
+<td>Authority</td>
+<td>Inherits from <a href="../operator-certification-framework.html">Certification Framework Section 11</a>. Framework governs on conflict.</td>
+</tr>
+</tbody>
+</table>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/apprentice-progress-tracker-template.md</code>
+</footer>
+</body>
+</html>

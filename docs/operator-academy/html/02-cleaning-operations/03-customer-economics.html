@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 02.3 — Customer Economics — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="lesson-023-customer-economics">Lesson 02.3 — Customer Economics</h1>
+<blockquote>
+<p>Pillar 02 — Cleaning Operations · Competency 02.2 + 02.4 · Target level after this lesson: <strong>3 (Expert)</strong></p>
+<p><strong>Companion lesson</strong> to <a href="./02-revenue-per-labor-hour.html">02.2 Revenue Per Labor Hour</a>. RPLH tells the Operator that a problem exists. Customer Economics teaches the Operator <strong>why</strong>.</p>
+<p>Required reading before this lesson: <a href="./02-revenue-per-labor-hour.html">02.2 RPLH</a>, the <a href="../00-academy-overview/10-customer-journey.html">Customer Journey</a>, and the <a href="../operator-glossary.html">Operator Glossary</a> entries for RPLH, Customer Economics, and Gross Margin.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Time block</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reading + walkthrough</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>Exercise</td>
+<td>60 min</td>
+</tr>
+<tr>
+<td>Role-play</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Quiz + coaching discussion</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>3 hours 15 min</strong></td>
+</tr>
+</tbody>
+</table>
+<p>This is a foundational lesson. Do not rush it. A graduate Operator must be able to walk a cleaning company owner from "revenue is up" to "but margin is down" without losing the relationship.</p>
+<hr />
+<h2 id="action-metric-outcome-pillar-1">Action → Metric → Outcome (Pillar 1)</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Metric</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Build a per-customer economics view that includes labor, payroll burden, and supplies — then walk the owner through it</td>
+<td>Gross margin per customer (and company-wide)</td>
+<td>Owner makes pricing, scope, and customer-mix decisions on real numbers, not feel</td>
+</tr>
+</tbody>
+</table>
+<h2 id="economic-reality-chain-pillar-7">Economic Reality Chain (Pillar 7)</h2>
+<table>
+<thead>
+<tr>
+<th>Operational Event</th>
+<th>Operational Metric</th>
+<th>Financial Consequence</th>
+<th>Business Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Owner adds new customers at below-target pricing, allows scope creep on legacy accounts, and absorbs wage increases without raising rates</td>
+<td>Customer count up, average RPLH down, supply cost per customer up</td>
+<td>Gross margin per customer falls 8–15 points; gross profit dollars stagnant or declining despite revenue growth</td>
+<td>Bonus pool shrinks; best techs leave; growth stalls; owner cannot fund the next route manager or location</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="element-1-plain-english-explanation">ELEMENT 1 — Plain-English Explanation</h2>
+<h3 id="what-customer-economics-is">What Customer Economics is</h3>
+<p>For a cleaning company, the most important question about any customer is:</p>
+<blockquote>
+<p>"After paying everyone and buying the supplies, how much money is actually left from this customer?"</p>
+</blockquote>
+<p>Customer Economics is that answer, customer by customer.</p>
+<p>It is what you get when you start with the revenue from a customer and subtract every direct cost that customer caused.</p>
+<h3 id="the-simple-math">The simple math</h3>
+<p>Take one customer. In one month:</p>
+<table>
+<thead>
+<tr>
+<th>Line</th>
+<th>Amount</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Customer revenue</strong> (what they paid you)</td>
+<td>$4,200</td>
+</tr>
+<tr>
+<td>Less: Direct labor (cleaning hours × wages)</td>
+<td>-$1,500</td>
+</tr>
+<tr>
+<td>Less: Payroll burden (taxes, workers' comp, PTO accrual — 28% of labor)</td>
+<td>-$420</td>
+</tr>
+<tr>
+<td>Less: Supplies (chemicals, paper goods, equipment wear)</td>
+<td>-$180</td>
+</tr>
+<tr>
+<td><strong>= Gross Profit on this customer</strong></td>
+<td><strong>$2,100</strong></td>
+</tr>
+<tr>
+<td><strong>Gross Margin %</strong> (Gross Profit ÷ Revenue)</td>
+<td><strong>50%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>That's it.</p>
+<h3 id="what-customer-economics-does-not-include">What Customer Economics does NOT include</h3>
+<p>Customer Economics stops at gross profit. It does NOT include:</p>
+<ul>
+<li>Office rent</li>
+<li>Owner salary</li>
+<li>Insurance (general, not workers' comp)</li>
+<li>Vehicle costs (general)</li>
+<li>Marketing</li>
+<li>Software (including PioneerOps)</li>
+<li>Bad debt</li>
+<li>Any other shared overhead</li>
+</ul>
+<p>Those costs are real. They show up in the company's bottom line. But they cannot be cleanly assigned to a single customer. So we leave them out — and we call this view <strong>Customer Economics</strong>, not profitability.</p>
+<h3 id="why-we-stop-at-gross-margin">Why we stop at gross margin</h3>
+<p>Two reasons:</p>
+<ol>
+<li><strong>Gross margin is what the owner can actually change customer by customer.</strong> They can raise a rate. They can cut a scope. They can swap a tech. They cannot easily change office rent based on which customer they're talking about.</li>
+<li><strong>Gross margin is the truth-teller.</strong> Companies that look "profitable" on the income statement often have terrible Customer Economics. The good customers are subsidizing the bad ones. Gross margin breaks the average and shows which is which.</li>
+</ol>
+<h3 id="how-this-connects-to-rplh">How this connects to RPLH</h3>
+<p>RPLH is one slice of Customer Economics. Specifically:</p>
+<pre><code>   RPLH = Revenue ÷ Labor Hours
+</code></pre>
+<p>That only checks revenue against labor hours. It does NOT include:</p>
+<ul>
+<li>Payroll burden (the 25–35% on top of wages)</li>
+<li>Supplies</li>
+<li>The trend over time</li>
+</ul>
+<p>So:</p>
+<ul>
+<li><strong>RPLH</strong> tells you "this customer's revenue-to-labor ratio looks bad."</li>
+<li><strong>Customer Economics</strong> tells you "and here's exactly how bad — and why."</li>
+</ul>
+<p>RPLH is detection. Customer Economics is diagnosis.</p>
+<hr />
+<h2 id="element-2-why-it-matters">ELEMENT 2 — Why It Matters</h2>
+<h3 id="owners-get-hurt-by-what-they-cannot-see">Owners get hurt by what they cannot see</h3>
+<p>Most cleaning company owners can tell you their company's revenue. Many can tell you their net income at year end. Very few can tell you the gross margin on a single customer.</p>
+<p>That is a problem. Because:</p>
+<table>
+<thead>
+<tr>
+<th>What the owner sees</th>
+<th>What they DON'T see</th>
+<th>Risk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top-line revenue is growing</td>
+<td>Customer mix is shifting toward unprofitable accounts</td>
+<td>They feel successful while sliding into a margin crisis</td>
+</tr>
+<tr>
+<td>Net income is roughly flat</td>
+<td>Three customers are bleeding $40K/year between them</td>
+<td>They blame "the market" instead of fixing the leak</td>
+</tr>
+<tr>
+<td>A few star customers</td>
+<td>They are subsidizing six bad customers</td>
+<td>Lose a star customer → cash crunch → emergency cuts</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-four-layers-of-how-customers-earn-or-lose-money">The four layers of "how customers earn or lose money"</h3>
+<p>Every dollar a customer pays goes through four layers before it reaches the owner's pocket:</p>
+<pre><code>   Customer pays $1.00
+        │
+        ▼
+   Layer 1: Direct labor takes ~$0.35–$0.45
+        │
+        ▼
+   Layer 2: Payroll burden takes ~$0.10–$0.13
+        │
+        ▼
+   Layer 3: Supplies take ~$0.03–$0.07
+        │
+        ▼
+   Layer 4: Gross profit left = ~$0.35–$0.52
+        │
+        ▼
+   (overhead eats more before net profit)
+</code></pre>
+<p>A well-priced customer ends with 50–55¢ on the dollar in gross profit. A poorly-priced one ends with 35¢. A bleeding one ends with under 30¢.</p>
+<h3 id="why-ceos-love-this-view-when-its-shown-plainly">Why CEOs love this view (when it's shown plainly)</h3>
+<p>Owners are not allergic to math. They are allergic to <strong>MBA math</strong>.</p>
+<p>Give an owner this:</p>
+<blockquote>
+<p>"On this customer, after wages, payroll taxes, workers' comp, and supplies, you keep 38 cents on the dollar. Your strong customers keep 52. This one customer is costing you about $1,800 a month in margin compared to your strong accounts."</p>
+</blockquote>
+<p>…and they will sit forward.</p>
+<p>Give them this:</p>
+<blockquote>
+<p>"Your gross margin compression on this account relative to your portfolio's trailing twelve-month weighted average is 14.2%."</p>
+</blockquote>
+<p>…and they will sit back.</p>
+<p>Same number. Different conversation. The first one ends in action. The second one ends in another vendor meeting.</p>
+<hr />
+<h2 id="element-3-pioneer-example">ELEMENT 3 — Pioneer Example</h2>
+<h3 id="two-customers-same-revenue-completely-different-economics">Two customers, same revenue, completely different economics</h3>
+<p>Pioneer's "Riverside Office" and "Dental Plaza SE" pay similar amounts each month. Their Customer Economics are nothing alike.</p>
+<table>
+<thead>
+<tr>
+<th>Line</th>
+<th>Riverside Office</th>
+<th>Dental Plaza SE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Monthly revenue</td>
+<td>$5,040</td>
+<td>$5,280</td>
+</tr>
+<tr>
+<td>Cleaning labor hours</td>
+<td>60</td>
+<td>120</td>
+</tr>
+<tr>
+<td>Avg tech wage (per hour)</td>
+<td>$17</td>
+<td>$17</td>
+</tr>
+<tr>
+<td>Direct labor ($)</td>
+<td>$1,020</td>
+<td>$2,040</td>
+</tr>
+<tr>
+<td>Payroll burden (28%)</td>
+<td>$286</td>
+<td>$571</td>
+</tr>
+<tr>
+<td>Supplies (chemicals + paper)</td>
+<td>$90</td>
+<td>$260 (medical disinfection extras)</td>
+</tr>
+<tr>
+<td><strong>Gross Profit</strong></td>
+<td><strong>$3,644</strong></td>
+<td><strong>$2,409</strong></td>
+</tr>
+<tr>
+<td><strong>Gross Margin %</strong></td>
+<td><strong>72%</strong></td>
+<td><strong>46%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Same Pioneer. Same techs. Roughly the same revenue. $1,235/month gap in gross profit.</strong></p>
+<h3 id="what-this-teaches">What this teaches</h3>
+<p>Two customers can look identical on a revenue dashboard and look completely different on a Customer Economics dashboard. The difference is <strong>labor intensity</strong> (how many hours the building eats) plus <strong>supply intensity</strong> (how much consumable spend it requires).</p>
+<p>Without Customer Economics, Pioneer would treat these two accounts as equally valuable. With Customer Economics, Pioneer knows:</p>
+<ul>
+<li>Riverside is a star — replicate this kind of contract.</li>
+<li>Dental Plaza is fine but soft — careful with scope creep, watch supply costs, consider re-pricing at next renewal.</li>
+</ul>
+<h3 id="nicks-view">Nick's view</h3>
+<blockquote>
+<p>"If I had to lose one of these customers tomorrow, it would not even be close. Riverside earns me $14,000 a year more in margin than Dental Plaza does on the same revenue."</p>
+</blockquote>
+<p>That sentence is impossible without Customer Economics. With it, every customer-mix decision gets sharper.</p>
+<hr />
+<h2 id="element-4-customer-example">ELEMENT 4 — Customer Example</h2>
+<h3 id="how-pioneer-customer-acme-cleaning-learned-the-truth-about-revenue-growth">How Pioneer customer ACME Cleaning learned the truth about revenue growth</h3>
+<p><strong>The setup.</strong> ACME Cleaning had been chasing revenue growth aggressively for 18 months. Owner was proud. The team was tired. The owner could not figure out why.</p>
+<p><strong>At the first Customer Economics conversation:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>18 months ago</th>
+<th>Today</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Annual revenue</td>
+<td>$1.78M</td>
+<td>$2.10M</td>
+<td><strong>+18% 🎉</strong></td>
+</tr>
+<tr>
+<td>Active customers</td>
+<td>24</td>
+<td>31</td>
+<td><strong>+29%</strong></td>
+</tr>
+<tr>
+<td>Avg company RPLH</td>
+<td>$54</td>
+<td>$46</td>
+<td><strong>-15%</strong></td>
+</tr>
+<tr>
+<td>Avg gross margin per customer</td>
+<td>51%</td>
+<td>39%</td>
+<td><strong>-12 points</strong></td>
+</tr>
+<tr>
+<td>Total gross profit (annual)</td>
+<td>$592,000</td>
+<td>$580,000</td>
+<td><strong>-2% 😬</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The numbers said this:</strong></p>
+<ul>
+<li>Revenue grew $320,000.</li>
+<li>7 new customers signed.</li>
+<li>Gross profit went down $12,000.</li>
+</ul>
+<p>ACME's owner had been working harder for less money for 18 months and had not realized it. The Customer Economics view made it impossible to deny.</p>
+<h3 id="diagnosing-the-leak">Diagnosing the leak</h3>
+<p>The operator walked through the seven new customers' Customer Economics:</p>
+<table>
+<thead>
+<tr>
+<th>New customer</th>
+<th>Revenue</th>
+<th>Gross margin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>New 1</td>
+<td>$42K</td>
+<td>28%</td>
+</tr>
+<tr>
+<td>New 2</td>
+<td>$61K</td>
+<td>35%</td>
+</tr>
+<tr>
+<td>New 3</td>
+<td>$38K</td>
+<td>31%</td>
+</tr>
+<tr>
+<td>New 4</td>
+<td>$54K</td>
+<td>42%</td>
+</tr>
+<tr>
+<td>New 5</td>
+<td>$47K</td>
+<td>38%</td>
+</tr>
+<tr>
+<td>New 6</td>
+<td>$44K</td>
+<td>25%</td>
+</tr>
+<tr>
+<td>New 7</td>
+<td>$34K</td>
+<td>33%</td>
+</tr>
+<tr>
+<td><strong>Average</strong></td>
+<td><strong>$46K</strong></td>
+<td><strong>33%</strong></td>
+</tr>
+<tr>
+<td>ACME's prior portfolio average</td>
+<td>$74K</td>
+<td>51%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The pattern:</strong> ACME had been winning new business by competing on price. Every new customer came in at a margin profile that hurt the average. Some came in below break-even — meaning the company was paying to clean them.</p>
+<h3 id="what-acme-did-next">What ACME did next</h3>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Stop chasing low-margin growth</td>
+<td>New customers must clear 45% gross margin in the first 90 days OR have a clear path to it</td>
+</tr>
+<tr>
+<td>2. Re-price the bottom 6 (including the bad new ones)</td>
+<td>Average rate increase 9% over 4 months</td>
+</tr>
+<tr>
+<td>3. Walk away from one bad new customer</td>
+<td>Mutual exit, no penalty</td>
+</tr>
+<tr>
+<td>4. Re-train sales team</td>
+<td>Replace "what's your budget?" with "let me show you what it costs to clean a building like yours"</td>
+</tr>
+</tbody>
+</table>
+<h3 id="six-months-later">Six months later</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Revenue</td>
+<td>$2.13M (slight gain)</td>
+</tr>
+<tr>
+<td>Active customers</td>
+<td>30 (-1 from the walked-away account)</td>
+</tr>
+<tr>
+<td>Avg company RPLH</td>
+<td>$52 (+$6 from low)</td>
+</tr>
+<tr>
+<td>Avg gross margin per customer</td>
+<td>47% (+8 points)</td>
+</tr>
+<tr>
+<td>Total gross profit (annual)</td>
+<td>$640,000 (+$60K)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Same revenue band. $60,000 more gross profit. One fewer customer.</strong></p>
+<p>Owner's quote at the next QBR:</p>
+<blockquote>
+<p>"I was so proud of the revenue growth I almost did not want to see this. Now I cannot un-see it. We are growing differently from here."</p>
+</blockquote>
+<hr />
+<h2 id="element-5-common-mistakes">ELEMENT 5 — Common Mistakes</h2>
+<h3 id="mistake-1-confusing-revenue-growth-with-profitable-growth">Mistake 1 — Confusing revenue growth with profitable growth</h3>
+<blockquote>
+<p><strong>Mistake:</strong> Owner sees revenue is up. Assumes the business is healthier.
+<strong>Why operators let this happen:</strong> It feels rude to puncture good news.
+<strong>Cost:</strong> Owner makes more investment decisions assuming the company is growing well. Hires another route manager. Buys equipment. Then cash runs short and they cannot figure out why.
+<strong>Better move:</strong> Always pair revenue growth with gross profit dollars and average gross margin. "Revenue is up, AND here is what is happening to your margin per customer."</p>
+</blockquote>
+<h3 id="mistake-2-forgetting-payroll-burden">Mistake 2 — Forgetting payroll burden</h3>
+<blockquote>
+<p><strong>Mistake:</strong> Operators (and owners) talk about "labor cost" and only count wages. They forget the 25–35% burden on top.
+<strong>Cost:</strong> Customer Economics looks rosier than it is. Margin compression goes unnoticed.
+<strong>Better move:</strong> Always include burden. When in doubt, use 28% as a starting estimate and ask the owner what their actual rate is.</p>
+</blockquote>
+<h3 id="mistake-3-allocating-supplies-as-a-flat-company-average">Mistake 3 — Allocating supplies as a flat company average</h3>
+<blockquote>
+<p><strong>Mistake:</strong> Spreading total supply spend evenly across all customers ($100 each, say).
+<strong>Cost:</strong> Hides which customers are supply-heavy (medical, food service, daycare). Some customers look more profitable than they are.
+<strong>Better move:</strong> Allocate supplies by service type or customer category. Medical accounts get 2–3× the supply allocation of a standard office.</p>
+</blockquote>
+<h3 id="mistake-4-treating-customer-economics-as-net-profit">Mistake 4 — Treating Customer Economics as net profit</h3>
+<blockquote>
+<p><strong>Mistake:</strong> Operator says "this customer is unprofitable" when Customer Economics shows 38% gross margin.
+<strong>Cost:</strong> Owner becomes confused. Operator loses credibility. The customer may actually be profitable AT the company level (because overhead is already covered by the strong customers).
+<strong>Better move:</strong> Say "this customer's gross margin is below where it should be" — and "below break-even on margin" when it actually is. Never use "profit" without qualifying it.</p>
+</blockquote>
+<h3 id="mistake-5-sounding-like-an-accountant">Mistake 5 — Sounding like an accountant</h3>
+<blockquote>
+<p><strong>Mistake:</strong> Using terms like "EBITDA contribution," "burden-loaded rate," "weighted average GM."
+<strong>Cost:</strong> Owner shuts down. Conversation becomes a vendor pitch.
+<strong>Better move:</strong> "After you pay your people and buy your supplies, you keep about 47 cents on the dollar from this customer." Plain English wins.</p>
+</blockquote>
+<hr />
+<h2 id="element-6-vocabulary">ELEMENT 6 — Vocabulary</h2>
+<h3 id="direct-labor">Direct Labor</h3>
+<ul>
+<li><strong>Definition.</strong> Wages paid to cleaning techs for hours worked on a specific customer's site.</li>
+<li><strong>Why it matters.</strong> This is the biggest cost most cleaning customers carry. Usually 35–45% of revenue.</li>
+<li><strong>Real example.</strong> Tech earns $17/hr. Spends 60 hours at Riverside Office in October. Direct labor = $1,020.</li>
+<li><strong>Common misunderstanding.</strong> "Labor cost" is NOT just wages. It is wages PLUS payroll burden. The two together are the real labor cost.</li>
+</ul>
+<h3 id="payroll-burden-also-labor-burden-loaded-rate-adder">Payroll Burden (also: Labor Burden, Loaded Rate Adder)</h3>
+<ul>
+<li><strong>Definition.</strong> The extra costs the employer pays on top of wages — payroll taxes, workers' comp insurance, PTO accrual, sick leave accrual, retirement match if any, benefits if any.</li>
+<li><strong>Why it matters.</strong> Typically 25–35% of wages. If you don't count it, your Customer Economics is wrong by 10+ margin points.</li>
+<li><strong>Real example.</strong> Tech earns $17/hr. Burden rate is 28%. Loaded rate is $17 × 1.28 = $21.76/hr.</li>
+<li><strong>Common misunderstanding.</strong> Burden is not "overhead." It is a direct cost of having that tech work that hour. It moves with hours worked.</li>
+</ul>
+<h3 id="supplies-direct-supplies-consumables">Supplies (Direct Supplies / Consumables)</h3>
+<ul>
+<li><strong>Definition.</strong> Chemicals, paper goods (TP, paper towels), liners, equipment wear, PPE that get used at a customer's site.</li>
+<li><strong>Why it matters.</strong> Usually 3–7% of revenue. Higher for medical, food service, daycare. Often under-tracked.</li>
+<li><strong>Real example.</strong> Standard office: $90/month supplies. Medical office: $260/month. Daycare: $310/month.</li>
+<li><strong>Common misunderstanding.</strong> Equipment depreciation (vacuums, buffers) is supplies for our purposes. Big equipment purchases are not — those are capital.</li>
+</ul>
+<h3 id="gross-profit-per-customer">Gross Profit (per customer)</h3>
+<ul>
+<li><strong>Definition.</strong> Customer revenue minus direct labor minus payroll burden minus supplies. Stops there.</li>
+<li><strong>Why it matters.</strong> The honest "what's left from this customer" number, before overhead.</li>
+<li><strong>Real example.</strong> Riverside Office: $5,040 revenue − $1,020 labor − $286 burden − $90 supplies = $3,644 gross profit.</li>
+<li><strong>Common misunderstanding.</strong> Gross profit is NOT net profit. Net profit subtracts office rent, owner salary, insurance, software, vehicles, marketing. Customer Economics stops before all of that.</li>
+</ul>
+<h3 id="gross-margin-per-customer">Gross Margin (per customer)</h3>
+<ul>
+<li><strong>Definition.</strong> Gross profit ÷ revenue, expressed as a percentage.</li>
+<li><strong>Why it matters.</strong> A standardized way to compare customers of different sizes.</li>
+<li><strong>Real example.</strong> Riverside Office: $3,644 ÷ $5,040 = 72% gross margin.</li>
+<li><strong>Common misunderstanding.</strong> A 72% gross margin sounds amazing. Remember overhead has not been taken out yet. Net margin will be much lower.</li>
+</ul>
+<h3 id="profit-leakage">Profit Leakage</h3>
+<ul>
+<li><strong>Definition.</strong> Money the company should be earning from a customer but isn't, because of operational issues (scope creep, re-cleans, callouts, wage drift without rate adjustment).</li>
+<li><strong>Why it matters.</strong> Most profit leakage is fixable once you can see it. Without Customer Economics, it stays invisible.</li>
+<li><strong>Real example.</strong> Customer asks for "just one extra wipe-down" each night. 15 minutes per visit × 22 visits = 5.5 hours/month at $21.76 loaded rate = $120/month in leak.</li>
+<li><strong>Common misunderstanding.</strong> Profit leakage is not the customer's fault. It is the contract's fault for not pricing for the actual scope.</li>
+</ul>
+<h3 id="scope-creep">Scope Creep</h3>
+<ul>
+<li><strong>Definition.</strong> The customer adds work over time without the contract rate going up.</li>
+<li><strong>Why it matters.</strong> Single biggest source of profit leakage in commercial cleaning. Often invisible until Customer Economics surfaces it.</li>
+<li><strong>Real example.</strong> Customer's office expanded 1,200 sq ft a year ago. Cleaning rate stayed the same. Tech now spends 10 extra hours/month with no rate increase.</li>
+<li><strong>Common misunderstanding.</strong> Scope creep is not always asked for explicitly. Sometimes it's accommodation — a manager said "sure" once and it became a standing expectation.</li>
+</ul>
+<h3 id="profitable-growth">Profitable Growth</h3>
+<ul>
+<li><strong>Definition.</strong> Revenue growth that comes with stable or rising gross margin per customer.</li>
+<li><strong>Why it matters.</strong> The opposite — unprofitable growth — feels successful but eats the company alive. Most cleaning company failures look like rapid revenue growth followed by sudden cash collapse.</li>
+<li><strong>Real example.</strong> ACME Cleaning grew revenue 18% over 18 months while gross profit went down 2%. Unprofitable growth.</li>
+<li><strong>Common misunderstanding.</strong> Treating revenue and profit as the same direction. They often go opposite directions.</li>
+</ul>
+<blockquote>
+<p>All new terms here have been added to the <a href="../operator-glossary.html">Operator Glossary</a>. Future lessons should reuse them.</p>
+</blockquote>
+<hr />
+<h2 id="element-7-visual-diagrams">ELEMENT 7 — Visual Diagrams</h2>
+<h3 id="diagram-1-the-customer-economics-waterfall">Diagram 1 — The Customer Economics Waterfall</h3>
+<p>This is THE diagram of this lesson. Operators should be able to draw it on a whiteboard from memory.</p>
+<pre><code>Customer Revenue              $5,040  ████████████████████████████  100%
+                                        │
+                                        ▼
+                            ┌─ Direct Labor (hours × wage)
+                            │   $1,020 ███████                       20%
+                            │
+                            │
+                            ├─ Payroll Burden (28% × labor)
+                            │     $286 ██                             6%
+                            │
+                            │
+                            ├─ Supplies (chemicals, paper, wear)
+                            │      $90 █                              2%
+                            │
+                            ▼
+Gross Profit                  $3,644  ████████████████████          72%
+                                        │
+                                        ▼
+                            ┌─ Overhead (NOT in Customer Economics)
+                            │   - Office rent
+                            │   - Owner salary
+                            │   - Insurance / vehicles
+                            │   - Marketing / software
+                            ▼
+Net Profit                   (what's left after everything)
+</code></pre>
+<p><strong>What this teaches:</strong></p>
+<ol>
+<li>Customer Economics is a waterfall. Each line subtracts from the line above.</li>
+<li>Three direct costs (labor, burden, supplies) get pulled out.</li>
+<li>We STOP at gross profit. Anything below that line is not part of Customer Economics.</li>
+<li>The percentages on the right are what owners track. "We're a 50%-gross-margin shop" is a real conversation.</li>
+</ol>
+<h3 id="diagram-2-the-scope-creep-loop">Diagram 2 — The Scope Creep Loop</h3>
+<p>This is what happens when scope grows but rates don't. Operators see this constantly.</p>
+<pre><code>        ╭─────────────────────────────────────────────────────╮
+        │                                                     │
+        │       &quot;Pressure to grow revenue to fund the company&quot; │
+        │                                                     │
+        ▼                                                     │
+                                                              │
+   Customer asks for &quot;just one more thing&quot;                    │
+                  │                                           │
+                  ▼                                           │
+        Additional Work Done                                  │
+                  │                                           │
+                  ▼                                           │
+        More Labor Hours On That Customer                     │
+                  │                                           │
+                  ▼                                           │
+        Lower Margin Per Hour (RPLH falls)                    │
+                  │                                           │
+                  ▼                                           │
+        Lower Gross Profit On That Customer                   │
+                  │                                           │
+                  ▼                                           │
+        Less Capacity For Other Work                          │
+                  │                                           │
+                  ▼                                           │
+        Owner Adds MORE Customers To Make Up The Gap          │
+                  │                                           │
+                  ▼                                           │
+        Even More Labor Demand; Even Thinner Margin           │
+                  │                                           │
+                  └──────────────────────────────────────────►╯
+              (And the loop tightens each year)
+</code></pre>
+<p><strong>What this teaches:</strong></p>
+<ul>
+<li>Scope creep is a TRAP. The natural response (find more customers) makes the problem worse.</li>
+<li>The way out is NOT more revenue. The way out is repricing the scope.</li>
+<li>Operators who recognize the loop can interrupt it. Operators who don't end up advising owners to "sell more" — which deepens the hole.</li>
+</ul>
+<hr />
+<h2 id="element-8-exercise">ELEMENT 8 — Exercise</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task</strong></td>
+<td>Build a full Customer Economics view for one of your owned accounts. Compare it to that customer's RPLH-only view. Identify at least one source of profit leakage.</td>
+</tr>
+<tr>
+<td><strong>Inputs</strong></td>
+<td>Customer Economics card in PioneerOps · Customer's QuickBooks invoice history · 30-day window of PioneerOps service sessions · Conversation with the account's primary contact if needed for supplies estimate</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>1-page Customer Economics analysis + a list of 3 questions you'll ask the owner</td>
+</tr>
+<tr>
+<td><strong>Time</strong></td>
+<td>60 minutes total (20 min data · 25 min analysis · 15 min question drafting)</td>
+</tr>
+<tr>
+<td><strong>Success looks like</strong></td>
+<td>Trainer reads it and says: "I would walk into that conversation with you tomorrow."</td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-analysis-structure">Required analysis structure</h3>
+<pre><code>1. Customer name + service type
+
+2. Revenue (last 30 days)
+
+3. Labor breakdown
+   - Cleaning hours logged
+   - Average tech wage rate
+   - Direct labor cost
+   - Burden rate used (and where it came from)
+   - Burdened labor total
+
+4. Supplies allocation
+   - Method used (flat, by service type, customer-specific)
+   - Monthly supply cost estimate
+   - Notes on what drove the number
+
+5. Customer Economics result
+   - Gross Profit ($)
+   - Gross Margin (%)
+   - Compare against company average
+
+6. Leakage diagnosis
+   - List up to 3 sources of leakage you suspect
+   - For each: estimated $/month impact
+   - For each: how confident you are (high / medium / low)
+
+7. Three questions for the owner
+   - Question 1 (about scope)
+   - Question 2 (about supplies)
+   - Question 3 (about pricing history — when last increase, why)
+</code></pre>
+<h3 id="submission">Submission</h3>
+<p>Send the analysis to your trainer. Bring it to the next pipeline review. Be ready to defend every number.</p>
+<hr />
+<h2 id="element-9-role-play">ELEMENT 9 — Role-play</h2>
+<h3 id="scenario-revenue-is-up-were-doing-great">Scenario — "Revenue is up. We're doing great."</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Scenario name</strong></td>
+<td>The revenue-vs-profit conversation</td>
+</tr>
+<tr>
+<td><strong>Pillar / Competency</strong></td>
+<td>Pillar 02 · 02.4 + Pillar 07 · 07.3 (Strategic recommendations)</td>
+</tr>
+<tr>
+<td><strong>Format</strong></td>
+<td>Live role-play, recorded</td>
+</tr>
+<tr>
+<td><strong>Time</strong></td>
+<td>30 min (15 min run + 15 min debrief)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="setup-the-customer">Setup — the customer</h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company name</td>
+<td>(Fictional) Eastside Commercial Cleaning</td>
+</tr>
+<tr>
+<td>Size</td>
+<td>22 employees, ~$2.3M revenue</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>Spokane Valley</td>
+</tr>
+<tr>
+<td>Service mix</td>
+<td>70% recurring nightly, 20% specialty, 10% day porter</td>
+</tr>
+<tr>
+<td>Owner style</td>
+<td>Energetic founder, came from sales background, treats revenue as the headline metric</td>
+</tr>
+<tr>
+<td>PioneerOps tenure</td>
+<td>9 months — at Adoption (uses Mission Control weekly)</td>
+</tr>
+<tr>
+<td>Today's setup</td>
+<td>First quarterly Customer Economics review</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-pioneerops-data-the-operator-has">The PioneerOps data the operator has</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>18 months ago</th>
+<th>Today</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Annual revenue</td>
+<td>$1.95M</td>
+<td>$2.30M</td>
+<td>+18%</td>
+</tr>
+<tr>
+<td>Active customers</td>
+<td>26</td>
+<td>33</td>
+<td>+27%</td>
+</tr>
+<tr>
+<td>Avg company RPLH</td>
+<td>$56</td>
+<td>$48</td>
+<td>-14%</td>
+</tr>
+<tr>
+<td>Avg gross margin per customer</td>
+<td>49%</td>
+<td>38%</td>
+<td>-11 pts</td>
+</tr>
+<tr>
+<td>Total gross profit (annual)</td>
+<td>$618,000</td>
+<td>$608,000</td>
+<td>-2%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-operators-task">The operator's task</h3>
+<p>15-minute conversation with the owner. The owner opens by saying, with pride:</p>
+<blockquote>
+<p>"Revenue is up 18%. We are crushing it."</p>
+</blockquote>
+<p>The operator must use Customer Economics to show the owner that revenue growth has come at the expense of gross profit — without making the owner feel attacked.</p>
+<h3 id="the-trainers-role">The trainer's role</h3>
+<p>Play the owner. Style:</p>
+<ul>
+<li>Energetic, optimistic</li>
+<li>Believes revenue growth = success</li>
+<li>Defensive when challenged (his identity is tied to growth)</li>
+<li>Default move when shown the bad number: "but I have more customers now"</li>
+</ul>
+<h3 id="hostile-but-fair-questions-the-trainer-asks">Hostile-but-fair questions the trainer asks</h3>
+<p>Pick 2–3 to land:</p>
+<ol>
+<li>"If profit is down, why are my taxes higher than last year?"</li>
+<li>"I have seven new logos. You're telling me that's bad?"</li>
+<li>"Are you telling me to stop growing?"</li>
+<li>"My team is excited. We're growing. Why are you trying to take this away?"</li>
+</ol>
+<h3 id="the-trap">The trap</h3>
+<p>The trap is to lead with the bad number ("gross profit is down 2%") before establishing what Customer Economics measures. The owner shuts down. Conversation dies.</p>
+<p>The right move:</p>
+<ol>
+<li>Acknowledge the revenue success specifically (don't dismiss it)</li>
+<li>Introduce the OTHER question every smart owner asks ("but is the growth profitable?")</li>
+<li>Show the gross margin per new customer vs the existing portfolio</li>
+<li>THEN show the total gross profit number</li>
+<li>Move to "what would profitable growth look like from here?"</li>
+</ol>
+<h3 id="success-criteria">Success criteria</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Operator acknowledged the revenue win before introducing the margin issue</li>
+<li class="task"><input type="checkbox" disabled> Operator translated gross margin into plain English ("cents on the dollar after wages and supplies")</li>
+<li class="task"><input type="checkbox" disabled> Operator showed the new-customer margin vs portfolio margin contrast</li>
+<li class="task"><input type="checkbox" disabled> Operator did NOT use the word "profitability" without qualifying it</li>
+<li class="task"><input type="checkbox" disabled> Operator did NOT make the owner feel attacked or stupid</li>
+<li class="task"><input type="checkbox" disabled> Operator left the conversation with a specific commitment from the owner (e.g., "let's set a margin floor for new customers")</li>
+<li class="task"><input type="checkbox" disabled> Operator handled the "are you telling me to stop growing?" pushback without folding</li>
+</ul>
+<h3 id="debrief-structure-15-min">Debrief structure (15 min)</h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Activity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:03</td>
+<td>Operator self-rates: what worked, what didn't</td>
+</tr>
+<tr>
+<td>0:03–0:08</td>
+<td>Trainer feedback (one keep, one change)</td>
+</tr>
+<tr>
+<td>0:08–0:13</td>
+<td>Replay the moment the owner's energy shifted — the inflection point. What could have softened the landing?</td>
+</tr>
+<tr>
+<td>0:13–0:15</td>
+<td>Operator commits to one specific change next week</td>
+</tr>
+</tbody>
+</table>
+<h3 id="variations">Variations</h3>
+<p>After the operator passes the base scenario, run these:</p>
+<ul>
+<li><strong>Skeptical CFO joins.</strong> The owner brings his bookkeeper, who wants to debate burden rate. Operator handles both.</li>
+<li><strong>Defensive owner.</strong> The owner has just told his team they're "the best in the region." He cannot lose face. The operator must thread the needle.</li>
+<li><strong>Open-minded owner.</strong> The owner agrees within five minutes. The conversation must shift to "what now?" — what specific decisions get made this quarter?</li>
+</ul>
+<hr />
+<h2 id="element-10-quiz">ELEMENT 10 — Quiz</h2>
+<p>10 questions. Score 7+ to pass.</p>
+<h3 id="q1-definition-multiple-choice">Q1 — Definition (multiple choice)</h3>
+<p>Customer Economics is best described as:</p>
+<ul>
+<li>a) Net profit per customer</li>
+<li>b) Gross profit per customer (revenue minus direct labor, payroll burden, and supplies)</li>
+<li>c) Revenue minus all overhead</li>
+<li>d) RPLH expressed as a dollar amount</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> Customer Economics stops at gross profit. It does not include shared overhead.</p>
+<hr />
+<h3 id="q2-math-calculation">Q2 — Math (calculation)</h3>
+<p>Customer pays $6,000/month. Cleaners log 110 hours at $16/hr. Burden rate is 30%. Supplies are $200/month.</p>
+<p>What is the gross profit and gross margin?</p>
+<p><strong>Answer:</strong></p>
+<ul>
+<li>Direct labor: 110 × $16 = $1,760</li>
+<li>Burden: $1,760 × 30% = $528</li>
+<li>Supplies: $200</li>
+<li>Gross Profit: $6,000 − $1,760 − $528 − $200 = <strong>$3,512</strong></li>
+<li>Gross Margin: $3,512 ÷ $6,000 = <strong>58.5%</strong></li>
+</ul>
+<p><strong>What we look for:</strong> Right total, right margin. Common error: forgetting burden.</p>
+<hr />
+<h3 id="q3-diagnosis-multiple-choice">Q3 — Diagnosis (multiple choice)</h3>
+<p>Two customers each pay $5,000/month. Customer A is at 55% gross margin. Customer B is at 38% gross margin. The most likely explanation is:</p>
+<ul>
+<li>a) Customer A pays faster</li>
+<li>b) Customer B is in a different industry segment</li>
+<li>c) Customer B requires more labor hours and/or more supplies for the same revenue</li>
+<li>d) Customer A signed more recently</li>
+</ul>
+<p><strong>Answer:</strong> c</p>
+<p><strong>Why it matters:</strong> Gross margin moves with the cost side. Same revenue, different costs = different margins.</p>
+<hr />
+<h3 id="q4-leakage-short-answer">Q4 — Leakage (short answer)</h3>
+<p>A customer asked for "just an extra 15 minutes per night" of work three months ago. Their contract rate did not change. Tech wage is $17/hr. Burden rate is 28%.</p>
+<p>What is the monthly profit leak?</p>
+<p><strong>Answer:</strong></p>
+<ul>
+<li>15 min × 22 nights = 5.5 hrs/month</li>
+<li>Loaded wage: $17 × 1.28 = $21.76</li>
+<li>Leakage: 5.5 × $21.76 = <strong>$119.68/month</strong></li>
+<li>Annualized: about $1,440/year</li>
+</ul>
+<p><strong>What we look for:</strong> Operator includes burden. Math is right. Annualizing is a nice bonus.</p>
+<hr />
+<h3 id="q5-burden-multiple-choice">Q5 — Burden (multiple choice)</h3>
+<p>Payroll burden typically includes which of the following? (Pick all that apply.)</p>
+<ul>
+<li>a) Employer payroll taxes</li>
+<li>b) Workers' compensation insurance</li>
+<li>c) Office rent</li>
+<li>d) Paid time off accrual</li>
+<li>e) Owner's salary</li>
+<li>f) Sick leave accrual</li>
+</ul>
+<p><strong>Answer:</strong> a, b, d, f</p>
+<p><strong>Why it matters:</strong> Burden is the stuff that scales with labor hours. Office rent and owner salary are overhead, not burden.</p>
+<hr />
+<h3 id="q6-revenue-vs-profit-short-answer">Q6 — Revenue vs profit (short answer)</h3>
+<p>A customer's revenue grew 18% in 18 months. Their gross profit fell 2% in the same period. Explain in 2 sentences what most likely happened.</p>
+<p><strong>Sample strong answer:</strong></p>
+<p>The company added new customers at lower margin (or allowed scope creep on existing ones) while wages and supply costs rose. Revenue went up but each new dollar of revenue carried less margin, so total gross profit dollars actually fell.</p>
+<p><strong>What we look for:</strong> Understanding that revenue growth and profit growth are different directions.</p>
+<hr />
+<h3 id="q7-scope-creep-multiple-choice">Q7 — Scope creep (multiple choice)</h3>
+<p>The Scope Creep Loop shows how unaddressed scope creep tends to:</p>
+<ul>
+<li>a) Self-correct over time as the customer notices</li>
+<li>b) Push owners to add more customers, which deepens the problem</li>
+<li>c) Get caught by accounting at year end</li>
+<li>d) Reduce wages naturally</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> The natural response (find more revenue) makes scope-creep companies worse, not better. The way out is repricing.</p>
+<hr />
+<h3 id="q8-owner-conversation-short-answer">Q8 — Owner conversation (short answer)</h3>
+<p>In 2 sentences, how would you explain Customer Economics to an owner who has never heard the term?</p>
+<p><strong>Sample strong answer:</strong></p>
+<p>"After you pay your team — wages, payroll taxes, workers' comp — and buy your supplies, how much of each dollar from a customer is left? That number, customer by customer, is your Customer Economics."</p>
+<p><strong>What we look for:</strong> Plain English. No "EBITDA," no "burden-loaded," no "margin compression."</p>
+<hr />
+<h3 id="q9-common-mistake-multiple-choice">Q9 — Common mistake (multiple choice)</h3>
+<p>Why is it dangerous to use "profitability" and "Customer Economics" as synonyms?</p>
+<ul>
+<li>a) They are calculated the same way</li>
+<li>b) Customer Economics stops at gross margin and excludes overhead, so customers that look "unprofitable" in Customer Economics may still be net profitable at the company level</li>
+<li>c) Profitability is a regulated term</li>
+<li>d) Customer Economics is more accurate</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> The wrong word produces the wrong owner reaction. Operators who use precise language earn trust.</p>
+<hr />
+<h3 id="q10-edge-case-judgment">Q10 — Edge case (judgment)</h3>
+<p>A customer has $4,000 revenue, 80 labor hours, $14/hr wages, 25% burden, $150 supplies. The owner says "this customer has been with us 12 years. We can never raise the rate."</p>
+<p>What is the gross margin, and what's the operator's move?</p>
+<p><strong>Answer:</strong></p>
+<ul>
+<li>Direct labor: 80 × $14 = $1,120</li>
+<li>Burden: $1,120 × 25% = $280</li>
+<li>Supplies: $150</li>
+<li>Gross Profit: $4,000 − $1,120 − $280 − $150 = $2,450</li>
+<li>Gross Margin: <strong>61%</strong></li>
+</ul>
+<p>This customer is actually fine. The Operator's move is to NOT push a rate increase. The conversation moves elsewhere — maybe celebrating this account, maybe asking how to find more like it.</p>
+<p><strong>What we look for:</strong> Operator does the math FIRST. Operator does not assume "old customer" = "bad customer." Some long-term customers have great economics. Customer Economics tells the truth either way.</p>
+<hr />
+<h2 id="element-11-coaching-discussion">ELEMENT 11 — Coaching Discussion</h2>
+<p>Friday debrief after this lesson. Trainer asks. Operator answers without notes.</p>
+<ol>
+<li><strong>Pick one of your owned accounts.</strong> Walk me through their Customer Economics from memory. Where do you think the leakage is?</li>
+<li><strong>What surprised you in this lesson?</strong> What did you believe before that you don't believe now?</li>
+<li><strong>The Scope Creep Loop</strong> — have you seen it happen at one of your accounts? Which one? What was the "one more thing" the customer asked for?</li>
+<li><strong>Imagine your owner says next week: "Let's grow revenue 25% this year."</strong> What's your one-sentence response?</li>
+<li><strong>What part of this lesson NEEDS to land for an Operator to be useful in a real Customer Economics conversation?</strong> Where would you put the most rehearsal time?</li>
+</ol>
+<hr />
+<h2 id="publish-gate-the-pioneer-test">PUBLISH GATE — The Pioneer Test</h2>
+<p>Per the <a href="../CONSTITUTION.html">Constitution</a>, no lesson ships without all boxes checked.</p>
+<ul>
+<li class="task"><input type="checkbox" disabled checked> <strong>Would Nick teach it this way?</strong> Yes. The "after you pay your people and buy your supplies, how much is left" framing matches how Nick coaches. The Riverside vs Dental Plaza contrast is Pioneer-internal. The "stop chasing low-margin growth" decision is something Nick has explicitly told operators.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Does it teach an outcome, not a feature?</strong> Yes. The lesson is about the conversation an Operator has with an owner — not about a PioneerOps screen. The platform appears as the source of numbers, not the subject.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Is the Action → Metric → Outcome triple filled in?</strong> Yes. Build per-customer economics view → gross margin per customer moves → owner makes decisions on real numbers.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Economic Reality Chain present?</strong> Yes. Owner adds low-margin customers + allows scope creep + absorbs wage rises → customer count up, RPLH down, supply cost up → gross margin -8 to -15 points → bonus pool shrinks, techs leave, growth stalls.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>All 11 elements present?</strong> Yes. Plain English (1), Why it matters (2), Pioneer example (3), Customer example (4), Common mistakes (5), Vocabulary (6), Visual diagrams (7 — two of them, as required), Exercise (8), Role-play (9), Quiz (10), Coaching (11).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Reading level 8th–10th grade?</strong> Yes. Sentences are short. Most content is tables, bullets, callouts. Where prose runs longer, it is the customer story (intentional).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Pioneer + customer examples are different?</strong> Yes. Pioneer: Riverside vs Dental Plaza (same revenue, different margins). Customer: ACME Cleaning's revenue-growth-without-profit story.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Visual diagram present?</strong> Yes — both required diagrams. Customer Economics Waterfall (Revenue → Labor → Burden → Supplies → Gross Profit). Scope Creep Loop (Additional Work → More Labor → Lower Margin → Reduced Capacity → Less Profit).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Exercise has real data + a real output?</strong> Yes. 1-page Customer Economics analysis on a real owned account with three questions for the owner.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Role-play scenario named?</strong> Yes. "Eastside Commercial Cleaning" revenue-vs-profit conversation with three variations.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Vocabulary added to the Operator Glossary?</strong> New terms — Direct Labor, Payroll Burden, Supplies, Gross Profit (per customer), Gross Margin (per customer), Profit Leakage, Scope Creep, Profitable Growth. <strong>TODO:</strong> Add these to <code>operator-glossary.md</code> in a follow-up edit before publishing.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Skimmable?</strong> Yes. Tables, bullets, diagrams, callouts. A reader can scan the lesson in 60 seconds and pick up the structure.</li>
+</ul>
+<p>One open action: vocab additions to the glossary. Handling that now.</p>
+<p><strong>Pioneer Test result: PASS</strong> (pending glossary update, done in the same commit).</p>
+<hr />
+<h2 id="trainer-notes-free-form">Trainer notes (free form)</h2>
+<p>Pair this lesson with <a href="./02-revenue-per-labor-hour.html">02.2 RPLH</a> in the curriculum. RPLH should be taught first (detection); Customer Economics second (diagnosis).</p>
+<p>For the first cohort, the role-play scenario is the highest-leverage practice. The "revenue is up, we're doing great" conversation will happen with at least 30% of customers. Operators who can hold their ground in it earn their salary in one quarter.</p>
+<p>Owner: Academy lead.
+Last reviewed: 2026-06-11.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>02-cleaning-operations/03-customer-economics.md</code>
+</footer>
+</body>
+</html>

@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operator I Self-Rating Sheet — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="operator-i-self-rating-sheet">Operator I Self-Rating Sheet</h1>
+<p>The candidate rates themselves on all 34 competencies on the 0–3 scale defined in the <a href="../00-academy-overview/02-competency-model.html">Competency Model</a>. The reviewer fills the verified column independently.</p>
+<p><strong>Scale recap:</strong>
+- <strong>0</strong> Unaware · doesn't know the concept or has wrong mental model
+- <strong>1</strong> Aware · can describe it; cannot do it
+- <strong>2</strong> Competent · can do it solo on a typical customer with supervision available
+- <strong>3</strong> Expert · can do it solo on a strategic customer AND teach it to someone at level 1</p>
+<h2 id="candidate">Candidate</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Candidate name</td>
+<td></td>
+</tr>
+<tr>
+<td>Cycle</td>
+<td></td>
+</tr>
+<tr>
+<td>Date submitted</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-34-competencies-with-operator-i-bar">The 34 competencies (with Operator I bar)</h2>
+<h3 id="pillar-01-saas-foundations">Pillar 01 — SaaS Foundations</h3>
+<p><strong>Pillar bar:</strong> All 5 at level 1+; at least 2 at level 2+.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01.1</td>
+<td>Customer lifecycle</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.2</td>
+<td>Activation &amp; time-to-value</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.3</td>
+<td>Retention mechanics</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.4</td>
+<td>Health scoring</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>01.5</td>
+<td>Renewal motion</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-02-cleaning-operations">Pillar 02 — Cleaning Operations</h3>
+<p><strong>Pillar bar:</strong> All 5 at level 1+; <strong>2.1 (Service Models) and 2.2 (Labor Economics) at level 2+</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.1</td>
+<td>Service models</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.2</td>
+<td>Labor economics</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.3</td>
+<td>Quality systems</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.4</td>
+<td>Billing patterns</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>02.5</td>
+<td>Operational pain points</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-03-pioneerops-platform-mastery-the-platform-pillar-highest-minimum">Pillar 03 — PioneerOps Platform Mastery (THE platform pillar — highest minimum)</h3>
+<p><strong>Pillar bar:</strong> <strong>All 6 at level 2+</strong> (no exceptions — this is the platform-mastery pillar).</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>03.1</td>
+<td>Core data model</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.2</td>
+<td>Time tracking + payroll</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.3</td>
+<td>Inspections + DCR</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.4</td>
+<td>Communication threads</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.5</td>
+<td>Mission Control</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>03.6</td>
+<td>Admin tools</td>
+<td><strong>2+</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-04-ai-operator">Pillar 04 — AI Operator</h3>
+<p><strong>Pillar bar:</strong> 4.1 (Prompt Patterns), 4.5 (AI Judgment) at level 1+; others not specifically bar-bound <em>but see crystal-clear bar below</em>.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>04.1</td>
+<td>Prompt patterns</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.2</td>
+<td>Analysis with AI</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.3</td>
+<td>Drafting with AI</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.4</td>
+<td>Building small tools</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>04.5</td>
+<td>AI judgment</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-05-customer-success">Pillar 05 — Customer Success</h3>
+<p><strong>Pillar bar:</strong> 5.1 (Discovery), 5.2 (Onboarding) at level 1+; 5.3 (QBR Delivery) NOT required at Operator I.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>05.1</td>
+<td>Discovery</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.2</td>
+<td>Onboarding &amp; implementation</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.3</td>
+<td>QBR delivery</td>
+<td>not required</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.4</td>
+<td>Renewals &amp; expansion</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>05.5</td>
+<td>Difficult conversations</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-06-revenue-operations">Pillar 06 — Revenue Operations</h3>
+<p><strong>Pillar bar:</strong> 6.1 (Pipeline Hygiene) at level 1+; others not specifically bar-bound <em>but see crystal-clear bar below</em>.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>06.1</td>
+<td>Pipeline hygiene</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.2</td>
+<td>Pricing &amp; packaging</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.3</td>
+<td>Expansion plays</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>06.4</td>
+<td>Forecasting</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="pillar-07-executive-advisor">Pillar 07 — Executive Advisor</h3>
+<p><strong>Pillar bar:</strong> 7.1 (CEO Conversation) at level 1+; others not specifically bar-bound <em>but see crystal-clear bar below</em>.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Competency</th>
+<th>Min for Operator I</th>
+<th>Candidate self-rating</th>
+<th>Reviewer verified</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>07.1</td>
+<td>CEO-level conversation</td>
+<td>1+</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.2</td>
+<td>Industry context</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.3</td>
+<td>Strategic recommendations</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>07.4</td>
+<td>Pushback &amp; disagreement</td>
+<td>(see crystal-clear bar)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="totals">Totals</h2>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Required</th>
+<th>Candidate self-rating count</th>
+<th>Reviewer verified count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Total competencies</td>
+<td>34</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Competencies at level 2+</td>
+<td>≥ 15</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Competencies at level 1+</td>
+<td>34 (no 0s anywhere — per crystal-clear bar)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Competencies at level 0</td>
+<td>0</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Competencies at level 3</td>
+<td>(not required at Operator I)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-the-reviewer-interprets-the-bar-and-the-open-ambiguity">How the reviewer interprets the bar (and the open ambiguity)</h2>
+<p>Framework §2 contains two slightly different framings:</p>
+<ol>
+<li><strong>Per-pillar table:</strong> specifies minimum levels per competency. For Pillars 04/05/06/07, several competencies are described as "rest may be 0."</li>
+<li><strong>Crystal-clear bar:</strong> "at least 15 of 34 competencies at level 2 or higher, NO competencies at level 0."</li>
+</ol>
+<p>These two framings are in tension. The crystal-clear bar is the explicit summary line; the per-pillar table is the guidance.</p>
+<p><strong>For Cycle 1, the reviewer applies the crystal-clear bar:</strong> no 0s anywhere; ≥ 15 at level 2+. Per-pillar minimums are treated as floors <em>above</em> the no-0-anywhere baseline.</p>
+<p><strong>Post-Cycle 1:</strong> if reviewers found this ambiguity hard to apply, the Framework v1.2 amendment process resolves it. Resolution is NOT part of this Cycle 1 work.</p>
+<h2 id="what-disqualifies-the-self-rating">What disqualifies the self-rating</h2>
+<ul>
+<li>Any 0 marked anywhere</li>
+<li>Fewer than 15 competencies at level 2 or higher</li>
+<li>Any pillar-specific minimum (in <strong>bold</strong> above) below the stated floor</li>
+<li>A self-rating where reviewer's verified column differs by ≥ 2 levels on ≥ 3 competencies — signals the candidate's self-perception is significantly out of calibration. Conditional Pass with mandatory recalibration in Cycle 2 prep.</li>
+</ul>
+<h2 id="honest-self-rating-guidance-for-the-candidate">Honest self-rating guidance for the candidate</h2>
+<p>The Pioneer Test applies here too. A self-rating that shows all 2s and 3s with no 1s is almost certainly inflated. A real Operator I has 1s — the competencies they know they need to grow into next year. Marking 1s honestly is a positive signal, not a negative one. Marking 3s falsely is disqualifying under Pillar 7 (Economic Reality / honest economics).</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/operator-i-self-rating-sheet.md</code>
+</footer>
+</body>
+</html>

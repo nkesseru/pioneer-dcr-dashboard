@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bootstrap Reviewer Onboarding Kit — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="bootstrap-reviewer-onboarding-kit">Bootstrap Reviewer Onboarding Kit</h1>
+<p>You are reading this because you've been asked to serve as a Bootstrap Reviewer for an Operator certification cycle. This document tells you what that job is, how long it takes, what to do, and what NOT to do.</p>
+<p><strong>Read this end-to-end before reading the candidate's evidence pack. 30 minutes.</strong></p>
+<hr />
+<h2 id="1-what-you-are-being-asked-to-do">1. What you are being asked to do</h2>
+<p>The PioneerOps Operator Academy certifies people across four tiers (Operator I → II → III → Executive Advisor). The credential is awarded based on demonstrated capability against the <a href="../operator-certification-framework.html">Operator Certification Framework</a>.</p>
+<p>During the Bootstrap Phase — when fewer than 3 Operators have been certified at any tier — there aren't enough Senior Operators to fill the normal reviewer roles. The Bootstrap clause (Framework §7.5) lets people with <strong>equivalent capability</strong> serve as reviewers temporarily.</p>
+<p><strong>You are a Bootstrap Reviewer.</strong> You are not a Senior Operator. You are filling the role until enough Senior Operators exist.</p>
+<hr />
+<h2 id="2-your-time-commitment-for-one-cycle">2. Your time commitment for one cycle</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Time</th>
+<th>Activity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Onboarding (now)</td>
+<td>30 min</td>
+<td>Read this kit + the relevant framework section for the candidate's tier</td>
+</tr>
+<tr>
+<td>Evidence pack read</td>
+<td>4–6 hours</td>
+<td>Read all 10 artifacts in the <a href="./operator-i-evidence-pack-index.html">evidence pack index</a>. Watch the recordings, read the analyses, score independently.</td>
+</tr>
+<tr>
+<td>Scorecard fill</td>
+<td>1–2 hours</td>
+<td>Complete the <a href="./operator-i-reviewer-scorecard.html">Operator I reviewer scorecard</a>. 9 categories, evidence cited per category.</td>
+</tr>
+<tr>
+<td>Calibration meeting</td>
+<td>1 hour</td>
+<td>Single meeting with the other two reviewers. Three scorecards compared. Disagreements named. One decision recorded.</td>
+</tr>
+<tr>
+<td>Optional: roleplay observation</td>
+<td>1 hour</td>
+<td>If you're assigned to play "customer" in a candidate's roleplay</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~10 hours over 2 weeks</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>This is small but non-trivial. If you can't commit ~10 hours during Weeks 5–6 of the cycle, decline now. Mid-cycle drop-out forces a re-do.</p>
+<hr />
+<h2 id="3-the-rules-of-the-bootstrap-phase">3. The rules of the Bootstrap Phase</h2>
+<p>Per framework §7.5, four safeguards apply because Bootstrap Reviewers are not Senior Operators yet:</p>
+<table>
+<thead>
+<tr>
+<th>Safeguard</th>
+<th>What it means for you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Triple-Reviewer Minimum</strong></td>
+<td>Every certification has 3 reviewers. You are one of them. Your single reviewer-vote is one-third of the decision.</td>
+</tr>
+<tr>
+<td><strong>Stricter Evidence (+20%)</strong></td>
+<td>The evidence bar is 20% higher during Bootstrap. Where the framework says "≥ 8 Vital Reads," you require ≥ 10. Where it says "1 closed Loop," you require ≥ 1 closed Loop <em>plus</em> honest documentation that other Loops were attempted. Stricter, not more.</td>
+</tr>
+<tr>
+<td><strong>Public Review</strong></td>
+<td>The cycle record (including your scorecard, anonymized if you prefer) is published internally to Pioneer leadership. Not external — internal-public.</td>
+</tr>
+<tr>
+<td><strong>Sunset Re-Review</strong></td>
+<td>When the Bootstrap Phase ends for this tier, certifications issued under Bootstrap may be re-reviewed by Senior Operators. This is not a threat — it's an integrity safeguard.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-the-five-reviewer-disciplines">4. The Five Reviewer Disciplines</h2>
+<p>These are operating rules. Each one is non-negotiable.</p>
+<h3 id="discipline-1-independence">Discipline 1 · Independence</h3>
+<p><strong>Do NOT discuss the candidate with the other reviewers before you submit your scorecard.</strong> Not in the hallway, not in Slack, not over lunch. Calibration happens after independent scorecards. If two reviewers shape each other's view in advance, the third reviewer ends up being the entire decision.</p>
+<h3 id="discipline-2-evidence-citation">Discipline 2 · Evidence citation</h3>
+<p><strong>Every Pass / Conditional / Not Yet score requires cited evidence in the scorecard.</strong> "Looked good" is not a citation. "Vital Read recording #4 at 12:30 — candidate let CEO drive the read, named the labor-efficiency vital correctly" is a citation.</p>
+<p>If you cannot cite evidence for a Pass score, change it to Conditional or Not Yet.</p>
+<h3 id="discipline-3-the-pioneer-test-reflex">Discipline 3 · The Pioneer Test reflex</h3>
+<p><strong>You apply the Pioneer Test to your own scoring before submitting.</strong> Ask: would Nick — or any trained Operator — recognize this score as defensible against the framework, or does it sound like an opinion? Use the <a href="./pioneer-test-grading-rubric.html">Pioneer Test grading rubric</a> on yourself.</p>
+<h3 id="discipline-4-no-charity-no-cruelty">Discipline 4 · No charity, no cruelty</h3>
+<p><strong>Do not Pass a candidate because you like them.</strong> Do not Not Yet a candidate because you don't. Score the evidence against the bar. If the candidate is your direct report, your spouse, your friend — that's why the conflict-of-interest disclosure exists on the scorecard. Disclose it; then score the evidence anyway.</p>
+<h3 id="discipline-5-single-sentence-per-disagreement">Discipline 5 · Single sentence per disagreement</h3>
+<p><strong>At calibration, name disagreements in one sentence each.</strong> "My Category 5 score is Not Yet because the business outcome cited has no verifiable baseline." Not a paragraph. Not a debate. The other reviewers respond in single sentences. Decisions converge faster when the format is constrained.</p>
+<hr />
+<h2 id="5-what-you-actually-do-in-order">5. What you actually do, in order</h2>
+<h3 id="day-1-of-week-5-onboarding-now">Day 1 of Week 5 — onboarding (now)</h3>
+<ol>
+<li>Read this kit (30 min).</li>
+<li>Read the candidate's tier section of the <a href="../operator-certification-framework.html">Operator Certification Framework</a> — for Operator I, that's Section 2 (≈ 30 min).</li>
+<li>Skim the <a href="../CONSTITUTION.html">Constitution</a> §"Pioneer Test" and Pillars 7 + 8 (≈ 15 min).</li>
+<li>Confirm you accept the role in writing (Slack message to the Academy Lead).</li>
+<li>Disclose any conflict of interest now — not at calibration.</li>
+</ol>
+<h3 id="days-27-of-week-5-evidence-read">Days 2–7 of Week 5 — evidence read</h3>
+<ol>
+<li>Receive the candidate's <a href="./operator-i-evidence-pack-index.html">evidence pack index</a> when the candidate submits.</li>
+<li>Verify intake: are 8+ of 10 artifacts present and openable? If not, raise it with the Academy Lead immediately — do not begin scoring.</li>
+<li>Read each of the 10 artifacts. Take notes per category.</li>
+<li>Watch all 8 Vital Read recordings. (You can 1.25× speed them. You cannot skip them.)</li>
+<li>Verify the Customer Economics math. Open a spreadsheet if needed.</li>
+<li>Apply the <a href="./pioneer-test-grading-rubric.html">Pioneer Test grading rubric</a> to the candidate's reflection.</li>
+</ol>
+<h3 id="end-of-week-5-start-of-week-6-scorecard">End of Week 5 / start of Week 6 — scorecard</h3>
+<ol>
+<li>Open the <a href="./operator-i-reviewer-scorecard.html">Operator I reviewer scorecard</a>.</li>
+<li>Fill it out completely. 9 categories. Evidence cited per category. Honest scores.</li>
+<li>Submit your scorecard to the Academy Lead. <strong>Do not share it with the other reviewers yet.</strong></li>
+</ol>
+<h3 id="week-6-calibration-meeting-1-hour">Week 6 calibration meeting — 1 hour</h3>
+<ol>
+<li>All three scorecards visible on screen simultaneously.</li>
+<li>Each reviewer states overall decision (Pass / Conditional / Not Yet) and the single biggest evidence point that drove it. 5 minutes each.</li>
+<li>Disagreements named per Discipline 5. Resolved by re-reading evidence against the bar — not by debate.</li>
+<li>Final decision recorded. The Academy Lead drafts the cycle record file.</li>
+<li>If Pass: Lineage ID issued, registry updated, candidate notified.</li>
+<li>If Conditional: 14-day remediation window starts; named gaps written.</li>
+<li>If Not Yet: cycle closed with the documented reason; Cycle 2 design begins.</li>
+</ol>
+<hr />
+<h2 id="6-the-decision-matrix">6. The decision matrix</h2>
+<p>You will assign one of three composite decisions on your scorecard:</p>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Bar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pass</strong></td>
+<td>All 9 categories scored Pass. Lineage ID recommended.</td>
+</tr>
+<tr>
+<td><strong>Conditional Pass</strong></td>
+<td>≤ 2 categories Conditional, zero Not Yet, named gaps that could close in 14 days. State the gaps.</td>
+</tr>
+<tr>
+<td><strong>Not Yet</strong></td>
+<td>Any one of: ≥ 1 category Not Yet · ≥ 3 categories Conditional · cannot-do exclusion failure (Category 9). State the reason.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The final cycle decision is the worst of the three reviewer decisions, not the average.</strong></p>
+<ul>
+<li>If one reviewer scores Not Yet and the others score Pass, the cycle outcome is at minimum Conditional Pass.</li>
+<li>If any reviewer scores Not Yet citing a hard-fail condition, the cycle outcome is Not Yet.</li>
+<li>Majority-rule does not apply under Bootstrap. This is intentional.</li>
+</ul>
+<hr />
+<h2 id="7-what-if-youre-not-sure">7. What if you're not sure</h2>
+<p>You will hit moments of "I genuinely cannot tell if this is a Pass or a Conditional." That is the correct feeling for a reviewer on their first cycle. The rule:</p>
+<ol>
+<li>Read the framework section for that category again.</li>
+<li>Cite the specific evidence you have for the candidate.</li>
+<li>If you can defend a Pass, score Pass.</li>
+<li>If you cannot defend a Pass, score Conditional with the specific gap named.</li>
+<li>If the gap is structural (the candidate didn't even attempt the artifact), score Not Yet.</li>
+</ol>
+<p>Bring genuinely-unsure scores to calibration as Conditional with a named question. The other reviewers' independent views resolve uncertainty better than your own deliberation.</p>
+<hr />
+<h2 id="8-what-to-do-if-you-discover-the-candidate-is-not-ready">8. What to do if you discover the candidate is not ready</h2>
+<p>Your job is to score the evidence against the bar. <strong>Your job is not to soften the result so the candidate doesn't feel bad.</strong> A Not Yet is not a personal verdict — it's a signal that the evidence isn't there yet. The Academy is for producing real Operators, not credential-printing.</p>
+<p>If you Pass a candidate who isn't ready, you damage:</p>
+<ul>
+<li>The candidate's actual customers (they get under-prepared service)</li>
+<li>The credential's meaning (next reviewers face a harder calibration)</li>
+<li>The Academy's long-term legitimacy (Sunset Re-Review may reverse the decision later, publicly)</li>
+</ul>
+<p>Honest Not Yet decisions are the system working as designed.</p>
+<hr />
+<h2 id="9-where-to-ask-questions">9. Where to ask questions</h2>
+<ul>
+<li><strong>Process questions</strong> ("how does calibration work, what if I'm late") → Academy Lead (Nick during Bootstrap).</li>
+<li><strong>Doctrine questions</strong> ("what does Pillar 8 actually mean here") → Re-read the Constitution. Then ask the Academy Lead.</li>
+<li><strong>Evidence-specific questions</strong> ("is recording #3 actually missing audio") → Surface in your scorecard's Notes column. Do NOT ask the candidate directly.</li>
+<li><strong>Disagreement with another reviewer</strong> → Bring it to calibration, not the hallway.</li>
+</ul>
+<hr />
+<h2 id="10-final-commitment-check">10. Final commitment check</h2>
+<p>Before you accept this role:</p>
+<ul>
+<li class="task"><input type="checkbox" disabled> I have read this kit end-to-end.</li>
+<li class="task"><input type="checkbox" disabled> I have ~10 hours available during the cycle's review weeks.</li>
+<li class="task"><input type="checkbox" disabled> I have disclosed any prior relationship to the candidate.</li>
+<li class="task"><input type="checkbox" disabled> I understand that calibration is single-sentence-per-disagreement.</li>
+<li class="task"><input type="checkbox" disabled> I understand the final decision is the worst-of-three, not the average.</li>
+<li class="task"><input type="checkbox" disabled> I understand that an honest Not Yet is the system working, not failing.</li>
+</ul>
+<p>If all ten boxes are checked, reply "I accept" to the Academy Lead and you're in.</p>
+<p>Welcome to Pioneer's first certification cycle.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/bootstrap-reviewer-onboarding-kit.md</code>
+</footer>
+</body>
+</html>

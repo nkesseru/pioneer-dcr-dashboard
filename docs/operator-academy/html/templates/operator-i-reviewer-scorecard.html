@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operator I Reviewer Scorecard — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="operator-i-reviewer-scorecard">Operator I Reviewer Scorecard</h1>
+<p>One reviewer fills one scorecard. <strong>No coordination with other reviewers before submitting.</strong> Calibration happens after all three scorecards are submitted, not during.</p>
+<h2 id="reviewer">Reviewer</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reviewer name</td>
+<td></td>
+</tr>
+<tr>
+<td>Reviewer role</td>
+<td>Trainer / Bootstrap Reviewer / Academy Lead</td>
+</tr>
+<tr>
+<td>Cycle</td>
+<td></td>
+</tr>
+<tr>
+<td>Candidate</td>
+<td></td>
+</tr>
+<tr>
+<td>Date scorecard submitted</td>
+<td></td>
+</tr>
+<tr>
+<td>Conflict-of-interest disclosure (prior relationship, employment, etc.)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="scoring-scale-per-category">Scoring scale (per category)</h2>
+<ul>
+<li><strong>Pass</strong> — meets the bar, evidence is reviewer-defensible</li>
+<li><strong>Conditional</strong> — meets most of the bar, ≤ 2 specific gaps that could close in 14 days</li>
+<li><strong>Not Yet</strong> — does not meet the bar at this time</li>
+</ul>
+<p>Reviewer must cite specific evidence for any Pass. "Looked good" is not a citation.</p>
+<h2 id="9-category-scorecard">9-category scorecard</h2>
+<h3 id="category-1-competencies">Category 1 · Competencies</h3>
+<p><strong>Framework §2 bar:</strong> 15 of 34 at level 2+; no 0s; specific pillar minimums per framework table.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+<tr>
+<td>Evidence cited</td>
+<td></td>
+</tr>
+<tr>
+<td>Specific gaps (if any)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-2-lessons">Category 2 · Lessons</h3>
+<p><strong>Framework §2 bar:</strong> All 4 foundation lessons read; ≥ 7/10 on at least 3 of the 4 quizzes.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quiz scores observed</td>
+<td>02.2 <em>/10 · 02.3 </em>/10 · 03.1 <em>/10 · 05.3 </em>/10</td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+<tr>
+<td>Evidence cited</td>
+<td></td>
+</tr>
+<tr>
+<td>Specific gaps (if any)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-3-practical-demonstrations">Category 3 · Practical demonstrations</h3>
+<p><strong>Framework §2 bar:</strong> 8 Vital Reads (2 accounts × 4 weeks consecutive) · 3 Loop entries with 1 closed · 1 Customer Economics analysis · 20 Operational Feed events categorized · 1 Pillar 8 verification pause documented.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vital Reads observed</td>
+<td>__ / 8</td>
+</tr>
+<tr>
+<td>Loop entries observed</td>
+<td>__ created, __ closed</td>
+</tr>
+<tr>
+<td>Customer Economics analyses</td>
+<td>__</td>
+</tr>
+<tr>
+<td>Operational Feed events categorized</td>
+<td>__ / 20</td>
+</tr>
+<tr>
+<td>Pillar 8 verification pauses documented</td>
+<td>__</td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+<tr>
+<td>Evidence cited</td>
+<td></td>
+</tr>
+<tr>
+<td>Specific gaps (if any)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-4-portfolio-evidence">Category 4 · Portfolio evidence</h3>
+<p><strong>Framework §2 bar:</strong> All 10 artifacts from the <a href="./operator-i-evidence-pack-index.html">evidence pack index</a> present + reviewer-defensible.</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Verified Y/N/Missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quiz scores</td>
+<td></td>
+</tr>
+<tr>
+<td>Vital Read recordings</td>
+<td></td>
+</tr>
+<tr>
+<td>Loop entry log</td>
+<td></td>
+</tr>
+<tr>
+<td>Customer Economics analysis</td>
+<td></td>
+</tr>
+<tr>
+<td>Self-rating sheet</td>
+<td></td>
+</tr>
+<tr>
+<td>Trainer's confirmation paragraph</td>
+<td></td>
+</tr>
+<tr>
+<td>Pioneer Test reflection</td>
+<td></td>
+</tr>
+<tr>
+<td>Pillar 8 verification pause</td>
+<td></td>
+</tr>
+<tr>
+<td>Operational Feed review log</td>
+<td></td>
+</tr>
+<tr>
+<td>Verified business outcome</td>
+<td></td>
+</tr>
+<tr>
+<td>My category score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-5-business-outcomes">Category 5 · Business outcomes</h3>
+<p><strong>Framework §2 bar:</strong> ≥ 1 verified positive business outcome on an owned account, attributable to candidate's work, with documented baseline → action → verification.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Outcome cited</td>
+<td></td>
+</tr>
+<tr>
+<td>Baseline measurement</td>
+<td></td>
+</tr>
+<tr>
+<td>Action taken</td>
+<td></td>
+</tr>
+<tr>
+<td>Verified result</td>
+<td></td>
+</tr>
+<tr>
+<td>Is the result reviewer-defensible?</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>Does it pass the framework §2 disqualifiers (not "engagement improved," not "happier," not "used MC more")?</td>
+<td>Yes / No</td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-6-role-play-assessments">Category 6 · Role-play assessments</h3>
+<p><strong>Framework §2 bar:</strong> Scenario A pass on 2 of 3 available roleplays. Trainer verifies candidate did NOT fall into the named trap.</p>
+<table>
+<thead>
+<tr>
+<th>Roleplay</th>
+<th>Observed?</th>
+<th>Scenario A pass?</th>
+<th>Trap avoided?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.3 Customer Economics — "Revenue is up. We're crushing it."</td>
+<td>Y/N</td>
+<td>Pass/Fail</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>03.1 MC Diagnostics — "First Vital Read with skeptical CEO"</td>
+<td>Y/N</td>
+<td>Pass/Fail</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>05.3 QBR Delivery — "The CEO who came to leave"</td>
+<td>(observation-only at Operator I)</td>
+<td>n/a</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>My category score</td>
+<td>Pass / Conditional / Not Yet</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-7-executive-communication-standards">Category 7 · Executive communication standards</h3>
+<p><strong>Framework §2 bar:</strong> 90-second compression on 1 topic at certification grade · Pioneer Test reflex · banned-vagueness self-rewrite ability · 24-hour written follow-up doc.</p>
+<table>
+<thead>
+<tr>
+<th>Standard</th>
+<th>My observation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>90-second compression observed on which topic?</td>
+<td></td>
+</tr>
+<tr>
+<td>Did candidate self-identify Pioneer Test failures in a peer's work?</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>Did candidate rewrite banned vagueness from Constitution?</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>Was a 24-hour follow-up doc produced?</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-8-financial-pulse-capabilities">Category 8 · Financial Pulse capabilities</h3>
+<p><strong>Framework §2 bar:</strong> Names all 6 Vitals · reads at least 4 of 6 including Labor Efficiency, Margin Integrity, Operational Exposure · knows thresholds for Margin Integrity + Operational Exposure · recognizes ≥ 5 of 14 patterns · has driven a Vital Read with a customer · has executed at least 1 Pattern Library response.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Can name all 6 Vitals?</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>Vitals candidate reads competently</td>
+<td>__ of 6</td>
+</tr>
+<tr>
+<td>Threshold recall</td>
+<td>Margin Integrity Y/N · Operational Exposure Y/N</td>
+</tr>
+<tr>
+<td>Patterns recognized</td>
+<td>__ of 14</td>
+</tr>
+<tr>
+<td>Pattern Library response executed</td>
+<td>Y/N (which pattern: )</td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Conditional / Not Yet</td>
+</tr>
+</tbody>
+</table>
+<h3 id="category-9-cannot-do-exclusions-negative-verification">Category 9 · Cannot-do exclusions (negative verification)</h3>
+<p><strong>Framework §2 bar:</strong> Candidate does NOT claim or attempt: solo QBR delivery, pricing recommendations, contract negotiation, solo Pillar 8 Discontinuity diagnosis, mentoring other Operators formally, strategic accounts.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Did the candidate stay within Operator I scope?</td>
+<td>Y/N</td>
+</tr>
+<tr>
+<td>If N, where did they over-reach?</td>
+<td></td>
+</tr>
+<tr>
+<td>My score</td>
+<td>Pass / Not Yet (Conditional not available — over-reach is binary)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="composite-decision">Composite decision</h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>My score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 · Competencies</td>
+<td></td>
+</tr>
+<tr>
+<td>2 · Lessons</td>
+<td></td>
+</tr>
+<tr>
+<td>3 · Practical demonstrations</td>
+<td></td>
+</tr>
+<tr>
+<td>4 · Portfolio evidence</td>
+<td></td>
+</tr>
+<tr>
+<td>5 · Business outcomes</td>
+<td></td>
+</tr>
+<tr>
+<td>6 · Role-play assessments</td>
+<td></td>
+</tr>
+<tr>
+<td>7 · Executive communication standards</td>
+<td></td>
+</tr>
+<tr>
+<td>8 · Financial Pulse capabilities</td>
+<td></td>
+</tr>
+<tr>
+<td>9 · Cannot-do exclusions</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="my-overall-decision">My overall decision</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> <strong>Pass.</strong> All 9 categories Pass. Recommend Lineage ID issuance.</li>
+<li class="task"><input type="checkbox" disabled> <strong>Conditional Pass.</strong> ≤ 2 categories Conditional, none Not Yet, and named gaps could close in 14 days. State the gaps:</li>
+<li class="task"><input type="checkbox" disabled> <strong>Not Yet.</strong> Any of: ≥ 1 category Not Yet · ≥ 3 categories Conditional · Cannot-do exclusion failure. State the reason:</li>
+</ul>
+<h3 id="reviewer-note-one-paragraph-for-the-calibration-meeting">Reviewer note (one paragraph, for the calibration meeting)</h3>
+<p>What did I see that the other reviewers might not have? Where am I least certain? What single question, if answered, would change my decision?</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/operator-i-reviewer-scorecard.md</code>
+</footer>
+</body>
+</html>

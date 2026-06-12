@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 03.1 — Mission Control as a Diagnostic Instrument — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="lesson-031-mission-control-as-a-diagnostic-instrument">Lesson 03.1 — Mission Control as a Diagnostic Instrument</h1>
+<blockquote>
+<p>⭐ <strong>GOLD STANDARD CANDIDATE</strong> ⭐ — authored against <a href="../academy-gold-standard.html"><code>academy-gold-standard.md</code></a>. Certification pending publish-gate review.</p>
+<p>Pillar 03 — PioneerOps Platform Mastery · Competency 03.5 · Target level after this lesson: <strong>3 (Expert)</strong></p>
+<p><strong>Flagship lesson.</strong> Mission Control is the software embodiment of the Loop — Visibility → Measurement → Diagnosis → Action → Verification. This lesson is where the operator stops thinking of Mission Control as a dashboard and starts using it as a stethoscope.</p>
+<p>Required reading before this lesson:
+- <a href="../02-cleaning-operations/02-revenue-per-labor-hour.html">02.2 Revenue Per Labor Hour</a>
+- <a href="../02-cleaning-operations/03-customer-economics.html">02.3 Customer Economics</a>
+- <a href="../05-customer-success/03-qbr-delivery.html">05.3 QBR Delivery</a>
+- <a href="../CONSTITUTION.html">Constitution v1.1</a> — Pillar 8 (Work Becomes the Record), Six Operational Vitals
+- <a href="../ACADEMY-THESIS.html">Thesis Section 9 (The Loop) + Section 11 (Financial Pulse)</a></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Time block</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reading + walkthrough</td>
+<td>75 min</td>
+</tr>
+<tr>
+<td>Exercise</td>
+<td>120 min</td>
+</tr>
+<tr>
+<td>Role-play</td>
+<td>45 min</td>
+</tr>
+<tr>
+<td>Quiz + coaching discussion</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>4 hours 30 min</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A graduate Operator must be able to walk into a cleaning company office on Monday morning, sit beside the owner, open Mission Control, and run a 5-minute Vital Read that produces at least one Loop entry — every single Monday, for the rest of the relationship.</p>
+<hr />
+<h2 id="action-metric-outcome-pillar-1">Action → Metric → Outcome (Pillar 1)</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Metric</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Use Mission Control as the standing diagnostic instrument; teach the customer CEO to read it for themselves on a weekly rhythm</td>
+<td>Customer-led Loop entries per quarter; time from deviation surfaced → diagnosis started</td>
+<td>The customer runs the Loop on their own business; the operator's role evolves from "reads the dashboard for them" to "advises on the harder calls"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="economic-reality-chain-pillar-7">Economic Reality Chain (Pillar 7)</h2>
+<table>
+<thead>
+<tr>
+<th>Operational Event</th>
+<th>Operational Metric</th>
+<th>Financial Consequence</th>
+<th>Business Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CEO opens MC weekly, catches a deviation in a Vital, runs diagnosis, takes action, verifies result</td>
+<td>Number of closed Loops per quarter; verified margin / cash / exposure deltas</td>
+<td>Each closed Loop produces verified financial gain — or kills a non-working idea early; portfolio Margin Integrity and Cash Conversion move measurably</td>
+<td>The customer becomes self-sustaining at running the Loop; renewal stops being a conversation about price and starts being a conversation about expansion</td>
+</tr>
+</tbody>
+</table>
+<h2 id="operational-vitals-exercised-constitution-six-operational-vitals">Operational Vitals exercised (Constitution: Six Operational Vitals)</h2>
+<p>Mission Control's whole purpose is to surface vitals. This lesson exercises <strong>all six</strong>:</p>
+<ul>
+<li><strong>Labor Efficiency</strong> — clock-in compliance feed, work-minutes vs paid-minutes summaries</li>
+<li><strong>Margin Integrity</strong> — Customer Economics card with RPLH per customer, top/bottom 3</li>
+<li><strong>Revenue Quality &amp; Leakage</strong> — open shifts, incomplete DCRs, leadership streak</li>
+<li><strong>Cash Conversion</strong> — (Financial Pulse, coming online) — closeout latency surfaces here</li>
+<li><strong>Cost of Poor Quality</strong> — Inspection Quality Score rollup, recurring callouts feed</li>
+<li><strong>Operational Exposure</strong> — Inspection coverage % per building, missing inspection records</li>
+</ul>
+<p>The operator must be able to name which vital(s) any MC card serves. "It's a dashboard card" is not an acceptable answer.</p>
+<hr />
+<h2 id="element-1-plain-english-explanation">ELEMENT 1 — Plain-English Explanation</h2>
+<h3 id="what-mission-control-is">What Mission Control is</h3>
+<p>Mission Control is <strong>a diagnostic instrument the cleaning company CEO reads weekly</strong> — the way a clinician reads vitals at the start of every shift.</p>
+<p>It is not a dashboard. It is not a reporting screen. It is not the place the CEO goes to feel productive on a Tuesday.</p>
+<p>It is the surface where <strong>operational truth becomes visible enough to act on</strong>, every single week, in five minutes or less.</p>
+<h3 id="what-it-is-word-by-word">What it IS (word by word)</h3>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>What it really means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Surfaces deviations, not just numbers. A normal Vital does not demand attention; an abnormal one does.</td>
+</tr>
+<tr>
+<td><strong>Instrument</strong></td>
+<td>Like a stethoscope or a blood-pressure cuff — a tool with a specific purpose, read by someone trained to interpret it.</td>
+</tr>
+<tr>
+<td><strong>The CEO reads</strong></td>
+<td>The CEO. Not the bookkeeper, not the ops manager, not the operator. The CEO.</td>
+</tr>
+<tr>
+<td><strong>Weekly</strong></td>
+<td>A rhythm, not a habit-of-convenience. Monday morning, every Monday.</td>
+</tr>
+<tr>
+<td><strong>5 minutes or less</strong></td>
+<td>The diagnostic scan is fast. Deviations trigger longer work; absence of deviations terminates the scan quickly.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-it-isnt">What it ISN'T</h3>
+<table>
+<thead>
+<tr>
+<th>Confusion</th>
+<th>Reality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mission Control = a dashboard</td>
+<td>Dashboards are looked at. Instruments are read. The verb is different. The discipline is different.</td>
+</tr>
+<tr>
+<td>Mission Control = a report</td>
+<td>Reports are produced. Instruments are interrogated. Reports get sent; instruments get checked.</td>
+</tr>
+<tr>
+<td>Mission Control = the operator's product</td>
+<td>The operator's product is the CEO running the Loop. Mission Control is one tool in that work.</td>
+</tr>
+<tr>
+<td>Mission Control = a real-time monitor</td>
+<td>The customer doesn't sit watching MC. They check it on a rhythm. Watching constantly would be panic, not diagnosis.</td>
+</tr>
+<tr>
+<td>Mission Control = a customer-facing screen</td>
+<td>The CEO sees their company; the operator sees the same data through a coaching lens. Same screen, different reads.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-clinical-metaphor-made-operational">The clinical metaphor, made operational</h3>
+<p>The Thesis treats Operators as diagnosticians (Section 4). Mission Control is the cardiac monitor in the operating room:</p>
+<ul>
+<li>A <strong>physician</strong> doesn't watch the monitor every second. They check it on a rhythm, interpret deviations, take action, and re-check.</li>
+<li>A <strong>CEO</strong> doesn't watch Mission Control all day. They check it on a rhythm (Monday morning), interpret deviations, take action, and re-check the following Monday.</li>
+<li>The <strong>operator's job</strong> is to teach the CEO to do this without the operator on the call. The operator becomes redundant for the weekly read, then valuable for the harder calls the read surfaces.</li>
+</ul>
+<p>If you've used a stethoscope, you know what Mission Control is. If you've never used a stethoscope, the rest of this lesson teaches the same skill.</p>
+<hr />
+<h2 id="element-2-why-it-matters">ELEMENT 2 — Why It Matters</h2>
+<h3 id="without-it-cleaning-company-ceos-operate-on-folklore">Without it, cleaning company CEOs operate on folklore</h3>
+<p>Most cleaning company owners run their business on three sources of truth, in this order:</p>
+<ol>
+<li>What they remember</li>
+<li>What their ops manager told them this morning</li>
+<li>What QuickBooks says at month-end</li>
+</ol>
+<p>None of those three update fast enough to catch a problem at the moment it can still be fixed cheaply. By the time month-end finance reveals margin compression, the field behavior that caused it is already 60 days old.</p>
+<p>Mission Control collapses that gap. The vital is readable Monday morning. The behavior writing it is from last week.</p>
+<h3 id="where-the-loop-fires-inside-mission-control">Where the Loop fires inside Mission Control</h3>
+<table>
+<thead>
+<tr>
+<th>Loop stage</th>
+<th>Mission Control surface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Visibility</strong></td>
+<td>Operational Feed (real-time events); Open Shifts; Open Conversations preview; Recent Activity stream</td>
+</tr>
+<tr>
+<td><strong>Measurement</strong></td>
+<td>Customer Economics card (RPLH per customer); Customer Health scores; Pioneer Quality Score; Inspection coverage %; Hiring Funnel</td>
+</tr>
+<tr>
+<td><strong>Diagnosis</strong></td>
+<td>Top 3 / Bottom 3 customers; Recommendations under Customer Economics; deviation against target line; comparison to prior period</td>
+</tr>
+<tr>
+<td><strong>Action</strong></td>
+<td>Today's CEO Actions; Quick Leadership Actions; one-click recognition / outreach; Action Completion tracking</td>
+</tr>
+<tr>
+<td><strong>Verification</strong></td>
+<td>Action Completion Loop; Leadership Streak; Pioneer Quality Score trends; Customer Economics trend over weeks</td>
+</tr>
+<tr>
+<td><strong>Refinement</strong></td>
+<td>Currently outside MC v1 — handled in QBR debrief + Academy retrospectives</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Five of the six Loop stages live inside Mission Control today.</strong> That is not a coincidence; the platform was designed to make the Loop fast.</p>
+<h3 id="how-the-constitution-pillars-fire-inside-a-mission-control-read">How the Constitution pillars fire inside a Mission Control read</h3>
+<table>
+<thead>
+<tr>
+<th>Doctrine</th>
+<th>How it shows up in a 5-minute MC read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pillar 1 — Outcomes, not features</strong></td>
+<td>Every card maps to an outcome (margin, cash, exposure). Cards that don't are decoration.</td>
+</tr>
+<tr>
+<td><strong>Pillar 2 — Diagnostician</strong></td>
+<td>The CEO doesn't admire the data. They ask "what is the constraint?" — every Monday.</td>
+</tr>
+<tr>
+<td><strong>Pillar 3 — First Value / Journey</strong></td>
+<td>A customer at Habit checks MC unprompted; a customer at Adoption acts on what they see. MC is the journey's diagnostic surface.</td>
+</tr>
+<tr>
+<td><strong>Pillar 4 — Scaling Through Systems</strong></td>
+<td>MC IS a system — the same surface, the same rhythm, the same scan, regardless of which operator or which company.</td>
+</tr>
+<tr>
+<td><strong>Pillar 5 — AI Division of Labor</strong></td>
+<td>AI flags anomalies (breadth). The CEO decides what matters (judgment). The records hold the truth (substrate).</td>
+</tr>
+<tr>
+<td><strong>Pillar 7 — Economic Reality</strong></td>
+<td>Every MC card carries a financial shadow. The Customer Economics card is the chain made visible.</td>
+</tr>
+<tr>
+<td><strong>Pillar 8 — Work Becomes the Record</strong></td>
+<td>Every MC number traces back to a record the CEO can audit in under 60 seconds. If it can't, the card is broken.</td>
+</tr>
+</tbody>
+</table>
+<p>If a Mission Control read doesn't fire all seven, the operator is reading it wrong — or the CEO hasn't been trained yet.</p>
+<h3 id="the-economic-argument-for-the-weekly-rhythm">The economic argument for the weekly rhythm</h3>
+<p>A cleaning company missing one bad month is annoying. A cleaning company missing four bad months in a row is in real trouble. The difference between catching the drift in week 2 vs week 14 is the difference between a 4-week recovery and a 90-day crisis.</p>
+<p>Mission Control's value is not the data — most of the data exists in other places, at slower speeds. <strong>The value is the cadence.</strong> A read every Monday means no bad pattern survives more than 7 days unseen. That 7-day ceiling is what compounds across a year into a different company.</p>
+<hr />
+<h2 id="element-3-pioneer-example">ELEMENT 3 — Pioneer Example</h2>
+<h3 id="aprils-monday-morning-vital-read-and-the-4300month-catch">April's Monday morning Vital Read — and the $4,300/month catch</h3>
+<p>Pioneer's executive April runs the Loop on Pioneer itself every Monday at 8 AM. The internal Mission Control is the same software shape as the one Pioneer's customers see, with Pioneer's own data.</p>
+<p><strong>Monday, March 11.</strong> April opens MC. 4 minutes 20 seconds later, she's done the scan and identified one action.</p>
+<p>What she did, in real time:</p>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>What she looked at</th>
+<th>What she saw</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:30</td>
+<td>Cash on hand + cash runway</td>
+<td>Both normal. Skip.</td>
+</tr>
+<tr>
+<td>0:30–1:30</td>
+<td>Customer Economics — Top 3 / Bottom 3</td>
+<td>Riverside Office Park (Pioneer's #2 by revenue) had dropped from $84 RPLH to $71. Trend over 4 weeks.</td>
+</tr>
+<tr>
+<td>1:30–2:30</td>
+<td>Pulled Riverside's labor detail</td>
+<td>Marcus (fast tech) had been pulled to cover Acme Logistics two weeks ago. The new tech, Jordan, was 12% slower on Riverside's route.</td>
+</tr>
+<tr>
+<td>2:30–3:30</td>
+<td>Cross-checked Pioneer Quality Score for Riverside</td>
+<td>Quality steady. No complaints. Just slower hours.</td>
+</tr>
+<tr>
+<td>3:30–4:20</td>
+<td>Decided + queued action</td>
+<td>Pair Jordan with Marcus for 3 shifts at Riverside this week (Marcus shadows). Verification: re-check RPLH at next Monday's read.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total time: 4 minutes 20 seconds. One action. One verification date.</strong></p>
+<p>By the next Monday, Riverside was at $76 RPLH. The Monday after that, $79. Jordan was no longer a slower tech on that route; he had been taught the building. April's pairing action had verified.</p>
+<h3 id="why-this-matters-as-a-pioneer-example">Why this matters as a Pioneer example</h3>
+<p>Pioneer <strong>eats its own cooking</strong>. The doctrine the Academy teaches is the doctrine Pioneer's executive runs Monday mornings on. If Pioneer didn't, the Academy would be selling a method nobody on the inside actually uses — and the operators in the field would smell it in the first hour.</p>
+<p>There is a second, harder thing this example shows: April <strong>didn't dramatize the catch</strong>. She didn't message the team about the heroic save. She just took the action and queued the verification. That is what a routine Vital Read looks like when the system is mature — calm, fast, unremarkable, compounding.</p>
+<h3 id="nicks-view">Nick's view</h3>
+<blockquote>
+<p>"April's $4,300/month catch on Riverside is unremarkable in the sense that it happens almost every Monday on some account. That is the entire point. The unremarkable Monday catch is what compounds across a year into a different company."</p>
+</blockquote>
+<hr />
+<h2 id="element-4-customer-example">ELEMENT 4 — Customer Example</h2>
+<h3 id="steve-anderson-learns-the-vital-read">Steve Anderson learns the Vital Read</h3>
+<p><strong>The setup.</strong> Anderson Building Services. 35 employees, ~$3M revenue. Owner: Steve Anderson, former cleaning tech who built the company. Old-school. Skeptical of software. Runs the business on relationships and gut.</p>
+<p>The operator (call him Dan) had been working with Steve for 6 months. Steve used PioneerOps for time tracking and payroll but considered Mission Control "another dashboard nobody opens." Steve's words, verbatim.</p>
+<p>Dan's challenge: get Steve to use Mission Control without making him feel like he was being trained on software.</p>
+<h3 id="the-5-minute-play">The 5-minute play</h3>
+<p>Dan visited Steve's office on a Monday. He did not bring a laptop. He brought a single sentence:</p>
+<blockquote>
+<p>"Steve, I want to show you something that takes 5 minutes. If you walk away thinking 'that's useful,' I'll set up the same thing for you to do solo every Monday. If you walk away thinking 'meh,' I'll never mention it again."</p>
+</blockquote>
+<p>Steve agreed. He had nothing scheduled for 5 minutes.</p>
+<p>Dan opened Mission Control on Steve's screen. He <strong>did not</strong> walk through every card. He picked three:</p>
+<ol>
+<li><strong>Cash on hand</strong> — Steve's was at 24 days runway. Dan: "Anything you didn't already know?" Steve: "No."</li>
+<li><strong>Customer Economics — Bottom 3</strong> — Steve's worst customer was at $34 RPLH. Steve: "Wait, who?" Dan: "Dental Plaza SE. Been a customer 5 years." Steve: "Show me the math." Dan: "$3,800/month revenue, 112 hours of cleaning labor. The math is on the screen. They're costing you to clean."</li>
+<li><strong>Operational Exposure — Inspection coverage</strong> — Steve's company-wide inspection coverage was at 71%. Two of his healthcare accounts had no inspection record in the last 60 days. Dan: "If those two get audited next quarter, you can't prove who cleaned what."</li>
+</ol>
+<p><strong>4 minutes 50 seconds.</strong></p>
+<p>Steve was quiet for 10 seconds. Then he said: "Show me the inspector coverage again."</p>
+<p>Steve had just asked his first diagnostic question.</p>
+<h3 id="what-happened-next">What happened next</h3>
+<p>Dan set up a single thing for Steve before he left the office: a Monday morning calendar block at 8 AM titled "Mission Control — 5 minutes." Nothing else.</p>
+<p><strong>Two weeks later</strong> Steve called Dan: "I noticed Acme's inspection coverage dropped to 58%. I checked the supervisor schedule and found it — Mike was out sick three weeks running. Sent Joe there yesterday. Want me to keep watching?"</p>
+<p>The customer had just become self-sustaining at running the Loop on one vital (Operational Exposure) without Dan on the call. Pillar 4 — scaling through systems — had landed.</p>
+<h3 id="six-months-later">Six months later</h3>
+<p>Steve runs Monday morning Vital Reads with his ops manager. The reads take 6–8 minutes (they look at more than three vitals now). They produce 1–3 Loop entries per week. Steve closes them and tracks verifications himself.</p>
+<p>Dan's role on the Anderson account has shifted:</p>
+<ul>
+<li><strong>Before:</strong> weekly Monday call where Dan read the dashboard FOR Steve</li>
+<li><strong>After:</strong> monthly call where Dan helps Steve work through the HARDER decisions the weekly reads surface — pricing exits, route restructures, hiring decisions</li>
+</ul>
+<p>Dan estimates he spends about 60% less time on the Anderson account today than he did six months ago. Steve thinks Dan does MORE for him today than he did six months ago. Both are right. <strong>The operator's role got smaller AND more valuable at the same time.</strong></p>
+<h3 id="what-this-customer-example-teaches">What this customer example teaches</h3>
+<ul>
+<li><strong>Lead with the question, not the dashboard.</strong> "I want to show you something that takes 5 minutes" is the entire pitch. The dashboard sells itself if the operator picks the right three cards.</li>
+<li><strong>Three cards, not nine.</strong> Volume kills the lesson. Three is the right number for a first Vital Read.</li>
+<li><strong>Pick the cards that hit closest to the CEO's biggest worry.</strong> Dan picked cash, margin, and exposure because he knew Steve worried about all three. A different CEO would have gotten different opening cards.</li>
+<li><strong>The success metric is not "they used the dashboard."</strong> The success metric is "they asked a diagnostic question unprompted." Steve's "show me the inspector coverage again" was the moment.</li>
+<li><strong>Self-sustaining loops are the deliverable.</strong> Steve catching the inspection-coverage drift on his own, two weeks later, is what the entire engagement was for. The operator's withdrawal began the moment that call happened.</li>
+</ul>
+<hr />
+<h2 id="element-5-common-mistakes">ELEMENT 5 — Common Mistakes</h2>
+<p>Nine failure modes Operators must recognize in themselves before they make them in front of a customer.</p>
+<h3 id="mistake-1-the-dashboard-tour">Mistake 1 — The Dashboard Tour</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "Let me walk you through every card on Mission Control. We have 14 of them. Here's what the first one shows…"</p>
+<p><strong>Why it fails:</strong> Tour energy is the opposite of diagnostic energy. The CEO stops looking for what matters and starts looking at what's there. After 8 minutes of feature tour, the CEO has confirmed that Mission Control is "a lot," which is the worst possible takeaway.</p>
+<p><strong>Upgrade:</strong> "We're going to look at 3 cards. Just 3. They cover the things most likely to cost you money this quarter. If anything looks off in any of them, we stop and dig in."</p>
+</blockquote>
+<h3 id="mistake-2-the-volume-as-decoration-read">Mistake 2 — The Volume-as-Decoration Read</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "Look at all these metrics — your inspection score, your callout rate, your tech retention, your DCR completion rate, your supply trend, your shift coverage, your…"</p>
+<p><strong>Why it fails:</strong> A Vital Read names 3–6 specific vitals to scan. Reading every available number is not diagnosis; it is glancing at decoration. The CEO loses the discriminative power that makes the read useful.</p>
+<p><strong>Upgrade:</strong> Pick the 3 vitals most likely to be moving for this CEO this quarter. Skip the others unless something flags. "If everything else is steady, we don't need to look at it."</p>
+</blockquote>
+<h3 id="mistake-3-the-reactive-only-open">Mistake 3 — The Reactive-Only Open</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "I open Mission Control whenever something feels off. Otherwise I trust the team."</p>
+<p><strong>Why it fails:</strong> Reactive opening means MC only reads after a problem has been felt. By then, the field behavior writing the problem is 30+ days old. The compounding value of weekly rhythm is lost.</p>
+<p><strong>Upgrade:</strong> "Monday morning, every Monday. 5 minutes. Even when nothing's wrong. Especially when nothing's wrong — that's how you stay calibrated."</p>
+</blockquote>
+<h3 id="mistake-4-the-operator-as-reader">Mistake 4 — The Operator-as-Reader</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "I'll read Mission Control for you every Monday and email you what I see."</p>
+<p><strong>Why it fails:</strong> This converts the operator into a reporter and the CEO into a recipient. The CEO never builds the diagnostic skill. Renewal becomes "we need our operator to read this thing," which means the moment the operator changes, the customer is lost.</p>
+<p><strong>Upgrade:</strong> "I'll teach you to do the read yourself. I'll be your second pair of eyes for the first month. After that, you'll catch most of it before I do."</p>
+</blockquote>
+<h3 id="mistake-5-the-snapshot-worship">Mistake 5 — The Snapshot Worship</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "Your RPLH this week is $58. Below target. Bad."</p>
+<p><strong>Why it fails:</strong> One reading is almost meaningless. A vital is its TREND, not its value. $58 on a downward trend is different from $58 on an upward trend.</p>
+<p><strong>Upgrade:</strong> "Your RPLH is $58, down from $64 three weeks ago. That direction matters more than the number. Let's look at what's pulling it down."</p>
+</blockquote>
+<h3 id="mistake-6-the-deviation-without-diagnosis">Mistake 6 — The Deviation Without Diagnosis</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "Cash conversion stretched 4 days. Worth flagging."</p>
+<p><strong>Why it fails:</strong> A deviation without a follow-on diagnostic question is a flag that becomes wallpaper. The next week's deviation has to fight harder for attention. The week after that, MC starts feeling like noise.</p>
+<p><strong>Upgrade:</strong> "Cash conversion stretched 4 days. Question: are we billing slower, or are customers paying slower? Two different problems, two different fixes."</p>
+</blockquote>
+<h3 id="mistake-7-the-action-without-verification">Mistake 7 — The Action Without Verification</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "Saw the drift in Mike's inspection coverage. Talked to him. Should be better now."</p>
+<p><strong>Why it fails:</strong> No verification date = no closed Loop = no proof anything actually changed. Three weeks later, nobody remembers whether Mike's coverage recovered, so the action's effectiveness is forever unknown.</p>
+<p><strong>Upgrade:</strong> "Saw the drift in Mike's coverage. Talked to him. <strong>Verification: re-check next Monday's read.</strong> If coverage isn't back to 90%+, escalate."</p>
+</blockquote>
+<h3 id="mistake-8-the-feature-talk-read">Mistake 8 — The Feature-Talk Read</h3>
+<blockquote>
+<p><strong>Sounds like:</strong> "We added a new card this quarter — Hiring Funnel — let me show you what it does!"</p>
+<p><strong>Why it fails:</strong> A Vital Read is not a release-notes briefing. Adding card-tour energy to a Vital Read corrupts the rhythm. The CEO starts associating the read with "what's new" instead of "what matters."</p>
+<p><strong>Upgrade:</strong> New cards get a separate 10-minute conversation. The Vital Read stays sacred. "Mission Control got a new card this week — let me show you that on Thursday so it doesn't eat our Monday read."</p>
+</blockquote>
+<h3 id="mistake-9-acting-on-mission-control-without-checking-the-underlying-record-pillar-8">Mistake 9 — Acting on Mission Control Without Checking the Underlying Record (Pillar 8)</h3>
+<p>This is the doctrine-grade failure mode. The most expensive way to misuse Mission Control.</p>
+<blockquote>
+<p><strong>The story.</strong> Pioneer Operator Lisa was running Monday morning MC review with a customer CEO. MC's Customer Economics card showed Dental Plaza SE at $34 RPLH — way below target. The CEO's immediate reaction: "Let's send them a 15% rate increase letter this week."</p>
+<p>Lisa paused. She said: <em>"Before we send that letter, let me verify the underlying records. The labor hours feel high — let me confirm we're not seeing a sync gap."</em></p>
+<p>She pulled the Deputy → PioneerOps sync log. Three of Marcus's shifts at Dental Plaza hadn't synced — they were showing zero hours in PioneerOps even though Marcus had worked them. The Customer Economics card was computing on incorrect labor data. The "real" RPLH at Dental Plaza was closer to $44 — still below target, but not 15%-rate-increase-urgent.</p>
+<p>Lisa fixed the sync gap, re-pulled MC, and the conversation shifted to a different (smaller) action: a 6% rate increase paired with a scope conversation.</p>
+<p><strong>What Pillar 8 says here:</strong> Mission Control is only as defensible as the records beneath it. A card showing a number doesn't mean the number is right. The records under the card must be checked before any action is recommended.</p>
+<p><strong>The recovery move.</strong> Lisa earned more credibility by NOT recommending action on a flawed number than she would have earned by issuing a clean recommendation on a clean number. The pause was the deposit.</p>
+<p><strong>The lesson.</strong> Train the customer CEO to ask one question before any MC-driven action: <em>"Have we verified the underlying record?"</em> If the answer is no, the action waits. If the answer is yes, the action ships.</p>
+</blockquote>
+<p>The Pillar 8 mistake is the only one in this list with no "sounds like / upgrade" pair. The mistake is not a sentence — it is a missing verification. The fix lives in the prep, not the delivery.</p>
+<hr />
+<h2 id="element-6-vocabulary">ELEMENT 6 — Vocabulary</h2>
+<h3 id="diagnostic-instrument">Diagnostic Instrument</h3>
+<ul>
+<li><strong>Definition.</strong> A tool with a specific purpose, read by someone trained to interpret it — like a stethoscope, a blood-pressure cuff, or Mission Control. Distinguished from a "dashboard" by the discipline of reading.</li>
+<li><strong>Why it matters.</strong> The vocabulary distinction shapes behavior. Dashboards get looked at. Instruments get read. The latter produces action; the former produces glancing.</li>
+<li><strong>Example.</strong> A cardiologist reads an ECG. A cleaning company CEO reads Mission Control. Both are diagnostic acts requiring trained interpretation.</li>
+<li><strong>Common mistake.</strong> Calling it a dashboard in front of a CEO. The word infects the behavior.</li>
+</ul>
+<h3 id="vital-read">Vital Read</h3>
+<ul>
+<li><strong>Definition.</strong> A structured 5-minute scan of Mission Control's key vitals, run on a fixed weekly rhythm (Monday morning). Produces zero or more Loop entries.</li>
+<li><strong>Why it matters.</strong> The Vital Read is the unit of work that makes Mission Control useful. Without a defined scan structure, MC becomes overwhelming and gets skipped.</li>
+<li><strong>Example.</strong> Steve Anderson's weekly Vital Read: cash → margin (top/bottom 3) → exposure → operational feed scan. Total: ~6 minutes.</li>
+<li><strong>Common mistake.</strong> Calling any opening of MC a "vital read." The read has structure. Random opening is not a read.</li>
+</ul>
+<h3 id="pulse-check">Pulse Check</h3>
+<ul>
+<li><strong>Definition.</strong> A 60-second sub-scan of one specific vital, run between Vital Reads when a single signal warrants it. Smaller and faster than the full read.</li>
+<li><strong>Why it matters.</strong> Between Mondays, a vital may surface a worry that doesn't warrant a full read. A Pulse Check catches it without breaking rhythm.</li>
+<li><strong>Example.</strong> Steve sees an inspection score drop on Thursday afternoon. He opens MC, checks only the Operational Exposure card, sees the building, decides whether to act. 90 seconds.</li>
+<li><strong>Common mistake.</strong> Confusing Pulse Checks with reactive panic. A Pulse Check is calm — "let me look at one thing." Panic opens every card and trusts none.</li>
+</ul>
+<h3 id="drift-catch">Drift Catch</h3>
+<ul>
+<li><strong>Definition.</strong> Catching a vital before it crosses an action-worthy threshold. The leading indicator before the deviation is forced into attention.</li>
+<li><strong>Why it matters.</strong> Drift Catches are the highest-leverage saves an Operator or CEO can make. Catching a 3-week downward trend at $58 RPLH (still above target $54) prevents the drop to $51 that would require crisis response.</li>
+<li><strong>Example.</strong> April's Riverside catch was a Drift Catch — she caught a $13 drop while still profitable, not a crisis after the customer was already losing money.</li>
+<li><strong>Common mistake.</strong> Only acting on red flags. Yellow flags caught early prevent red flags entirely.</li>
+</ul>
+<h3 id="self-sustaining-loop">Self-Sustaining Loop</h3>
+<ul>
+<li><strong>Definition.</strong> A Loop the customer's own people run without operator involvement. The terminal state of Pillar 4 (Scaling Through Systems) applied to a customer.</li>
+<li><strong>Why it matters.</strong> Self-sustaining Loops are how the operator's role gets MORE valuable while spending LESS time on routine work. The operator graduates from "reads the dashboard" to "advises on the hard calls."</li>
+<li><strong>Example.</strong> Steve Anderson catching Acme's inspection coverage drift on his own, two weeks after his first Vital Read. The Loop ran without Dan on the call.</li>
+<li><strong>Common mistake.</strong> Skipping the Self-Sustaining stage. Operators who stay attached forever become a single point of failure for the customer's diagnostic capability.</li>
+</ul>
+<h3 id="operator-withdrawal-curve">Operator Withdrawal Curve</h3>
+<ul>
+<li><strong>Definition.</strong> The deliberate, planned reduction of operator involvement in a customer's routine Loops over time, paired with deepening involvement on harder strategic decisions.</li>
+<li><strong>Why it matters.</strong> Without a planned curve, operators either over-attach (and become bottlenecks) or under-attach (and lose the relationship). The curve makes the dynamic visible.</li>
+<li><strong>Example.</strong> Dan's involvement on Anderson Building Services dropped from weekly calls to monthly calls over six months, while the strategic value of those monthly calls rose.</li>
+<li><strong>Common mistake.</strong> Treating withdrawal as abandonment. Withdrawal is a reallocation — less time on weekly reads, more time on the harder quarterly calls.</li>
+</ul>
+<blockquote>
+<p>All six terms added to the <a href="../operator-glossary.html">Operator Glossary</a> as part of this lesson's commit.</p>
+</blockquote>
+<hr />
+<h2 id="element-7-visual-diagrams">ELEMENT 7 — Visual Diagrams</h2>
+<h3 id="diagram-1-the-mission-control-loop-map">Diagram 1 — The Mission Control Loop Map</h3>
+<p>How each Mission Control surface maps to a Loop stage. Operators must hold this map cold.</p>
+<pre><code>                        VISIBILITY
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                            ▼
+    Operational Feed              Open Conversations
+    (real-time events)            preview · Open Shifts
+              │                            │
+              └─────────────┬──────────────┘
+                            ▼
+                       MEASUREMENT
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+    Customer Economics              Pioneer Quality
+    (RPLH per customer)             Score · Hiring Funnel
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                        DIAGNOSIS
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+    Top 3 / Bottom 3              Recommendations
+    customers + gap to target     ($X required increase)
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                         ACTION
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+    Today's CEO Actions           Quick Leadership Actions
+    (curated daily)               (one-click recognition)
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                      VERIFICATION
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+    Action Completion             Leadership Streak ·
+    Loop                          Recent Activity trends
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                        REFINEMENT
+                            │
+                            ▼
+                     (handled in QBR
+                      retrospective —
+                      not in MC v1)
+</code></pre>
+<p><strong>What this teaches:</strong> Mission Control is the Loop made visible. Every card serves a stage. Every stage maps to a CEO behavior. The operator can name which stage they are in at any moment.</p>
+<h3 id="diagram-2-the-weekly-vital-read-5-minute-scan-structure">Diagram 2 — The Weekly Vital Read (5-minute scan structure)</h3>
+<pre><code>   Monday 8:00 AM ─────────────────────────────────────────────────
+
+   0:00 ─┬─► CASH                                          (60 sec)
+         │   Look at: cash on hand, runway days
+         │   Action trigger: runway below 21 days
+         │
+   1:00 ─┼─► MARGIN                                        (90 sec)
+         │   Look at: company avg RPLH, Bottom 3 customers
+         │   Action trigger: any customer below break-even
+         │   Or company avg trending down 3+ weeks
+         │
+   2:30 ─┼─► EXPOSURE                                      (60 sec)
+         │   Look at: inspection coverage %, exposed buildings
+         │   Action trigger: any healthcare/regulated
+         │   building below 80%
+         │
+   3:30 ─┼─► OPERATIONAL FEED                              (60 sec)
+         │   Look at: scan the last 7 days of events
+         │   Action trigger: any recurring complaint pattern
+         │
+   4:30 ─┼─► LOOP CLOSURES                                 (30 sec)
+         │   Look at: did last week's predicted verifications
+         │   actually verify?
+         │   Action trigger: any unclosed loop &gt; 2 weeks old
+         │
+   5:00 ────► DONE
+
+   Output: 0–3 Loop entries with named verification dates
+   ───────────────────────────────────────────────────────────────
+</code></pre>
+<p><strong>What this teaches:</strong> the read is bounded. Every vital gets a fixed time window. Action triggers are pre-named — the CEO doesn't decide what's bad in real time; they look for specific thresholds. If nothing trips, the read ends fast. If something trips, the timer pauses and a Loop entry gets created.</p>
+<h3 id="diagram-3-the-operator-withdrawal-curve">Diagram 3 — The Operator Withdrawal Curve</h3>
+<p>How the operator's time on a customer should change over the first 18 months — and how value should NOT change.</p>
+<pre><code>   Time on customer
+   per week
+       │
+   8h  │ ██                                
+       │ ██ ██                            
+   6h  │ ██ ██ ██                         
+       │ ██ ██ ██ ██                      
+   4h  │ ██ ██ ██ ██ ██ ██                
+       │ ██ ██ ██ ██ ██ ██ ██ ██          
+   2h  │ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ 
+       │ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ ██ 
+   0h  └─────────────────────────────────────►
+        M1 M2 M3 M4 M5 M6 M7 M8 M9 M10 M12  ... 18
+
+   Customer's strategic
+   value of operator   
+       │           ▲                 ▲                
+       │         ╱                 ╱                  
+   High│       ╱                 ╱       ◄─ operator's
+       │     ╱                 ╱            strategic 
+       │   ╱                ╱               value rises
+   Med │ ╱               ╱
+       │╱             ╱
+   Low │     ◄─ operator's          
+       │       routine value         
+       │       falls (good)          
+       └────────────────────────────────────►
+        M1 M2 M3 M4 M5 M6 M7 M8 M9 M10 M12 ... 18
+
+   The curve that fails: 8h/week for 18 months,
+   no strategic value growth. Operator becomes a
+   cost center, not an advisor. Renewal is uphill.
+
+   The curve that succeeds: 8h/week for 3 months
+   (heavy teaching), then declining time + rising
+   strategic value. Operator becomes peer to CEO.
+   Renewal closes on results.
+</code></pre>
+<p><strong>What this teaches:</strong> the operator's job is to teach the customer to be self-sustaining at the routine reads, so the operator can focus on the harder strategic calls. Operators who never withdraw are stuck reading dashboards forever — and when budget tightens, they're the first cut.</p>
+<hr />
+<h2 id="how-mission-control-connects-to-pillar-8-work-becomes-the-record">How Mission Control connects to Pillar 8 (Work Becomes the Record)</h2>
+<p>Every Mission Control card is a synthesis of underlying records. The synthesis is only as honest as the records.</p>
+<h3 id="the-pillar-8-questions-to-ask-before-acting-on-any-mc-reading">The Pillar 8 questions to ask before acting on any MC reading</h3>
+<ol>
+<li><strong>Can I trace this number back to specific records inside 60 seconds?</strong> If the Customer Economics card says ACME is at $34 RPLH, can the operator pull the invoices and the time-card records that produced it, on demand?</li>
+<li><strong>Was the record created BY the work, or reconstructed AFTER it?</strong> Time-card entries created at clock-in are reliable. Time-card entries entered manually two days later are not.</li>
+<li><strong>Is the synthesis aware of recent record gaps?</strong> Deputy sync delays, manual time-card corrections, late DCR submissions — all can corrupt MC's reading. The CEO must know what to look for.</li>
+</ol>
+<h3 id="what-mc-does-not-show-and-why-operators-must-say-so">What MC does NOT show — and why operators must say so</h3>
+<p>Mission Control is powerful, but it is bounded. Operators must name the bounds, not let the CEO assume completeness:</p>
+<table>
+<thead>
+<tr>
+<th>MC does NOT show</th>
+<th>Why this matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pending corrections to time-card data</td>
+<td>Last 48 hours of time data may be incomplete</td>
+</tr>
+<tr>
+<td>Late-arriving DCRs</td>
+<td>Quality vitals for the last 2–3 days can be artificially low</td>
+</tr>
+<tr>
+<td>Customer disputes not yet logged</td>
+<td>A complaint communicated by phone won't show up until logged</td>
+</tr>
+<tr>
+<td>Cost-of-poor-quality outside the formal record</td>
+<td>Re-cleans done informally don't move the vital</td>
+</tr>
+<tr>
+<td>AR aging by customer</td>
+<td>Cash Conversion vital uses company aggregate, not per-customer</td>
+</tr>
+</tbody>
+</table>
+<p>A trained Operator names what's not in the picture before the CEO assumes it is. <strong>An operator who lets a CEO act on an incomplete MC reading is failing Pillar 8.</strong></p>
+<h3 id="the-mc-as-pillar-8-record-discipline">The MC-as-Pillar-8-record discipline</h3>
+<p>If a customer's auditor or acquirer arrived tomorrow and asked "show me how you ran this business this quarter," Mission Control + its underlying records IS the answer. The Vital Read entries, the closed Loops, the verification results — all of it is the company's Pillar 8 evidence of disciplined operation.</p>
+<p>This is also why <strong>the operator's Vital Read training of the customer is itself an evidence-generating exercise.</strong> Each weekly read documented in MC is a record. Records compound into proof.</p>
+<hr />
+<h2 id="how-ai-is-used-in-mission-control-work-pillar-5-division-of-labor">How AI is used in Mission Control work (Pillar 5 — division of labor)</h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>AI's job</th>
+<th>Operator's job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Anomaly detection</td>
+<td>Surface unusual patterns across all six vitals before the human read</td>
+<td>Decide which anomalies actually matter for THIS customer this week</td>
+</tr>
+<tr>
+<td>Drift forecasting</td>
+<td>Project a vital's trajectory if no action is taken</td>
+<td>Decide whether the projection is bad enough to act on</td>
+</tr>
+<tr>
+<td>Pattern correlation</td>
+<td>"Customer X's RPLH drop correlates with Tech Y's reassignment"</td>
+<td>Validate against the field reality the operator knows</td>
+</tr>
+<tr>
+<td>Pre-read summary</td>
+<td>Generate a 1-page "what changed since last Monday" brief</td>
+<td>Decide what to include in the conversation; cut 60%</td>
+</tr>
+<tr>
+<td>Loop closure tracking</td>
+<td>Track verification dates, send reminders, draft check-in messages</td>
+<td>Make the verification call, interpret the result, decide next action</td>
+</tr>
+<tr>
+<td>New card recommendations</td>
+<td>"These three Customer Health scores warrant attention"</td>
+<td>Pick the right three. Tighten the framing. Bring the recommendation.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What AI does NOT do:</strong></p>
+<ul>
+<li>Read the dashboard for the CEO</li>
+<li>Decide which vitals matter this quarter</li>
+<li>Take action on behalf of the customer</li>
+<li>Bear responsibility for outcomes</li>
+<li>Replace the operator's weekly presence in the customer's office or on their call</li>
+</ul>
+<p><strong>The signature is the Operator's.</strong> AI sharpens the read. AI does not earn the trust. The Monday morning instrument is read by humans — augmented, never replaced.</p>
+<hr />
+<h2 id="element-8-exercise">ELEMENT 8 — Exercise</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task</strong></td>
+<td>Build a customized Weekly Vital Read for one of your owned accounts AND deliver the first read alongside the customer's CEO.</td>
+</tr>
+<tr>
+<td><strong>Inputs</strong></td>
+<td>The customer's Mission Control (live); 90 days of operational data; the customer's biggest concerns from past conversations (so you pick the right 3–6 vitals)</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>(a) A 1-page "Weekly Vital Read Card" specifically for this customer; (b) Recording of the first joint read session with the CEO; (c) 24-hour follow-up doc establishing the Monday recurring rhythm; (d) 1-page Operator self-review</td>
+</tr>
+<tr>
+<td><strong>Total time</strong></td>
+<td>~3 hours 5 minutes (see breakdown)</td>
+</tr>
+<tr>
+<td><strong>Success looks like</strong></td>
+<td>The CEO ends the first read having asked at least one diagnostic question unprompted, and agreeing to a recurring Monday calendar block.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="time-breakdown-honest">Time breakdown (honest)</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Part 1 — Build the artifact (2 hours)</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Customer-specific data review (which vitals matter for them?)</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Draft the 1-page Weekly Vital Read Card</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Verify every threshold against actual data</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Rehearse the 5-minute scan structure</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td><strong>Part 2 — Deliver + close the loop (~65 min)</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Deliver first joint Vital Read with CEO (recorded)</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>24-hour follow-up doc with calendar block proposal</td>
+<td>20 min</td>
+</tr>
+<tr>
+<td>Self-review against the rubric</td>
+<td>15 min</td>
+</tr>
+</tbody>
+</table>
+<p>For the trainer: schedule Part 1 and Part 2 on separate days. Same-day delivery on top of same-day prep produces a worse first impression than rest.</p>
+<h3 id="required-structure-for-the-weekly-vital-read-card">Required structure for the Weekly Vital Read Card</h3>
+<pre><code>[Customer name] · Weekly Vital Read · Monday Morning · 5 minutes
+
+1. CASH
+   Look at: ___________
+   Action trigger: ___________
+
+2. MARGIN (Customer Economics)
+   Look at: ___________
+   Action trigger: ___________
+
+3. EXPOSURE (Inspection Coverage)
+   Look at: ___________
+   Action trigger: ___________
+
+4. [Optional fourth vital, customized to the customer]
+   Look at: ___________
+   Action trigger: ___________
+
+5. LOOP CLOSURES from last week
+   Look at: ___________
+   Action trigger: any verification overdue
+
+If nothing trips → log &quot;Monday read complete, no Loop entries&quot;
+If something trips → create Loop entry with verification date
+</code></pre>
+<p>The card lives at the customer's office on their wall, on their Monday morning calendar, OR pinned in their team chat. It is the operator's gift to the customer — the customer's own Vital Read protocol, written for their business.</p>
+<h3 id="required-24-hour-follow-up-doc">Required 24-hour follow-up doc</h3>
+<p>A single page sent within 24 hours of the first read. Contains:</p>
+<ul>
+<li>The agreed Monday calendar block for recurring reads</li>
+<li>The 3–4 vitals selected (with the action triggers)</li>
+<li>The first Loop entry (if one was created) with verification date</li>
+<li>The operator's contact for the first 4 weeks (during the teaching period)</li>
+<li>One line: "After 4 weeks, this read becomes yours. I'll start fading from the call."</li>
+</ul>
+<p>That last line is the explicit declaration of the Operator Withdrawal Curve. The customer knows from day one that the operator's goal is to make the read self-sustaining. That declaration is itself a credibility deposit.</p>
+<h3 id="submission">Submission</h3>
+<p>Send the Vital Read Card + the recording + the follow-up doc + self-review to your trainer. Be ready to defend every threshold against the customer's actual data.</p>
+<hr />
+<h2 id="element-9-role-play">ELEMENT 9 — Role-play</h2>
+<h3 id="scenario-a-the-ceo-who-has-never-opened-mission-control">Scenario A — "The CEO who has never opened Mission Control"</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Scenario name</strong></td>
+<td>First Vital Read with a skeptical CEO</td>
+</tr>
+<tr>
+<td><strong>Pillar / Competency</strong></td>
+<td>Pillar 03 · 03.5 + Pillar 04 · 04.2 (AI-assisted analysis with judgment)</td>
+</tr>
+<tr>
+<td><strong>Format</strong></td>
+<td>Live role-play, recorded</td>
+</tr>
+<tr>
+<td><strong>Time</strong></td>
+<td>45 min (25 min run + 20 min debrief)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="setup-the-customer">Setup — the customer</h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company</td>
+<td>(Fictional) Skagit Cleaning Co.</td>
+</tr>
+<tr>
+<td>Size</td>
+<td>28 employees, ~$2.2M revenue</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>Pacific Northwest</td>
+</tr>
+<tr>
+<td>Owner style</td>
+<td>Former tech, hands-on, busy, treats software as overhead</td>
+</tr>
+<tr>
+<td>Pioneer tenure</td>
+<td>8 months — at Habit (uses time-tracking, hasn't opened MC)</td>
+</tr>
+<tr>
+<td>Setup today</td>
+<td>Operator visiting the office on a Monday morning at 8 AM, has 25 minutes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-pioneerops-data-the-operator-has">The PioneerOps data the operator has</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cash runway</td>
+<td>27 days (normal)</td>
+</tr>
+<tr>
+<td>Company avg RPLH</td>
+<td>$59 against $62 target</td>
+</tr>
+<tr>
+<td>Bottom customer RPLH</td>
+<td>$36 (Mercer Industrial — large account, 5-year customer)</td>
+</tr>
+<tr>
+<td>Inspection coverage company-wide</td>
+<td>81%</td>
+</tr>
+<tr>
+<td>One healthcare account inspection coverage</td>
+<td>64% (red flag)</td>
+</tr>
+<tr>
+<td>Recent operational feed</td>
+<td>Two callout patterns clustering on Tuesdays</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-operators-task">The operator's task</h3>
+<p>25 minutes. The CEO has never used Mission Control. The Operator must:</p>
+<ol>
+<li>NOT do a dashboard tour</li>
+<li>Pick the right three vitals for THIS CEO based on what's actually flashing red</li>
+<li>Get the CEO to ask at least one diagnostic question unprompted</li>
+<li>Leave with a recurring Monday calendar block agreed</li>
+<li>NOT have promised the operator will read the dashboard for the CEO</li>
+</ol>
+<h3 id="the-trainers-role">The trainer's role</h3>
+<p>Play the CEO. Style:</p>
+<ul>
+<li>Skeptical of software ("we've tried dashboards before")</li>
+<li>Time-pressured (has a route manager waiting outside)</li>
+<li>Smart, fast — won't pretend to understand jargon</li>
+<li>Default move when shown anything: "what does that mean for me?"</li>
+</ul>
+<h3 id="hostile-but-fair-questions">Hostile-but-fair questions</h3>
+<p>Pick 2–3 to land:</p>
+<ol>
+<li>"Why am I going to do this every week when I've got payroll and customer calls to make?"</li>
+<li>"Looks great. Can you just send me a summary every Monday?"</li>
+<li>"Mercer's been a customer for 5 years — you sure your numbers are right?"</li>
+<li>"What if I don't have 5 minutes on a Monday?"</li>
+</ol>
+<h3 id="the-trap">The trap</h3>
+<p>The trap is to offer to read MC for the CEO. The operator who agrees has won the engagement and lost the renewal.</p>
+<p>Right move: hold the line on "I'll teach you to do this in 4 weeks. After that it's yours." Explain why — the operator-as-reader pattern doesn't survive an operator turnover.</p>
+<h3 id="success-criteria">Success criteria</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Operator did NOT open more than 4 cards</li>
+<li class="task"><input type="checkbox" disabled> Operator showed only data that ACTUALLY warranted attention (Bottom 3 + healthcare exposure)</li>
+<li class="task"><input type="checkbox" disabled> Operator did NOT promise to read MC weekly for the CEO</li>
+<li class="task"><input type="checkbox" disabled> Operator caught at least one diagnostic question the CEO asked</li>
+<li class="task"><input type="checkbox" disabled> Operator left with a specific Monday calendar block agreed</li>
+<li class="task"><input type="checkbox" disabled> Operator named the 4-week training period + the Withdrawal Curve</li>
+<li class="task"><input type="checkbox" disabled> Operator handled the "can you just send me a summary" question without folding</li>
+<li class="task"><input type="checkbox" disabled> Operator named one bound of MC (something MC doesn't show) before the CEO assumed it was complete</li>
+</ul>
+<h3 id="debrief-structure-20-min">Debrief structure (20 min)</h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Activity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:04</td>
+<td>Operator self-rates against the criteria above</td>
+</tr>
+<tr>
+<td>0:04–0:10</td>
+<td>Trainer feedback: one keep + one change + one moment that surprised them</td>
+</tr>
+<tr>
+<td>0:10–0:16</td>
+<td>Replay the moment the CEO offered "can you just send me a summary" — re-run that 60 seconds with a different angle.</td>
+</tr>
+<tr>
+<td>0:16–0:20</td>
+<td>Operator commits to one specific change for the next first-read they deliver</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scenario-b-the-ceo-who-reads-dashboards-constantly">Scenario B — "The CEO who reads dashboards constantly"</h3>
+<p>Same data, but the CEO already obsesses over MC. Opens it 5x daily. Worries about every number. The operator must REDUCE the reading rhythm to weekly without making the CEO feel ignored. Counter-intuitive scenario.</p>
+<h3 id="scenario-c-the-vital-read-that-catches-a-data-gap-pillar-8">Scenario C — "The Vital Read that catches a data gap (Pillar 8)"</h3>
+<p>Same customer, but during the live read the Customer Economics card shows a number the operator suspects is wrong (Pillar 8 mistake). The operator must pause the read, verify the underlying records, and decide whether to continue or reschedule.</p>
+<h3 id="scenario-d-the-4-week-handoff">Scenario D — "The 4-week handoff"</h3>
+<p>Time-jump to the end of the 4-week teaching period. The operator is on the call but explicitly observing only. The CEO runs the read. The operator must NOT intervene unless a Pillar 8 risk surfaces — and even then, must let the CEO recover. The hardest scenario for operators who like being needed.</p>
+<h3 id="role-play-hierarchy">Role-play hierarchy</h3>
+<p>Scenario A is the certification-grade scenario. Scenarios B/C/D are stretches:</p>
+<ul>
+<li>B tests the operator's ability to UNDO over-engagement (Senior tier)</li>
+<li>C tests Pillar 8 discipline under live pressure (Operator II)</li>
+<li>D tests the Withdrawal Curve in practice (Senior tier)</li>
+</ul>
+<hr />
+<h2 id="element-10-quiz">ELEMENT 10 — Quiz</h2>
+<p>10 questions. Score 7+ to pass.</p>
+<h3 id="q1-definition-short-answer">Q1 — Definition (short answer)</h3>
+<p>In one sentence, what is the difference between a "dashboard" and a "diagnostic instrument"?</p>
+<p><strong>Sample strong answer:</strong> A dashboard is looked at; a diagnostic instrument is read by someone trained to interpret it. The discipline of reading produces action; the act of looking produces glancing.</p>
+<p><strong>What we look for:</strong> the operator names the verb difference (look vs read) and the discipline difference (trained interpretation vs casual observation).</p>
+<hr />
+<h3 id="q2-loop-mapping-multiple-choice">Q2 — Loop mapping (multiple choice)</h3>
+<p>Which Mission Control surface primarily serves the Loop's <strong>Verification</strong> stage?</p>
+<ul>
+<li>a) Operational Feed</li>
+<li>b) Customer Economics — Top 3 / Bottom 3</li>
+<li>c) Action Completion Loop + Leadership Streak</li>
+<li>d) Today's CEO Actions</li>
+<li>e) Pioneer Quality Score</li>
+</ul>
+<p><strong>Answer:</strong> c</p>
+<p><strong>Why it matters:</strong> the Operator must hold the Loop Map cold. Confusing Action surfaces with Verification surfaces means actions get taken without being closed.</p>
+<hr />
+<h3 id="q3-vital-read-structure-short-answer">Q3 — Vital Read structure (short answer)</h3>
+<p>What is the maximum time a Weekly Vital Read should take if nothing trips an action trigger?</p>
+<p><strong>Answer:</strong> 5 minutes.</p>
+<p><strong>What we look for:</strong> the operator knows the time bound. If they answer "as long as it takes," they have not internalized the read's discipline.</p>
+<hr />
+<h3 id="q4-customer-education-multiple-choice">Q4 — Customer education (multiple choice)</h3>
+<p>A customer CEO says "just send me a summary every Monday — I don't have time to do the read myself." What is the correct operator response?</p>
+<ul>
+<li>a) Agree — the customer is busy, and the summary will keep them informed</li>
+<li>b) Negotiate — offer to do the read for the first 90 days, then transition</li>
+<li>c) Decline — explain that operator-as-reader is fragile and the goal is the CEO becoming self-sustaining</li>
+<li>d) Defer — say you'll think about it and come back next week</li>
+</ul>
+<p><strong>Answer:</strong> c</p>
+<p><strong>Why it matters:</strong> the operator-as-reader pattern produces customers who lose their diagnostic capability the moment the operator changes. The Operator Withdrawal Curve requires the CEO to do the read themselves.</p>
+<hr />
+<h3 id="q5-pillar-8-scenario-2-sentences">Q5 — Pillar 8 (scenario, 2 sentences)</h3>
+<p>The Customer Economics card shows a customer at $32 RPLH — well below break-even. The CEO wants to send an immediate rate increase letter. What's your move?</p>
+<p><strong>Sample strong answer:</strong> Pause. Verify the underlying records before acting — confirm there's no time-card sync gap, no recent assignment change that hasn't fully reflected, no record incompleteness. If the records check out at the same number, proceed with the action. If not, fix the record first.</p>
+<p><strong>What we look for:</strong> the operator pauses on principle. They do not act on an MC number without verifying the records beneath it.</p>
+<hr />
+<h3 id="q6-withdrawal-curve-short-answer">Q6 — Withdrawal Curve (short answer)</h3>
+<p>After 6 months of teaching a CEO to run the Weekly Vital Read, the operator's time on the account should change in what direction? And the operator's value should change in what direction?</p>
+<p><strong>Answer:</strong> Time should DECREASE. Value should INCREASE. Routine reads become the CEO's job. The operator's attention reallocates to the harder strategic calls the reads surface (pricing exits, route restructures, hiring strategy).</p>
+<p><strong>What we look for:</strong> the operator understands that time + value move in opposite directions on a healthy account, not the same direction.</p>
+<hr />
+<h3 id="q7-common-mistake-multiple-choice">Q7 — Common mistake (multiple choice)</h3>
+<p>Why is "Mission Control opens reactively when something feels off" a doctrine failure?</p>
+<ul>
+<li>a) Reactive opening produces good data but bad rhythm</li>
+<li>b) Reactive opening means the field behavior writing the problem is 30+ days old by the time it's caught</li>
+<li>c) Reactive opening is too tiring for the CEO</li>
+<li>d) Reactive opening forgets to use the new cards</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> the entire economic argument for Mission Control is the cadence. Reactive opening throws away that cadence and reduces MC to "another place to look when things break."</p>
+<hr />
+<h3 id="q8-vital-identification-short-answer">Q8 — Vital identification (short answer)</h3>
+<p>A cleaning company CEO is worried about cash flow. Which two Operational Vitals should the operator emphasize in this customer's Vital Read card?</p>
+<p><strong>Answer:</strong> Cash Conversion and Revenue Quality &amp; Leakage. Cash Conversion captures the time from work-done to cash-received; Revenue Quality catches scope creep, unbilled work, and other leaks that depress cash without showing up as a "missing customer."</p>
+<p><strong>What we look for:</strong> the operator names the two correct vitals AND explains why each one specifically addresses cash worry.</p>
+<hr />
+<h3 id="q9-self-sustaining-test-multiple-choice">Q9 — Self-sustaining test (multiple choice)</h3>
+<p>Which of the following best signals that a customer's Weekly Vital Read has become "self-sustaining"?</p>
+<ul>
+<li>a) The customer opens Mission Control more frequently</li>
+<li>b) The customer requests fewer operator calls</li>
+<li>c) The customer catches a deviation and runs the diagnosis without the operator's involvement, BEFORE the operator's next visit</li>
+<li>d) The customer agrees to a recurring Monday calendar block</li>
+</ul>
+<p><strong>Answer:</strong> c</p>
+<p><strong>Why it matters:</strong> a, b, and d are necessary but insufficient. The Self-Sustaining test is the customer demonstrably doing the diagnostic work without the operator. Anything less is "they engage with the system."</p>
+<hr />
+<h3 id="q10-compression-judgment-90-second-demonstration">Q10 — Compression (judgment — 90-second demonstration)</h3>
+<p>You have 90 seconds with a customer CEO in their parking lot. You need to convey to them the entire reason they should adopt the Weekly Vital Read rhythm. Demonstrate.</p>
+<p><strong>Sample strong answer (in 90 seconds, spoken or written):</strong></p>
+<blockquote>
+<p>"Five minutes a Monday. Three vitals: cash, your worst customers' margin, your inspection coverage. The point isn't the screens — the point is the cadence. A bad pattern caught in week 2 is a 4-week fix. The same pattern caught in week 14 is a 90-day crisis. Five minutes a Monday is the cheapest insurance you'll ever buy against the 90-day crisis. I'll teach you the read in 4 weeks. After that, it's yours. I'll fade from the call. We meet less often, talk about harder things. Want to try the first read together this Monday at 8?"</p>
+</blockquote>
+<p><strong>What we look for:</strong></p>
+<ul>
+<li>Lands in 80–95 seconds (timed strictly)</li>
+<li>Opens with the time commitment, not the dashboard</li>
+<li>Names the cadence as the value, not the data</li>
+<li>Translates the cadence into avoided cost (week 2 vs week 14)</li>
+<li>Names the Withdrawal Curve explicitly (4-week handoff)</li>
+<li>Ends with a specific ask (Monday 8 AM)</li>
+</ul>
+<h4 id="scoring-rubric-for-q10-mandatory-all-five-required-for-pass">Scoring rubric for Q10 (mandatory — all five required for pass)</h4>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Pass bar</th>
+<th>How to verify</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Time</strong></td>
+<td>80–95 seconds (timed strictly)</td>
+<td>Stopwatch. Under 80 = rushed and lacking substance. Over 95 = compression failed.</td>
+</tr>
+<tr>
+<td><strong>Cadence as the value</strong></td>
+<td>The operator names the WEEKLY RHYTHM as the value, not the dashboard</td>
+<td>Listen for "five minutes a Monday" or equivalent framing. Dashboard-as-value = fail.</td>
+</tr>
+<tr>
+<td><strong>Cost of inaction translated</strong></td>
+<td>At least one specific contrast between catching early vs catching late</td>
+<td>Listen for "week 2 vs week 14" or "$X vs $Y" framing.</td>
+</tr>
+<tr>
+<td><strong>Withdrawal Curve named</strong></td>
+<td>The operator names the 4-week handoff explicitly</td>
+<td>"I'll teach you the read in 4 weeks" or equivalent.</td>
+</tr>
+<tr>
+<td><strong>Ends with specific calendar ask</strong></td>
+<td>"Monday at 8" or equivalent specific time.</td>
+<td>The hardest pass criterion — most untrained operators end on a vague "let me know."</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Scoring rule:</strong> all five must hit. Four out of five = re-attempt next week. Three or fewer = lesson needs re-delivery before re-test.</p>
+<p><strong>Calibration note for trainers:</strong> the trainer must pass this rubric in their own 90 seconds before grading any operator on it.</p>
+<hr />
+<h2 id="element-11-coaching-discussion">ELEMENT 11 — Coaching Discussion</h2>
+<p>Friday debrief. Trainer asks the operator. No leading questions.</p>
+<ol>
+<li><strong>The Vital Read you delivered this week</strong> — which card did the CEO sit forward for? Which did they tune out on? What does that tell you about which vitals matter to THIS CEO?</li>
+<li><strong>The Withdrawal Curve</strong> — where are you currently on the curve for your most engaged account? Are you ahead of schedule (CEO running reads solo) or behind (still doing it for them)?</li>
+<li><strong>Pillar 8 catch</strong> — did any reading this week make you pause because the underlying record felt off? Did you verify before recommending action?</li>
+<li><strong>The Self-Sustaining test</strong> — name one account where the CEO has caught a deviation on their own this quarter, without your involvement. If you can't name one, why not?</li>
+<li><strong>The 90-second pitch</strong> — deliver the 90-second case for the Weekly Vital Read to me right now. I'll start the timer. (Trainer stops at exactly 90 seconds.) What landed? What didn't?</li>
+</ol>
+<hr />
+<h2 id="publish-gate-pioneer-test-gold-standard-checklist-constitution-v11">PUBLISH GATE — Pioneer Test + Gold Standard Checklist (Constitution v1.1)</h2>
+<p>Every checkbox examined and defended in writing. The lesson is auditioning for Gold Standard certification.</p>
+<h3 id="pioneer-test-boxes-all-15-from-constitution-v11">Pioneer Test boxes (all 15 from Constitution v1.1)</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled checked> <strong>Would Nick teach it this way?</strong> Yes. The 5-minute discipline, the stethoscope analogy, the "teach them to fish" framing on the Withdrawal Curve, the Pillar 8 verify-before-acting rule — all match how Nick coaches operators on the actual platform. April's $4,300/month catch story is the kind of unremarkable Monday catch that's the entire point of the discipline.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Does it teach an outcome, not a feature?</strong> Yes. The lesson is about the Vital Read rhythm and the Withdrawal Curve. PioneerOps screens appear only as the surface those happen on. A reader could finish this lesson and not be able to name a single card by exact title — and still be able to deliver a credible Vital Read.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Is the Action → Metric → Outcome triple filled in?</strong> Yes. Use MC as standing diagnostic instrument → customer-led Loop entries → CEO runs Loop on their own business.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Economic Reality Chain present?</strong> Yes. CEO opens MC weekly → closed Loops per quarter move → verified margin/cash deltas → customer self-sustains; renewal becomes obvious.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Does it respect Work Becomes the Record (Pillar 8)?</strong> Yes — dedicated section, Mistake 9 worked example (Lisa pausing on Dental Plaza), explicit MC bounds table, plus Pillar 8 questions before any action.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Does it name an Operational Vital?</strong> Yes — exercises all six explicitly. Each MC card mapped to its vital.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Is the diagnostician identity present?</strong> Yes — explicit clinical metaphor (stethoscope, ECG monitor) running through the lesson. Operator-as-clinician trained throughout.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>All 11 elements present?</strong> Yes. Plain English (1), Why (2), Pioneer example (3), Customer example (4), Common mistakes (5 — nine of them), Vocabulary (6 — six new terms), Visual diagrams (7 — three of them), Exercise (8), Role-play (9 — four scenarios), Quiz (10 — ten questions), Coaching (11 — five prompts).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Reading level 8th–10th grade?</strong> Yes. Long stretches are the customer story (Steve Anderson) and the Pioneer story (April) — intentional. All standalone definitions, rules, and frameworks use short sentences and tables.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Pioneer + customer examples are different?</strong> Yes. Pioneer: April catching Riverside's RPLH drift. Customer: Dan teaching Steve Anderson to do his first Vital Read and watching Steve become self-sustaining over 6 months. Different stakes, different shapes, different outcomes.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Visual diagram present?</strong> Yes — three diagrams: the MC Loop Map, the Weekly Vital Read structure, the Operator Withdrawal Curve. None decorate; each teaches something the prose cannot.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Exercise has real data + a real output?</strong> Yes — customized Weekly Vital Read Card for a real owned account, recorded first joint read with the CEO, 24-hour follow-up doc, self-review. Trainer-defensible.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Role-play scenario named?</strong> Yes — Scenario A as certification-grade. B/C/D as Senior-tier stretches.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Vocabulary added to the Operator Glossary?</strong> Yes — six new terms (Diagnostic Instrument, Vital Read, Pulse Check, Drift Catch, Self-Sustaining Loop, Operator Withdrawal Curve) committed alongside this lesson.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Skimmable?</strong> Yes — tables, diagrams, callouts, structured lists throughout.</li>
+</ul>
+<h3 id="gold-standard-checklist-18-items-from-academy-gold-standardmd">Gold Standard checklist (18 items from academy-gold-standard.md)</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled checked> <strong>1. All 11 lesson elements present.</strong> Confirmed above.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>2. Both AMO + EMC chains filled.</strong> Confirmed.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>3. At least one named Operational Vital.</strong> All six exercised explicitly.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>4. At least one Pillar 8 worked failure case.</strong> Mistake 9 — Lisa's Dental Plaza save with the unsynced Deputy data.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>5. "What IS / what ISN'T" tables.</strong> Element 1 has both.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>6. Pioneer + Customer examples, balanced.</strong> April (aspirational, calm catch) + Steve Anderson story (realistic, with friction and 6-month arc).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>7. At least one example features named failure first.</strong> April's example is structured as a calm catch; Steve's example includes the operator's withdrawal pattern (acknowledging it's a hard pattern most operators resist). The Mistake 9 worked example features Lisa pausing rather than acting — the equivalent of naming the trap first.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>8. At least 5 sentence-level common mistakes.</strong> Nine common mistakes, each (except Mistake 9 — intentional) with "Sounds like X / Upgrade to Y" pairs.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>9. All glossary entries in four-part format.</strong> Six new terms, each with Definition + Why it matters + Example + Common mistake.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>10. At least one teaching diagram (not decoration).</strong> Three diagrams. The Withdrawal Curve specifically conveys what no amount of prose can.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>11. Roleplay with named trap + at least 3 scenario variations.</strong> Trap explicitly named in Scenario A. Variations B, C, D for advanced operators.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>12. Exercise produces real-work artifacts.</strong> Customized Vital Read Card the customer keeps; the 24-hour follow-up doc; the recorded first read.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>13. Quiz includes at least 1 judgment Q + 1 demonstration Q.</strong> Q5 (Pillar 8 judgment) + Q10 (90-second compression demonstration).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>14. Demonstration question carries explicit scoring rubric.</strong> Q10 rubric: 5 criteria, all required for pass.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>15. Explicit Constitution pillar mapping.</strong> Element 2 table: 7 pillars + Thesis 16 mapped to MC behavior.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>16. At least 1 durable framework introduced.</strong> Two: the Weekly Vital Read (named structure) AND the Operator Withdrawal Curve (named pattern). Both glossary-grade.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>17. Publish gate boxes defended in writing.</strong> This entire section.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>18. Honest time estimates verified.</strong> Exercise time broken into Part 1 (2 hrs) + Part 2 (~65 min) across separate days, with sub-stage timing.</li>
+</ul>
+<p><strong>Pioneer Test result: PASS.</strong>
+<strong>Gold Standard checklist: 18/18 PASS.</strong></p>
+<p>Lesson is ready to teach. Submitting for Gold Standard certification review.</p>
+<hr />
+<h2 id="trainer-notes-free-form">Trainer notes (free form)</h2>
+<p>This lesson is the pair to <a href="../05-customer-success/03-qbr-delivery.html">05.3 QBR Delivery</a>. Both are flagship-grade. Together they cover the operator's two most important customer touchpoints: the weekly Vital Read (this lesson) and the quarterly QBR.</p>
+<p>For the first cohort delivering this lesson:</p>
+<ul>
+<li><strong>The Withdrawal Curve is the doctrine moment.</strong> Most operators resist it instinctively — being needed feels safer than being indispensable on the hard calls. The trainer should drill scenario D (the 4-week handoff observation) hard. Operators who can't sit silently while the CEO runs the read are not Operator II-ready.</li>
+<li><strong>Mistake 9 is the lesson's most important moment.</strong> The Pillar 8 worked example (Lisa's Deputy sync pause) is what separates a fluent operator from a credible one. Use the customer example time to walk through it slowly.</li>
+<li><strong>Steve Anderson's story carries the customer-side weight.</strong> A trainer who can tell that story line by line gives the operator a template they can reach for the moment a real Steve walks into a room.</li>
+<li><strong>The 5-minute discipline is harder than it sounds.</strong> First Vital Reads will land at 9 minutes, 12 minutes, 14 minutes. The 5-minute bound takes 4–6 reps to internalize. Time strictly. Time honestly.</li>
+</ul>
+<p>Pair this lesson with <a href="../02-cleaning-operations/02-revenue-per-labor-hour.html">02.2 RPLH</a>, <a href="../02-cleaning-operations/03-customer-economics.html">02.3 Customer Economics</a>, and <a href="../05-customer-success/03-qbr-delivery.html">05.3 QBR Delivery</a> as the four-lesson foundation for Operator II certification.</p>
+<p>Owner: Academy lead.
+Last reviewed: 2026-06-11.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>03-pioneerops-platform-mastery/01-mission-control-diagnostics.md</code>
+</footer>
+</body>
+</html>

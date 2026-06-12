@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 02.2 — Revenue Per Labor Hour — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="lesson-022-revenue-per-labor-hour">Lesson 02.2 — Revenue Per Labor Hour</h1>
+<blockquote>
+<p>Pillar 02 — Cleaning Operations · Competency 02.2 · Target level after this lesson: <strong>3 (Expert)</strong></p>
+<p>Required reading before this lesson: the <a href="../00-academy-overview/10-customer-journey.html">Customer Journey</a> and the <a href="../operator-glossary.html">Operator Glossary</a> entries for RPLH and Customer Economics.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Time block</th>
+<th>Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reading + walkthrough</td>
+<td>60 min</td>
+</tr>
+<tr>
+<td>Exercise</td>
+<td>60 min</td>
+</tr>
+<tr>
+<td>Role-play</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td>Quiz + coaching discussion</td>
+<td>30 min</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>3 hours</strong></td>
+</tr>
+</tbody>
+</table>
+<p>This is a foundational lesson. Do not rush it. A graduate Operator must be able to walk into any cleaning company office and have this conversation with the owner.</p>
+<hr />
+<h2 id="action-metric-outcome-pillar-1">Action → Metric → Outcome (Pillar 1)</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Metric</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Surface customer-level RPLH and drive action on the gap to target</td>
+<td>Company Average RPLH (moves toward target)</td>
+<td>Profitable customer mix, sustainable margin, a CEO who knows where the money lives</td>
+</tr>
+</tbody>
+</table>
+<h2 id="economic-reality-chain-pillar-7">Economic Reality Chain (Pillar 7)</h2>
+<table>
+<thead>
+<tr>
+<th>Operational Event</th>
+<th>Operational Metric</th>
+<th>Financial Consequence</th>
+<th>Business Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Labor hours rise on a customer while revenue stays flat (scope creep, slow tech, re-cleans)</td>
+<td>RPLH falls for that customer</td>
+<td>Margin per service hour drops; some customers cross break-even into "paying to clean"</td>
+<td>Cash compression; delayed wage increases; the best techs leave; growth stalls</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="element-1-plain-english-explanation">ELEMENT 1 — Plain-English Explanation</h2>
+<h3 id="what-rplh-is">What RPLH is</h3>
+<p>For every hour someone cleans, how much does that hour earn?</p>
+<p>Take one customer. In one month:</p>
+<ul>
+<li>They pay the cleaning company <strong>$4,200</strong> (the invoice)</li>
+<li>Cleaners spend <strong>100 hours</strong> at their building that month</li>
+</ul>
+<p>$4,200 ÷ 100 hours = <strong>$42 per labor hour</strong>.</p>
+<p>That is Revenue Per Labor Hour. RPLH.</p>
+<h3 id="the-formula">The formula</h3>
+<pre><code>                  Customer revenue (last 30 days)
+   RPLH   =   ─────────────────────────────────────
+                  Customer labor hours (last 30 days)
+</code></pre>
+<p>Simple division. The hard part is not the math. The hard part is what to do once you see the number.</p>
+<h3 id="how-it-scales-to-the-whole-company">How it scales to the whole company</h3>
+<p>For the company average, add up every customer's revenue and every customer's labor hours, then divide:</p>
+<pre><code>                  Total revenue across all customers
+   Company    =   ──────────────────────────────────
+   Avg RPLH       Total labor hours across all customers
+</code></pre>
+<p>This is a <strong>weighted</strong> average. Big customers count more than small ones. A small customer with crazy RPLH does not swing the company number much.</p>
+<h3 id="a-30-second-example">A 30-second example</h3>
+<table>
+<thead>
+<tr>
+<th>Customer</th>
+<th>Monthly Revenue</th>
+<th>Monthly Labor Hours</th>
+<th>RPLH</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Riverside Office</td>
+<td>$5,040</td>
+<td>60</td>
+<td><strong>$84</strong></td>
+</tr>
+<tr>
+<td>Dental Plaza SE</td>
+<td>$4,400</td>
+<td>100</td>
+<td><strong>$44</strong></td>
+</tr>
+<tr>
+<td><strong>Both combined</strong></td>
+<td>$9,440</td>
+<td>160</td>
+<td><strong>$59</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The company average ($59) hides the truth. Riverside is great. Dental Plaza is not. The operator who reports only the average is hiding the action.</p>
+<hr />
+<h2 id="element-2-why-it-matters">ELEMENT 2 — Why It Matters</h2>
+<h3 id="a-cleaning-company-makes-money-one-hour-at-a-time">A cleaning company makes money one hour at a time</h3>
+<p>Every labor hour costs real dollars: wages, payroll tax, supplies, and (eventually) overhead. Every labor hour also earns specific revenue from a specific customer.</p>
+<p>If RPLH on a customer is below the cost-to-clean break-even, the company is <strong>paying to clean that customer</strong>. The relationship looks healthy on paper. The customer is friendly. The contract has been in place for years.</p>
+<p>But every hour spent there is a hole in the bank.</p>
+<h3 id="the-four-zones-every-customer-falls-into">The four zones every customer falls into</h3>
+<pre><code>   $$$    EXCELLENT   ── well above target ──   subsidizes the rest
+                                                of the company
+
+   $$     ON TARGET   ── healthy margin   ──   the goal for every
+                                                customer
+
+   $      BELOW TARGET ── thin margin    ──   one callout away from
+                                                losing money
+
+   $      BLEEDING    ── below break-even ──  paying to clean
+</code></pre>
+<p>Every cleaning customer sits in one of those four zones. The operator's job is to know which zone every customer is in.</p>
+<h3 id="why-ceos-love-this-number">Why CEOs love this number</h3>
+<p>CEOs translate everything into time or money in their heads. RPLH does both for them automatically.</p>
+<ul>
+<li>"Your RPLH is $48 against a $62 target."</li>
+<li>"On your current labor volume, that gap equals $14,000/month in left-on-the-table revenue."</li>
+<li>"Over 12 months that is $168,000 — about what a route manager costs."</li>
+</ul>
+<p>That second and third sentence is what the operator brings. The CEO did the rest.</p>
+<h3 id="what-happens-when-ceos-cannot-see-it">What happens when CEOs cannot see it</h3>
+<p>They guess. They quote a margin number ("we make 8%") that they computed two years ago and assume still holds. They renew bad contracts because the customer has been with them forever. They cut wages instead of cutting bad customers — and lose their best techs.</p>
+<p>The cost of not seeing RPLH is not just lost margin. It is lost techs, lost customers, and a CEO who runs the company by feel.</p>
+<hr />
+<h2 id="element-3-pioneer-example">ELEMENT 3 — Pioneer Example</h2>
+<h3 id="same-company-same-techs-40hour-gap">Same company. Same techs. $40/hour gap.</h3>
+<p>Pioneer's "Riverside Office" account is at <strong>$84 RPLH</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Why</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Building</td>
+<td>Open plan, easy circulation, no detail-heavy areas</td>
+</tr>
+<tr>
+<td>Contract age</td>
+<td>Re-priced 14 months ago when wage pressure hit</td>
+</tr>
+<tr>
+<td>Tech hours</td>
+<td>4 hours per night, 5 nights per week = 80 hrs/month</td>
+</tr>
+<tr>
+<td>Monthly revenue</td>
+<td>About $6,700</td>
+</tr>
+</tbody>
+</table>
+<p>Pioneer makes great money on Riverside.</p>
+<p>Pioneer's "Dental Plaza SE" account is at <strong>$44 RPLH</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Why</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Building</td>
+<td>Multi-unit medical with extra disinfection requirements</td>
+</tr>
+<tr>
+<td>Contract age</td>
+<td>Priced 3 years ago when Pioneer needed the volume</td>
+</tr>
+<tr>
+<td>Tech hours</td>
+<td>6 hours per night, 5 nights per week = 120 hrs/month</td>
+</tr>
+<tr>
+<td>Monthly revenue</td>
+<td>About $5,280</td>
+</tr>
+</tbody>
+</table>
+<p>Same Pioneer. Same techs. <strong>$40/hour gap.</strong></p>
+<h3 id="what-this-teaches">What this teaches</h3>
+<p>Without RPLH visibility, both customers look like "regular accounts" on the income statement. With RPLH visibility, the operator knows exactly where to push for a rate increase, where to negotiate a scope reduction, and which contracts to celebrate.</p>
+<p>Nick's view: "If I had seen this number three years ago, I would have re-priced Dental Plaza six different times."</p>
+<hr />
+<h2 id="element-4-customer-example">ELEMENT 4 — Customer Example</h2>
+<h3 id="how-pioneer-customer-acme-cleaning-used-rplh-to-double-their-margin">How Pioneer customer ACME Cleaning used RPLH to double their margin</h3>
+<p><strong>The setup.</strong> ACME Cleaning is a Pioneer customer running 28 active accounts in the Spokane area. Owner had been quoting "we make 8% margin" for two years. CFO agreed with him. They had not actually computed it from the ground up since 2024.</p>
+<p><strong>The first look.</strong> Pioneer's operator pulled the Customer Economics card with the ACME owner on a Tuesday. Numbers:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>RPLH</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company average</td>
+<td><strong>$51</strong></td>
+</tr>
+<tr>
+<td>Target (configured by ACME)</td>
+<td>$58</td>
+</tr>
+<tr>
+<td>Gap</td>
+<td>-$7</td>
+</tr>
+</tbody>
+</table>
+<p>Then the breakdown:</p>
+<table>
+<thead>
+<tr>
+<th>Customer</th>
+<th>RPLH</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top 1</td>
+<td>$79</td>
+</tr>
+<tr>
+<td>Top 2</td>
+<td>$74</td>
+</tr>
+<tr>
+<td>Top 3</td>
+<td>$71</td>
+</tr>
+<tr>
+<td>...</td>
+<td>...</td>
+</tr>
+<tr>
+<td>Bottom 3</td>
+<td>$42</td>
+</tr>
+<tr>
+<td>Bottom 2</td>
+<td>$39</td>
+</tr>
+<tr>
+<td>Bottom 1</td>
+<td>$34</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The owner went pale.</strong> The bottom three were three of his oldest accounts. He had never raised rates on them. The math said he was paying to clean those buildings.</p>
+<p><strong>What ACME did next.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Week</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Week 1</td>
+<td>Listed the bottom 6 customers; built a per-customer case for each</td>
+</tr>
+<tr>
+<td>Week 2–4</td>
+<td>Operator helped draft the conversation for each one</td>
+</tr>
+<tr>
+<td>Week 5–10</td>
+<td>ACME owner ran six rate-increase conversations</td>
+</tr>
+<tr>
+<td>Week 11</td>
+<td>3 customers accepted the full 11% rate increase</td>
+</tr>
+<tr>
+<td>Week 12</td>
+<td>2 customers negotiated to 7% increases</td>
+</tr>
+<tr>
+<td>Week 14</td>
+<td>1 customer churned — owner did the math, decided he was better off without them</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The result, 6 months later.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company average RPLH</td>
+<td>$51</td>
+<td>$56</td>
+</tr>
+<tr>
+<td>Actual margin (not the quoted 8%)</td>
+<td>~8%</td>
+<td>~18%</td>
+</tr>
+<tr>
+<td>Lost revenue from the one churn</td>
+<td>-$3,400/month</td>
+<td>offset 4× by gains</td>
+</tr>
+<tr>
+<td>Annual margin gain</td>
+<td>—</td>
+<td>About $190,000</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The owner's quote, when April followed up at the next QBR:</strong></p>
+<blockquote>
+<p>"I had been guessing for two years. I didn't know I was guessing until you showed me this."</p>
+</blockquote>
+<p>That is the moment a Pioneer customer becomes a Pioneer advocate.</p>
+<hr />
+<h2 id="element-5-common-mistake">ELEMENT 5 — Common Mistake</h2>
+<h3 id="operators-talk-about-the-company-average">Operators talk about the company average</h3>
+<p>The biggest, most natural mistake. Easy to make. Costly in the conversation.</p>
+<blockquote>
+<p><strong>Mistake:</strong> the operator leads with the company average RPLH and the target gap.</p>
+<p><strong>Why operators fall into it:</strong> the average is the most prominent number on the Customer Economics card. It is right at the top. It looks important.</p>
+<p><strong>Cost:</strong> the company average is the <strong>least actionable</strong> number on the card. Owners cannot do anything about an "average." They can only do things about specific customers.</p>
+</blockquote>
+<h3 id="the-better-move">The better move</h3>
+<p>Always lead with the breakdown.</p>
+<table>
+<thead>
+<tr>
+<th>Bad opening</th>
+<th>Good opening</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"Your company average RPLH is $51 against a $58 target."</td>
+<td>"Three of your customers are at $42, $39, and $34. Your target is $58. Let me show you what that means."</td>
+</tr>
+</tbody>
+</table>
+<p>The good opening puts a name and a number on the action. The bad opening is a number an owner cannot do anything with on a Tuesday morning.</p>
+<h3 id="other-common-mistakes">Other common mistakes</h3>
+<table>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Why it's wrong</th>
+<th>Better move</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Comparing one customer's RPLH to another customer's RPLH directly</td>
+<td>Different service types have different cost structures</td>
+<td>Compare each to the company target, not to each other</td>
+</tr>
+<tr>
+<td>Using "profitability" interchangeably with RPLH</td>
+<td>RPLH does not include overhead</td>
+<td>Call it Customer Economics or RPLH. Never call it profit.</td>
+</tr>
+<tr>
+<td>Recommending a rate increase before checking why the customer is below target</td>
+<td>Sometimes the cause is scope drift the customer never asked for</td>
+<td>Diagnose first. Scope-fix is often cheaper than rate-fix.</td>
+</tr>
+<tr>
+<td>Showing the bottom 3 list without context</td>
+<td>Owners get defensive about long-time customers</td>
+<td>Pair the bottom 3 with the math: "this one specifically is costing you $X/month"</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="element-6-vocabulary">ELEMENT 6 — Vocabulary</h2>
+<h3 id="revenue-per-labor-hour-rplh">Revenue Per Labor Hour (RPLH)</h3>
+<ul>
+<li><strong>Definition.</strong> Revenue from a customer divided by hours of cleaning labor spent on that customer in the same period.</li>
+<li><strong>Why it matters.</strong> The single most important number in commercial cleaning. Below target = losing money on that customer.</li>
+<li><strong>Real example.</strong> Customer pays $4,200 in a month. Cleaners spent 100 hours there. RPLH = $42.</li>
+<li><strong>Common misunderstanding.</strong> Confusing it with profitability. RPLH ignores overhead. We call it Customer Economics, not profit.</li>
+</ul>
+<h3 id="customer-economics">Customer Economics</h3>
+<ul>
+<li><strong>Definition.</strong> A complete view of which customers are earning money for the cleaning company and which are losing money — measured by RPLH against a target.</li>
+<li><strong>Why it matters.</strong> The owner's truth machine. Without it, owners run on stories. With it, they run on numbers.</li>
+<li><strong>Real example.</strong> ACME Cleaning's Customer Economics card showed 6 of 28 customers below target. The owner addressed all 6 inside 90 days.</li>
+<li><strong>Common misunderstanding.</strong> Treating it as a finance dashboard. It is an operations dashboard. The decisions it drives are operational (pricing, scope, customer mix).</li>
+</ul>
+<h3 id="target-rplh">Target RPLH</h3>
+<ul>
+<li><strong>Definition.</strong> The RPLH number the cleaning company decides is the minimum for a healthy customer. Set by the owner. Adjustable.</li>
+<li><strong>Why it matters.</strong> Without a target, the company has no way to say "this customer is below the bar." The target turns RPLH into a decision.</li>
+<li><strong>Real example.</strong> Pioneer's default target is $62. ACME set theirs at $58 because their wage band is lower. Both are valid.</li>
+<li><strong>Common misunderstanding.</strong> Thinking the target is universal. It is per-company. It changes as wages, supplies, and contracts evolve.</li>
+</ul>
+<blockquote>
+<p>All three terms are also in the <a href="../operator-glossary.html">Operator Glossary</a>. Add new terms there as you teach them.</p>
+</blockquote>
+<hr />
+<h2 id="element-7-visual-diagram">ELEMENT 7 — Visual Diagram</h2>
+<h3 id="diagram-1-how-rplh-is-built">Diagram 1 — How RPLH is built</h3>
+<pre><code>                          REVENUE                        LABOR HOURS
+                             │                                │
+              ┌──────────────┴──────────────┐    ┌────────────┴────────────┐
+              ▼                             ▼    ▼                         ▼
+        Contract rate                  Add-on work    Cleaning hours       Detail / re-do
+        (locked monthly)               (one-offs)     (scheduled)          time
+              │                             │                │                     │
+              └──────────────┬──────────────┘                └──────────┬──────────┘
+                             ▼                                          ▼
+                        TOTAL REVENUE                            TOTAL LABOR HOURS
+                              │                                         │
+                              └────────────────┬────────────────────────┘
+                                               ▼
+                                            RPLH
+</code></pre>
+<p><strong>What this teaches.</strong> RPLH moves when EITHER side moves. The operator can attack either side. Revenue side = rate increase or add-on services. Labor side = scope tightening, productivity improvements, training, route optimization.</p>
+<h3 id="diagram-2-where-customers-sit-relative-to-target">Diagram 2 — Where customers sit relative to target</h3>
+<pre><code>   RPLH ($)
+     │
+  90 │                          ●  Riverside Office ($84)
+     │                       ●     Plant Floor 2 ($79)
+  80 │                    ●        Hospital A Wing ($73)
+     │
+  70 │
+     │
+  62 │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  TARGET ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+     │
+  58 │
+     │
+  50 │      ●  Dental Plaza SE ($44)
+     │   ●     Northwest Bank ($42)
+  40 │ ●       Acme Corp ($38)
+     │
+     └──────────────────────────────────────────────────────────────►
+                              CUSTOMERS (lowest to highest)
+</code></pre>
+<p><strong>What this teaches.</strong> Every customer sits somewhere on this chart. The operator's job is to know each dot personally. The target line is the company's break-even-plus-margin. Customers below = action items. Customers above = study and replicate.</p>
+<hr />
+<h2 id="what-moves-rplh-drivers">What moves RPLH — drivers</h2>
+<p>The operator must know what makes RPLH go up and what makes it go down. Without this, recommendations are guesses.</p>
+<h3 id="what-makes-rplh-rise">What makes RPLH RISE</h3>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>What happens</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Rate increase</strong></td>
+<td>Customer pays more for the same scope</td>
+<td>Raise monthly fee 8%; labor stays the same; RPLH up 8%</td>
+</tr>
+<tr>
+<td><strong>Scope reduction</strong></td>
+<td>Customer pays the same; cleaners do less</td>
+<td>Drop biweekly window cleaning; -4 hrs/month at no revenue loss; RPLH rises</td>
+</tr>
+<tr>
+<td><strong>Productivity gain</strong></td>
+<td>Same scope, less labor</td>
+<td>Tech learns a 20-minute time-saver; same revenue, fewer hours, RPLH rises</td>
+</tr>
+<tr>
+<td><strong>Add-on service</strong></td>
+<td>Customer pays more for additional work; labor rises in proportion or less</td>
+<td>Add quarterly deep clean; revenue up more than labor; weighted RPLH rises</td>
+</tr>
+<tr>
+<td><strong>Route consolidation</strong></td>
+<td>Travel and setup time drops when customer is grouped with nearby accounts</td>
+<td>Same revenue, fewer effective labor hours, RPLH rises</td>
+</tr>
+<tr>
+<td><strong>Tech assignment</strong></td>
+<td>Faster tech replaces slower tech on the route</td>
+<td>Same revenue, fewer hours, RPLH rises</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-makes-rplh-fall">What makes RPLH FALL</h3>
+<table>
+<thead>
+<tr>
+<th>Driver</th>
+<th>What happens</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Scope creep</strong></td>
+<td>Customer asks for "just one more thing"; cleaners do it; no extra revenue</td>
+<td>"Can you also wipe down the conference room?" — 15 min/night for free, RPLH falls</td>
+</tr>
+<tr>
+<td><strong>Re-cleans</strong></td>
+<td>Tech does the work twice (quality issue, inspector failed it)</td>
+<td>Double the labor; same revenue; RPLH halves on that shift</td>
+</tr>
+<tr>
+<td><strong>Callouts and reschedules</strong></td>
+<td>A tech calls out; a manager covers; overtime kicks in</td>
+<td>Same revenue; higher cost per hour; effective RPLH drops</td>
+</tr>
+<tr>
+<td><strong>Wage increase without rate increase</strong></td>
+<td>Tech wages go up; customer contract does not</td>
+<td>Same revenue; higher labor cost; effective RPLH drops</td>
+</tr>
+<tr>
+<td><strong>Supply expansion</strong></td>
+<td>More expensive consumables used; revenue stays put</td>
+<td>Same revenue; higher cost per hour; effective RPLH drops</td>
+</tr>
+<tr>
+<td><strong>Time-card padding</strong></td>
+<td>Tech logs more time than was worked</td>
+<td>Same revenue; reported labor up; RPLH drops on paper even if reality is fine</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-an-operator-does-with-this">What an operator does with this</h3>
+<p>When a customer's RPLH is below target, the operator's first question is <strong>why</strong>. Not "which lever should we pull." First diagnosis, then prescription.</p>
+<p>The wrong move: jump straight to a rate increase.</p>
+<p>The right move:</p>
+<ol>
+<li>Look at scope vs contract — has scope crept?</li>
+<li>Look at labor hours trend — are hours rising while revenue is flat?</li>
+<li>Look at re-cleans — has quality slipped?</li>
+<li>Look at tech assignment — has a slower tech been on the route lately?</li>
+<li>THEN consider rate increase if none of the above explains the gap.</li>
+</ol>
+<p>A rate increase is the last lever, not the first.</p>
+<hr />
+<h2 id="how-pioneerops-changes-the-math">How PioneerOps changes the math</h2>
+<p>The reason the operator can have this conversation at all is that PioneerOps produces the numbers. Without PioneerOps, even sophisticated cleaning companies do not have customer-level RPLH visibility.</p>
+<h3 id="where-each-number-comes-from">Where each number comes from</h3>
+<table>
+<thead>
+<tr>
+<th>Number</th>
+<th>Source in PioneerOps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer revenue (last 30 days)</td>
+<td>Pulled from QuickBooks Online invoices, joined by customer name</td>
+</tr>
+<tr>
+<td>Customer labor hours (last 30 days)</td>
+<td>Computed from <code>pioneer_service_sessions</code> — cleaning labor only (no inspection, no supply-station, no overhead)</td>
+</tr>
+<tr>
+<td>RPLH</td>
+<td>Daily sync (07:00 PT) writes <code>customer_economics/current</code></td>
+</tr>
+<tr>
+<td>Target</td>
+<td>Editable in <code>pioneer_config/customer_economics.target_rplh</code> (no redeploy)</td>
+</tr>
+<tr>
+<td>Top 3 / Bottom 3 / Opportunities</td>
+<td>Computed server-side; sorted by absolute gap</td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-the-math-is-honest">Why the math is honest</h3>
+<p>Three reasons most cleaning-company-internal RPLH spreadsheets are wrong:</p>
+<ol>
+<li><strong>Labor hours mix overhead with production.</strong> Many spreadsheets include hiring time, training time, management time, supply runs. We exclude all of that. Only cleaning labor counts.</li>
+<li><strong>Customer mapping is broken.</strong> Names in QuickBooks don't match names in the time-tracking system. We use <code>customer_aliases</code> to join them cleanly.</li>
+<li><strong>Min-hours threshold is missing.</strong> Customers with under 10 labor hours produce noisy RPLH (a one-hour shift on a $300 invoice = $300/hour, which is meaningless). We exclude them. Threshold is configurable.</li>
+</ol>
+<h3 id="what-this-means-in-the-customer-conversation">What this means in the customer conversation</h3>
+<p>The operator can say:</p>
+<blockquote>
+<p>"These numbers are computed from your QuickBooks invoices and your team's actual clock-in time. Cleaning labor only. We exclude inspection and overhead so the comparison across customers is fair. Anyone below 10 hours is excluded so the math isn't noisy."</p>
+</blockquote>
+<p>That paragraph wins the credibility battle in 30 seconds. Cleaning company owners have heard sloppy math before. Honest math is rare and memorable.</p>
+<h3 id="what-pioneerops-does-not-do-be-honest-about-this">What PioneerOps does NOT do (be honest about this)</h3>
+<ul>
+<li>Does not include overhead allocation. We call this <strong>Customer Economics</strong>, not profit.</li>
+<li>Does not account for differences in service type (recurring vs specialty). Some customers will appear "low" because their service mix is naturally labor-heavy.</li>
+<li>Does not catch time-card padding. If a tech logs more time than worked, RPLH looks artificially low.</li>
+<li>Does not include AR risk. A high-RPLH customer who never pays is not actually high-RPLH.</li>
+</ul>
+<p>A good operator names these limits before the customer notices them. It builds trust.</p>
+<hr />
+<h2 id="element-8-exercise">ELEMENT 8 — Exercise</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task</strong></td>
+<td>Run a real Customer Economics analysis on one of your owned accounts. Produce a 1-page memo.</td>
+</tr>
+<tr>
+<td><strong>Inputs</strong></td>
+<td>Customer Economics card for the account · 30-day window · Conversation with the account's primary contact if needed</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>1-page memo + a 5-minute walkthrough you will deliver to your trainer</td>
+</tr>
+<tr>
+<td><strong>Time</strong></td>
+<td>60 minutes total (20 min prep · 25 min memo · 15 min rehearsal)</td>
+</tr>
+<tr>
+<td><strong>Success looks like</strong></td>
+<td>Trainer can read the memo and immediately know which 1 customer to act on and what the action is</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-memo-structure-required">The memo structure (required)</h3>
+<pre><code>1. Company snapshot
+   - Company average RPLH
+   - Target RPLH
+   - Gap to target
+   - Customer count included / excluded
+
+2. Top 3 customers
+   - Names + RPLH
+   - One sentence on what's working
+
+3. Bottom 3 customers
+   - Names + RPLH + monthly revenue + monthly labor hours
+   - For each: most likely DRIVER of the low score (use the
+     drivers table above to diagnose)
+
+4. The one customer to act on this week
+   - Name
+   - Why this one (not the lowest necessarily — could be the one
+     with the most leverage)
+   - Recommended action: rate increase OR scope reduction OR
+     diagnostic conversation
+   - Required monthly increase (if rate) OR labor reduction
+     (if scope) to reach target
+
+5. What you'd tell the CEO in three sentences
+   - Sentence 1: where they are
+   - Sentence 2: which customer is bleeding
+   - Sentence 3: what you'd do this week
+</code></pre>
+<h3 id="submission">Submission</h3>
+<p>Send the memo + a calendar invite for a 15-min trainer review the next day. Bring the Customer Economics screenshot.</p>
+<hr />
+<h2 id="element-9-role-play">ELEMENT 9 — Role-play</h2>
+<h3 id="scenario-the-owner-doesnt-believe-the-math">Scenario — "The owner doesn't believe the math"</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Scenario name</strong></td>
+<td>Owner pushback on Customer Economics</td>
+</tr>
+<tr>
+<td><strong>Pillar / Competency</strong></td>
+<td>Pillar 02 · 02.2 + Pillar 07 · 07.4 (Pushback &amp; disagreement)</td>
+</tr>
+<tr>
+<td><strong>Format</strong></td>
+<td>Live roleplay, recorded</td>
+</tr>
+<tr>
+<td><strong>Time</strong></td>
+<td>30 min (15 min run + 15 min debrief)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="setup-the-customer">Setup — the customer</h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company name</td>
+<td>(Fictional) Spokane Janitorial Co.</td>
+</tr>
+<tr>
+<td>Size</td>
+<td>24 employees, ~$2.1M revenue</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>Eastern Washington</td>
+</tr>
+<tr>
+<td>Service mix</td>
+<td>80% recurring nightly, 15% specialty, 5% day porter</td>
+</tr>
+<tr>
+<td>Owner style</td>
+<td>Second-generation, ran routes himself for 8 years, skeptical of software</td>
+</tr>
+<tr>
+<td>PioneerOps tenure</td>
+<td>4 months — at Habit, not yet at Adoption</td>
+</tr>
+<tr>
+<td>Today's setup</td>
+<td>This is the first conversation about Customer Economics</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-pioneerops-data-the-operator-has">The PioneerOps data the operator has</h3>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company average RPLH</td>
+<td>$54</td>
+</tr>
+<tr>
+<td>Target RPLH (configured)</td>
+<td>$60</td>
+</tr>
+<tr>
+<td>Gap</td>
+<td>-$6</td>
+</tr>
+<tr>
+<td>Customers included</td>
+<td>18</td>
+</tr>
+<tr>
+<td>Customers excluded</td>
+<td>4 (low labor signal)</td>
+</tr>
+<tr>
+<td>Bottom 3 customers</td>
+<td>$36, $39, $41</td>
+</tr>
+<tr>
+<td>Top 3 customers</td>
+<td>$78, $74, $71</td>
+</tr>
+<tr>
+<td>Bottom 1's monthly revenue</td>
+<td>$3,600</td>
+</tr>
+<tr>
+<td>Bottom 1's monthly labor hours</td>
+<td>100</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-operators-task">The operator's task</h3>
+<p>15-minute conversation with the owner. Walk through Customer Economics. Get the owner to commit to looking harder at the bottom 3 within the next two weeks.</p>
+<h3 id="the-trainers-role">The trainer's role</h3>
+<p>Play the owner. Style:</p>
+<ul>
+<li>Direct, no patience for vendor talk</li>
+<li>Believes he knows his business better than any software</li>
+<li>Has a personal relationship with each of the bottom 3 customers (they've been with him for years)</li>
+<li>Default move when challenged: "your numbers must be wrong"</li>
+</ul>
+<h3 id="hostile-but-fair-questions-the-trainer-asks">Hostile-but-fair questions the trainer asks</h3>
+<p>Pick 2–3 to land during the conversation:</p>
+<ol>
+<li>"How do I know your math is right? I've been doing this 20 years and these numbers don't match what I'd expect."</li>
+<li>"You're telling me to raise rates on three customers who have been with me since my dad ran the company. That's not how this works."</li>
+<li>"If RPLH was this important, why hasn't every cleaning company done this already?"</li>
+<li>"What if I just cut wages instead? Same result, fewer relationships to ruin."</li>
+</ol>
+<h3 id="the-trap">The trap</h3>
+<p>The trap is to defend the math instead of inviting the owner to verify it himself. The operator who says "trust the numbers" loses. The operator who says "open QuickBooks with me right now and we'll trace it line by line" wins.</p>
+<h3 id="success-criteria">Success criteria</h3>
+<ul>
+<li class="task"><input type="checkbox" disabled> Operator did NOT lead with the company average</li>
+<li class="task"><input type="checkbox" disabled> Operator named at least one specific bottom customer by name</li>
+<li class="task"><input type="checkbox" disabled> Operator translated the gap into dollars or time, not just a ratio</li>
+<li class="task"><input type="checkbox" disabled> Operator handled the pushback without folding OR getting defensive</li>
+<li class="task"><input type="checkbox" disabled> Operator left the conversation with a concrete next step (15-min follow-up next week, owner commits to looking)</li>
+<li class="task"><input type="checkbox" disabled> Operator named at least one limit of the Customer Economics math before the owner pointed it out</li>
+</ul>
+<h3 id="debrief-structure-15-min">Debrief structure (15 min)</h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Activity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:03</td>
+<td>Operator self-rates: what worked, what didn't</td>
+</tr>
+<tr>
+<td>0:03–0:08</td>
+<td>Trainer feedback (one keep, one change)</td>
+</tr>
+<tr>
+<td>0:08–0:13</td>
+<td>Replay the inflection point — the moment the owner pushed back</td>
+</tr>
+<tr>
+<td>0:13–0:15</td>
+<td>Operator commits to one specific change next week</td>
+</tr>
+</tbody>
+</table>
+<h3 id="variations">Variations</h3>
+<p>After the operator passes the base scenario, run these:</p>
+<ul>
+<li><strong>Friendly owner.</strong> Same data, owner is curious and engaged. Operator must move past "education" into "action" — what does the owner DO this week?</li>
+<li><strong>Hostile owner.</strong> Same data, owner has already decided RPLH is "an HR move to cut wages." Reset the conversation.</li>
+<li><strong>Confused CFO.</strong> Same data, owner has brought their CFO who wants to debate methodology. Operator handles both without losing the owner.</li>
+</ul>
+<hr />
+<h2 id="element-10-quiz">ELEMENT 10 — Quiz</h2>
+<p>10 questions. Score 7+ to pass. The trainer reviews missed questions during coaching.</p>
+<h3 id="q1-definition-multiple-choice">Q1 — Definition (multiple choice)</h3>
+<p>Revenue Per Labor Hour is calculated by dividing:</p>
+<ul>
+<li>a) Customer revenue by total company labor hours</li>
+<li>b) Customer revenue by that customer's cleaning labor hours</li>
+<li>c) Profit by labor hours</li>
+<li>d) Customer revenue by all hours including overhead</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> The denominator is customer-specific cleaning labor — not company labor, not total payroll, not "all hours."</p>
+<hr />
+<h3 id="q2-calculation-math">Q2 — Calculation (math)</h3>
+<p>A customer pays $5,400 monthly. Your cleaners log 120 cleaning hours at their site that month. The company target is $60. What is their RPLH and gap to target?</p>
+<p><strong>Answer:</strong> RPLH = $45. Gap = -$15.</p>
+<p><strong>What we look for:</strong> Right number AND right sign on the gap (negative = below). Quick math, not a spreadsheet.</p>
+<hr />
+<h3 id="q3-driver-identification-multiple-choice">Q3 — Driver identification (multiple choice)</h3>
+<p>A customer's RPLH dropped from $58 to $46 over three months. Their contract rate has not changed. What is most likely the cause?</p>
+<ul>
+<li>a) Wage increase across the cleaning company</li>
+<li>b) Scope creep — they've been asking for additional services without paying</li>
+<li>c) AR aging — they're paying slower</li>
+<li>d) Inflation in supply costs</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> The metric is REVENUE per labor hour. AR aging and supply costs don't affect the ratio. Wage increases don't appear in this metric directly. Scope creep adds labor without adding revenue.</p>
+<hr />
+<h3 id="q4-diagnosis-short-answer">Q4 — Diagnosis (short answer)</h3>
+<p>A customer's RPLH is below target. List the four things you'd check, in order, before recommending a rate increase.</p>
+<p><strong>Sample strong answer:</strong></p>
+<ol>
+<li>Scope vs contract — has scope crept?</li>
+<li>Labor hours trend — are hours rising while revenue is flat?</li>
+<li>Re-cleans — has quality slipped?</li>
+<li>Tech assignment — has a slower tech been on the route?</li>
+</ol>
+<p><strong>What we look for:</strong> Diagnostic mindset. Operators who jump to rate increase as a first move fail this question.</p>
+<hr />
+<h3 id="q5-customer-conversation-short-answer-2-sentences">Q5 — Customer conversation (short answer — 2 sentences)</h3>
+<p>How would you open a Customer Economics conversation with an owner who is seeing the data for the first time?</p>
+<p><strong>Sample strong answer:</strong></p>
+<p>"Three of your customers are at $34, $39, and $42. Your target is $58. Let me show you what that means in dollars per month, and which one is most fixable this quarter."</p>
+<p><strong>What we look for:</strong></p>
+<ul>
+<li>Specific customer numbers, NOT the company average</li>
+<li>Translation into business language (dollars per month)</li>
+<li>A forward path (which one to fix)</li>
+</ul>
+<p><strong>Common weak answer:</strong> "Your company average RPLH is $51 against a $58 target." (Leads with the least actionable number.)</p>
+<hr />
+<h3 id="q6-scenario-3-sentences">Q6 — Scenario (3 sentences)</h3>
+<p>You're meeting with the ACME Cleaning owner. Bottom customer is at $34 RPLH, $3,800/month revenue, 112 labor hours. Target is $58. Owner wants to know what to do.</p>
+<p>What's your recommended action AND what's the required monthly revenue increase to hit target?</p>
+<p><strong>Answer:</strong></p>
+<ul>
+<li>Required revenue at target: $58 × 112 hrs = $6,496</li>
+<li>Required increase: $6,496 − $3,800 = <strong>$2,696 / month</strong> (about 71% increase)</li>
+<li>Recommended action: this gap is so large that a single rate increase is unlikely to work. The right move is a scope-and-pricing conversation: reduce scope (labor down) AND/OR raise the rate. May also be a candidate for amicable churn.</li>
+</ul>
+<p><strong>What we look for:</strong> Operator recognizes that some gaps are too large to fix with a rate increase alone. The math forces the conversation, not the other way around.</p>
+<hr />
+<h3 id="q7-common-mistake-multiple-choice">Q7 — Common mistake (multiple choice)</h3>
+<p>Why is it a mistake to lead with the company average RPLH in a customer conversation?</p>
+<ul>
+<li>a) The average is harder to calculate</li>
+<li>b) Owners cannot take action on an "average" — they can only act on specific customers</li>
+<li>c) The average changes too often</li>
+<li>d) The average is usually wrong</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> Operators who lead with averages produce no action. The whole point of the conversation is action.</p>
+<hr />
+<h3 id="q8-edge-case-judgment">Q8 — Edge case (judgment)</h3>
+<p>A customer's RPLH is showing as $850/hour. They have $850 in revenue and 1 hour of labor logged. Is this customer beating the target?</p>
+<p><strong>Sample strong answer:</strong></p>
+<p>No. The customer should be excluded under the low-labor-signal rule (under 10 hours). RPLH is noisy when labor is tiny. The $850 number is mathematically correct but operationally meaningless.</p>
+<p><strong>What we look for:</strong> Operator understands the exclusion rules and doesn't mistake noise for performance.</p>
+<hr />
+<h3 id="q9-pioneerops-source-knowledge-multiple-choice">Q9 — PioneerOps source knowledge (multiple choice)</h3>
+<p>In PioneerOps, the labor side of RPLH comes from:</p>
+<ul>
+<li>a) All <code>pioneer_service_sessions</code></li>
+<li>b) Cleaning labor only (excludes inspection, supply-station, hiring, training, management)</li>
+<li>c) Time tracked in QuickBooks Payroll</li>
+<li>d) Deputy shift bridge</li>
+</ul>
+<p><strong>Answer:</strong> b</p>
+<p><strong>Why it matters:</strong> Inspection and overhead time would penalize customers who happen to get inspected more often. We exclude those. Operators must be able to explain this when a customer asks.</p>
+<hr />
+<h3 id="q10-defense-under-pressure-judgment">Q10 — Defense under pressure (judgment)</h3>
+<p>The customer's CEO challenges the math: "These numbers must be wrong. I've been running this business for 20 years and I'd know if some customers were that bad."</p>
+<p>What do you say?</p>
+<p><strong>Sample strong answer:</strong></p>
+<p>"You absolutely know your business. Let's verify the math together right now. We can open QuickBooks and check the revenue for any customer you pick, and we can open PioneerOps and see the actual logged hours. I'd rather we trace one customer line by line than have you take my word for it."</p>
+<p><strong>What we look for:</strong></p>
+<ul>
+<li>Operator does NOT defend the number</li>
+<li>Operator INVITES verification (transparency = credibility)</li>
+<li>Operator's stance is collaborative, not adversarial</li>
+<li>Operator preserves the relationship while preserving the math</li>
+</ul>
+<p><strong>Common weak answer:</strong> "I'm confident in the numbers, they're pulled directly from your QuickBooks." (Defensive. Misses the chance to teach the owner where the numbers come from.)</p>
+<hr />
+<h2 id="element-11-coaching-discussion">ELEMENT 11 — Coaching Discussion</h2>
+<p>The Friday debrief after this lesson. Trainer asks the operator. No leading questions. Listen for diagnostic thinking, not memorized answers.</p>
+<ol>
+<li><strong>Pick one of your owned accounts.</strong> What's their current RPLH and where do you think they should be? Walk me through why.</li>
+<li><strong>What surprised you in this lesson?</strong> Anything that pushed back on how you were thinking about customer profitability before?</li>
+<li><strong>The drivers table</strong> — which driver have you actually seen in the field, in the last two weeks? On which customer?</li>
+<li><strong>Imagine the owner of your hardest-to-have-conversation-with account asks you about RPLH tomorrow.</strong> What's the opening sentence you'd say?</li>
+<li><strong>What did this lesson NOT prepare you for?</strong> What's the next thing you want to practice on this topic?</li>
+</ol>
+<hr />
+<h2 id="publish-gate-the-pioneer-test">PUBLISH GATE — The Pioneer Test</h2>
+<p>Per the <a href="../CONSTITUTION.html">Constitution</a>, no lesson ships without all 11 boxes checked. Run the test below.</p>
+<ul>
+<li class="task"><input type="checkbox" disabled checked> <strong>Would Nick teach it this way?</strong> Yes. The Riverside vs Dental Plaza contrast is the conversation Nick has had with operators internally. Diagnostic-before-prescription matches his coaching style. The "raise rates is the LAST lever" framing is a Pioneer principle.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Does it teach an outcome, not a feature?</strong> Yes. The Action → Metric → Outcome triple drives the lesson. PioneerOps appears only as the source of the numbers; the lesson is about what the operator does with them.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Is the Action → Metric → Outcome triple filled in?</strong> Yes. Surface RPLH → Company Avg RPLH moves to target → profitable customer mix + sustainable margin.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Economic Reality Chain present?</strong> Yes. Labor rises while revenue flat → RPLH falls → margin per hour drops → cash compression + tech turnover + stalled growth.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>All 11 elements present?</strong> Yes. Plain English (1), Why it matters (2), Pioneer example (3), Customer example (4), Common mistake (5), Vocabulary (6), Visual diagram (7), Exercise (8), Role-play (9), Quiz (10), Coaching discussion (11).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Reading level 8th–10th grade?</strong> Yes. Short sentences. Tables and bullets dominate. The only multi-paragraph stretches are the customer story (intentional — operators need to feel the stakes).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Pioneer + customer examples are different?</strong> Yes. Pioneer example is Riverside vs Dental Plaza (internal). Customer example is ACME Cleaning (external, fictional but realistic).</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Visual diagram present?</strong> Yes. Two diagrams — the RPLH formula breakdown and the customer distribution chart.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Exercise has real data + a real output?</strong> Yes. 1-page memo on a real owned account, due for trainer review in 24 hours.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Role-play scenario named?</strong> Yes. "Spokane Janitorial Co." owner pushback scenario with three variations.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Vocabulary added to the Operator Glossary?</strong> Yes — RPLH, Customer Economics, and Target RPLH are already in the glossary. Verified before submitting.</li>
+<li class="task"><input type="checkbox" disabled checked> <strong>Skimmable?</strong> Yes. Tables, bullets, callouts. The reader can scroll the lesson and pick up the structure in 30 seconds.</li>
+</ul>
+<p><strong>Pioneer Test result: PASS.</strong></p>
+<p>Lesson is ready to teach.</p>
+<hr />
+<h2 id="trainer-notes-free-form">Trainer notes (free form)</h2>
+<p>This is the first foundational lesson. Treat the trainer's first delivery as a calibration run — note where the operator stalls, what questions land, what examples don't connect.</p>
+<p>Update this file with:</p>
+<ul>
+<li>Real Pioneer customer names (anonymized as needed) replacing the placeholder examples</li>
+<li>Actual numbers from Pioneer's current RPLH state once available</li>
+<li>New common-mistake patterns observed in the first cohort</li>
+<li>Better roleplay variations as you collect them</li>
+</ul>
+<p>Owner: Academy lead.
+Last reviewed: 2026-06-11.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>02-cleaning-operations/02-revenue-per-labor-hour.md</code>
+</footer>
+</body>
+</html>

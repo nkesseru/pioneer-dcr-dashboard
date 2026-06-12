@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roleplay Rubric — 02.3 Customer Economics, Scenario A — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="roleplay-rubric-023-customer-economics-scenario-a">Roleplay Rubric — 02.3 Customer Economics, Scenario A</h1>
+<p><strong>Scenario name:</strong> "Revenue is up. We're doing great." (also referenced in framework §2 as "Revenue is up. We're crushing it." — minor naming variance; same scenario.)</p>
+<p><strong>Pass bar at Operator I:</strong> ≥ 6 of 7 success criteria satisfied AND all 3 named traps avoided.</p>
+<p><strong>Time:</strong> 45 min (15 min run + 15 min debrief + 15 min reviewer scoring).</p>
+<p><strong>Recording:</strong> required per <a href="./vital-read-recording-standard.html">Vital Read recording standard</a> — same recording conventions apply.</p>
+<hr />
+<h2 id="the-3-named-traps-the-operator-must-avoid">The 3 named traps the operator must avoid</h2>
+<p>These are the lesson's explicit failure modes. If the operator falls into ANY of them, the scenario does not pass — regardless of how many success criteria they hit.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Trap</th>
+<th>What it sounds like</th>
+<th>Why it fails the scenario</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Leading with the bad number.</strong> Operator opens by saying "gross profit is down 2%" before establishing what Customer Economics measures.</td>
+<td>"Actually, your gross profit is down 2% — let me show you why." (in the first 2 minutes)</td>
+<td>The owner shuts down. Conversation dies. Violates the lesson's named trap directly.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Using "profitability" without qualifying.</strong> Operator uses the word as a synonym for Customer Economics.</td>
+<td>"Your profitability is down" or "we need to look at customer profitability" without naming gross margin vs net profit.</td>
+<td>Violates Constitution §Language Precision + Q9 of the lesson quiz. Precise language earns trust; sloppy language loses it.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Making the owner feel attacked or stupid.</strong> Operator's tone or framing positions the owner as having missed something obvious.</td>
+<td>"I'm surprised you didn't see this" · "Most owners catch this earlier" · sighing / impatience visible.</td>
+<td>Violates Pioneer Test (CEO-readable). Even correct data delivered with this energy produces no decision.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-7-success-criteria-pulled-from-the-lessons-published-checklist">The 7 success criteria (pulled from the lesson's published checklist)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Criterion</th>
+<th>Pass evidence (what reviewer hears or sees)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Operator acknowledged the revenue win <strong>before</strong> introducing the margin issue</td>
+<td>Specific recognition of the 18% revenue growth in the first 2 minutes. "Your revenue is up 18% — that took real work" or equivalent.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Operator translated gross margin into plain English</td>
+<td>"Cents on the dollar after wages and supplies" or equivalent. NOT "burden-loaded margin," NOT "EBITDA," NOT "contribution profit."</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Operator showed the new-customer margin vs portfolio margin contrast</td>
+<td>Names the actual numbers ("your new customers came in at X% margin while your existing portfolio is at Y%").</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Operator did NOT use the word "profitability" without qualifying</td>
+<td>If the word is used, it's paired with the clarification (e.g., "profitability — and specifically gross margin per customer").</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Operator did NOT make the owner feel attacked or stupid</td>
+<td>Tone is collaborative. No sighs, no "obviously," no implied criticism. Energy is "let's figure this out together."</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Operator left the conversation with a specific commitment from the owner</td>
+<td>E.g., "let's set a margin floor for new customers" or "let's review the bottom 3 customers next week." Vague "we'll think about it" = fail.</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Operator handled "are you telling me to stop growing?" pushback without folding</td>
+<td>Reframes to "I'm telling you to grow profitably" or equivalent. Does not back down from the margin point AND does not double down on attack.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scoring">Scoring</h2>
+<table>
+<thead>
+<tr>
+<th>Criteria satisfied</th>
+<th>Traps avoided</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>7 of 7</td>
+<td>All 3</td>
+<td><strong>Pass — strong.</strong> Reviewer notes this is a model run.</td>
+</tr>
+<tr>
+<td>6 of 7</td>
+<td>All 3</td>
+<td><strong>Pass.</strong> Note the missing criterion; flag in calibration.</td>
+</tr>
+<tr>
+<td>5 of 7 OR any 1 trap fallen</td>
+<td>—</td>
+<td><strong>Re-attempt next week.</strong> One specific change required.</td>
+</tr>
+<tr>
+<td>≤ 4 of 7 OR ≥ 2 traps fallen</td>
+<td>—</td>
+<td><strong>Not Yet for this scenario.</strong> Lesson 02.3 should be re-delivered before re-test.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="hostile-but-fair-questions-the-trainercustomer-player-must-use-2-of-these">Hostile-but-fair questions (the trainer/customer-player must use 2 of these)</h2>
+<p>These are not graded directly — they exist to stress-test criterion #7. Trainer picks 2–3 and lands them mid-conversation.</p>
+<ol>
+<li>"If profit is down, why are my taxes higher than last year?"</li>
+<li>"I have seven new logos. You're telling me that's bad?"</li>
+<li>"Are you telling me to stop growing?" <em>(this one is mandatory — directly tests criterion #7)</em></li>
+<li>"My team is excited. We're growing. Why are you trying to take this away?"</li>
+</ol>
+<h2 id="customer-player-setup-for-the-trainer">Customer-player setup (for the trainer)</h2>
+<ul>
+<li><strong>Style:</strong> Energetic founder, sales background, treats revenue as the headline metric.</li>
+<li><strong>Default move:</strong> Defensive when challenged; identity is tied to growth.</li>
+<li><strong>When shown the bad number:</strong> "But I have more customers now."</li>
+<li><strong>Operator I cycle for Cycle 1:</strong> Nick plays customer (per launch plan §5).</li>
+</ul>
+<h2 id="reviewer-scoring-form">Reviewer scoring form</h2>
+<p>The reviewer fills this for the scorecard's Category 6:</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Yes / No / Partial</th>
+<th>Specific moment cited (timestamp from recording)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trap 1 avoided (didn't lead with bad number)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Trap 2 avoided (didn't use "profitability" unqualified)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Trap 3 avoided (didn't make owner feel attacked)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 1 satisfied (acknowledged revenue win first)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 2 satisfied (plain-English margin translation)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 3 satisfied (new-customer vs portfolio contrast)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 4 satisfied (no unqualified "profitability")</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 5 satisfied (owner not attacked)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 6 satisfied (specific commitment from owner)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Criterion 7 satisfied (handled growth pushback without folding)</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Final scenario result:</strong> Pass — strong / Pass / Re-attempt / Not Yet</p>
+<h2 id="what-this-rubric-does-not-do">What this rubric does NOT do</h2>
+<ul>
+<li><strong>Does NOT change the scenario.</strong> Pulled from lesson 02.3 ELEMENT 9.</li>
+<li><strong>Does NOT add new traps.</strong> The 3 traps are the lesson's named trap + the two trap-adjacent failure modes the lesson explicitly flags.</li>
+<li><strong>Does NOT replace trainer judgment</strong> on the live performance. The rubric structures scoring; the trainer scores.</li>
+</ul>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/roleplay-rubric-customer-economics-scenario-a.md</code>
+</footer>
+</body>
+</html>

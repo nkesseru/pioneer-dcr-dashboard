@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Entry Log — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="loop-entry-log">Loop Entry Log</h1>
+<p>Every Loop entry is one row. Every row eventually closes — honestly. A row that never gets a verification date filled in is a violation of the Constitution's Loop doctrine and disqualifies the entry as evidence.</p>
+<h2 id="instructions-for-the-candidate">Instructions for the candidate</h2>
+<ol>
+<li><strong>Create a row the moment you make a recommendation</strong> to a customer or for your own action. Not later. The row exists before the verification date.</li>
+<li><strong>The verification date must be in the future and named.</strong> "Next week" is not a date. "2026-07-02" is a date.</li>
+<li><strong>On the verification date, you fill in the actual outcome — honestly.</strong> Success, partial, or failure. If you don't honor the date, the row counts as an open Loop with no closure (which fails the Operator I bar of "1 fully closed").</li>
+<li><strong>You do not delete rows.</strong> Failed Loops are evidence of intellectual honesty — the Pioneer Test rewards them.</li>
+</ol>
+<h2 id="the-log">The log</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Date created</th>
+<th>Customer / context</th>
+<th>Hypothesis</th>
+<th>Baseline (measurement)</th>
+<th>Verification date</th>
+<th>Predicted outcome</th>
+<th>Actual outcome (filled on verification date)</th>
+<th>Closure status</th>
+<th>Honest closure note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>YYYY-MM-DD</td>
+<td>Acme Cleaning · Building A</td>
+<td>If we raise inspection coverage from 70% to 90%, the inspector confidence score will move from 2.4 to 3.2 within 14 days.</td>
+<td>Coverage 70%, score 2.4, period 2026-MM-DD to 2026-MM-DD</td>
+<td>YYYY-MM-DD</td>
+<td>Coverage 90%, score ≥ 3.0</td>
+<td></td>
+<td>Open / Success / Partial / Failure</td>
+<td>(filled on verification date)</td>
+</tr>
+<tr>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>5</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>(Add rows as needed. Operator I bar requires ≥ 3 entries with ≥ 1 fully closed; Operator II bar requires ≥ 12 with ≥ 8 closed.)</p>
+<h2 id="what-closed-means">What "closed" means</h2>
+<p>A Loop is <strong>closed</strong> when the verification date has passed AND the actual outcome has been recorded AND the closure status is one of: Success / Partial / Failure. A row with the verification date passed but the actual outcome blank is <strong>broken</strong>, not closed — and a broken Loop is worse than an open one.</p>
+<h2 id="what-disqualifies-a-loop-entry-as-evidence">What disqualifies a Loop entry as evidence</h2>
+<ul>
+<li>No baseline measurement (just a hypothesis without a number)</li>
+<li>Verification date in the past at the moment of creation (retroactive Loops are fabrication)</li>
+<li>Verification date repeatedly pushed out without explanation</li>
+<li>"Actual outcome" field never filled even after the date passes</li>
+<li>Closure note that doesn't acknowledge what was learned — especially in Failure or Partial closures</li>
+</ul>
+<h2 id="what-reviewers-look-for">What reviewers look for</h2>
+<p>The single closed Loop at Operator I is the doctrine pivot. Reviewers are not impressed by 100 open Loops with no closures. They look for:</p>
+<ul>
+<li>A real baseline number</li>
+<li>A real verification date that was honored</li>
+<li>A closure note that is honest, even when the outcome was bad</li>
+<li>Evidence the candidate actually went back and checked the record on the verification date</li>
+</ul>
+<p>A candidate who shows 3 entries — one Success, one Failure honestly closed, one still Open with a future date — passes this requirement. A candidate who shows 20 entries all Open with vague closure dates fails it.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/loop-entry-log.md</code>
+</footer>
+</body>
+</html>

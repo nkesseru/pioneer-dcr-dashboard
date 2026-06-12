@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foundation Quiz Answer Keys — Operator I Grader's Sheet — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="foundation-quiz-answer-keys-operator-i-graders-sheet">Foundation Quiz Answer Keys — Operator I Grader's Sheet</h1>
+<p>This is the single grader's instrument for the 4 foundation lesson quizzes. Each quiz is <strong>10 questions, 1 point each, pass = 7/10</strong>.</p>
+<p><strong>Source of truth:</strong> the answers below are pulled verbatim from each lesson's published quiz section. If the grader and the lesson disagree, the <strong>lesson</strong> wins — flag the discrepancy and update this sheet, not the lesson.</p>
+<p><strong>Operator I bar:</strong> ≥ 7/10 on at least 3 of the 4 quizzes (per framework §2).</p>
+<hr />
+<h2 id="scoring-rules-apply-to-all-4-quizzes">Scoring rules (apply to all 4 quizzes)</h2>
+<table>
+<thead>
+<tr>
+<th>Question type</th>
+<th>Scoring rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multiple choice (MCQ)</strong></td>
+<td>1 point for the correct letter. 0 for anything else. No partial credit.</td>
+</tr>
+<tr>
+<td><strong>Math / calculation</strong></td>
+<td>1 point for correct number AND correct sign / unit. 0.5 for arithmetic error but right approach. 0 if approach is wrong.</td>
+</tr>
+<tr>
+<td><strong>Short answer (1–2 sentences)</strong></td>
+<td>1 point if the named criteria below are present. 0.5 for partial. 0 if the doctrine-level point is missed.</td>
+</tr>
+<tr>
+<td><strong>Judgment / scenario</strong></td>
+<td>Score against the criteria listed below. If the criteria include a rubric (Q10 of lessons 03.1 and 05.3), use the rubric verbatim.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Half points round down at the end.</strong> A candidate with 6.5/10 scores 6, not 7. The Operator I bar is strict.</p>
+<p><strong>Retake policy:</strong> if a quiz scores &lt; 7, the candidate may retake it once. Second attempt &lt; 7 = a category gap for the reviewer scorecard. No third attempts in Cycle 1.</p>
+<hr />
+<h2 id="lesson-022-revenue-per-labor-hour-source">Lesson 02.2 — Revenue Per Labor Hour (<a href="../02-cleaning-operations/02-revenue-per-labor-hour.html">source</a>)</h2>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Type</th>
+<th>Correct answer</th>
+<th>Pass criteria / what to look for</th>
+<th>Common wrong answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>MCQ</td>
+<td><strong>b</strong> (customer revenue ÷ that customer's cleaning labor hours)</td>
+<td>Just the letter.</td>
+<td>a, c, d all confuse the denominator</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>Math</td>
+<td><strong>RPLH = $45 · Gap = −$15</strong></td>
+<td>Right number AND right sign. Quick math, not a spreadsheet.</td>
+<td>Positive sign = wrong (gap is below target)</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>MCQ</td>
+<td><strong>b</strong> (scope creep — additional services without payment)</td>
+<td>Just the letter.</td>
+<td>a (wage increase) and c (AR aging) confuse what the metric captures</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Short answer</td>
+<td>Lists scope vs contract · labor hours trend · re-cleans · tech assignment, in that diagnostic order</td>
+<td>Diagnostic mindset. Jumping to "raise the rate" first = fail.</td>
+<td>"Raise the rate" as the first move</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Short answer</td>
+<td>Names specific customer numbers (not company average) + translates to dollars/month + names a forward path</td>
+<td>Specific. Business language. Forward path.</td>
+<td>"Your company average RPLH is X" (leads with the least actionable number)</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>Scenario</td>
+<td>Required revenue: $6,496 · Gap: $2,696/month (~71%) · Recommendation: scope-and-pricing conversation OR amicable churn (not just a rate increase)</td>
+<td>Operator recognizes some gaps are too large for a rate increase alone. Math forces the conversation.</td>
+<td>"Raise the rate to $58" (ignores the gap size)</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>MCQ</td>
+<td><strong>b</strong> (owners cannot act on an "average" — only on specific customers)</td>
+<td>Just the letter.</td>
+<td>a, c, d miss the action-orientation point</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>Judgment</td>
+<td><strong>No</strong> — customer should be excluded under the low-labor-signal rule (&lt;10 hours). RPLH is noisy when labor is tiny. $850 is mathematically correct but operationally meaningless.</td>
+<td>Operator understands exclusion rules. Doesn't mistake noise for performance.</td>
+<td>"Yes, this customer is incredible" (treats noise as signal)</td>
+</tr>
+<tr>
+<td>Q9</td>
+<td>MCQ</td>
+<td><strong>b</strong> (cleaning labor only — excludes inspection, supply-station, hiring, training, management)</td>
+<td>Just the letter.</td>
+<td>Any other letter shows misunderstanding of the metric's denominator</td>
+</tr>
+<tr>
+<td>Q10</td>
+<td>Judgment</td>
+<td>Operator does NOT defend the number. INVITES verification. Collaborative, not adversarial. Preserves relationship + math.</td>
+<td>Transparency = credibility. Invites the CEO to walk through one customer line by line.</td>
+<td>"I'm confident in the numbers, they're pulled directly from QuickBooks" (defensive, misses teaching moment)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lesson 02.2 total:</strong> ___ / 10</p>
+<hr />
+<h2 id="lesson-023-customer-economics-source">Lesson 02.3 — Customer Economics (<a href="../02-cleaning-operations/03-customer-economics.html">source</a>)</h2>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Type</th>
+<th>Correct answer</th>
+<th>Pass criteria / what to look for</th>
+<th>Common wrong answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>MCQ</td>
+<td><strong>b</strong> (gross profit per customer — revenue minus direct labor, burden, supplies)</td>
+<td>Just the letter. Customer Economics stops at gross profit; excludes overhead.</td>
+<td>a (net profit), c (revenue minus all overhead) — both include overhead</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>Math</td>
+<td>Direct labor $1,760 · Burden $528 · Supplies $200 · <strong>Gross Profit $3,512</strong> · <strong>Gross Margin 58.5%</strong></td>
+<td>Right total AND right margin. Common error: forgetting burden.</td>
+<td>Skipping burden → GP $4,040 (wrong)</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>MCQ</td>
+<td><strong>c</strong> (Customer B requires more labor and/or supplies for same revenue)</td>
+<td>Just the letter. Same revenue, different costs = different margins.</td>
+<td>a, b, d miss the cost-side framing</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Short answer</td>
+<td>5.5 hrs/month × $21.76 loaded wage = <strong>$119.68/month</strong> (~$1,440/year annualized)</td>
+<td>Operator includes burden. Math is right. Annualizing is a bonus.</td>
+<td>Forgetting burden = $93.50/month (wrong magnitude)</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>MCQ (pick all)</td>
+<td><strong>a, b, d, f</strong> (payroll taxes, workers' comp, PTO accrual, sick leave accrual)</td>
+<td>Must select all 4 correct AND no wrong. Burden = scales with labor hours.</td>
+<td>Including c (office rent) or e (owner salary) = both are overhead, not burden</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>Short answer</td>
+<td>Names: low-margin new customers OR scope creep + rising wages/supplies. Revenue up + margin down = total gross profit can fall.</td>
+<td>Understanding that revenue growth and profit growth are different directions.</td>
+<td>"They added more customers" (incomplete — misses the margin-mix story)</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>MCQ</td>
+<td><strong>b</strong> (push owners to add more customers, deepening the problem)</td>
+<td>Just the letter. Natural response (find more revenue) makes scope-creep companies worse.</td>
+<td>a (self-corrects) — directly contradicts the lesson</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>Short answer</td>
+<td>"After you pay your team and buy supplies, how much of each dollar from a customer is left? That number is your Customer Economics."</td>
+<td>Plain English. No "EBITDA," no "burden-loaded," no "margin compression."</td>
+<td>Uses any jargon term = fail</td>
+</tr>
+<tr>
+<td>Q9</td>
+<td>MCQ</td>
+<td><strong>b</strong> (Customer Economics stops at gross margin; customers unprofitable in CE may still be net profitable at company level)</td>
+<td>Just the letter. Precise language earns trust.</td>
+<td>Any other letter shows misunderstanding</td>
+</tr>
+<tr>
+<td>Q10</td>
+<td>Judgment</td>
+<td>Gross Margin = <strong>61%</strong>. Operator's move: do NOT push rate increase. Customer is fine. Conversation moves elsewhere.</td>
+<td>Operator does the math FIRST. Doesn't assume "old customer" = "bad customer." CE tells the truth either way.</td>
+<td>"Push for a rate increase anyway" (ignores the math)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lesson 02.3 total:</strong> ___ / 10</p>
+<hr />
+<h2 id="lesson-031-mission-control-diagnostics-source">Lesson 03.1 — Mission Control Diagnostics (<a href="../03-pioneerops-platform-mastery/01-mission-control-diagnostics.html">source</a>)</h2>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Type</th>
+<th>Correct answer</th>
+<th>Pass criteria / what to look for</th>
+<th>Common wrong answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Short answer</td>
+<td>Dashboard = looked at. Diagnostic instrument = read by someone trained to interpret it. Discipline of reading produces action; act of looking produces glancing.</td>
+<td>Operator names the verb difference (look vs read) AND the discipline difference (trained interpretation vs casual observation).</td>
+<td>"A dashboard shows data, an instrument is more important" (misses the verb/discipline distinction)</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>MCQ</td>
+<td><strong>c</strong> (Action Completion Loop + Leadership Streak — serves Verification)</td>
+<td>Just the letter. Operator holds the Loop Map cold.</td>
+<td>Mixing up Action and Verification surfaces = doctrinal failure</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>Short answer</td>
+<td><strong>5 minutes.</strong></td>
+<td>Operator knows the time bound.</td>
+<td>"As long as it takes" = has not internalized the read's discipline</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>MCQ</td>
+<td><strong>c</strong> (decline — explain that operator-as-reader is fragile; goal is CEO becoming self-sustaining)</td>
+<td>Just the letter. Operator-as-reader produces customers who lose diagnostic capability the moment operator changes.</td>
+<td>a or b — both leave the operator-as-reader pattern in place</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Short answer</td>
+<td>Pause. Verify the underlying records before acting. Confirm no time-card sync gap / no recent assignment change / no record incompleteness. If records check out, proceed. If not, fix the record first.</td>
+<td>Operator pauses on principle. Does NOT act on an MC number without verifying records beneath it.</td>
+<td>"Send the rate increase letter now" (Pillar 8 violation)</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>Short answer</td>
+<td>Time should <strong>decrease</strong>. Value should <strong>increase</strong>. Reads become CEO's job. Operator's attention reallocates to harder strategic calls the reads surface.</td>
+<td>Operator understands time + value move in opposite directions on a healthy account, not the same direction.</td>
+<td>"Both go up" or "both go down" (misses the Withdrawal Curve)</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>MCQ</td>
+<td><strong>b</strong> (field behavior writing the problem is 30+ days old by time it's caught)</td>
+<td>Just the letter. The cadence is the entire economic argument for MC.</td>
+<td>a, c, d miss the cadence-as-value point</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>Short answer</td>
+<td><strong>Cash Conversion</strong> AND <strong>Revenue Quality &amp; Leakage</strong>. Cash Conversion = time from work-done to cash-received. Revenue Quality catches scope creep, unbilled work, other leaks.</td>
+<td>Operator names the two correct vitals AND explains why each one specifically addresses cash worry.</td>
+<td>Only naming one vital, or naming wrong vitals (Labor Efficiency etc.)</td>
+</tr>
+<tr>
+<td>Q9</td>
+<td>MCQ</td>
+<td><strong>c</strong> (customer catches a deviation and runs diagnosis without operator, BEFORE operator's next visit)</td>
+<td>Just the letter. The Self-Sustaining test is the customer demonstrably doing diagnostic work without the operator.</td>
+<td>a, b, d are all engagement signals, not self-sustaining signals</td>
+</tr>
+<tr>
+<td>Q10</td>
+<td>Judgment (90-sec compression)</td>
+<td><strong>Use the lesson's inline 5-criterion rubric verbatim.</strong> See <a href="../03-pioneerops-platform-mastery/01-mission-control-diagnostics.html">lesson source line ~894</a>. All 5 criteria required for pass: time (80–95s) · cadence as the value · cost of inaction translated · Withdrawal Curve named · ends with specific calendar ask.</td>
+<td>5 of 5 = pass · 4 of 5 = re-attempt next week · ≤ 3 = lesson re-delivery before re-test.</td>
+<td>Going over 95 sec · cadence framed as data instead of rhythm · no specific calendar ask</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lesson 03.1 total:</strong> ___ / 10</p>
+<hr />
+<h2 id="lesson-053-qbr-delivery-source">Lesson 05.3 — QBR Delivery (<a href="../05-customer-success/03-qbr-delivery.html">source</a>)</h2>
+<p><strong>Note:</strong> Operator I bar is "read for context only · quiz NOT required to pass" (framework §2). Quiz score is recorded but does not gate Operator I certification. The candidate should still take it — the score is evidence for future Operator II review.</p>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Type</th>
+<th>Correct answer</th>
+<th>Pass criteria / what to look for</th>
+<th>Common wrong answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Short answer</td>
+<td>A 30-min conversation with a customer CEO where the Operator turns a quarter of operational truth into three priced executive decisions.</td>
+<td>Time discipline (30 min) · executive audience (CEO) · decision-forcing (not status) · three (not seven) · priced (Pillar 7).</td>
+<td>"A quarterly business review" (vague, no decisions, no time bound)</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>MCQ</td>
+<td><strong>d</strong> (demo of new product features)</td>
+<td>Just the letter. Feature talk corrupts the QBR.</td>
+<td>Any other letter shows misunderstanding of the spine</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>Short answer</td>
+<td>Operator names the failed prediction first, BEFORE any wins. Owning the miss is what makes the wins credible — credibility deposit is bigger from honesty about failure.</td>
+<td>Operator names the failure proactively, before the customer asks. Doctrine-level habit.</td>
+<td>"Mention the failure if asked" or "soften the failure"</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Math</td>
+<td>Uncovered buildings ~14 · Inaction cost <strong>$5,600/month</strong> (~$67,200/year)</td>
+<td>Operator does this math DURING the QBR, not in advance. CEO sees the arithmetic.</td>
+<td>Just the number with no math shown = misses the in-front-of-CEO discipline</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Short answer</td>
+<td>(1) What · (2) Why (cause + supporting metric) · (3) Cost of inaction in dollars · (4) Effort to act · (5) Expected result (named metric, named delta) · (6) Verification date</td>
+<td>Operator recites from memory. Recommendation skeleton.</td>
+<td>Missing any of the 6 components, especially the verification date</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>MCQ</td>
+<td><strong>b</strong> (delegates diagnosis upward to the CEO, who shouldn't be doing the Operator's job)</td>
+<td>Just the letter. Operator's job is to bring problem + price + recommendation.</td>
+<td>Any other letter misses the unfinished-work framing</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>Scenario</td>
+<td>Operator does NOT defend the price · reframes to decisions, not negotiation · commits to addressing the renewal explicitly (not avoiding) · energy is calm, not panicked</td>
+<td>All 4 criteria. Reframing the conversation is the doctrine move.</td>
+<td>Defending the price · avoiding the renewal · negotiating immediately</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>Short answer</td>
+<td>A pre-declared verification date = specific calendar date written down BEFORE the action, on which the metric will be re-measured. Prevents retroactive claims that "the action worked" — without a pre-declared expectation, every outcome can be wrapped into the original intent.</td>
+<td>Understanding that the prediction must be written BEFORE, not after. Doctrine (Thesis P9).</td>
+<td>"A date in the future when we'll check" (misses the BEFORE requirement)</td>
+</tr>
+<tr>
+<td>Q9</td>
+<td>MCQ</td>
+<td><strong>d</strong> (deciding which three recommendations to bring to the CEO)</td>
+<td>Just the letter. Recommendations carry the Operator's signature. AI proposes; Operator decides.</td>
+<td>Any other letter misunderstands the AI division of labor</td>
+</tr>
+<tr>
+<td>Q10</td>
+<td>Judgment (90-sec compression)</td>
+<td><strong>Use the lesson's inline 5-criterion rubric verbatim.</strong> See <a href="../05-customer-success/03-qbr-delivery.html">lesson source line ~983</a>. All 5 criteria required for pass: time (80–95s) · opens with three asks · names a failure before any win · carries at least one inaction cost in dollars · ends with specific CEO ask + date.</td>
+<td>5 of 5 = pass · 4 of 5 = re-attempt next week · ≤ 3 = lesson re-delivery before re-test.</td>
+<td>Wins before failures · no specific dollar number · vague closing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Lesson 05.3 total:</strong> ___ / 10</p>
+<hr />
+<h2 id="composite-recording-for-the-evidence-pack">Composite recording for the evidence pack</h2>
+<p>Per the <a href="./operator-i-evidence-pack-index.html">evidence pack index</a> Row 1:</p>
+<table>
+<thead>
+<tr>
+<th>Lesson</th>
+<th>Score (out of 10)</th>
+<th>Pass (≥ 7)?</th>
+<th>Retake taken?</th>
+<th>Final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02.2 RPLH</td>
+<td></td>
+<td>Y/N</td>
+<td>Y/N</td>
+<td></td>
+</tr>
+<tr>
+<td>02.3 Customer Economics</td>
+<td></td>
+<td>Y/N</td>
+<td>Y/N</td>
+<td></td>
+</tr>
+<tr>
+<td>03.1 MC Diagnostics</td>
+<td></td>
+<td>Y/N</td>
+<td>Y/N</td>
+<td></td>
+</tr>
+<tr>
+<td>05.3 QBR Delivery</td>
+<td></td>
+<td>Y/N (not required)</td>
+<td>Y/N</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Operator I bar:</strong> ≥ 7/10 on at least 3 of the 4 quizzes. <strong>Quizzes 02.2, 02.3, 03.1 must all pass</strong> since they're the lessons Operator I evidence depends on. 05.3 may fail.</p>
+<hr />
+<h2 id="what-this-answer-key-does-not-do">What this answer key does NOT do</h2>
+<ul>
+<li><strong>Does NOT rewrite the lessons.</strong> All answers pulled from the published quiz sections. If the lesson changes, this key is restamped from the lesson — not the other way around.</li>
+<li><strong>Does NOT add new questions.</strong> Operator I quiz is the 40 questions across 4 lessons. Period.</li>
+<li><strong>Does NOT change the Operator I bar.</strong> 7/10 on 3 of 4 quizzes is from framework §2.</li>
+<li><strong>Does NOT replace the trainer's judgment on short-answer responses.</strong> The "pass criteria" column is guidance, not algorithm. The trainer scores; this sheet structures the scoring.</li>
+</ul>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>templates/operator-i-foundation-quiz-answer-keys.md</code>
+</footer>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PioneerOps Operator Certification Registry — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="pioneerops-operator-certification-registry">PioneerOps Operator Certification Registry</h1>
+<p>The canonical, authoritative list of all certified PioneerOps Operators. Every certification, renewal, demotion, and revocation is recorded here.</p>
+<blockquote>
+<p><strong>Custodianship:</strong> Academy lead. Registry entries are append-only — corrections add new entries; original entries are never modified.</p>
+<p><strong>Authority:</strong> <a href="./operator-certification-framework.html">Operator Certification Framework</a>. Where the registry and the framework diverge, the framework governs and the registry is corrected.</p>
+</blockquote>
+<hr />
+<h2 id="lineage-id-format">Lineage ID format</h2>
+<p>Every certified Operator carries a permanent Lineage ID:</p>
+<pre><code>POPS-OP-{Tier}-{YYYY}-{LineageID}
+</code></pre>
+<p>Where:</p>
+<ul>
+<li><code>POPS-OP</code> — PioneerOps Operator (constant prefix)</li>
+<li><code>Tier</code> — current tier: <code>I</code> / <code>II</code> / <code>III</code> / <code>EA</code></li>
+<li><code>YYYY</code> — year of <strong>original</strong> certification (not current tier)</li>
+<li><code>LineageID</code> — 4-digit sequential number, assigned at original certification, <strong>permanent across tier transitions</strong></li>
+</ul>
+<h3 id="examples">Examples</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POPS-OP-I-2026-0001</code></td>
+<td>The first Operator I ever certified. Year 2026.</td>
+</tr>
+<tr>
+<td><code>POPS-OP-II-2026-0001</code></td>
+<td>The same person, promoted to Operator II. Same year, same lineage.</td>
+</tr>
+<tr>
+<td><code>POPS-OP-III-2027-0001</code></td>
+<td>The same person, promoted to Operator III in 2027. Year of original cert remains 2026.</td>
+</tr>
+<tr>
+<td><code>POPS-OP-EA-2029-0001</code></td>
+<td>The same person, promoted to Executive Advisor.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="lineage-continuity-rules">Lineage Continuity Rules</h3>
+<ul>
+<li>The <code>LineageID</code> portion is <strong>assigned at first certification</strong> and never changes.</li>
+<li>The <code>Tier</code> portion <strong>updates</strong> on each tier transition.</li>
+<li>The <code>YYYY</code> portion reflects the <strong>year of original certification</strong>, NOT the current tier's promotion year.</li>
+<li>On revocation, the Lineage ID is <strong>retired</strong> with a reason — never reassigned to a new Operator.</li>
+</ul>
+<hr />
+<h2 id="how-to-read-this-registry">How to read this registry</h2>
+<p>The registry has three sections:</p>
+<ol>
+<li><strong>Active certifications</strong> — current Operators in good standing</li>
+<li><strong>Historical certifications</strong> — Operators who have since been demoted, revoked, or who have not renewed</li>
+<li><strong>Retired Lineage IDs</strong> — IDs that will never be reassigned, with reason</li>
+</ol>
+<p>The registry is updated by the Academy lead at:
+- Every initial certification
+- Every renewal decision
+- Every demotion or revocation
+- Annually for full review</p>
+<hr />
+<h2 id="section-1-active-certifications">Section 1 — Active Certifications</h2>
+<p>Current certified Operators in good standing.</p>
+<table>
+<thead>
+<tr>
+<th>Lineage ID</th>
+<th>Name</th>
+<th>Tier</th>
+<th>First certified</th>
+<th>Current tier since</th>
+<th>Next renewal</th>
+<th>Mentor lineage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(none yet — registry initialized 2026-06-11)</em></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>When the first Operator is certified, this section becomes the authoritative active roster.</p>
+</blockquote>
+<h3 id="field-definitions">Field definitions</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Lineage ID</strong></td>
+<td>Full ID per format above</td>
+</tr>
+<tr>
+<td><strong>Name</strong></td>
+<td>Operator's full legal name</td>
+</tr>
+<tr>
+<td><strong>Tier</strong></td>
+<td>Current tier: I / II / III / EA</td>
+</tr>
+<tr>
+<td><strong>First certified</strong></td>
+<td>Date of original certification (YYYY-MM-DD)</td>
+</tr>
+<tr>
+<td><strong>Current tier since</strong></td>
+<td>Date the Operator was promoted to current tier</td>
+</tr>
+<tr>
+<td><strong>Next renewal</strong></td>
+<td>Date renewal evidence is due</td>
+</tr>
+<tr>
+<td><strong>Mentor lineage</strong></td>
+<td>Lineage IDs of the Operators who mentored this candidate to their current tier (comma-separated)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="section-2-historical-certifications">Section 2 — Historical Certifications</h2>
+<p>Operators who are no longer at their last certified tier — through demotion, non-renewal, or departure.</p>
+<table>
+<thead>
+<tr>
+<th>Lineage ID</th>
+<th>Name</th>
+<th>Last tier</th>
+<th>Period active</th>
+<th>Reason for status change</th>
+<th>Date of change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(none yet)</em></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="status-change-reasons">Status change reasons</h3>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Demoted</strong></td>
+<td>Tier reduced per Framework Section 9. Operator may re-promote per process.</td>
+</tr>
+<tr>
+<td><strong>Non-renewed</strong></td>
+<td>Renewal evidence not submitted or not sufficient. Credential lapses; Operator may re-certify at lower tier.</td>
+</tr>
+<tr>
+<td><strong>Left Pioneer</strong></td>
+<td>Operator departed. Credential continues if Operator submits renewal evidence per Framework Section 13.3 (portability).</td>
+</tr>
+<tr>
+<td><strong>Voluntary downgrade</strong></td>
+<td>Operator requested reduction (e.g., role change).</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Note on portability: certifications travel with the Operator. An Operator who leaves Pioneer for another company keeps their credential, subject to renewal obligations.</p>
+</blockquote>
+<hr />
+<h2 id="section-3-retired-lineage-ids">Section 3 — Retired Lineage IDs</h2>
+<p>Lineage IDs that will never be reassigned. Always tied to a reason.</p>
+<table>
+<thead>
+<tr>
+<th>Lineage ID</th>
+<th>Original name (redacted if requested)</th>
+<th>Date retired</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(none yet)</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-retire-ids">Why retire IDs</h3>
+<p>Per Framework Section 12 ("The Certification Identifier System"), retiring rather than reassigning IDs preserves the integrity of the lineage system. A retired ID still appears in historical records (e.g., as the mentor lineage of an active Operator); reassigning would create ambiguity.</p>
+<hr />
+<h2 id="the-lineage-tree">The Lineage Tree</h2>
+<p>As the registry grows, mentor lineages form a tree showing who trained whom. The tree is a working artifact — it shows the doctrine's transmission across generations of Operators.</p>
+<blockquote>
+<p>When at least 3 Operators are certified, this section will populate with the mentor lineage diagram (ASCII or rendered).</p>
+</blockquote>
+<pre><code>   _(empty — registry initialized 2026-06-11)_
+</code></pre>
+<h3 id="properties-of-a-healthy-lineage-tree">Properties of a healthy lineage tree</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Wide root</strong></td>
+<td>Multiple founding Operators, not a single point of doctrine origin. Tests doctrine portability.</td>
+</tr>
+<tr>
+<td><strong>Generational depth</strong></td>
+<td>Mentors who graduate mentors who graduate mentors. Tests doctrine durability.</td>
+</tr>
+<tr>
+<td><strong>Cross-pollination</strong></td>
+<td>Operators mentored by multiple seniors. Tests doctrine consistency across mentors.</td>
+</tr>
+<tr>
+<td><strong>Pruned branches</strong></td>
+<td>Demoted or revoked Operators visible as truncated branches. Tests the framework's integrity enforcement.</td>
+</tr>
+</tbody>
+</table>
+<p>A tree without pruning is suspicious. A tree without depth is young. A tree with breadth + depth + visible pruning is mature.</p>
+<hr />
+<h2 id="registry-operations-log">Registry Operations Log</h2>
+<p>Append-only log of every registry change.</p>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Operation</th>
+<th>Lineage ID affected</th>
+<th>Performed by</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-06-11</td>
+<td>Registry initialized</td>
+<td>n/a</td>
+<td>Academy lead</td>
+<td>Framework v1 published; registry instantiated</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Every future operation (certify, renew, demote, decertify, retire) appends a row here.</p>
+</blockquote>
+<hr />
+<h2 id="public-verification">Public Verification</h2>
+<p>Per the framework's Vision: as the credential gains market value, third parties should be able to verify an Operator's credential without contacting Pioneer directly.</p>
+<h3 id="v1-internal-verification">v1 — Internal verification</h3>
+<p>Internal Pioneer / Academy contacts the Academy lead. The Academy lead confirms or denies.</p>
+<h3 id="v2-public-verification-api-future">v2 — Public verification API (future)</h3>
+<p>A read-only endpoint where any party can submit a Lineage ID and receive:
+- Current tier
+- First certification date
+- Current tier since date
+- Active / historical status
+- (Operator's name only if Operator consented to public disclosure)</p>
+<p>This is <strong>not v1 scope.</strong> It is in the framework's Open Questions (Section 15). It is named here so the v1 registry's data model anticipates it.</p>
+<h3 id="v3-industry-credential-body-future">v3 — Industry credential body (future)</h3>
+<p>Eventual external credentialing organization that maintains the registry independently of Pioneer. Per Thesis Section 19, the Academy's long arc is from training arm → standards body → profession-defining institution. The registry is the seed of the standards body.</p>
+<hr />
+<h2 id="amendment-process">Amendment Process</h2>
+<p>Registry format amendments follow the framework amendment process:</p>
+<ol>
+<li><strong>Evidence first</strong> — a registry need surfaces (e.g., a missing field, an ambiguous status)</li>
+<li><strong>Diagnosed</strong> — what specific gap exists</li>
+<li><strong>Amended visibly</strong> — registry format updated, version noted in the log</li>
+<li><strong>Verified</strong> — next certification cycle uses the new format</li>
+</ol>
+<p>Registry <strong>entries</strong> are append-only and never amended. Registry <strong>format</strong> can be amended with all existing entries migrated forward.</p>
+<hr />
+<table>
+<thead>
+<tr>
+<th>Document version</th>
+<th>1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Last updated</td>
+<td>2026-06-11</td>
+</tr>
+<tr>
+<td>Custodianship</td>
+<td>Academy lead</td>
+</tr>
+<tr>
+<td>Authority</td>
+<td><a href="./operator-certification-framework.html">Operator Certification Framework</a></td>
+</tr>
+</tbody>
+</table>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>certification-registry.md</code>
+</footer>
+</body>
+</html>
