@@ -54,6 +54,9 @@ FILES = [
     "templates/certification-self-assessment.md",
     "templates/certification-renewal-evidence.md",
     "templates/certification-demotion-notice.md",
+    # Pillar 01 (SaaS Foundations) — vocabulary + foundation lesson
+    "01-saas-foundations/operator-vocabulary.md",
+    "01-saas-foundations/01-saas-language-foundations.md",
     # Foundation lessons (Day 1 Challenge Battery targets)
     "02-cleaning-operations/02-revenue-per-labor-hour.md",
     "02-cleaning-operations/03-customer-economics.md",

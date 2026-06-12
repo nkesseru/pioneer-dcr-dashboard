@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operator Vocabulary — SaaS Language for the Pioneer Operator — PioneerOps Academy</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #5f6368;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --code-bg: #f6f8fa;
+  --warn-bg: #fff8e1;
+  --warn-border: #ffd54f;
+  --back-bg: #f3f4f6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-size: 16px;
+}
+.back-link {
+  position: sticky;
+  top: 0;
+  background: var(--back-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.back-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.back-link a:hover { text-decoration: underline; }
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+h1 { font-size: 1.75rem; border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0.8em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+li.task { list-style: none; margin-left: -1em; }
+li.task input { margin-right: 6px; vertical-align: middle; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+tr:nth-child(even) td { background: #fafbfc; }
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 1em 0;
+  padding: 8px 16px;
+  color: var(--text);
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+strong { font-weight: 700; }
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  padding-top: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+@media (max-width: 640px) {
+  main { padding: 24px 16px 60px; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; }
+  th, td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+<div class="back-link">
+  <a href="../../founder-pilot-html.html">← Back to Founder Pilot</a>
+</div>
+<main>
+<h1 id="operator-vocabulary-saas-language-for-the-pioneer-operator">Operator Vocabulary — SaaS Language for the Pioneer Operator</h1>
+<p>The 20 terms a SaaS-literate Operator must hold. Each entry has four parts: <strong>Definition · Why it matters · Pioneer example · Common misunderstanding.</strong></p>
+<p>If you can hold these 20 terms cleanly, the rest of the Academy is readable. If you can't, every other lesson will feel like jargon.</p>
+<p><strong>This is not a vocabulary test.</strong> This is a translation layer. Cleaning operations Operators bring real expertise; this doc gives them the words to apply that expertise to a SaaS company's customers.</p>
+<hr />
+<h2 id="how-to-read-this-doc">How to read this doc</h2>
+<p>Don't memorize. Read once for shape, then return when a term appears in another lesson and you want to verify the definition.</p>
+<p>Cross-references between entries appear in <strong>bold</strong>. Most terms connect to others — you cannot understand <strong>Retention</strong> without <strong>Churn</strong>, or <strong>NRR</strong> without <strong>Expansion</strong>.</p>
+<hr />
+<h2 id="the-20-terms">The 20 Terms</h2>
+<h3 id="1-activation">1 · Activation</h3>
+<p><strong>Definition.</strong> The point when a customer first experiences the product's core value — not when they signed the contract, not when they logged in.</p>
+<p><strong>Why it matters.</strong> Activation predicts everything that follows. Customers who activate stay. Customers who pay but never activate churn within 6 months.</p>
+<p><strong>Pioneer example.</strong> A PioneerOps customer is activated when their first full week of clock-ins, DCRs, and one Vital Read is complete AND their owner has personally experienced one specific operational catch that PioneerOps surfaced. Until that moment, they are a subscriber, not an activated customer.</p>
+<p><strong>Common misunderstanding.</strong> Activation is not signup. It is not the contract. It is not "they logged in." It is the first moment when the product solved a real problem for them.</p>
+<hr />
+<h3 id="2-adoption">2 · Adoption</h3>
+<p><strong>Definition.</strong> The customer uses the product as a regular part of their workflow. They would notice immediately if it disappeared.</p>
+<p><strong>Why it matters.</strong> Adoption is what produces <strong>Renewal</strong>. Customers who adopt deeply pay more, churn less, and expand more.</p>
+<p><strong>Pioneer example.</strong> A cleaning customer at Adoption opens Mission Control weekly without prompting, submits DCRs daily, runs inspections on the configured cadence, and uses the Communication threads instead of texting. Their workflow has shifted to PioneerOps.</p>
+<p><strong>Common misunderstanding.</strong> Adoption is not "they use it sometimes." Adoption is "they would notice immediately if it disappeared." The test is the absence test.</p>
+<hr />
+<h3 id="3-churn">3 · Churn</h3>
+<p><strong>Definition.</strong> A customer cancels the subscription.</p>
+<p><strong>Why it matters.</strong> Churn is the most expensive outcome in SaaS. One churned customer erases the <strong>CAC</strong> (acquisition cost) — and if they churned before month 12, they erased it without ever paying back.</p>
+<p><strong>Pioneer example.</strong> A Pioneer customer who cancels at month 8 took 8 months of operator work and never returned the cost of landing them.</p>
+<p><strong>Common misunderstanding.</strong> Churn is rarely about price. It is almost always about value not landing — either because <strong>Activation</strong> failed, <strong>Adoption</strong> stalled, or the <strong>Champion</strong> left.</p>
+<hr />
+<h3 id="4-retention">4 · Retention</h3>
+<p><strong>Definition.</strong> The customer stays subscribed.</p>
+<p><strong>Why it matters.</strong> Retention compounds. A customer who stays 5 years pays roughly 5× more than one who stays 1 year. Retained customers also expand more, because trust has been earned.</p>
+<p><strong>Pioneer example.</strong> Pioneer's retained customers fund the company's growth budget. New customers pay for cost. The math of SaaS is the math of retention.</p>
+<p><strong>Common misunderstanding.</strong> Retention is not "they're still paying." Retention is "they're still paying AND still using." A customer auto-billing but never logging in is <strong>Churn waiting to happen</strong> — sometimes called "zombie revenue."</p>
+<hr />
+<h3 id="5-expansion">5 · Expansion</h3>
+<p><strong>Definition.</strong> An existing customer pays more this period than last period.</p>
+<p><strong>Why it matters.</strong> Expansion is dramatically cheaper than acquisition. The best SaaS companies grow more from expansion of existing accounts than from new customers.</p>
+<p><strong>Pioneer example.</strong> A cleaning company adds a second location to their PioneerOps account, upgrades to Premium Inspections, or adds the payroll exports module. Each is expansion.</p>
+<p><strong>Common misunderstanding.</strong> Expansion is not Renewal. <strong>Renewal keeps revenue flat. Expansion grows it.</strong> A customer who renews for another year at the same price contributed retention, not expansion.</p>
+<hr />
+<h3 id="6-nrr-net-revenue-retention">6 · NRR — Net Revenue Retention</h3>
+<p><strong>Definition.</strong> This year's revenue from last year's customers ÷ last year's revenue from those same customers. Includes both <strong>Expansion</strong> and <strong>Churn</strong>.</p>
+<p><strong>Why it matters.</strong> NRR is the single best health metric in SaaS. NRR &gt; 100% means existing customers are growing faster than they are leaving — i.e., the business grows even with zero new customers. NRR &gt; 110% is excellent. NRR &lt; 90% means the business is shrinking from the inside.</p>
+<p><strong>Pioneer example.</strong> Suppose Pioneer had $100K of cleaning customers last year. This year, those same customers paid $115K (some expanded, some churned, some renewed flat). NRR = 115%.</p>
+<p><strong>Common misunderstanding.</strong> NRR is not GRR (Gross Revenue Retention). GRR only counts retention — it cannot exceed 100%. NRR includes expansion, so it can. <strong>The two are read together: GRR shows the floor; NRR shows whether expansion is offsetting churn.</strong></p>
+<hr />
+<h3 id="7-arr-annual-recurring-revenue">7 · ARR — Annual Recurring Revenue</h3>
+<p><strong>Definition.</strong> The annualized value of all subscription revenue, calculated at a single point in time. If every current customer keeps paying for a year at their current rate, ARR is what the company will receive.</p>
+<p><strong>Why it matters.</strong> ARR is the headline number for SaaS companies. Investors quote it. Boards plan around it. It is the closest SaaS gets to "the company's size."</p>
+<p><strong>Pioneer example.</strong> If Pioneer has 25 cleaning customers each paying $500/month, ARR = 25 × $500 × 12 = $150,000. That number is the floor of the company.</p>
+<p><strong>Common misunderstanding.</strong> ARR is not revenue. <strong>ARR is recurring, predictable, subscription revenue.</strong> One-time setup fees, consulting work, or non-renewing customers do not count. A company can have $1M revenue and only $400K ARR if most of it is non-recurring.</p>
+<hr />
+<h3 id="8-mrr-monthly-recurring-revenue">8 · MRR — Monthly Recurring Revenue</h3>
+<p><strong>Definition.</strong> The monthly equivalent of <strong>ARR</strong>. ARR ÷ 12.</p>
+<p><strong>Why it matters.</strong> MRR is how SaaS companies watch their business month by month. Quarterly numbers come from MRR trends.</p>
+<p><strong>Pioneer example.</strong> Pioneer's MRR is $12,500 if ARR is $150,000. Each new customer adds to MRR. Each churn subtracts. Each expansion grows it.</p>
+<p><strong>Common misunderstanding.</strong> MRR is not "what we billed this month." MRR is the steady-state recurring rate at the end of the month. Annual prepays are divided by 12 for MRR purposes.</p>
+<hr />
+<h3 id="9-health-score">9 · Health Score</h3>
+<p><strong>Definition.</strong> A composite number predicting whether a customer is likely to renew, expand, or churn in the next 90 days.</p>
+<p><strong>Why it matters.</strong> Health Score predicts the future. Operators who can read it can intervene before customers reach the cancellation conversation. Without it, operators react to churn instead of preventing it.</p>
+<p><strong>Pioneer example.</strong> A Pioneer health score combines usage frequency (Mission Control opens, DCR submissions), satisfaction (NPS), support load (open tickets), payment timeliness, and <strong>Champion</strong> engagement (does the owner attend Vital Reads?). Each is scored, weighted, summed.</p>
+<p><strong>Common misunderstanding.</strong> A Health Score is not a vanity number. <strong>It must be calibrated against actual outcomes.</strong> A score that says everyone is "Healthy" right before they churn is not a score — it is theater. Calibration means comparing the score to what actually happened, every quarter.</p>
+<hr />
+<h3 id="10-first-value">10 · First Value</h3>
+<p><strong>Definition.</strong> The first moment the customer extracts measurable benefit from the product. The first concrete win.</p>
+<p><strong>Why it matters.</strong> First Value is the bridge from "I bought it" to "I am using it." Customers who do not reach First Value within their first 30 days churn at 4× the rate of customers who do.</p>
+<p><strong>Pioneer example.</strong> A cleaning customer's First Value happens when their first PioneerOps-generated inspection catches something that would have been a missed customer complaint — and the owner sees the catch, in dollars, on Monday morning.</p>
+<p><strong>Common misunderstanding.</strong> First Value is not the demo. The demo is a sales artifact. <strong>First Value is the customer using the product to solve their own problem with their own data.</strong> The first time something real happens.</p>
+<hr />
+<h3 id="11-onboarding">11 · Onboarding</h3>
+<p><strong>Definition.</strong> The first 30–60 days where a customer is set up, trained, and begins using the product. The bridge between the contract and <strong>Adoption</strong>.</p>
+<p><strong>Why it matters.</strong> Onboarding sets the trajectory. A customer onboarded poorly almost never recovers — the team's first experience colors everything that follows. Most churn that happens in months 4–12 is actually rooted in Onboarding failure.</p>
+<p><strong>Pioneer example.</strong> Pioneer's onboarding is the first 30 days: account setup, employee import, customer roster import, first time-tracking week, first inspection cycle, first DCR cycle, owner's first Vital Read. By Day 30, the customer is at <strong>Activation</strong> or they are not.</p>
+<p><strong>Common misunderstanding.</strong> Onboarding is not orientation. Orientation is "here is the menu of features." <strong>Onboarding is "here is how you will use it for your specific business, starting Monday."</strong> Personalized, hands-on, accountable.</p>
+<hr />
+<h3 id="12-implementation">12 · Implementation</h3>
+<p><strong>Definition.</strong> The technical work of setting up the product for one specific customer's use — data, configuration, integrations, permissions.</p>
+<p><strong>Why it matters.</strong> Implementation quality determines whether <strong>Onboarding</strong> succeeds. Bad implementation means employees can't log time correctly, DCRs go to the wrong customer, inspections fire on the wrong cadence. Trust never builds because the data is wrong.</p>
+<p><strong>Pioneer example.</strong> Pioneer's implementation for a new cleaning customer includes: account creation, role assignment, employee import from their payroll system, customer roster import, time-tracking calibration, inspection cadence configuration, communication thread setup, QBO/Twilio connections if applicable.</p>
+<p><strong>Common misunderstanding.</strong> Implementation is not training. <strong>Implementation is system setup. Training is human education.</strong> A well-implemented account with untrained users still fails. A poorly-implemented account with trained users also fails. Both are required.</p>
+<hr />
+<h3 id="13-customer-success">13 · Customer Success</h3>
+<p><strong>Definition.</strong> The post-sale function whose job is to make sure customers achieve their desired business outcomes — not just use the product, but get the outcome they bought it for.</p>
+<p><strong>Why it matters.</strong> Customer Success is the operational arm of <strong>Retention</strong>. CS teams measure customer outcomes, not product activity. They are the people who close <strong>Loops</strong> with customers.</p>
+<p><strong>Pioneer example.</strong> A Pioneer Operator (this is the CS function at Pioneer) runs Vital Reads with customer CEOs, delivers QBRs, surfaces churn risk early, and verifies that customer business metrics actually moved.</p>
+<p><strong>Common misunderstanding.</strong> Customer Success is not Customer Support. <strong>Support fixes broken things. Success drives strategic outcomes.</strong> Support is reactive (the customer has a problem). Success is proactive (the customer has an opportunity or a risk).</p>
+<hr />
+<h3 id="14-renewal">14 · Renewal</h3>
+<p><strong>Definition.</strong> A customer extends their subscription for another term — typically annual. The vote that the value is real enough to pay again.</p>
+<p><strong>Why it matters.</strong> Renewal is where SaaS revenue compounds. Lose renewal, lose <strong>LTV</strong>. A renewed customer is also the prime candidate for <strong>Expansion</strong>.</p>
+<p><strong>Pioneer example.</strong> A Pioneer customer signs another 12-month contract at the end of month 11. The Operator's job is to make sure that conversation is a formality — the value has already landed.</p>
+<p><strong>Common misunderstanding.</strong> Renewal is not paperwork. <strong>Renewal is the customer's vote.</strong> A customer who renews because they're "too busy to switch" has voted nothing; that customer churns within 6 months. A customer who renews because they would lose real value without the product has voted yes.</p>
+<hr />
+<h3 id="15-ltv-lifetime-value">15 · LTV — Lifetime Value</h3>
+<p><strong>Definition.</strong> The total revenue a customer will pay over their entire relationship. Usually a forecast based on average customer lifetime.</p>
+<p><strong>Why it matters.</strong> LTV vs <strong>CAC</strong> determines whether the business model works. The rule of thumb: LTV must be ≥ 3 × CAC for a healthy SaaS business.</p>
+<p><strong>Pioneer example.</strong> A Pioneer customer paying $500/month who stays an average of 5 years has an LTV of $30,000. If Pioneer's CAC is $3,000, the LTV : CAC ratio is 10 : 1 — excellent.</p>
+<p><strong>Common misunderstanding.</strong> LTV is not "what they pay this year × forever." <strong>LTV must include realistic churn assumptions.</strong> If the average customer churns at year 3, LTV is based on 3 years, not 10. Inflated LTV (using best-case churn) breaks the business model when reality lands.</p>
+<hr />
+<h3 id="16-cac-customer-acquisition-cost">16 · CAC — Customer Acquisition Cost</h3>
+<p><strong>Definition.</strong> The total cost of acquiring one new customer. Includes marketing spend, sales compensation, and the labor cost of safely onboarding them.</p>
+<p><strong>Why it matters.</strong> Healthy SaaS requires <strong>LTV</strong> ≥ 3 × CAC. Without that ratio, more growth means more loss.</p>
+<p><strong>Pioneer example.</strong> Pioneer's CAC includes all the marketing spend, the sales hours, the onboarding hours, and the implementation labor required to land one new cleaning customer. If those total $3,000 to land one customer worth $30K LTV, the unit economics work.</p>
+<p><strong>Common misunderstanding.</strong> CAC is not just sales commission or ad spend. <strong>It includes ALL the costs of getting the customer reliably to Activation.</strong> Implementation labor counts. Onboarding labor counts. Underestimating CAC is one of the most common mistakes in early-stage SaaS.</p>
+<hr />
+<h3 id="17-product-market-fit-pmf">17 · Product-Market Fit — PMF</h3>
+<p><strong>Definition.</strong> The product solves a real problem so well that customers would be visibly upset if it disappeared. The market is buying faster than the company can deliver.</p>
+<p><strong>Why it matters.</strong> Without PMF, no amount of sales or marketing can scale the company — every new customer takes more effort than the last. With PMF, scale is just an execution problem.</p>
+<p><strong>Pioneer example.</strong> Pioneer has PMF in cleaning when customers say things like "I'd lose my truck before I'd lose PioneerOps." Not "it's helpful" — "I can't run my business without it."</p>
+<p><strong>Common misunderstanding.</strong> PMF is not "people like it." <strong>PMF is "people would be furious if it went away."</strong> The Sean Ellis test (would 40%+ of users be "very disappointed" if the product disappeared) is the cleanest measure.</p>
+<hr />
+<h3 id="18-utilization">18 · Utilization</h3>
+<p><strong>Definition.</strong> How much of the purchased capacity the customer is actually using. Often measured as actively-used seats ÷ paid seats, or active features ÷ purchased features.</p>
+<p><strong>Why it matters.</strong> Low utilization is a leading <strong>Churn</strong> signal. High utilization is a leading <strong>Expansion</strong> signal — the customer has bought the right thing and is using all of it.</p>
+<p><strong>Pioneer example.</strong> A cleaning customer paying for 30 employee seats but only logging time for 18 is at 60% utilization. That gap matters: either the customer is paying for something they don't need (renewal risk) or they have 12 employees not yet onboarded into the system (Implementation gap).</p>
+<p><strong>Common misunderstanding.</strong> Utilization is not <strong>Adoption</strong>. <strong>Utilization is structural; Adoption is behavioral.</strong> A customer can have 100% utilization (every seat assigned) with 0% Adoption (nobody actually using the product).</p>
+<hr />
+<h3 id="19-champion">19 · Champion</h3>
+<p><strong>Definition.</strong> The person inside the customer's organization who advocates for the product internally. Defends it in budget reviews. Trains new team members on it. Drives renewal from within.</p>
+<p><strong>Why it matters.</strong> <strong>No Champion = no Renewal.</strong> Every healthy SaaS account has at least one Champion. When the Champion leaves the customer's company (or quits caring), churn risk jumps immediately.</p>
+<p><strong>Pioneer example.</strong> At a Pioneer customer, the Champion is usually the owner OR the route manager who runs the Weekly Vital Read. When that person changes companies, the Operator must identify and develop the new Champion within 30 days.</p>
+<p><strong>Common misunderstanding.</strong> A Champion is not the person who signed the contract. <strong>A Champion is the person who would defend the product in a budget cut meeting</strong> — the one who would push back when the new CFO says "what's this PioneerOps line item?"</p>
+<hr />
+<h3 id="20-stakeholder">20 · Stakeholder</h3>
+<p><strong>Definition.</strong> Anyone at the customer who is affected by, or has influence over, the product's use. Includes buyers, users, decision-makers, and people who can veto without buying.</p>
+<p><strong>Why it matters.</strong> Operators must map stakeholders. A renewal can be killed by a stakeholder the Operator never talked to — the spouse, the bookkeeper, the new GM, the customer's own customer.</p>
+<p><strong>Pioneer example.</strong> At a Pioneer cleaning customer, the stakeholders include: the owner (decision authority), the GM (workflow ownership), the techs (daily users), the bookkeeper (billing relationship), and indirectly — the building manager whose feedback flows back through the contract. Each can influence Renewal.</p>
+<p><strong>Common misunderstanding.</strong> Not every stakeholder is a buyer. <strong>Some have veto power without having buying power</strong> — the daily user who hates the product can sink a renewal even if the owner loves it. Operators must map all stakeholders, not just decision-makers.</p>
+<hr />
+<h2 id="quick-cross-reference-map">Quick cross-reference map</h2>
+<p>How the terms connect, at a glance:</p>
+<pre><code>The lifecycle spine:
+  Acquisition → Onboarding → Activation → Adoption → Expansion
+                                ↓
+                         Churn (if it fails)
+                                ↓
+                         Retention (if it succeeds)
+                                ↓
+                          Renewal (the vote)
+
+The compound metrics:
+  ARR / MRR     (the size)
+  NRR / GRR     (the health)
+  LTV vs CAC    (the model)
+  Health Score  (the prediction)
+
+The people:
+  Champion · Stakeholder · Customer Success
+
+The supporting concepts:
+  PMF · First Value · Implementation · Utilization
+</code></pre>
+<p>When you read another Academy doc and a term feels fuzzy, come back here. The four parts of each entry — definition, why it matters, Pioneer example, common misunderstanding — are designed to make the term operational, not academic.</p>
+</main>
+<footer>
+  Pioneer Academy · Founder Pilot · Operator Candidate #001 · Rendered from
+  <code>01-saas-foundations/operator-vocabulary.md</code>
+</footer>
+</body>
+</html>
