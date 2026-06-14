@@ -395,6 +395,13 @@
   // pioneer_service_sessions docs (raw + _id), used to compute
   // cumulative worked_minutes per card.
   let sessionsByAssignment = {};
+  // V20260614 — Live current-pay-period total. Sum of paid_minutes
+  // (+ paid_drive_minutes if present) across the tech's completed
+  // sessions in the current semi-monthly period (1st-15th or
+  // 16th-end-of-month). Updated every initialLoad — which re-runs
+  // after every clock-out — so the Period card stays current
+  // without waiting on the payroll-close batch.
+  let periodPaidMinutes = 0;
   // Phase 29 — pending time-adjustment requests for this tech, keyed by
   // "assignment_id|service_session_id". Used to suppress the Request
   // Adjustment button so we don't render a duplicate-submit affordance.
@@ -476,6 +483,16 @@
     const lookbackPT  = addDaysPT(todayPT, -1);
     const lookaheadPT = addDaysPT(todayPT,  3);
     const nowMs       = Date.now();
+
+    // V20260614 — Current pay-period bounds. Semi-monthly: 1st-15th
+    // (half "A") or 16th-end-of-month (half "B"). Used by the Period
+    // stat card to show a LIVE running total instead of waiting on
+    // the payroll-close batch.
+    const periodInfo  = getSemiMonthlyPeriod(todayPT);
+    const periodStartPT = periodInfo.half === "A"
+                            ? (todayPT.slice(0, 7) + "-01")
+                            : (todayPT.slice(0, 7) + "-16");
+    const periodEndPT   = periodInfo.end_date;
 
     // Show the section frame immediately (with a loading state inside).
     showSection();
@@ -656,6 +673,42 @@
           warnSC("sessions query failed (non-fatal — cumulative totals unavailable)", err && err.code);
           sessionsByAssignment = {};
         }),
+      // V20260614 — Live current-period total query. Covers the full
+      // semi-monthly window (1st-15th or 16th-end-of-month) so the
+      // Period stat card can show the running total without waiting
+      // on the payroll close. Reuses the same composite index as the
+      // narrow sessions query above ((staff_uid asc, service_date desc)
+      // from Phase 1a). Status filtered client-side so we don't need
+      // an additional composite.
+      //
+      // What "payable" means here:
+      //   paid_minutes              — work minutes per completed session
+      //   + paid_drive_minutes      — drive minutes when populated
+      //                               (Phase 1b writes 0; future phases
+      //                               can populate without a code change
+      //                               on this side)
+      // This matches the payroll-export source of truth.
+      db.collection("pioneer_service_sessions")
+        .where("staff_uid",    "==", currentStaff.uid)
+        .where("service_date", ">=", periodStartPT)
+        .where("service_date", "<=", periodEndPT)
+        .orderBy("service_date", "desc")
+        .get()
+        .then(function (snap) {
+          let total = 0;
+          snap.docs.forEach(function (d) {
+            const s = d.data() || {};
+            if (s.status !== "completed") return;
+            const paid = (typeof s.paid_minutes === "number") ? s.paid_minutes : 0;
+            const drive = (typeof s.paid_drive_minutes === "number") ? s.paid_drive_minutes : 0;
+            total += paid + drive;
+          });
+          periodPaidMinutes = total;
+        })
+        .catch(function (err) {
+          warnSC("period sessions query failed (non-fatal — Period card will read 0)", err && err.code);
+          periodPaidMinutes = 0;
+        }),
       // Phase 29 — pending time-adjustment requests for this tech. Single
       // equality query (no composite index needed). Used to hide the
       // Request Adjustment button on cards that already have one pending.
@@ -764,7 +817,26 @@
     const root = $("ptc-stats");
     if (!root) return;
     const todayMin     = hoursTodayMinutes();
-    const periodMin    = (balanceDoc && balanceDoc.current_period_paid_minutes) || 0;
+    // V20260614 — Live current-pay-period total from periodPaidMinutes
+    // (the in-process sum of completed sessions in the current
+    // semi-monthly window). Add live elapsed for the currently active
+    // session so the badge ticks forward while the tech is clocked in,
+    // matching the Today card's existing behavior. Fall back to the
+    // old balanceDoc.current_period_paid_minutes ONLY if the live query
+    // failed silently (periodPaidMinutes === 0 AND the balanceDoc has
+    // a non-zero figure) — this is a belt-and-suspenders guard, not a
+    // primary path.
+    let periodMin = periodPaidMinutes;
+    if (activeSession && activeSession.clock_in_at &&
+        typeof activeSession.clock_in_at.toMillis === "function") {
+      const liveMs = Date.now() - activeSession.clock_in_at.toMillis();
+      if (liveMs > 0) periodMin += Math.floor(liveMs / 60000);
+    }
+    if (periodMin === 0 && balanceDoc &&
+        typeof balanceDoc.current_period_paid_minutes === "number" &&
+        balanceDoc.current_period_paid_minutes > 0) {
+      periodMin = balanceDoc.current_period_paid_minutes;
+    }
     const sickMin      = (balanceDoc && typeof balanceDoc.sick_leave_balance_minutes === "number")
                            ? balanceDoc.sick_leave_balance_minutes
                            : null;
@@ -791,9 +863,10 @@
         todayActive ? "currently working" : ""
       ) +
       card("period",
+        // formatMinutesAsHm returns "0h 0m" for zero — matches the spec.
         formatMinutesAsHm(periodMin),
         "Period",
-        periodMin === 0 ? "updates after period close" : ""
+        "current pay period"
       ) +
       card("sick",
         sickMin == null ? "—" : formatMinutesAsHm(sickMin),
