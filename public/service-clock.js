@@ -1221,11 +1221,26 @@
         '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-stop" ' +
           'data-action="clock-out" data-assignment-id="' + id + '">Clock Out</button>';
     } else if (state === "dcr_pending") {
+      // V20260614 — Add a tertiary "No DCR Needed" affordance for the
+      // edge cases the product team enumerated: test customers, supply
+      // station/inspection accidental clock-ins, internal admin work,
+      // duplicate-recovery shifts. The button opens a confirmation +
+      // reason picker; the actual waive call goes through the
+      // waiveDcrV1 Cloud Function so the rule layer stays untouched
+      // and the audit fields (dcr_waived_at / by_uid / reason) are
+      // server-stamped.
+      const latestSessionForWaive = latestSessionIdForAssignment(a._id);
       buttonsHtml =
         '<a class="ptc-btn ptc-btn-primary ptc-btn-dcr" href="' + escapeHtml(dcrHref()) + '" ' +
           'data-action="complete-dcr">Complete DCR</a>' +
         '<button type="button" class="ptc-btn ptc-btn-secondary" ' +
-          'data-action="clock-in" data-assignment-id="' + id + '">Resume Work</button>';
+          'data-action="clock-in" data-assignment-id="' + id + '">Resume Work</button>' +
+        '<button type="button" class="ptc-btn ptc-btn-tertiary ptc-btn-no-dcr" ' +
+          'data-action="waive-dcr" ' +
+          'data-assignment-id="' + id + '" ' +
+          'data-session-id="' + escapeHtml(latestSessionForWaive || "") + '">' +
+          'No DCR Needed' +
+        '</button>';
     } else if (state === "paused") {
       buttonsHtml =
         '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-start" ' +
@@ -1629,6 +1644,15 @@
         return;
       }
 
+      // V20260614 — "No DCR Needed" opens the waive-confirmation modal.
+      // Same defer-to-modal pattern as the time-adjustment flow.
+      if (action === "waive-dcr") {
+        const aid = btn.dataset.assignmentId;
+        const sid = btn.dataset.sessionId || "";
+        if (aid) openWaiveDcrModal(aid, sid);
+        return;
+      }
+
       const assignmentId = btn.dataset.assignmentId;
       if (!assignmentId) return;
       if (btn.disabled) return;
@@ -1930,6 +1954,172 @@
     } catch (err) {
       warnSC("submitTimeAdjustment failed", err && err.message);
       showAdjustmentError(overlay, (err && err.message) || "Submit failed.");
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
+  }
+
+  /* ---------- V20260614 — "No DCR Needed" waiver modal ---------- */
+
+  // Reuses .ptc-modal styles installed by ensureTimeAdjustmentStyles().
+  // Reasons map 1:1 to the product spec. "other" reveals a required
+  // free-text textarea so it can't become a silent escape hatch.
+  const WAIVE_DCR_REASONS = [
+    { value: "test_shift",            label: "Test shift" },
+    { value: "duplicate_clock_in",    label: "Duplicate / accidental clock-in" },
+    { value: "internal_work",         label: "Internal work" },
+    { value: "customer_no_dcr",       label: "Customer does not require DCR" },
+    { value: "other",                 label: "Other (specify below)" }
+  ];
+
+  function openWaiveDcrModal(assignmentId, sessionId) {
+    const assignment = assignments.find(function (a) { return a._id === assignmentId; }) || {};
+    // Fallback: when the button was rendered without a session id, find
+    // the most recent completed session on this assignment now.
+    let resolvedSessionId = sessionId;
+    if (!resolvedSessionId) {
+      resolvedSessionId = latestSessionIdForAssignment(assignmentId) || "";
+    }
+    ensureTimeAdjustmentStyles();
+
+    const customerLabel = assignment.customer_name || assignment.customer_id || "this stop";
+    const dateLabel     = assignment.service_date
+      ? formatServiceDateLong(assignment.service_date)
+      : "";
+
+    const reasonOptionsHtml = WAIVE_DCR_REASONS.map(function (r) {
+      return '<option value="' + escapeHtml(r.value) + '">' +
+               escapeHtml(r.label) +
+             '</option>';
+    }).join("");
+
+    const overlay = document.createElement("div");
+    overlay.className = "ptc-modal-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Confirm No DCR Needed");
+    overlay.innerHTML =
+      '<div class="ptc-modal">' +
+        '<div class="ptc-modal-head">' +
+          '<h3>No DCR Needed</h3>' +
+          '<button type="button" class="ptc-modal-close" data-waive-close aria-label="Close">×</button>' +
+        '</div>' +
+        '<div class="ptc-modal-body">' +
+          '<p class="ptc-modal-meta">' +
+            '<strong>This will close the shift without submitting a customer DCR.</strong>' +
+            '<br>Use only when a DCR is not required or would create a duplicate customer report.' +
+          '</p>' +
+          '<div class="ptc-modal-current">' +
+            '<div class="cell"><label>Customer</label><span>' + escapeHtml(customerLabel) + '</span></div>' +
+            (dateLabel
+              ? '<div class="cell"><label>Date</label><span>' + escapeHtml(dateLabel) + '</span></div>'
+              : '') +
+          '</div>' +
+          '<div class="ptc-modal-err" data-waive-err hidden></div>' +
+          '<div class="ptc-modal-field">' +
+            '<label for="waive-dcr-reason">Reason (required)</label>' +
+            '<select id="waive-dcr-reason" data-waive-reason>' +
+              '<option value="">— Pick a reason —</option>' +
+              reasonOptionsHtml +
+            '</select>' +
+          '</div>' +
+          '<div class="ptc-modal-field" data-waive-other-wrap hidden>' +
+            '<label for="waive-dcr-other">Describe the reason (required)</label>' +
+            '<textarea id="waive-dcr-other" data-waive-other maxlength="240" ' +
+              'placeholder="What about this shift means no customer DCR?"></textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ptc-modal-actions">' +
+          '<button type="button" class="ptc-btn ptc-btn-secondary" data-waive-close>Cancel</button>' +
+          '<button type="button" class="ptc-btn ptc-btn-primary" data-waive-submit>Confirm — No DCR Needed</button>' +
+        '</div>' +
+      '</div>';
+
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay) overlay.remove();
+    });
+    overlay.querySelectorAll("[data-waive-close]").forEach(function (btn) {
+      btn.addEventListener("click", function () { overlay.remove(); });
+    });
+
+    const reasonSelect = overlay.querySelector("[data-waive-reason]");
+    const otherWrap    = overlay.querySelector("[data-waive-other-wrap]");
+    reasonSelect.addEventListener("change", function () {
+      otherWrap.hidden = reasonSelect.value !== "other";
+    });
+
+    overlay.querySelector("[data-waive-submit]").addEventListener("click", function () {
+      submitWaiveDcrFromModal(overlay, assignmentId, resolvedSessionId);
+    });
+
+    document.body.appendChild(overlay);
+    setTimeout(function () { reasonSelect.focus(); }, 0);
+  }
+
+  function showWaiveError(overlay, msg) {
+    const el = overlay.querySelector("[data-waive-err]");
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  }
+
+  async function submitWaiveDcrFromModal(overlay, assignmentId, sessionId) {
+    const submitBtn  = overlay.querySelector("[data-waive-submit]");
+    const errEl      = overlay.querySelector("[data-waive-err]");
+    errEl.hidden = true;
+
+    const reasonVal     = overlay.querySelector("[data-waive-reason]").value;
+    const otherDetailEl = overlay.querySelector("[data-waive-other]");
+    const otherDetail   = otherDetailEl ? otherDetailEl.value.trim() : "";
+
+    if (!reasonVal) {
+      showWaiveError(overlay, "Pick a reason from the dropdown.");
+      return;
+    }
+    if (reasonVal === "other" && otherDetail.length < 3) {
+      showWaiveError(overlay, "Describe the reason in the box (3+ characters).");
+      return;
+    }
+
+    const url = (window.WAIVE_DCR_URL || "").trim();
+    if (!url || /REPLACE_WITH/.test(url)) {
+      showWaiveError(overlay, "WAIVE_DCR_URL is not configured. Contact the office.");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = "Waiving…";
+
+    try {
+      const user = firebase.auth().currentUser;
+      if (!user) throw new Error("Not signed in.");
+      const token = await user.getIdToken();
+      const body = {
+        assignment_id:        assignmentId,
+        service_session_id:   sessionId || null,
+        reason_code:          reasonVal,
+        reason_detail:        (reasonVal === "other") ? otherDetail : (otherDetail || null)
+      };
+      const res = await fetch(url, {
+        method:  "POST",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type":  "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json().catch(function () { return {}; });
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || ("Waive failed (HTTP " + res.status + ")."));
+      }
+      overlay.remove();
+      // Refresh so the card reflects the new dcr_status: "waived"
+      // (deriveDisplayState now reads dcrSessionWaiveStatus).
+      await initialLoad();
+    } catch (err) {
+      warnSC("waive-dcr failed", err && err.message);
+      showWaiveError(overlay, (err && err.message) || "Submit failed.");
       submitBtn.disabled = false;
       submitBtn.textContent = originalLabel;
     }

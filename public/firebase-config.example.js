@@ -108,4 +108,11 @@
   // on-demand Customer Economics sync. Daily scheduled sync runs at
   // 07:00 PT without this URL.
   window.REFRESH_FINANCIAL_PULSE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `waiveDcrV1`. POST
+  // { assignment_id, service_session_id, reason_code, reason_detail }
+  // with Firebase Auth bearer token. The signed-in tech / admin marks
+  // the session's dcr_status: "waived" with full audit fields. Used
+  // by /work.html (the "No DCR Needed" button on dcr_pending cards).
+  window.WAIVE_DCR_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
 })();
