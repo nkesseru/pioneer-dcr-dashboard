@@ -6567,6 +6567,252 @@ async function resolveTechIdentityByUid(uid) {
 
 /* --------------- createTimeAdjustmentRequestV1 --------------- */
 
+/* ============================================================================
+   V20260614 — waiveDcrV1
+   POST { assignment_id, service_session_id?, reason_code, reason_detail? }
+
+   Marks a completed pioneer_service_session as DCR-waived. Used by the
+   "No DCR Needed" button on /work.html when a tech / admin needs to
+   close a shift without sending a customer-facing DCR — test shifts,
+   accidental clock-ins, internal work, customers that don't require
+   a DCR.
+
+   Authorization: any signed-in cleaning_tech may waive their OWN
+   session. Admins may waive any session. The role gate matches the
+   spirit of design choice #2 from the planning round (techs can self-
+   serve; every waive is audit-logged and visible to admin).
+
+   Idempotent: re-waiving an already-waived session returns ok with
+   the existing audit. Submitting (a real DCR) and waiving are
+   mutually exclusive: if dcr_submission_id is already set on the
+   session, this endpoint refuses. (Admin can revoke the DCR
+   separately if they need to land here.)
+
+   Writes:
+     pioneer_service_sessions/{sid}:
+       dcr_status                    = "waived"
+       dcr_waived_at                 = serverTimestamp
+       dcr_waived_by_uid             = staff.uid
+       dcr_waived_by_email           = staff.email
+       dcr_waived_reason             = reason_code
+       dcr_waived_reason_detail      = reason_detail (or null)
+       dcr_customer_email_suppressed = true
+       updated_at                    = serverTimestamp
+     service_assignments/{aid} (denormalized convenience for admin view):
+       dcr_waived                    = true
+       dcr_waived_at                 = serverTimestamp
+       dcr_waived_reason             = reason_code
+       dcr_waived_session_id         = sid
+       updated_at                    = serverTimestamp
+
+   Returns:
+     { ok: true,
+       session_id, assignment_id,
+       dcr_status, dcr_waived_reason,
+       already_waived: boolean }
+   ============================================================================ */
+
+const WAIVE_DCR_REASONS = [
+  "test_shift",
+  "duplicate_clock_in",
+  "internal_work",
+  "customer_no_dcr",
+  "other"
+];
+
+exports.waiveDcrV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+
+  const body = req.body || {};
+  const assignmentId   = String(body.assignment_id      || "").trim();
+  const sessionIdInput = String(body.service_session_id || "").trim();
+  const reasonCode     = String(body.reason_code        || "").trim();
+  const reasonDetailIn = body.reason_detail == null
+                          ? ""
+                          : String(body.reason_detail).trim();
+
+  if (!assignmentId) {
+    res.status(400).json({ ok: false, error: "assignment_id is required." });
+    return;
+  }
+  if (WAIVE_DCR_REASONS.indexOf(reasonCode) < 0) {
+    res.status(400).json({
+      ok: false,
+      error: "reason_code must be one of: " + WAIVE_DCR_REASONS.join(", ")
+    });
+    return;
+  }
+  if (reasonCode === "other" && reasonDetailIn.length < 3) {
+    res.status(400).json({
+      ok: false,
+      error: "reason_detail (≥ 3 characters) is required when reason_code is 'other'."
+    });
+    return;
+  }
+  const reasonDetail = reasonDetailIn ? reasonDetailIn.slice(0, 240) : null;
+
+  try {
+    // Resolve the assignment + ownership gate.
+    const assignSnap = await db.collection("service_assignments").doc(assignmentId).get();
+    if (!assignSnap.exists) {
+      res.status(404).json({ ok: false, error: "Assignment not found." });
+      return;
+    }
+    const a = assignSnap.data() || {};
+    const isAdmin = staff.role === "admin";
+    if (!isAdmin && a.staff_uid !== staff.uid) {
+      res.status(403).json({
+        ok: false,
+        error: "You can only waive DCRs on your own assignments."
+      });
+      return;
+    }
+
+    // Resolve the session. Prefer the caller-supplied id; fall back to
+    // the latest completed session for this assignment owned by them.
+    let sessionRef = null;
+    let sessionSnap = null;
+    if (sessionIdInput) {
+      sessionRef = db.collection("pioneer_service_sessions").doc(sessionIdInput);
+      sessionSnap = await sessionRef.get();
+      if (!sessionSnap.exists) {
+        res.status(404).json({ ok: false, error: "Session not found." });
+        return;
+      }
+    } else {
+      const sessionQry = await db.collection("pioneer_service_sessions")
+        .where("assignment_id", "==", assignmentId)
+        .where("staff_uid",     "==", a.staff_uid)
+        .where("status",        "==", "completed")
+        .orderBy("clock_out_at", "desc")
+        .limit(1)
+        .get();
+      if (sessionQry.empty) {
+        res.status(404).json({
+          ok: false,
+          error: "No completed session on this assignment to waive."
+        });
+        return;
+      }
+      sessionRef  = sessionQry.docs[0].ref;
+      sessionSnap = sessionQry.docs[0];
+    }
+    const s = sessionSnap.data() || {};
+
+    // Cross-check: session belongs to the same assignment + owner.
+    if (s.assignment_id !== assignmentId) {
+      res.status(400).json({
+        ok: false,
+        error: "Session does not belong to this assignment."
+      });
+      return;
+    }
+    if (!isAdmin && s.staff_uid !== staff.uid) {
+      res.status(403).json({
+        ok: false,
+        error: "You can only waive DCRs on your own sessions."
+      });
+      return;
+    }
+
+    // Refuse waiving an actively-running session — clock out first.
+    if (s.status === "active") {
+      res.status(409).json({
+        ok: false,
+        error: "Clock out of this session before waiving its DCR."
+      });
+      return;
+    }
+
+    // If a real DCR was already submitted, refuse. Admin can revoke
+    // the DCR via a separate flow if they need to land here.
+    if (s.dcr_submission_id || s.dcr_status === "submitted") {
+      res.status(409).json({
+        ok: false,
+        error: "A DCR was already submitted for this session. Contact admin to revoke before waiving."
+      });
+      return;
+    }
+
+    // Idempotent re-waive — return ok with current audit shape.
+    if (s.dcr_status === "waived") {
+      res.json({
+        ok:                  true,
+        session_id:          sessionRef.id,
+        assignment_id:       assignmentId,
+        dcr_status:          "waived",
+        dcr_waived_reason:   s.dcr_waived_reason || null,
+        already_waived:      true
+      });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const sessionUpdate = {
+      dcr_status:                    "waived",
+      dcr_waived_at:                 sts,
+      dcr_waived_by_uid:             staff.uid,
+      dcr_waived_by_email:           String(staff.email || "").toLowerCase().trim(),
+      dcr_waived_reason:             reasonCode,
+      dcr_waived_reason_detail:      reasonDetail,
+      dcr_customer_email_suppressed: true,
+      updated_at:                    sts
+    };
+    const assignmentUpdate = {
+      dcr_waived:           true,
+      dcr_waived_at:        sts,
+      dcr_waived_reason:    reasonCode,
+      dcr_waived_session_id: sessionRef.id,
+      updated_at:           sts
+    };
+
+    await db.runTransaction(async (tx) => {
+      tx.set(sessionRef, sessionUpdate, { merge: true });
+      tx.set(assignSnap.ref, assignmentUpdate, { merge: true });
+    });
+
+    logger.info("waiveDcrV1 ok", {
+      assignment_id: assignmentId,
+      session_id:    sessionRef.id,
+      reason_code:   reasonCode,
+      by_uid:        staff.uid,
+      by_email:      staff.email,
+      is_admin:      isAdmin
+    });
+
+    res.json({
+      ok:                  true,
+      session_id:          sessionRef.id,
+      assignment_id:       assignmentId,
+      dcr_status:          "waived",
+      dcr_waived_reason:   reasonCode,
+      already_waived:      false
+    });
+  } catch (err) {
+    logger.error("waiveDcrV1 crashed", {
+      error: err && err.message, code: err && err.code,
+      assignment_id: assignmentId
+    });
+    res.status(500).json({ ok: false, error: "waiveDcrV1 crashed: " + (err && err.message) });
+  }
+});
+
 exports.createTimeAdjustmentRequestV1 = onRequest({
   cors:           false,
   timeoutSeconds: 30
