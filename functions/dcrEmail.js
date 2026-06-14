@@ -4530,6 +4530,89 @@ async function sendNativeDcrEmailForSubmission(opts) {
     }
   }
 
+  // ---- 3c. V20260614 — DCR-waiver / email-suppression gate ----
+  // Honors the No-DCR-Needed flow: even if a DCR submission exists
+  // (uncommon but possible — DCR submitted then waived, or two-tech
+  // crossover), refuse to email the customer when the submission OR
+  // its pioneer_service_session carries a waiver/suppression flag.
+  // Three places to check:
+  //   1. dcr.customer_email_suppressed === true     (set explicitly on submission)
+  //   2. dcr.dcr_status === "waived"                (mirror flag if upstream sets it)
+  //   3. session.dcr_status === "waived" OR
+  //      session.dcr_customer_email_suppressed       (the canonical store of waiver state)
+  // forceSend does NOT override these — a waived DCR is a product
+  // decision, not a "didn't send yet" condition.
+  if (dcr.customer_email_suppressed === true) {
+    const reason = "DCR flagged customer_email_suppressed=true on submission — waiver upstream";
+    if (!dryRun) {
+      await recordEmailStatus(db, dcrId, {
+        native_email: {
+          status:      "skipped",
+          reason:      reason,
+          code:        "dcr_waived",
+          customerId:  customerId,
+          invokedBy:   invokedBy,
+          attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+        }
+      }, adminSdk);
+    }
+    return result("skipped", reason, { code: "dcr_waived", customerId: customerId });
+  }
+  if (dcr.dcr_status === "waived") {
+    const reason = "DCR submission carries dcr_status='waived' — email suppressed";
+    if (!dryRun) {
+      await recordEmailStatus(db, dcrId, {
+        native_email: {
+          status:      "skipped",
+          reason:      reason,
+          code:        "dcr_waived",
+          customerId:  customerId,
+          invokedBy:   invokedBy,
+          attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+        }
+      }, adminSdk);
+    }
+    return result("skipped", reason, { code: "dcr_waived", customerId: customerId });
+  }
+  // Cross-check the linked session. pioneer_session_id is the doc id
+  // of pioneer_service_sessions when submitDcrV1 wrote the DCR. Read
+  // it cheaply (doc-id read) so the canonical waiver flag on the
+  // session blocks email regardless of whether anyone wrote a mirror
+  // onto the DCR doc.
+  const linkedSessionId = String(dcr.pioneer_session_id || dcr.service_session_id || "").trim();
+  if (linkedSessionId) {
+    try {
+      const sSnap = await db.collection("pioneer_service_sessions").doc(linkedSessionId).get();
+      if (sSnap.exists) {
+        const s = sSnap.data() || {};
+        if (s.dcr_status === "waived" || s.dcr_customer_email_suppressed === true) {
+          const reason = "pioneer_service_sessions/" + linkedSessionId +
+                         " is dcr_status='waived' (or customer_email_suppressed) — email suppressed";
+          if (!dryRun) {
+            await recordEmailStatus(db, dcrId, {
+              native_email: {
+                status:      "skipped",
+                reason:      reason,
+                code:        "session_dcr_waived",
+                customerId:  customerId,
+                invokedBy:   invokedBy,
+                attemptedAt: adminSdk.firestore.FieldValue.serverTimestamp()
+              }
+            }, adminSdk);
+          }
+          return result("skipped", reason, {
+            code:       "session_dcr_waived",
+            customerId: customerId
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn("[native-email] linked-session waiver lookup failed (non-fatal)", {
+        dcrId: dcrId, sessionId: linkedSessionId, error: err && err.message
+      });
+    }
+  }
+
   // ---- 4. Block on readiness blockers (with already_sent / forceSend logic) ----
   if (!readiness.ready) {
     const firstBlocker = (readiness.blockers && readiness.blockers[0]) || {};
