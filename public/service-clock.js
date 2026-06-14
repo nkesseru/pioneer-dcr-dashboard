@@ -33,6 +33,20 @@
 (function () {
   "use strict";
 
+  // V20260614 — Production triage marker. The /work route loads
+  // service-clock.js (NOT today-work.js — that script tag is commented
+  // out in work.html). Confirms via console which file is rendering
+  // the shift cards. Visible in DevTools immediately on page parse.
+  try {
+    console.log("[PIONEER DEBUG] ACTUAL WORK ROUTE SCRIPT LOADED", {
+      file:           "service-clock.js",
+      build_marker:   "V20260614 — eligibility trace",
+      url:            location.href,
+      search:         location.search,
+      debug_param:    new URLSearchParams(location.search || "").get("debug")
+    });
+  } catch (_e) {}
+
   // Module-load breadcrumb so future debug doesn't have to guess whether
   // the script tag fired. Visible in DevTools console immediately on
   // page parse, before any auth resolution.
@@ -483,6 +497,63 @@
           const raw = snap.docs.map(function (d) {
             return Object.assign({ _id: d.id }, d.data());
           });
+
+          // V20260614 — Per-assignment eligibility trace. Activated only
+          // by ?debug=1 on the URL so it doesn't pollute the console for
+          // ordinary techs. For each assignment we print: id, status,
+          // service_date, available_from/until (raw + tsToMs'd), the
+          // workflow-status & removed_from_ptc gates, and the final
+          // isAvailableNow boolean. Whichever assignment has a "false"
+          // result with the inputs visible IS the answer.
+          const debugTrace = (function () {
+            try { return new URLSearchParams(location.search || "").get("debug") === "1"; }
+            catch (_e) { return false; }
+          })();
+          if (debugTrace) {
+            console.log("[PIONEER DEBUG] service_assignments raw result", {
+              query_filter:    'staff_uid=="' + currentStaff.uid + '" AND service_date BETWEEN "' + lookbackPT + '" AND "' + lookaheadPT + '"',
+              raw_count:       raw.length,
+              raw_ids:         raw.map(function (a) { return a._id; }),
+              now_ms:          nowMs,
+              today_pt:        todayPT,
+              lookback_pt:     lookbackPT,
+              lookahead_pt:    lookaheadPT
+            });
+            function dumpTs(v) {
+              if (!v) return "(null/undef)";
+              if (typeof v === "number") return v + " (ms)";
+              if (v.toMillis) return v.toMillis() + " (ts→ms)";
+              if (v.seconds) return (v.seconds * 1000) + " (s*1000)";
+              return JSON.stringify(v);
+            }
+            raw.forEach(function (a) {
+              const passedRemovedGate =
+                a.removed_from_ptc !== true && a.status !== "admin_removed";
+              let elig = null, eligErr = null;
+              try {
+                elig = (window.PIONEER_ELIGIBILITY && window.PIONEER_ELIGIBILITY.isWorkableNow)
+                  ? window.PIONEER_ELIGIBILITY.isWorkableNow(a, nowMs, todayPT)
+                  : "(PIONEER_ELIGIBILITY missing)";
+              } catch (e) { eligErr = e && e.message; }
+              console.log("[PIONEER DEBUG] assignment trace", {
+                id:                   a._id,
+                customer:             a.customer_slug || a.customer_name || "(none)",
+                service_date:         a.service_date,
+                status:               a.status,
+                removed_from_ptc:     a.removed_from_ptc,
+                allows_flex_start:    a.allows_flex_start,
+                available_from:       dumpTs(a.available_from),
+                available_until:      dumpTs(a.available_until),
+                scheduled_start:      dumpTs(a.scheduled_start || a.start_time),
+                scheduled_end:        dumpTs(a.scheduled_end   || a.end_time),
+                passes_removed_gate:  passedRemovedGate,
+                isAvailableNow_result: elig,
+                eligibility_error:    eligErr,
+                _all_keys:            Object.keys(a).sort()
+              });
+            });
+          }
+
           // Phase 2A.2 — hide admin-removed assignments from the tech's
           // Pioneer Time Clock list. Audit history stays in Firestore
           // (status === "admin_removed", removed_from_ptc === true) and
@@ -493,10 +564,47 @@
             if (a && a.status === "admin_removed") return false;
             return true;
           });
+          if (debugTrace) {
+            console.log("[PIONEER DEBUG] after removed_from_ptc/admin_removed filter", {
+              before_count:  raw.length,
+              after_count:   visible.length,
+              dropped_ids:   raw.filter(function (a) {
+                return (a && a.removed_from_ptc === true) || (a && a.status === "admin_removed");
+              }).map(function (a) { return a._id; })
+            });
+          }
           // Client-filter for the actual availability window.
           assignments = visible.filter(function (a) {
             return isAvailableNow(a, todayPT, nowMs);
           });
+          if (debugTrace) {
+            const droppedByEligibility = visible.filter(function (a) {
+              return !isAvailableNow(a, todayPT, nowMs);
+            });
+            console.log("[PIONEER DEBUG] after isAvailableNow filter (FINAL)", {
+              before_count:           visible.length,
+              after_count:            assignments.length,
+              kept_ids:               assignments.map(function (a) { return a._id; }),
+              dropped_by_eligibility: droppedByEligibility.map(function (a) {
+                return { id: a._id, service_date: a.service_date, status: a.status };
+              })
+            });
+            try {
+              window.__pioneerWorkDebug = {
+                build_marker:        "service-clock.js V20260614",
+                staff_uid:           currentStaff.uid,
+                staff_email:         currentStaff.email,
+                today_pt:            todayPT,
+                now_ms:              nowMs,
+                lookback_pt:         lookbackPT,
+                lookahead_pt:        lookaheadPT,
+                raw_assignments:     raw,
+                after_removed_filter: visible,
+                final_assignments:   assignments
+              };
+              console.log("[PIONEER DEBUG] window.__pioneerWorkDebug populated for inspection");
+            } catch (_e) {}
+          }
           return { ok: true };
         })
         .catch(function (err) {
