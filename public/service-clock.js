@@ -969,12 +969,59 @@
     root.innerHTML = nextStepHtml + assignments.map(assignmentCard).join("");
   }
 
+  // V20260614 — Per-assignment DCR-requirement gate. Returns false when
+  // a customer-facing DCR is NOT expected for this shift. Reasons:
+  //   - assignment.dcr_required === false  (explicit per-assignment override)
+  //   - assignment.no_dcr_required === true (spec-named alias supported
+  //                                          so admin tooling can write
+  //                                          either field name)
+  //   - assignment.work_type in { "supply_station", "inspection",
+  //                               "internal", "test", "admin" }
+  //                                          (typed work that has its
+  //                                          own paper trail or none)
+  //   - assignment.is_test === true        (existing test-shift flag; the
+  //                                          payroll exporter already
+  //                                          honors this)
+  // Default: true (every legacy assignment continues to require DCR).
+  function isDcrRequiredForAssignment(a) {
+    if (!a) return true;
+    if (a.dcr_required === false) return false;
+    if (a.no_dcr_required === true) return false;
+    if (a.is_test === true) return false;
+    const wt = String(a.work_type || "").toLowerCase();
+    if (wt === "supply_station" || wt === "supply-station" ||
+        wt === "inspection" ||
+        wt === "internal" || wt === "admin" || wt === "test") return false;
+    return true;
+  }
+
+  // V20260614 — Returns the latest dcr_status on any session for this
+  // assignment. "waived" is set by waiveDcrV1 server-side. Treated as
+  // terminal for the workflow: a waived shift behaves like a submitted
+  // DCR from the card's perspective (state = "paused"). Used by
+  // deriveDisplayState below.
+  function dcrSessionWaiveStatus(assignmentId) {
+    const list = sessionsByAssignment[assignmentId] || [];
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i] || {};
+      if (s.dcr_status === "waived") return "waived";
+    }
+    return null;
+  }
+
   // Compute live UI state from sessions + DCR status (NOT from
   // assignment.status — admin-managed and may lag).
   // Phase 1c.2 — five clean states: ready / working / paused /
   // dcr_pending / complete (+ missed / canceled terminals).
   // Paused = work done AND DCR submitted (waiting on admin or another cycle).
   // DCR Pending = work done AND no DCR yet (next action is Complete DCR).
+  //
+  // V20260614 — DCR gating extension: when isDcrRequiredForAssignment(a)
+  // is false, OR a session has dcr_status === "waived", a completed
+  // shift skips dcr_pending entirely and lands at "paused" (the same
+  // post-shift resting state a submitted DCR produces). This is what
+  // closes Supply Station / Inspection / test / internal / waived
+  // shifts without the customer-facing "Complete DCR" CTA.
   function deriveDisplayState(a) {
     if (activeSession && activeSession.assignment_id === a._id) return "working";
     if (a.status === "completed") return "complete";
@@ -982,6 +1029,11 @@
     const prior = sessionsByAssignment[a._id] || [];
     const hasCompleted = prior.some(function (s) { return s.status === "completed"; });
     if (hasCompleted) {
+      // Waiver wins: any session marked "waived" makes the card behave
+      // like submitted-DCR regardless of work type.
+      if (dcrSessionWaiveStatus(a._id) === "waived") return "paused";
+      // No-DCR work types skip the dcr_pending state and rest at "paused".
+      if (!isDcrRequiredForAssignment(a)) return "paused";
       const dcr = dcrStatusForAssignment(a._id);
       return (dcr === "submitted") ? "paused" : "dcr_pending";
     }
