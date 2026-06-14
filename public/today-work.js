@@ -419,6 +419,184 @@
     return qs ? ("/?" + qs) : "/";
   }
 
+  // V20260614 — Activated when the URL has ?debug=1 (per user request
+  // during the missing-shifts production investigation). Renders a
+  // fixed-position panel at the bottom of /work.html that dumps every
+  // piece of diagnostic state the page knows about. Also exposes
+  // window.__pioneerDebug for DevTools-driven inspection. Pure UI —
+  // no Firestore writes, no rule changes, no production side effects.
+  function isDebugModeActive() {
+    try { return new URLSearchParams(location.search || "").get("debug") === "1"; }
+    catch (e) { return false; }
+  }
+
+  function escForDebug(v) {
+    if (v === undefined) return "(undefined)";
+    if (v === null) return "(null)";
+    if (typeof v === "string") return v === "" ? '""' : v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    try { return JSON.stringify(v); } catch (e) { return "(unprintable)"; }
+  }
+
+  function paintDebugPanel(d) {
+    if (!d || !d.enabled) return;
+    try {
+      // Make raw data inspectable from DevTools too.
+      window.__pioneerDebug = d;
+    } catch (e) { /* non-fatal */ }
+    const existing = document.getElementById("pioneer-debug-panel");
+    if (existing) existing.remove();
+
+    function row(label, value) {
+      return '<tr><th style="text-align:left;padding:2px 8px 2px 0;vertical-align:top;white-space:nowrap;color:#7c4a03;font-weight:600;">' +
+               escapeHtml(label) +
+             '</th><td style="padding:2px 0;color:#1f2937;word-break:break-all;">' +
+               escapeHtml(escForDebug(value)) +
+             '</td></tr>';
+    }
+
+    function shiftTable(label, shifts) {
+      if (!shifts || shifts.length === 0) {
+        return '<div style="margin:6px 0;color:#92400e;"><strong>' + escapeHtml(label) + ':</strong> 0 shifts</div>';
+      }
+      const headers = ['shift_id', 'employee_email', 'employee_slug', 'employee_display_name', 'status', 'start_time', 'end_time', 'sync_date'];
+      let html = '<details open style="margin:8px 0;border:1px solid #fcd34d;border-radius:6px;background:#fffbeb;">' +
+                 '<summary style="cursor:pointer;padding:6px 10px;font-weight:700;color:#7c4a03;">' +
+                 escapeHtml(label) + ' — ' + shifts.length + ' shift' + (shifts.length === 1 ? '' : 's') +
+                 '</summary>' +
+                 '<div style="overflow-x:auto;padding:8px 10px;">' +
+                 '<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:780px;">' +
+                 '<thead><tr>';
+      headers.forEach(function (h) {
+        html += '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #fcd34d;color:#7c4a03;white-space:nowrap;">' +
+                escapeHtml(h) + '</th>';
+      });
+      html += '</tr></thead><tbody>';
+      shifts.forEach(function (s) {
+        html += '<tr>';
+        headers.forEach(function (h) {
+          let v = s[h];
+          if (v && typeof v === "object") {
+            if (typeof v.toDate === "function") {
+              try { v = v.toDate().toISOString(); } catch (e) { v = "(ts)"; }
+            } else if (typeof v.seconds === "number") {
+              v = new Date(v.seconds * 1000).toISOString();
+            }
+          }
+          html += '<td style="padding:4px 8px;border-bottom:1px solid #fef3c7;color:#1f2937;white-space:nowrap;">' +
+                  escapeHtml(escForDebug(v)) + '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></details>';
+      return html;
+    }
+
+    const panel = document.createElement("aside");
+    panel.id = "pioneer-debug-panel";
+    panel.style.cssText =
+      "position:fixed;bottom:0;left:0;right:0;max-height:60vh;overflow-y:auto;" +
+      "background:#fffbeb;border-top:3px solid #d97706;padding:14px 20px;" +
+      "font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;line-height:1.45;" +
+      "color:#1f2937;z-index:9999;box-shadow:0 -4px 20px rgba(0,0,0,0.15);";
+
+    panel.innerHTML =
+      '<header style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;border-bottom:1px solid #fcd34d;padding-bottom:6px;">' +
+        '<strong style="font-size:13px;color:#7c4a03;">🔧 Team Hub Debug Panel — V20260614</strong>' +
+        '<div>' +
+          '<button id="pioneer-debug-broad-scan" type="button" style="margin-right:8px;padding:4px 10px;background:#d97706;color:#fff;border:0;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;">Run broad cache scan (no email/slug filter)</button>' +
+          '<button id="pioneer-debug-close" type="button" style="padding:4px 10px;background:#fff;color:#7c4a03;border:1px solid #d97706;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;">close</button>' +
+        '</div>' +
+      '</header>' +
+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-bottom:10px;">' +
+        '<div>' +
+          '<div style="font-weight:700;color:#7c4a03;margin-bottom:4px;">Auth + Date</div>' +
+          '<table style="font-size:11px;width:100%;">' +
+            row("signed_in_auth_email", d.auth_email) +
+            row("auth_uid", d.auth_uid) +
+            row("role", d.role) +
+            row("tech_slug (cleaning_techs id)", d.tech_slug) +
+            row("tech_display_name", d.tech_display_name) +
+            row("selected_work_date (queryDate)", d.query_date) +
+            row("is_admin_view (rule bypass)", d.is_admin_view) +
+            row("is_date_override (?work_date=…)", d.is_date_override) +
+            row("today_pacific", d.today_pacific) +
+          '</table>' +
+        '</div>' +
+        '<div>' +
+          '<div style="font-weight:700;color:#7c4a03;margin-bottom:4px;">Query Results</div>' +
+          '<table style="font-size:11px;width:100%;">' +
+            row("email_query.filter", d.email_query ? d.email_query.filter : "(not run)") +
+            row("email_query.count_returned", d.email_query ? d.email_query.count : "(not run)") +
+            row("email_query.shift_ids", d.email_query ? d.email_query.shift_ids : "(not run)") +
+            row("slug_query.filter", d.slug_query ? d.slug_query.filter : "(skipped — no slug)") +
+            row("slug_query.count_returned", d.slug_query ? d.slug_query.count : "(skipped)") +
+            row("slug_query.shift_ids", d.slug_query ? d.slug_query.shift_ids : "(skipped)") +
+            row("name_fallback.ran?", d.name_fallback_query ? "yes" : "no (skipped — primary returned data)") +
+            row("name_fallback.count", d.name_fallback_query ? d.name_fallback_query.count : "(not run)") +
+            row("merged_count_before_cancelled_filter", d.pre_cancelled_count) +
+            row("cancelled_filter.dropped_count", d.cancelled_filter ? d.cancelled_filter.dropped_count : 0) +
+            row("cancelled_filter.dropped_ids+reasons", d.cancelled_filter ? d.cancelled_filter.dropped : []) +
+            row("final_visible_count (rendered)", d.final_visible_count) +
+            row("final_visible_ids", d.final_visible_ids) +
+          '</table>' +
+        '</div>' +
+      '</div>' +
+
+      (d.email_query ? shiftTable("Email-query shifts (rule arm: employee_email == auth.email)", d.email_query.shifts) : '') +
+      (d.slug_query ? shiftTable("Slug-query shifts (rule arm: cleaning_techs/{slug}.email == auth.email)", d.slug_query.shifts) : '') +
+      (d.name_fallback_query ? shiftTable("Name-fallback shifts (where employee_display_name)", d.name_fallback_query.shifts) : '') +
+
+      '<div id="pioneer-debug-broad-result" style="margin-top:12px;"></div>' +
+
+      '<div style="margin-top:10px;font-size:10.5px;color:#92400e;font-style:italic;">' +
+        'Source compare: Team Hub Today\'s Work reads deputy_shift_cache (synced from Deputy every 10 min by syncDeputyShiftsV1). ' +
+        'Schedule SMS is sent by admin via sendTwilioMessageV1 — there is no automated schedule SMS in this codebase. ' +
+        'If SMS shows shifts not in any of the above tables, those shifts are NOT in deputy_shift_cache for this date — either sync gap or wrong date.' +
+      '</div>';
+
+    document.body.appendChild(panel);
+
+    const closeBtn = document.getElementById("pioneer-debug-close");
+    if (closeBtn) closeBtn.addEventListener("click", function () { panel.remove(); });
+
+    const broadBtn = document.getElementById("pioneer-debug-broad-scan");
+    const broadResult = document.getElementById("pioneer-debug-broad-result");
+    if (broadBtn && broadResult) {
+      broadBtn.addEventListener("click", async function () {
+        broadBtn.disabled = true;
+        broadBtn.textContent = "Scanning…";
+        broadResult.innerHTML = '<div style="color:#7c4a03;">Running query: where("sync_date", "==", "' + d.query_date + '") with NO email/slug filter…</div>';
+        try {
+          const fbDb = firebase.firestore();
+          const broadSnap = await fbDb.collection("deputy_shift_cache")
+            .where("sync_date", "==", d.query_date)
+            .get();
+          const broadShifts = broadSnap.docs.map(function (doc) {
+            return Object.assign({ id: doc.id }, doc.data());
+          });
+          window.__pioneerDebug.broad_scan = {
+            ran_at:        new Date().toISOString(),
+            doc_count:     broadShifts.length,
+            shift_ids:     broadShifts.map(function (s) { return String(s.shift_id || s.id); }),
+            shifts:        broadShifts
+          };
+          broadResult.innerHTML =
+            '<div style="font-weight:700;color:#7c4a03;margin-bottom:4px;">Broad cache scan result — ' + broadShifts.length + ' doc' + (broadShifts.length === 1 ? '' : 's') + ' (filtered by rules — admin sees all, tech sees their own per rule arms)</div>' +
+            shiftTable("Broad scan: where(sync_date == \"" + d.query_date + "\")", broadShifts);
+          broadBtn.textContent = "Re-run broad cache scan";
+          broadBtn.disabled = false;
+        } catch (err) {
+          broadResult.innerHTML =
+            '<div style="color:#b91c1c;padding:8px;background:#fee2e2;border-radius:4px;"><strong>Broad scan failed:</strong> ' + escapeHtml(String(err && err.code || "")) + ' — ' + escapeHtml(String(err && err.message || err)) + '</div>';
+          broadBtn.textContent = "Retry broad cache scan";
+          broadBtn.disabled = false;
+        }
+      });
+    }
+  }
+
   // Pre-fill a mailto: to the office with the shift context so a tech
   // who notices wrong timestamps after clock-out can request an
   // adjustment in one tap without re-typing the shift's metadata.
@@ -1935,6 +2113,33 @@
     });
 
     let rulesError = null;     // set in the catch below if the snap fails
+
+    // V20260614 — Debug-mode state capture. Activated by ?debug=1.
+    // Filled inline as queries run; rendered as a fixed-position panel
+    // at the end of init() via paintDebugPanel(). Also exposed at
+    // window.__pioneerDebug for DevTools inspection.
+    const debugMode = isDebugModeActive();
+    const diagnostics = {
+      enabled:                debugMode,
+      build_marker:           "today-work.js V20260614 — parallel email+slug query + debug panel",
+      auth_email:             email,
+      auth_uid:               (staff && staff.uid) || "(none)",
+      role:                   (staff && staff.role) || "(unknown)",
+      tech_slug:              "",  // filled after techSlugForFallback is computed
+      tech_display_name:      (staff && staff.tech && staff.tech.display_name) || "(none)",
+      query_date:             queryDate,
+      is_admin_view:          workIsAdmin,
+      is_date_override:       !!(dateRes && dateRes.isOverride),
+      today_pacific:          deputyTodayPT(),
+      email_query:            null,
+      slug_query:             null,
+      name_fallback_query:    null,
+      pre_cancelled_count:    0,
+      cancelled_filter:       { dropped_count: 0, dropped: [] },
+      final_visible_count:    0,
+      final_visible_ids:      []
+    };
+
     try {
       const db = firebase.firestore();
 
@@ -1996,6 +2201,25 @@
       });
       let shifts = Object.keys(dedupedById).map(function (k) { return dedupedById[k]; });
 
+      // Capture parallel-query diagnostics for the debug panel.
+      diagnostics.tech_slug = techSlugForFallback || "(none)";
+      diagnostics.email_query = {
+        filter: workIsAdmin
+                  ? 'where("sync_date","==","' + queryDate + '")  (admin — no email filter)'
+                  : 'where("sync_date","==","' + queryDate + '").where("employee_email","==","' + email + '")',
+        count: emailDocs.length,
+        shift_ids: emailDocs.map(function (s) { return String(s.shift_id || s.id); }),
+        shifts: emailDocs
+      };
+      if (techSlugForFallback) {
+        diagnostics.slug_query = {
+          filter: 'where("sync_date","==","' + queryDate + '").where("employee_slug","==","' + techSlugForFallback + '")',
+          count: slugDocs.length,
+          shift_ids: slugDocs.map(function (s) { return String(s.shift_id || s.id); }),
+          shifts: slugDocs
+        };
+      }
+
       logTodayWork("primary parallel query → deputy_shift_cache", {
         collection:           "deputy_shift_cache",
         where_sync_date_eq:   queryDate,
@@ -2046,11 +2270,27 @@
           if (fallbackShifts.length > 0) {
             logTodayWork("display_name fallback matched", { count: fallbackShifts.length });
             shifts = fallbackShifts;
+            diagnostics.name_fallback_query = {
+              filter: 'where("sync_date","==","' + queryDate + '").where("employee_display_name","==","' + staff.tech.display_name + '")',
+              count: fallbackShifts.length,
+              shift_ids: fallbackShifts.map(function (s) { return String(s.shift_id || s.id); }),
+              shifts: fallbackShifts
+            };
+          } else {
+            diagnostics.name_fallback_query = {
+              filter: 'where("sync_date","==","' + queryDate + '").where("employee_display_name","==","' + staff.tech.display_name + '")',
+              count: 0,
+              shift_ids: [],
+              shifts: []
+            };
           }
         } catch (err) {
           warnTodayWork("display_name fallback query failed", { code: err && err.code });
+          diagnostics.name_fallback_query = { error: String(err && err.code || err) };
         }
       }
+
+      diagnostics.pre_cancelled_count = shifts.length;
 
       // Walk every shift and record WHY it survived or got dropped.
       // Pilot v20260526-shiftrestore — the user explicitly required
@@ -2068,6 +2308,9 @@
         return true;
       });
       const cancelledCount = shifts.length - visible.length;
+      diagnostics.cancelled_filter = { dropped_count: cancelledCount, dropped: rejected };
+      diagnostics.final_visible_count = visible.length;
+      diagnostics.final_visible_ids = visible.map(function (s) { return String(s.shift_id || s.id); });
 
       logTodayWork("filter result", {
         raw_shifts:        shifts.length,
@@ -2154,6 +2397,11 @@
       }
 
       renderWorkCards();
+
+      // V20260614 — Debug panel (activated by ?debug=1). Renders a
+      // fixed-position overlay at the bottom of the page with every
+      // diagnostic state value collected above.
+      paintDebugPanel(diagnostics);
 
       // Golden-path auto-finish handoff from the DCR success card.
       //   /work.html?finishSession=<deputy_shift_id>
