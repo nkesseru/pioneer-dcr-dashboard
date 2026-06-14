@@ -461,10 +461,20 @@
         displayName: user.displayName || (cached && cached.display_name) || ""
       };
       logSC("staff resolved via firebase.auth", { uid: currentStaff.uid, email: currentStaff.email });
-      initialLoad().catch(function (err) {
-        warnSC("initial load failed", err && err.message);
-        renderFatalError(err);
-      });
+      // V20260614 — Process any inbound finishPioneerSession=<id>
+      // before initialLoad so the subsequent assignment + session
+      // queries see the written-through status. Errors are swallowed
+      // inside the helper — the regular load must still proceed.
+      maybeAutoFinishPioneerServiceSessionFromUrl()
+        .catch(function (err) {
+          warnSC("auto-finish pre-load failed", err && err.message);
+        })
+        .then(function () {
+          return initialLoad().catch(function (err) {
+            warnSC("initial load failed", err && err.message);
+            renderFatalError(err);
+          });
+        });
     });
   }
 
@@ -1018,10 +1028,26 @@
   //
   // V20260614 — DCR gating extension: when isDcrRequiredForAssignment(a)
   // is false, OR a session has dcr_status === "waived", a completed
-  // shift skips dcr_pending entirely and lands at "paused" (the same
-  // post-shift resting state a submitted DCR produces). This is what
+  // shift skips dcr_pending entirely and lands at "complete" (the same
+  // terminal resting state a submitted DCR produces). This is what
   // closes Supply Station / Inspection / test / internal / waived
   // shifts without the customer-facing "Complete DCR" CTA.
+  //
+  // V20260614b — "complete" promotion. Previously a completed session
+  // with a resolved DCR rested at "paused", waiting for an admin to
+  // write service_assignments.status === "completed" before the card
+  // would ever show the green Complete chip. Nothing in production
+  // exercised that admin write, so every finished shift stuck on the
+  // paused UI forever. We now promote to "complete" directly when:
+  //   • a completed pioneer_service_session exists for this assignment,
+  //     AND
+  //   • the DCR is resolved — submitted, waived, OR not required for
+  //     this work type.
+  // This is the data-true "next stop unblocked" state — buttons go away
+  // (the renderer skips actions for "complete"), the Period card adds
+  // the hours, and multi-shift blocking releases because activeSession
+  // is null. Admin can still set service_assignments.status="completed"
+  // to lock the card out independently.
   function deriveDisplayState(a) {
     if (activeSession && activeSession.assignment_id === a._id) return "working";
     if (a.status === "completed") return "complete";
@@ -1029,13 +1055,13 @@
     const prior = sessionsByAssignment[a._id] || [];
     const hasCompleted = prior.some(function (s) { return s.status === "completed"; });
     if (hasCompleted) {
-      // Waiver wins: any session marked "waived" makes the card behave
-      // like submitted-DCR regardless of work type.
-      if (dcrSessionWaiveStatus(a._id) === "waived") return "paused";
-      // No-DCR work types skip the dcr_pending state and rest at "paused".
-      if (!isDcrRequiredForAssignment(a)) return "paused";
-      const dcr = dcrStatusForAssignment(a._id);
-      return (dcr === "submitted") ? "paused" : "dcr_pending";
+      const dcr        = dcrStatusForAssignment(a._id);
+      const isWaived   = dcrSessionWaiveStatus(a._id) === "waived";
+      const dcrNotReq  = !isDcrRequiredForAssignment(a);
+      const dcrSubmd   = dcr === "submitted";
+      const dcrResolved = isWaived || dcrSubmd || dcrNotReq;
+      if (dcrResolved) return "complete";
+      return "dcr_pending";
     }
     return "ready";
   }
@@ -1513,6 +1539,54 @@
   }
 
   /* ---------- clock-out transaction ---------- */
+
+  // V20260614 — "Finish Work in PioneerOps" auto-handler. The DCR
+  // success card on /index.html navigates here with
+  //   /work.html?finishPioneerSession=<sid>&finishPioneerAssignment=<aid>
+  // when the DCR was launched from a Pioneer Time Clock card.
+  // We:
+  //   1. Strip the params from the URL (so a render-triggered reload
+  //      doesn't re-fire this handler — same pattern as
+  //      today-work.js's Deputy bridge auto-finish).
+  //   2. Set pioneer_service_sessions/{sid}.status = "completed" + a
+  //      completed_at / finished_at server timestamp pair. Idempotent
+  //      — clockOut already set status="completed" + clock_out_at;
+  //      this adds the explicit finished_at intent stamp so admin
+  //      audits can distinguish "tech clocked out" from "tech
+  //      confirmed the shift is fully done".
+  // The subsequent initialLoad reads the updated session and
+  // deriveDisplayState renders "complete" (now that the DCR is
+  // submitted upstream).
+  async function maybeAutoFinishPioneerServiceSessionFromUrl() {
+    try {
+      const qs  = new URLSearchParams(location.search || "");
+      const sid = String(qs.get("finishPioneerSession") || "").trim();
+      if (!sid) return;
+      qs.delete("finishPioneerSession");
+      qs.delete("finishPioneerAssignment");
+      const newQs  = qs.toString();
+      const newUrl = location.pathname + (newQs ? "?" + newQs : "") + (location.hash || "");
+      try { history.replaceState(history.state, "", newUrl); } catch (_e) {}
+      if (!window.firebase || typeof firebase.firestore !== "function") {
+        warnSC("auto-finish: firebase not ready; skipping pioneer session write", { sid: sid });
+        return;
+      }
+      const db  = firebase.firestore();
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("pioneer_service_sessions").doc(sid).set({
+        status:       "completed",
+        completed_at: sts,
+        finished_at:  sts,
+        updated_at:   sts
+      }, { merge: true });
+      logSC("auto-finish: pioneer service session marked completed via Finish Work URL", { sid: sid });
+    } catch (e) {
+      warnSC("auto-finish: pioneer service session write failed (non-fatal)", {
+        message: e && e.message,
+        code:    e && e.code
+      });
+    }
+  }
 
   async function clockOut(assignmentId) {
     if (!activeSession || activeSession.assignment_id !== assignmentId) {
