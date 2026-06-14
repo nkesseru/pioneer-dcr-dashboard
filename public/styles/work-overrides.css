@@ -585,6 +585,71 @@
   color: var(--text-muted, #555);
 }
 
+/* V20260614 — Multi-shift: helper text under a disabled Start button
+   that explains why the tech can't start this shift right now. Soft
+   contrast so it informs without screaming. */
+.ptc-card-blocked-msg {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.45;
+}
+
+/* V20260614 — Multi-shift: completion summary block on cards whose
+   shift has been clocked out. Replaces the old "no button — chip
+   says it all" treatment with explicit clocked-out time, total time,
+   and DCR status so a finished shift is unmistakable in a long list. */
+.ptc-completion-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 8px;
+  padding: 12px 14px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+}
+.ptc-completion-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #047857;
+  letter-spacing: 0.2px;
+}
+.ptc-completion-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12.5px;
+  color: #166534;
+}
+.ptc-completion-grid > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ptc-completion-label {
+  color: var(--text-muted, #6b7280);
+  font-weight: 600;
+}
+.ptc-completion-grid strong {
+  color: #064e3b;
+  font-weight: 700;
+}
+.ptc-dcr-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ptc-dcr-pill.is-ok   { background: #d1fae5; color: #065f46; }
+.ptc-dcr-pill.is-warn { background: #fef3c7; color: #92400e; }
+
 /* State chip palette — five live (ready/working/paused/dcr/complete)
    + two terminal (missed/canceled). */
 .ptc-status-chip {

@@ -33,14 +33,14 @@
 (function () {
   "use strict";
 
-  // V20260614 — Production triage marker. The /work route loads
-  // service-clock.js (NOT today-work.js — that script tag is commented
-  // out in work.html). Confirms via console which file is rendering
-  // the shift cards. Visible in DevTools immediately on page parse.
+  // V20260614 — Production marker. The /work route loads
+  // service-clock.js (today-work.js is commented out in work.html).
+  // The multi-shift build removes the isAvailableNow() filter so every
+  // assigned stop for the day is visible regardless of window state.
   try {
-    console.log("[PIONEER DEBUG] ACTUAL WORK ROUTE SCRIPT LOADED", {
+    console.log("[PIONEER DEBUG] SERVICE CLOCK MULTI-SHIFT BUILD ACTIVE", {
       file:           "service-clock.js",
-      build_marker:   "V20260614 — eligibility trace",
+      build_marker:   "V20260614-multishift — visibility is day-based, not time-window-based",
       url:            location.href,
       search:         location.search,
       debug_param:    new URLSearchParams(location.search || "").get("debug")
@@ -498,18 +498,83 @@
             return Object.assign({ _id: d.id }, d.data());
           });
 
-          // V20260614 — Per-assignment eligibility trace. Activated only
-          // by ?debug=1 on the URL so it doesn't pollute the console for
-          // ordinary techs. For each assignment we print: id, status,
-          // service_date, available_from/until (raw + tsToMs'd), the
-          // workflow-status & removed_from_ptc gates, and the final
-          // isAvailableNow boolean. Whichever assignment has a "false"
-          // result with the inputs visible IS the answer.
+          // V20260614 — Multi-shift visibility. Show every assignment
+          // for the workday whose document isn't structurally invalid.
+          // Removed: the prior isAvailableNow() filter that hid future
+          // shifts whose available_from > now. Pioneer policy is
+          // flex-order cleaning — techs may complete stops in any
+          // order — so visibility is day-based, not time-window-based.
+          // Eligibility is no longer a visibility gate; it could be a
+          // button-enable hint in the future if desired.
+          //
+          // "Truly invalid" = removed_from_ptc, admin_removed, or any
+          // cancellation/deletion status.
+          const TERMINAL_INVALID_STATUSES = {
+            "admin_removed":       1,
+            "cancelled":           1,
+            "canceled":            1,
+            "canceled_by_deputy":  1,
+            "deleted":             1
+          };
+          const excludedAssignments = [];
+          const visible = raw.filter(function (a) {
+            if (!a) {
+              excludedAssignments.push({ id: "(null doc)", reason: "null assignment" });
+              return false;
+            }
+            if (a.removed_from_ptc === true) {
+              excludedAssignments.push({ id: a._id, reason: "removed_from_ptc=true" });
+              return false;
+            }
+            const s = String(a.status || "").toLowerCase();
+            if (TERMINAL_INVALID_STATUSES[s]) {
+              excludedAssignments.push({ id: a._id, reason: "status=" + s });
+              return false;
+            }
+            return true;
+          });
+
+          // Sort by scheduled start time, ascending. Prefer
+          // service_window_start (timestamp), then scheduled_start,
+          // then service_date + "00:00" fallback. Stable so two stops
+          // with the same start time keep their Firestore order.
+          function startMs(a) {
+            const t = a.service_window_start || a.scheduled_start || a.start_time;
+            if (t && typeof t.toMillis === "function") return t.toMillis();
+            if (t && typeof t.seconds === "number")    return t.seconds * 1000;
+            if (typeof t === "number")                 return t;
+            if (typeof t === "string") {
+              const p = Date.parse(t);
+              if (!isNaN(p)) return p;
+            }
+            if (a.service_date) {
+              const p2 = Date.parse(a.service_date + "T00:00:00");
+              if (!isNaN(p2)) return p2;
+            }
+            return Number.MAX_SAFE_INTEGER;
+          }
+          visible.sort(function (a, b) {
+            const ma = startMs(a), mb = startMs(b);
+            return ma - mb;
+          });
+
+          // Hand the whole day's list to render. NO isAvailableNow
+          // filter. The active-session check inside assignmentCard
+          // drives button enable/disable; visibility is day-based.
+          assignments = visible;
+
           const debugTrace = (function () {
             try { return new URLSearchParams(location.search || "").get("debug") === "1"; }
             catch (_e) { return false; }
           })();
           if (debugTrace) {
+            function dumpTs(v) {
+              if (!v) return "(null/undef)";
+              if (typeof v === "number") return v + " (ms)";
+              if (v.toMillis) return v.toMillis() + " (ts→ms)";
+              if (v.seconds) return (v.seconds * 1000) + " (s*1000)";
+              return JSON.stringify(v);
+            }
             console.log("[PIONEER DEBUG] service_assignments raw result", {
               query_filter:    'staff_uid=="' + currentStaff.uid + '" AND service_date BETWEEN "' + lookbackPT + '" AND "' + lookaheadPT + '"',
               raw_count:       raw.length,
@@ -519,79 +584,28 @@
               lookback_pt:     lookbackPT,
               lookahead_pt:    lookaheadPT
             });
-            function dumpTs(v) {
-              if (!v) return "(null/undef)";
-              if (typeof v === "number") return v + " (ms)";
-              if (v.toMillis) return v.toMillis() + " (ts→ms)";
-              if (v.seconds) return (v.seconds * 1000) + " (s*1000)";
-              return JSON.stringify(v);
-            }
-            raw.forEach(function (a) {
-              const passedRemovedGate =
-                a.removed_from_ptc !== true && a.status !== "admin_removed";
-              let elig = null, eligErr = null;
-              try {
-                elig = (window.PIONEER_ELIGIBILITY && window.PIONEER_ELIGIBILITY.isWorkableNow)
-                  ? window.PIONEER_ELIGIBILITY.isWorkableNow(a, nowMs, todayPT)
-                  : "(PIONEER_ELIGIBILITY missing)";
-              } catch (e) { eligErr = e && e.message; }
-              console.log("[PIONEER DEBUG] assignment trace", {
-                id:                   a._id,
-                customer:             a.customer_slug || a.customer_name || "(none)",
-                service_date:         a.service_date,
-                status:               a.status,
-                removed_from_ptc:     a.removed_from_ptc,
-                allows_flex_start:    a.allows_flex_start,
-                available_from:       dumpTs(a.available_from),
-                available_until:      dumpTs(a.available_until),
-                scheduled_start:      dumpTs(a.scheduled_start || a.start_time),
-                scheduled_end:        dumpTs(a.scheduled_end   || a.end_time),
-                passes_removed_gate:  passedRemovedGate,
-                isAvailableNow_result: elig,
-                eligibility_error:    eligErr,
-                _all_keys:            Object.keys(a).sort()
-              });
-            });
-          }
-
-          // Phase 2A.2 — hide admin-removed assignments from the tech's
-          // Pioneer Time Clock list. Audit history stays in Firestore
-          // (status === "admin_removed", removed_from_ptc === true) and
-          // remains visible in admin Labor Review with a "Removed from
-          // PTC" chip.
-          const visible = raw.filter(function (a) {
-            if (a && a.removed_from_ptc === true) return false;
-            if (a && a.status === "admin_removed") return false;
-            return true;
-          });
-          if (debugTrace) {
-            console.log("[PIONEER DEBUG] after removed_from_ptc/admin_removed filter", {
-              before_count:  raw.length,
-              after_count:   visible.length,
-              dropped_ids:   raw.filter(function (a) {
-                return (a && a.removed_from_ptc === true) || (a && a.status === "admin_removed");
-              }).map(function (a) { return a._id; })
-            });
-          }
-          // Client-filter for the actual availability window.
-          assignments = visible.filter(function (a) {
-            return isAvailableNow(a, todayPT, nowMs);
-          });
-          if (debugTrace) {
-            const droppedByEligibility = visible.filter(function (a) {
-              return !isAvailableNow(a, todayPT, nowMs);
-            });
-            console.log("[PIONEER DEBUG] after isAvailableNow filter (FINAL)", {
-              before_count:           visible.length,
-              after_count:            assignments.length,
-              kept_ids:               assignments.map(function (a) { return a._id; }),
-              dropped_by_eligibility: droppedByEligibility.map(function (a) {
-                return { id: a._id, service_date: a.service_date, status: a.status };
+            console.log("[PIONEER DEBUG] visible after structural-invalid filter (rendered list)", {
+              raw_count:           raw.length,
+              visible_day_count:   visible.length,
+              rendered_count:      assignments.length,
+              excluded_assignments: excludedAssignments,
+              rendered_in_order:   assignments.map(function (a) {
+                return {
+                  id:                a._id,
+                  customer:          a.customer_name || a.customer_id,
+                  service_date:      a.service_date,
+                  status:            a.status,
+                  scheduled_start:   dumpTs(a.service_window_start || a.scheduled_start || a.start_time),
+                  scheduled_end:     dumpTs(a.service_deadline    || a.scheduled_end   || a.end_time),
+                  isAvailableNow:    (window.PIONEER_ELIGIBILITY && window.PIONEER_ELIGIBILITY.isWorkableNow)
+                                       ? window.PIONEER_ELIGIBILITY.isWorkableNow(a, nowMs, todayPT)
+                                       : null
+                };
               })
             });
             try {
               window.__pioneerWorkDebug = {
-                build_marker:        "service-clock.js V20260614",
+                build_marker:        "service-clock.js V20260614-multishift",
                 staff_uid:           currentStaff.uid,
                 staff_email:         currentStaff.email,
                 today_pt:            todayPT,
@@ -599,8 +613,9 @@
                 lookback_pt:         lookbackPT,
                 lookahead_pt:        lookaheadPT,
                 raw_assignments:     raw,
-                after_removed_filter: visible,
-                final_assignments:   assignments
+                excluded_assignments: excludedAssignments,
+                rendered_assignments: assignments,
+                active_assignment_id: null   // populated after activeSession resolves
               };
               console.log("[PIONEER DEBUG] window.__pioneerWorkDebug populated for inspection");
             } catch (_e) {}
@@ -673,6 +688,24 @@
       }
       return;
     }
+
+    // V20260614 — final pre-render debug summary (with activeSession
+    // now resolved). Activated only by ?debug=1.
+    try {
+      const debugTrace = new URLSearchParams(location.search || "").get("debug") === "1";
+      if (debugTrace) {
+        if (window.__pioneerWorkDebug) {
+          window.__pioneerWorkDebug.active_assignment_id =
+            (activeSession && activeSession.assignment_id) || null;
+        }
+        console.log("[PIONEER DEBUG] pre-render summary", {
+          rendered_count:        assignments.length,
+          rendered_ids:          assignments.map(function (a) { return a._id; }),
+          active_assignment_id:  (activeSession && activeSession.assignment_id) || null,
+          will_block_others:     !!(activeSession && activeSession.assignment_id)
+        });
+      }
+    } catch (_e) {}
 
     // Phase 1c.1 — Hero greeting card + 4 stat cards above the
     // assignment list. The hero takes over the section's identity
@@ -1009,6 +1042,41 @@
         escapeHtml(formatTimeShort(activeSession.clock_in_at)) + '</p>';
     }
 
+    // ---- Completion summary (state === "complete") ----
+    // V20260614 — Multi-shift: explicit "✅ Shift Completed" with
+    // clocked-out time + DCR status so a finished shift can never be
+    // mistaken for a ready one in a long list of stops.
+    let completionSummaryHtml = '';
+    if (state === "complete") {
+      const lastSession = latestCompletedSessionForAssignment(a._id);
+      const clockOutTime = lastSession && lastSession.clock_out_at
+        ? formatTimeShort(lastSession.clock_out_at)
+        : "";
+      const dcrStat = dcrStatusForAssignment(a._id);
+      const dcrLabel = dcrStat === "submitted"
+        ? '<span class="ptc-dcr-pill is-ok">DCR submitted</span>'
+        : dcrStat === "pending"
+          ? '<span class="ptc-dcr-pill is-warn">DCR pending</span>'
+          : '<span class="ptc-dcr-pill is-warn">DCR missing</span>';
+      completionSummaryHtml =
+        '<div class="ptc-completion-summary">' +
+          '<div class="ptc-completion-banner">' +
+            '<span aria-hidden="true">✅</span> Shift Completed' +
+          '</div>' +
+          '<div class="ptc-completion-grid">' +
+            (clockOutTime
+              ? '<div><span class="ptc-completion-label">Clocked out at</span> ' +
+                  '<strong>' + escapeHtml(clockOutTime) + '</strong>' +
+                '</div>'
+              : '') +
+            '<div><span class="ptc-completion-label">Total time</span> ' +
+              '<strong>' + escapeHtml(formatMinutesAsHm(workedMin)) + '</strong>' +
+            '</div>' +
+            '<div>' + dcrLabel + '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
     // ---- Buttons. One primary CTA per state; Complete DCR escalates
     // to primary in dcr_pending. Secondary actions stack below. ----
     const latestSession = latestSessionIdForAssignment(a._id);
@@ -1043,14 +1111,21 @@
     } else if (state === "missed" || state === "canceled") {
       buttonsHtml = '';
     } else if (blockedByOther) {
+      // V20260614 — Multi-shift: all not-started shifts stay visible
+      // while one is active. The Start button is rendered disabled
+      // with the friendly explanation right under it so the tech
+      // never wonders why it won't respond.
       buttonsHtml =
         '<button type="button" class="ptc-btn ptc-btn-disabled" disabled ' +
-          'title="You are already clocked into another stop">Clocked into another stop</button>';
+          'aria-disabled="true">Start This Shift</button>' +
+        '<p class="ptc-card-blocked-msg">' +
+          'Clock out of your current shift before starting another.' +
+        '</p>';
     } else {
       // ready
       buttonsHtml =
         '<button type="button" class="ptc-btn ptc-btn-primary ptc-btn-start" ' +
-          'data-action="clock-in" data-assignment-id="' + id + '">Clock In</button>';
+          'data-action="clock-in" data-assignment-id="' + id + '">Start This Shift</button>';
     }
 
     // Phase 29 — Request Time Adjustment. Available once a session for this
@@ -1086,6 +1161,7 @@
         scoreHtml +
         progressHtml +
         liveHtml +
+        completionSummaryHtml +
         (buttonsHtml
           ? '<div class="ptc-card-actions">' + buttonsHtml + '</div>'
           : '') +
