@@ -2817,42 +2817,61 @@
     // hand-off (pioneer_assignment_id). Both flows can coexist on the
     // same DCR (uncommon today; future cross-link). When only Pioneer
     // is present, hide the Deputy-specific buttons.
-    const deputySessionId      = (deputyShiftParams && String(deputyShiftParams.pioneer_session_id || "").trim()) || "";
-    const pioneerAssignmentId  = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_assignment_id || "").trim()) || "";
+    const deputySessionId          = (deputyShiftParams      && String(deputyShiftParams.pioneer_session_id              || "").trim()) || "";
+    const pioneerAssignmentId      = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_assignment_id     || "").trim()) || "";
+    // V20260614 — Pioneer Time Clock session id from the DCR open URL.
+    // service-clock.js's dcrHref() sets this whenever the DCR was
+    // launched from a Pioneer Time Clock card. We pass it through to
+    // /work.html so the auto-finish handler can mark the session
+    // status: "completed" on the Pioneer side, not just the Deputy
+    // bridge.
+    const pioneerServiceSessionId  = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_service_session_id || "").trim()) || "";
     const finalStep = document.getElementById("success-final-step");
     const noSession = document.getElementById("success-no-session");
     if (deputySessionId || pioneerAssignmentId) {
       if (finalStep) finalStep.hidden = false;
       if (noSession) noSession.hidden = true;
 
-      // Deputy-specific buttons — Finish Work + Open Deputy. Show when
-      // the Deputy flow is active; hide when the DCR came from Pioneer
-      // only.
+      // Finish Work button — shows whenever EITHER the Deputy bridge
+      // flow OR the Pioneer Time Clock flow has a finishable session.
+      // The handler builds a /work.html URL carrying both ids when
+      // available; the auto-finish handlers in today-work.js and
+      // service-clock.js each pick up their respective param and
+      // close their own model. Deputy-only button (Open Deputy)
+      // still gated to deputySessionId presence.
       const finishBtn = document.getElementById("success-finish-work");
       const deputyBtn = document.getElementById("success-open-deputy");
-      if (deputySessionId) {
-        if (finishBtn) {
+      const anyFinishable = !!(deputySessionId || pioneerServiceSessionId);
+      if (finishBtn) {
+        if (anyFinishable) {
           finishBtn.hidden = false;
           finishBtn.onclick = function () {
-            // /work.html?finishSession=<id> triggers today-work.js to
-            // close the session AND surface the Deputy clock-out
-            // reminder via the existing finishWork code path.
-            window.location.href = "/work.html?finishSession=" + encodeURIComponent(deputySessionId);
+            const qs = new URLSearchParams();
+            if (deputySessionId)         qs.set("finishSession",            deputySessionId);
+            if (pioneerServiceSessionId) qs.set("finishPioneerSession",     pioneerServiceSessionId);
+            if (pioneerAssignmentId)     qs.set("finishPioneerAssignment",  pioneerAssignmentId);
+            window.location.href = "/work.html?" + qs.toString();
           };
+        } else {
+          finishBtn.hidden = true;
         }
-        if (deputyBtn && !deputyBtn.dataset.deputyClickWired) {
-          deputyBtn.dataset.deputyClickWired = "1";
-          deputyBtn.addEventListener("click", function () {
-            logDeputyOpenClick("dcr_success", {
-              shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
-              sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
-              pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+      }
+      if (deputyBtn) {
+        if (deputySessionId) {
+          deputyBtn.hidden = false;
+          if (!deputyBtn.dataset.deputyClickWired) {
+            deputyBtn.dataset.deputyClickWired = "1";
+            deputyBtn.addEventListener("click", function () {
+              logDeputyOpenClick("dcr_success", {
+                shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
+                sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
+                pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+              });
             });
-          });
+          }
+        } else {
+          deputyBtn.hidden = true;
         }
-      } else {
-        if (finishBtn) finishBtn.hidden = true;
-        if (deputyBtn) deputyBtn.hidden = true;
       }
 
       // Pioneer-specific back-link — repurpose the existing
