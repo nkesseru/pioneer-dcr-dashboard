@@ -647,8 +647,9 @@
   font-size: 11.5px;
   font-weight: 700;
 }
-.ptc-dcr-pill.is-ok   { background: #d1fae5; color: #065f46; }
-.ptc-dcr-pill.is-warn { background: #fef3c7; color: #92400e; }
+.ptc-dcr-pill.is-ok      { background: #d1fae5; color: #065f46; }
+.ptc-dcr-pill.is-warn    { background: #fef3c7; color: #92400e; }
+.ptc-dcr-pill.is-neutral { background: #e2e8f0; color: #475569; }
 
 /* State chip palette — five live (ready/working/paused/dcr/complete)
    + two terminal (missed/canceled). */

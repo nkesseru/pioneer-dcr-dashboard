@@ -1203,12 +1203,30 @@
       const clockOutTime = lastSession && lastSession.clock_out_at
         ? formatTimeShort(lastSession.clock_out_at)
         : "";
-      const dcrStat = dcrStatusForAssignment(a._id);
-      const dcrLabel = dcrStat === "submitted"
-        ? '<span class="ptc-dcr-pill is-ok">DCR submitted</span>'
-        : dcrStat === "pending"
-          ? '<span class="ptc-dcr-pill is-warn">DCR pending</span>'
-          : '<span class="ptc-dcr-pill is-warn">DCR missing</span>';
+      // V20260614b — DCR pill in the Shift Completed block.
+      // The "complete" state can be reached three ways:
+      //   1. DCR submitted (tech filled it out)
+      //   2. DCR waived  ("No DCR Needed" → waiveDcrV1)
+      //   3. DCR not required for this work type (supply station,
+      //      inspection, internal, test, is_test, dcr_required:false)
+      // Branch on the actual data, in priority order, instead of the
+      // 3-way ternary that misread waived/not-required as "missing".
+      const dcrStat   = dcrStatusForAssignment(a._id);
+      const isWaived  = dcrSessionWaiveStatus(a._id) === "waived";
+      const dcrNotReq = !isDcrRequiredForAssignment(a);
+      let dcrLabel;
+      if (isWaived) {
+        dcrLabel = '<span class="ptc-dcr-pill is-neutral">DCR waived</span>';
+      } else if (dcrStat === "submitted") {
+        dcrLabel = '<span class="ptc-dcr-pill is-ok">DCR submitted</span>';
+      } else if (dcrNotReq) {
+        dcrLabel = '<span class="ptc-dcr-pill is-neutral">DCR not required</span>';
+      } else {
+        // Defensive: this branch should be unreachable while state ===
+        // "complete" since deriveDisplayState requires dcrResolved, but
+        // we keep a visible pill rather than rendering nothing.
+        dcrLabel = '<span class="ptc-dcr-pill is-warn">DCR pending</span>';
+      }
       completionSummaryHtml =
         '<div class="ptc-completion-summary">' +
           '<div class="ptc-completion-banner">' +
