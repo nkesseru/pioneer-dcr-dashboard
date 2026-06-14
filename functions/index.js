@@ -4289,6 +4289,99 @@ async function syncDeputyShiftsCore(opts) {
     }
   });
 
+  // V20260614 — Two-pass tech-match bridging across rosters in a single
+  // sync run.
+  //
+  // Background: techMatch is resolved per-roster via 3 fallbacks
+  // (Deputy ID → Deputy email → normalized display name). When a tech
+  // has multiple shifts in a day and Deputy's data is inconsistent
+  // across those rosters (e.g. Employee=null on some, different email
+  // casing on others), some rosters resolve and some don't. The
+  // unresolved ones get stamped with the Deputy raw email which then
+  // mismatches the tech's Pioneer auth email on the read side. Result:
+  // partial-display bug — tech sees one shift instead of three.
+  //
+  // Fix: pass 1 collects every successful match keyed by ALL of the
+  // matched roster's identifiers (deputy ID, deputy email, name) AND
+  // the techMatch's own canonical identifiers (email, display name).
+  // Pass 2 then retries every unmatched roster against this enriched
+  // bridge index. If ANY one of a tech's rosters resolves in pass 1,
+  // ALL of that tech's rosters in this run resolve.
+  const rosterMatches    = new Map(); // shiftId(string) → techMatch | null
+  const bridgeByDeputyId = {};
+  const bridgeByEmail    = {};
+  const bridgeByNameKey  = {};
+
+  // Pass 1 — per-roster static lookup; populate bridge keys on hit.
+  for (const roster of rosters) {
+    const rosterIdKey   = String(roster.Id);
+    if (!rosterIdKey || rosterIdKey === "undefined") continue;
+    const emp           = roster.EmployeeObject || {};
+    const employeeIdRaw = roster.Employee;
+    const employeeEmail = String(emp.Email || emp.email || "").toLowerCase().trim();
+    const employeeName  = emp.DisplayName || emp.Name || "";
+    const employeeNameKey = normalizeKey(employeeName);
+
+    let techMatch = null;
+    if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
+      techMatch = techsByDeputyId[String(employeeIdRaw)];
+    } else if (employeeEmail && techsByEmail[employeeEmail]) {
+      techMatch = techsByEmail[employeeEmail];
+    } else if (employeeNameKey && techsByNameKey[employeeNameKey]) {
+      techMatch = techsByNameKey[employeeNameKey];
+    }
+
+    rosterMatches.set(rosterIdKey, techMatch);
+
+    if (techMatch) {
+      // Register by this roster's keys (so future rosters with matching
+      // keys hit fast) AND by the techMatch's own canonical identifiers
+      // (so a roster that shares ONLY the canonical name still bridges
+      // even if its Deputy ID and email are missing/mismatched).
+      if (employeeIdRaw != null) bridgeByDeputyId[String(employeeIdRaw)] = techMatch;
+      if (employeeEmail)         bridgeByEmail[employeeEmail]            = techMatch;
+      if (employeeNameKey)       bridgeByNameKey[employeeNameKey]        = techMatch;
+      if (techMatch.email)       bridgeByEmail[techMatch.email]          = techMatch;
+      const techNameKey = normalizeKey(techMatch.display_name);
+      if (techNameKey)           bridgeByNameKey[techNameKey]            = techMatch;
+    }
+  }
+
+  // Pass 2 — re-attempt unmatched rosters via the enriched bridge.
+  let bridgedCount = 0;
+  for (const roster of rosters) {
+    const rosterIdKey = String(roster.Id);
+    if (!rosterIdKey || rosterIdKey === "undefined") continue;
+    if (rosterMatches.get(rosterIdKey)) continue;
+
+    const emp           = roster.EmployeeObject || {};
+    const employeeIdRaw = roster.Employee;
+    const employeeEmail = String(emp.Email || emp.email || "").toLowerCase().trim();
+    const employeeName  = emp.DisplayName || emp.Name || "";
+    const employeeNameKey = normalizeKey(employeeName);
+
+    let techMatch = null;
+    if (employeeIdRaw != null && bridgeByDeputyId[String(employeeIdRaw)]) {
+      techMatch = bridgeByDeputyId[String(employeeIdRaw)];
+    } else if (employeeEmail && bridgeByEmail[employeeEmail]) {
+      techMatch = bridgeByEmail[employeeEmail];
+    } else if (employeeNameKey && bridgeByNameKey[employeeNameKey]) {
+      techMatch = bridgeByNameKey[employeeNameKey];
+    }
+
+    if (techMatch) {
+      rosterMatches.set(rosterIdKey, techMatch);
+      bridgedCount += 1;
+    }
+  }
+
+  logger.info("syncDeputyShifts bridge pass result", {
+    sync_date:               syncDate,
+    total_rosters:           rosters.length,
+    bridged_after_pass1:     bridgedCount,
+    unmatched_after_bridge:  Array.from(rosterMatches.values()).filter(function (m) { return !m; }).length
+  });
+
   // Upsert each roster.
   const seenIds = new Set();
   let unmappedEmployees = 0;
@@ -4307,14 +4400,20 @@ async function syncDeputyShiftsCore(opts) {
     const employeeDisplay  = emp.DisplayName || emp.Name || "";
     const employeeIdRaw    = roster.Employee;
 
-    let techMatch = null;
-    if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
-      techMatch = techsByDeputyId[String(employeeIdRaw)];
-    } else if (employeeEmailRaw && techsByEmail[employeeEmailRaw]) {
-      techMatch = techsByEmail[employeeEmailRaw];
-    } else {
-      const nameKey = normalizeKey(employeeDisplay);
-      if (nameKey && techsByNameKey[nameKey]) techMatch = techsByNameKey[nameKey];
+    // V20260614 — Use the two-pass bridge result. Falls back to the
+    // original inline 3-arm lookup ONLY if rosterMatches somehow doesn't
+    // have an entry for this shiftId (defensive — shouldn't happen).
+    let techMatch = rosterMatches.get(shiftId);
+    if (techMatch === undefined) {
+      techMatch = null;
+      if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
+        techMatch = techsByDeputyId[String(employeeIdRaw)];
+      } else if (employeeEmailRaw && techsByEmail[employeeEmailRaw]) {
+        techMatch = techsByEmail[employeeEmailRaw];
+      } else {
+        const nameKey = normalizeKey(employeeDisplay);
+        if (nameKey && techsByNameKey[nameKey]) techMatch = techsByNameKey[nameKey];
+      }
     }
     if (!techMatch) unmappedEmployees += 1;
 

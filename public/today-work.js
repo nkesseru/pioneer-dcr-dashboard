@@ -1938,82 +1938,97 @@
     try {
       const db = firebase.firestore();
 
-      // Build query. Two modes:
-      //   • admin / manager / office-manager → no email filter; rule's
-      //     `isPioneerAdmin()` arm returns every shift for that date.
-      //   • cleaning tech → narrow to their own employee_email; rule
-      //     gates per-doc. The slug + display-name fallbacks below
-      //     stay armed for the case where the cache doc was written
-      //     with empty employee_email.
-      let query = db.collection("deputy_shift_cache")
+      // V20260614 — Parallel email + slug query, merged by doc id.
+      //
+      // Why parallel: the firestore rule has THREE read arms — admin,
+      // email match, slug fallback — but a single client query can only
+      // filter on ONE field. Previously we ran the email-match query
+      // first and only fell back to a slug query when the email query
+      // returned ZERO. That created a silent partial-display bug: a
+      // tech with 3 shifts where the sync stamped employee_email
+      // inconsistently (1 doc has the Pioneer auth email, 2 have the
+      // Deputy raw email) saw only 1 shift. The slug query was gated
+      // on full-miss, not partial-miss, so it never fired.
+      //
+      // Fix: run BOTH queries in parallel and merge by doc id. Email-
+      // matched takes precedence on duplicates (it's the doc shape the
+      // rest of the codepath already trusts). Admin path is unchanged
+      // — the unfiltered query still hits the rule's isPioneerAdmin
+      // arm and returns every shift for the date.
+      const techSlugForFallback = (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "";
+
+      let emailQuery = db.collection("deputy_shift_cache")
         .where("sync_date", "==", queryDate);
       if (!workIsAdmin) {
-        query = query.where("employee_email", "==", email);
+        emailQuery = emailQuery.where("employee_email", "==", email);
       }
-      const snap = await query.get();
+      const slugQueryPromise = (!workIsAdmin && techSlugForFallback)
+        ? db.collection("deputy_shift_cache")
+            .where("sync_date", "==", queryDate)
+            .where("employee_slug", "==", techSlugForFallback)
+            .get()
+            .catch(function (err) {
+              warnTodayWork("slug-parallel query failed (non-fatal)", {
+                code: err && err.code, message: err && err.message
+              });
+              return null;
+            })
+        : Promise.resolve(null);
 
-      let shifts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const [emailSnap, slugSnap] = await Promise.all([emailQuery.get(), slugQueryPromise]);
 
-      logTodayWork("query result", {
+      const emailDocs = emailSnap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data());
+      });
+      const slugDocs = (slugSnap && slugSnap.docs)
+        ? slugSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
+        : [];
+
+      // Merge by doc id, deduplicating. Email-matched takes precedence:
+      // its employee_email field already equals the tech's auth email,
+      // which is what other code paths assume when they re-read the
+      // shift's email for logging or display.
+      const dedupedById = {};
+      emailDocs.forEach(function (s) { dedupedById[String(s.id)] = s; });
+      slugDocs.forEach(function (s) {
+        const k = String(s.id);
+        if (!dedupedById[k]) dedupedById[k] = s;
+      });
+      let shifts = Object.keys(dedupedById).map(function (k) { return dedupedById[k]; });
+
+      logTodayWork("primary parallel query → deputy_shift_cache", {
         collection:           "deputy_shift_cache",
         where_sync_date_eq:   queryDate,
         where_employee_email_eq: workIsAdmin ? "(admin overview — no email filter)" : email,
-        docs_returned:        shifts.length
+        where_employee_slug_eq:  techSlugForFallback || "(no slug — skipped)",
+        email_query_count:    emailDocs.length,
+        slug_query_count:     slugDocs.length,
+        merged_count:         shifts.length
       });
-      logTW("primary query → deputy_shift_cache", {
-        raw_shifts_count:   shifts.length,
-        current_user_email: email,
-        ops_window_date:    queryDate,
-        shift_ids:          shifts.map(function (s) { return String(s.shift_id || s.id); }),
-        shift_emails:       shifts.map(function (s) { return s.employee_email || "(blank)"; }),
-        shift_statuses:     shifts.map(function (s) { return s.status || "(none)"; })
+      logTW("primary parallel query → deputy_shift_cache", {
+        email_query_count:    emailDocs.length,
+        slug_query_count:     slugDocs.length,
+        merged_count:         shifts.length,
+        email_shift_ids:      emailDocs.map(function (s) { return String(s.shift_id || s.id); }),
+        slug_shift_ids:       slugDocs.map(function (s) { return String(s.shift_id || s.id); }),
+        deduped_shift_ids:    Object.keys(dedupedById),
+        current_user_email:   email,
+        current_tech_slug:    techSlugForFallback || "(none)",
+        ops_window_date:      queryDate
       });
-      logDebug("[today's-work] fetched shifts:", {
-        mode:                 workIsAdmin ? "admin_all_shifts" : "tech_email_match",
-        total:                shifts.length,
-        ids:                  shifts.map(function (s) { return String(s.shift_id || s.id); }),
-        statuses:             shifts.map(function (s) { return s.status || "(none)"; }),
-        matched_emails:       shifts.map(function (s) { return s.employee_email || "(blank)"; }),
-        matched_slugs:        shifts.map(function (s) { return s.employee_slug || "(empty)"; }),
+      logDebug("[today's-work] fetched shifts (email+slug parallel):", {
+        mode:                  workIsAdmin ? "admin_all_shifts" : "tech_email+slug_parallel",
+        email_query_count:     emailDocs.length,
+        slug_query_count:      slugDocs.length,
+        merged_count:          shifts.length,
+        deduped_shift_ids:     Object.keys(dedupedById),
+        ids:                   shifts.map(function (s) { return String(s.shift_id || s.id); }),
+        statuses:              shifts.map(function (s) { return s.status || "(none)"; }),
+        matched_emails:        shifts.map(function (s) { return s.employee_email || "(blank)"; }),
+        matched_slugs:         shifts.map(function (s) { return s.employee_slug || "(empty)"; }),
         matched_display_names: shifts.map(function (s) { return s.employee_display_name || "(blank)"; }),
-        first_doc_keys:       shifts[0] ? Object.keys(shifts[0]) : []
+        first_doc_keys:        shifts[0] ? Object.keys(shifts[0]) : []
       });
-
-      // V6 pilot — tech-slug fallback. Only fires for cleaning techs,
-      // not admins (admins already see everything via the unfiltered
-      // query above). When the email-match query returns 0, retry by
-      // employee_slug; the Firestore rule's `shiftTechSlugLinksToAuth()`
-      // arm covers that read by dereferencing
-      // `cleaning_techs/{employee_slug}.email` and requiring it to
-      // equal the auth user's email. Covers the case where a cache
-      // doc was written before the office set the tech's email.
-      const techSlugForFallback = (staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "";
-      if (!workIsAdmin && shifts.length === 0 && techSlugForFallback) {
-        try {
-          const altSnap = await db.collection("deputy_shift_cache")
-            .where("sync_date", "==", queryDate)
-            .where("employee_slug", "==", techSlugForFallback)
-            .get();
-          const fallbackShifts = altSnap.docs.map(function (d) {
-            return Object.assign({ id: d.id }, d.data());
-          });
-          if (fallbackShifts.length > 0) {
-            logTodayWork("slug fallback matched", {
-              tech_slug:        techSlugForFallback,
-              docs_returned:    fallbackShifts.length
-            });
-            shifts = fallbackShifts;
-          } else {
-            logTodayWork("slug fallback also returned 0", {
-              tech_slug: techSlugForFallback
-            });
-          }
-        } catch (err) {
-          warnTodayWork("slug fallback query failed", {
-            code: err && err.code, message: err && err.message
-          });
-        }
-      }
 
       // Display-name fallback — third-line defense for very old data
       // where neither email nor slug match resolves. Only for techs
