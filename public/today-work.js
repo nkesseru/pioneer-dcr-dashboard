@@ -426,8 +426,19 @@
   // window.__pioneerDebug for DevTools-driven inspection. Pure UI —
   // no Firestore writes, no rule changes, no production side effects.
   function isDebugModeActive() {
-    try { return new URLSearchParams(location.search || "").get("debug") === "1"; }
-    catch (e) { return false; }
+    try {
+      const v = new URLSearchParams(location.search || "").get("debug");
+      console.log("[PIONEER DEBUG] isDebugModeActive() called", {
+        location_href:   location.href,
+        location_search: location.search,
+        debug_param_raw: v,
+        result:          v === "1"
+      });
+      return v === "1";
+    } catch (e) {
+      console.log("[PIONEER DEBUG] isDebugModeActive() threw", String(e && e.message || e));
+      return false;
+    }
   }
 
   function escForDebug(v) {
@@ -439,11 +450,22 @@
   }
 
   function paintDebugPanel(d) {
-    if (!d || !d.enabled) return;
+    console.log("[PIONEER DEBUG] paintDebugPanel() called", {
+      d_truthy:    !!d,
+      d_enabled:   d && d.enabled,
+      build_marker: d && d.build_marker
+    });
+    if (!d || !d.enabled) {
+      console.log("[PIONEER DEBUG] paintDebugPanel() EARLY RETURNED — diagnostics.enabled was falsy", { d: d });
+      return;
+    }
     try {
       // Make raw data inspectable from DevTools too.
       window.__pioneerDebug = d;
-    } catch (e) { /* non-fatal */ }
+      console.log("[PIONEER DEBUG] window.__pioneerDebug set", { keys: Object.keys(d) });
+    } catch (e) {
+      console.log("[PIONEER DEBUG] window.__pioneerDebug assignment threw", String(e && e.message || e));
+    }
     const existing = document.getElementById("pioneer-debug-panel");
     if (existing) existing.remove();
 
@@ -557,6 +579,10 @@
       '</div>';
 
     document.body.appendChild(panel);
+    console.log("[PIONEER DEBUG] DEBUG PANEL RENDERED — appended to document.body", {
+      panel_id:    panel.id,
+      body_child_count: document.body.children.length
+    });
 
     const closeBtn = document.getElementById("pioneer-debug-close");
     if (closeBtn) closeBtn.addEventListener("click", function () { panel.remove(); });
@@ -2119,6 +2145,7 @@
     // at the end of init() via paintDebugPanel(). Also exposed at
     // window.__pioneerDebug for DevTools inspection.
     const debugMode = isDebugModeActive();
+    console.log("[PIONEER DEBUG] DEBUG MODE ACTIVE =", debugMode, "— init() proceeding");
     const diagnostics = {
       enabled:                debugMode,
       build_marker:           "today-work.js V20260614 — parallel email+slug query + debug panel",
@@ -2139,6 +2166,7 @@
       final_visible_count:    0,
       final_visible_ids:      []
     };
+    console.log("[PIONEER DEBUG] DEBUG OBJECT CREATED", { enabled: diagnostics.enabled, build_marker: diagnostics.build_marker });
 
     try {
       const db = firebase.firestore();
@@ -2401,7 +2429,18 @@
       // V20260614 — Debug panel (activated by ?debug=1). Renders a
       // fixed-position overlay at the bottom of the page with every
       // diagnostic state value collected above.
-      paintDebugPanel(diagnostics);
+      console.log("[PIONEER DEBUG] about to call paintDebugPanel(diagnostics)", {
+        enabled: diagnostics.enabled,
+        email_query_count: diagnostics.email_query && diagnostics.email_query.count,
+        slug_query_count:  diagnostics.slug_query && diagnostics.slug_query.count,
+        final_visible_count: diagnostics.final_visible_count
+      });
+      try {
+        paintDebugPanel(diagnostics);
+        console.log("[PIONEER DEBUG] paintDebugPanel returned");
+      } catch (e) {
+        console.error("[PIONEER DEBUG] paintDebugPanel THREW:", e);
+      }
 
       // Golden-path auto-finish handoff from the DCR success card.
       //   /work.html?finishSession=<deputy_shift_id>
