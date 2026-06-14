@@ -6813,6 +6813,135 @@ exports.waiveDcrV1 = onRequest({
   }
 });
 
+/* ============================================================================
+   V20260614 — listWaivedDcrsV1
+   GET (or POST with optional body { limit?, since_iso?, customer_slug? })
+
+   Admin-only audit endpoint. Returns the most recent DCR waivers
+   recorded by waiveDcrV1, oldest-first within the window. Drives the
+   future admin "Waived DCRs" tab. For today, admin operators can hit
+   this endpoint with their Firebase Auth bearer token to see the
+   exception list:
+
+     curl -X POST https://us-central1-…/listWaivedDcrsV1 \
+       -H "Authorization: Bearer <id_token>" \
+       -H "Content-Type: application/json" \
+       -d '{ "limit": 50 }'
+
+   Until the tab UI is wired (TODO: public/admin/tab-dcr-waivers.js),
+   this is the source of truth for the "visible in admin" guardrail.
+
+   Query mechanics: reads pioneer_service_sessions where
+     dcr_status == "waived"
+   ordered by dcr_waived_at desc. Requires a small composite index
+   added in firestore.indexes.json in this commit.
+
+   Returns:
+     { ok: true,
+       count: number,
+       waivers: [
+         { session_id, assignment_id, staff_uid, staff_email,
+           customer_slug, customer_name, service_date,
+           dcr_waived_at_iso, dcr_waived_by_uid, dcr_waived_by_email,
+           dcr_waived_reason, dcr_waived_reason_detail,
+           paid_minutes, clock_in_at_iso, clock_out_at_iso } ] }
+   ============================================================================ */
+
+exports.listWaivedDcrsV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = (req.method === "POST" ? (req.body || {}) : (req.query || {}));
+  const limitIn = Number(body.limit);
+  const limit   = Number.isFinite(limitIn) && limitIn > 0 && limitIn <= 500
+                    ? Math.floor(limitIn) : 50;
+  const sinceIso = String(body.since_iso || "").trim();
+  const filterCustomerSlug = String(body.customer_slug || "").trim();
+
+  try {
+    let q = db.collection("pioneer_service_sessions")
+      .where("dcr_status", "==", "waived")
+      .orderBy("dcr_waived_at", "desc")
+      .limit(limit);
+    if (sinceIso) {
+      const sinceMs = Date.parse(sinceIso);
+      if (Number.isFinite(sinceMs)) {
+        q = q.where("dcr_waived_at", ">=", admin.firestore.Timestamp.fromMillis(sinceMs));
+      }
+    }
+    const snap = await q.get();
+
+    function tsIso(ts) {
+      if (!ts) return null;
+      if (typeof ts.toDate === "function") {
+        try { return ts.toDate().toISOString(); } catch (_e) {}
+      }
+      if (typeof ts.seconds === "number") {
+        return new Date(ts.seconds * 1000).toISOString();
+      }
+      return null;
+    }
+
+    const waivers = [];
+    snap.docs.forEach(function (d) {
+      const s = d.data() || {};
+      if (filterCustomerSlug && String(s.customer_slug || "") !== filterCustomerSlug) return;
+      waivers.push({
+        session_id:               d.id,
+        assignment_id:            s.assignment_id || null,
+        staff_uid:                s.staff_uid || null,
+        staff_email:              s.staff_email || null,
+        customer_slug:            s.customer_slug || null,
+        customer_name:            s.customer_name || null,
+        service_date:             s.service_date || null,
+        dcr_waived_at_iso:        tsIso(s.dcr_waived_at),
+        dcr_waived_by_uid:        s.dcr_waived_by_uid || null,
+        dcr_waived_by_email:      s.dcr_waived_by_email || null,
+        dcr_waived_reason:        s.dcr_waived_reason || null,
+        dcr_waived_reason_detail: s.dcr_waived_reason_detail || null,
+        paid_minutes:             (typeof s.paid_minutes === "number") ? s.paid_minutes : null,
+        clock_in_at_iso:          tsIso(s.clock_in_at),
+        clock_out_at_iso:         tsIso(s.clock_out_at)
+      });
+    });
+
+    res.json({ ok: true, count: waivers.length, waivers: waivers });
+  } catch (err) {
+    logger.error("listWaivedDcrsV1 crashed", {
+      error: err && err.message, code: err && err.code,
+      caller_email: staff.email
+    });
+    // Composite index not built yet — surface a friendly hint.
+    if (err && err.code === "failed-precondition") {
+      res.status(503).json({
+        ok: false,
+        error: "Composite index still building or missing: pioneer_service_sessions (dcr_status asc, dcr_waived_at desc). Add it to firestore.indexes.json + firebase deploy --only firestore:indexes."
+      });
+      return;
+    }
+    res.status(500).json({ ok: false, error: "listWaivedDcrsV1 crashed: " + (err && err.message) });
+  }
+});
+
 exports.createTimeAdjustmentRequestV1 = onRequest({
   cors:           false,
   timeoutSeconds: 30

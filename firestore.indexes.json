@@ -78,6 +78,24 @@
       "collectionGroup": "pioneer_service_sessions",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "dcr_status",    "order": "ASCENDING"  },
+        { "fieldPath": "dcr_waived_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignment_id", "order": "ASCENDING"  },
+        { "fieldPath": "staff_uid",     "order": "ASCENDING"  },
+        { "fieldPath": "status",        "order": "ASCENDING"  },
+        { "fieldPath": "clock_out_at",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "accrued_in_period_id", "order": "ASCENDING" },
         { "fieldPath": "staff_uid",            "order": "ASCENDING" }
       ]
