@@ -125,6 +125,18 @@
   }
 
   // Firestore Timestamp / Date / ms / ISO → "h:mm AM/PM" or "" missing.
+  // Format a duration in milliseconds as "Xh Ym" (or "Ym" when under
+  // an hour). Used by the completed-shift card so techs see their
+  // logged time at a glance without doing the math.
+  function formatDuration(ms) {
+    if (!ms || ms < 0) return "";
+    const totalMin = Math.round(ms / 60000);
+    if (totalMin < 60) return totalMin + "m";
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin - h * 60;
+    return m > 0 ? (h + "h " + m + "m") : (h + "h");
+  }
+
   function formatShiftTime(ts) {
     if (!ts) return "";
     let ms = null;
@@ -407,6 +419,42 @@
     return qs ? ("/?" + qs) : "/";
   }
 
+  // Pre-fill a mailto: to the office with the shift context so a tech
+  // who notices wrong timestamps after clock-out can request an
+  // adjustment in one tap without re-typing the shift's metadata.
+  // We deliberately use mailto: (no client-side write) because the
+  // payroll exception engine's tech-side UI is not built yet (the
+  // backend Cloud Function exists; surfacing a "Reopen" button would
+  // be unsafe without a confirmation flow that doesn't exist).
+  function buildAdjustmentMailto(shift, session, customerLabel, scheduledText, clockedInText, clockedOutText, durationText) {
+    const staff = workCurrentStaff || {};
+    const techName = (staff.tech && staff.tech.display_name) || staff.email || "";
+    const date     = shift.sync_date || "";
+    const subjectParts = ["Time adjustment request"];
+    if (customerLabel && customerLabel !== "Customer not linked yet") subjectParts.push(customerLabel);
+    if (date) subjectParts.push(date);
+    const subject = subjectParts.join(" — ");
+    const body =
+      "Hi office team,\n\n" +
+      "I need a time adjustment for the following shift:\n\n" +
+      "Customer: " + (customerLabel || "Unknown") + "\n" +
+      "Date: " + (date || "(unknown)") + "\n" +
+      "Scheduled: " + (scheduledText || "(unknown)") + "\n" +
+      "Clocked in: " + (clockedInText || "(unknown)") + "\n" +
+      "Clocked out: " + (clockedOutText || "(unknown)") + "\n" +
+      "Logged duration: " + (durationText || "(unknown)") + "\n\n" +
+      "Reason for adjustment:\n" +
+      "(please describe what was wrong)\n\n" +
+      "Correct times should be:\n" +
+      "Start:\n" +
+      "End:\n\n" +
+      "Thanks,\n" +
+      techName;
+    return "mailto:info@pioneercomclean.com" +
+      "?subject=" + encodeURIComponent(subject) +
+      "&body=" + encodeURIComponent(body);
+  }
+
   function workCard(shift, session, opts) {
     opts = opts || {};
     const state    = resolveWorkState(session);
@@ -580,9 +628,9 @@
     } else if (state === WORK_STATE_NOT_STARTED) {
       ctaHtml = '<button type="button" class="assign-card-btn is-primary"' +
                   ' data-action="start-work" data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '">' +
-                  'Start Work' +
+                  'Start This Shift' +
                 '</button>';
-      helperText = "Deputy remains the official time clock. We'll show a reminder after you tap Start Work.";
+      helperText = "Deputy remains the official time clock. We'll show a reminder after you tap Start This Shift.";
     } else if (state === WORK_STATE_WORKING) {
       const dcrHref = buildOpenDcrHref(shift, { pioneer_session_id: sessionId });
       ctaHtml = '<a class="assign-card-btn is-primary"' +
@@ -599,15 +647,78 @@
                 '</button>';
       helperText = "Deputy remains the official time clock. We'll show a reminder after you tap Finish Work.";
     } else {
-      ctaHtml = '<span class="assign-card-done"><span aria-hidden="true">✅</span> Work completed</span>';
-      const dcrSubmissionId = session && session.dcr_submission_id;
-      if (dcrSubmissionId) {
-        footerHtml =
-          '<p class="assign-card-footer">' +
-            '<span class="assign-card-footer-label">DCR submitted:</span> ' +
-            '<code>' + escapeHtml(dcrSubmissionId) + '</code>' +
-          '</p>';
-      }
+      // Finished state — full completion card. Replaces the previous
+      // inline "✅ Work completed" pill so techs can tell a finished
+      // shift from a not-yet-started one at a glance, and so they have
+      // a clear path to fix a wrong time without trying to clock back
+      // in. The card shows: clocked-out time, total duration, DCR
+      // status, a helper line, and two actions (View Summary expands
+      // an inline detail block; Request Time Adjustment opens a
+      // mailto: to the office with the shift pre-filled).
+      const startedAt   = session && session.pioneer_started_at;
+      const finishedAt  = session && session.pioneer_finished_at;
+      const dcrId       = session && session.dcr_submission_id;
+      const finishedFmt = formatShiftTime(finishedAt);
+      const startedFmt  = formatShiftTime(startedAt);
+      const startMs     = tsToMs(startedAt);
+      const finishMs    = tsToMs(finishedAt);
+      const durationMs  = (startMs > 0 && finishMs > startMs) ? (finishMs - startMs) : 0;
+      const durationStr = formatDuration(durationMs);
+
+      const dcrPill = dcrId
+        ? '<span class="assign-card-completed-pill is-ok">DCR submitted · <code>' + escapeHtml(dcrId) + '</code></span>'
+        : '<span class="assign-card-completed-pill is-warn">DCR missing</span>';
+
+      const adjustmentHref = buildAdjustmentMailto(shift, session, customer, timeText, startedFmt, finishedFmt, durationStr);
+
+      ctaHtml =
+        '<div class="assign-card-completed">' +
+          '<div class="assign-card-completed-banner">' +
+            '<span aria-hidden="true">✅</span> Shift Completed' +
+          '</div>' +
+          '<div class="assign-card-completed-grid">' +
+            (finishedFmt
+              ? '<div class="assign-card-completed-row">' +
+                  '<span class="assign-card-completed-label">Clocked out at</span> ' +
+                  '<strong>' + escapeHtml(finishedFmt) + '</strong>' +
+                '</div>'
+              : '') +
+            (durationStr
+              ? '<div class="assign-card-completed-row">' +
+                  '<span class="assign-card-completed-label">Total time</span> ' +
+                  '<strong>' + escapeHtml(durationStr) + '</strong>' +
+                '</div>'
+              : '') +
+            '<div class="assign-card-completed-row">' + dcrPill + '</div>' +
+          '</div>' +
+          '<p class="assign-card-completed-help">' +
+            'Your shift is complete. If your time looks wrong, request an adjustment instead of clocking in again.' +
+          '</p>' +
+          '<div class="assign-card-completed-actions">' +
+            '<button type="button" class="assign-card-btn is-secondary"' +
+              ' data-action="view-summary"' +
+              ' data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '"' +
+              ' aria-expanded="false">View Summary</button>' +
+            '<a class="assign-card-btn is-secondary"' +
+              ' href="' + adjustmentHref + '"' +
+              ' data-action="request-adjustment"' +
+              ' data-shift-id="' + escapeHtml(shift.shift_id || shift.id) + '">' +
+              'Request Time Adjustment' +
+            '</a>' +
+          '</div>' +
+          '<div class="assign-card-completed-summary"' +
+            ' data-summary-for="' + escapeHtml(shift.shift_id || shift.id) + '"' +
+            ' hidden>' +
+            '<dl class="assign-card-summary-dl">' +
+              '<dt>Scheduled</dt><dd>' + escapeHtml(timeText) + '</dd>' +
+              (startedFmt ? '<dt>Clocked in</dt><dd>' + escapeHtml(startedFmt) + '</dd>' : '') +
+              (finishedFmt ? '<dt>Clocked out</dt><dd>' + escapeHtml(finishedFmt) + '</dd>' : '') +
+              (durationStr ? '<dt>Logged duration</dt><dd>' + escapeHtml(durationStr) + '</dd>' : '') +
+              '<dt>Customer</dt><dd>' + escapeHtml(customer) + '</dd>' +
+            '</dl>' +
+          '</div>' +
+        '</div>';
+      helperText = "";
     }
 
     // In admin preview, the tech identity now lives in a small chip
@@ -661,6 +772,16 @@
               : '') +
             (customerIsUnknown
               ? '<span class="assign-card-loc">Deputy: ' + escapeHtml(deputyCompanyName) + '</span>'
+              : '') +
+            // Show physical location only when present, not redundant
+            // with customer name, and not in a placeholder/unknown
+            // state. Helps techs who have multiple shifts at the same
+            // customer (different floors, buildings, etc.) confirm
+            // which one they're starting.
+            (!customerIsPlaceholder && !customerIsUnknown && shift.location_name
+              && String(shift.location_name).trim()
+              && String(shift.location_name).trim().toLowerCase() !== String(customer).toLowerCase()
+              ? '<span class="assign-card-loc is-physical-location">📍 ' + escapeHtml(String(shift.location_name).trim()) + '</span>'
               : '') +
           '</div>' +
           workStatusChip(state) +
@@ -1436,6 +1557,27 @@
       );
       return;
     }
+
+    // Multi-active-shift safety: techs may have several eligible shifts
+    // in a day and may complete them out of scheduled order, but only
+    // ONE shift may be active (working OR needs-finish) at a time. If a
+    // different shift is already active, stop here and tell the tech.
+    // The check reads in-memory session state — Firestore is the source
+    // of truth, but renderWorkCards() always reflects the latest
+    // session statuses, so this catches the foot-gun without an extra
+    // read.
+    const otherActive = Object.keys(workSessionByShiftId).filter(function (sid) {
+      if (sid === shiftId) return false;
+      const s = workSessionByShiftId[sid];
+      if (!s || !s.status) return false;
+      const status = String(s.status).toLowerCase();
+      return status === WORK_STATE_WORKING || status === WORK_STATE_NEEDS_FIN;
+    });
+    if (otherActive.length > 0) {
+      window.alert("Clock out of your current shift before starting another.");
+      return;
+    }
+
     const db = firebase.firestore();
     const ref = db.collection("pioneer_work_sessions").doc(shiftId);
     const sts = firebase.firestore.FieldValue.serverTimestamp();
@@ -1678,7 +1820,23 @@
       } else if (action === "complete-dcr") {
         // anchor's default href navigates; stamp the open time first.
         stampDcrOpenedAt(shift);
-      } else if (action === "open-deputy") {
+      } else if (action === "view-summary") {
+        // Toggle the inline summary block on completed cards. Pure UI —
+        // no Firestore write, no navigation.
+        ev.preventDefault();
+        const card = btn.closest(".assign-card");
+        const sel  = (window.CSS && CSS.escape) ? CSS.escape(shiftId) : shiftId;
+        const summary = card && card.querySelector('[data-summary-for="' + sel + '"]');
+        if (summary) {
+          const isOpen = !summary.hidden;
+          summary.hidden = isOpen;
+          btn.setAttribute("aria-expanded", String(!isOpen));
+          btn.textContent = isOpen ? "View Summary" : "Hide Summary";
+        }
+      }
+      // "request-adjustment" — let the mailto: anchor navigate via its
+      // default href; no JS handler needed. Listed here for grep-ability.
+      else if (action === "open-deputy") {
         // Phase A — fire-and-forget click log. Do NOT preventDefault:
         // the anchor must navigate so the OS can route to the Deputy app.
         logDeputyOpenClick("today_work_card", {
