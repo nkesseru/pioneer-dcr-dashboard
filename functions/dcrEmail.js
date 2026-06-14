@@ -4613,6 +4613,84 @@ async function sendNativeDcrEmailForSubmission(opts) {
     }
   }
 
+  // ---- 3d. V20260614 — Per-customer per-service-date dedupe ----
+  // Blocks a second customer-facing email when a *different* DCR
+  // for the same (customer_slug + clean_date) already mailed. Two
+  // techs cleaning the same site, an admin late-resubmit, an
+  // accidental-recovery DCR — all produce duplicate customer-side
+  // noise unless we guard.
+  //
+  // Reads the existing (customer_slug asc, created_at desc)
+  // composite index. created_at >= startOfDay - 1d gives a wide
+  // enough window that submissions filed near midnight are still
+  // caught. Results are filtered client-side by clean_date and
+  // by id != current so we don't false-positive on this DCR's
+  // own row.
+  //
+  // forceSend (admin manual resend) bypasses this gate so admins
+  // retain the existing "explicitly resend" flow they already use
+  // for already_sent.
+  if (!forceSend && customerSlugGuess && dcr.clean_date) {
+    try {
+      const cleanDate = String(dcr.clean_date || "").trim();
+      const widenStart = new Date(cleanDate + "T00:00:00Z");
+      // 36-hour back-window: covers PST/PDT shift, late-night
+      // submissions, and DCR forms that arrive after midnight UTC
+      // but still belong to the same service day.
+      widenStart.setUTCHours(widenStart.getUTCHours() - 36);
+      const startTs = adminSdk.firestore.Timestamp.fromDate(widenStart);
+      const dupQry = await db.collection("dcr_submissions")
+        .where("customer_slug", "==", customerSlugGuess)
+        .where("created_at",     ">=", startTs)
+        .orderBy("created_at", "desc")
+        .limit(20)
+        .get();
+      let dupHit = null;
+      for (const d of dupQry.docs) {
+        if (d.id === dcrId) continue;
+        const other = d.data() || {};
+        if (String(other.clean_date || "") !== cleanDate) continue;
+        const nativeStatus = (other.native_email && other.native_email.status) || null;
+        const deliveryEmailSent = (other.delivery && other.delivery.email_sent) || false;
+        if (nativeStatus === "sent" || deliveryEmailSent === true) {
+          dupHit = { id: d.id, sentAt: (other.native_email && other.native_email.sentAt) || null };
+          break;
+        }
+      }
+      if (dupHit) {
+        const reason = "customer_already_emailed_today — dcr_submissions/" +
+                       dupHit.id +
+                       " for customer_slug=" + customerSlugGuess +
+                       " clean_date=" + cleanDate +
+                       " already sent" +
+                       (dupHit.sentAt ? (" at " + dupHit.sentAt) : "");
+        if (!dryRun) {
+          await recordEmailStatus(db, dcrId, {
+            native_email: {
+              status:           "skipped",
+              reason:           reason,
+              code:             "customer_already_emailed_today",
+              customerId:       customerId,
+              dedupeAgainstDcr: dupHit.id,
+              invokedBy:        invokedBy,
+              attemptedAt:      adminSdk.firestore.FieldValue.serverTimestamp()
+            }
+          }, adminSdk);
+        }
+        return result("skipped", reason, {
+          code:             "customer_already_emailed_today",
+          customerId:       customerId,
+          dedupeAgainstDcr: dupHit.id
+        });
+      }
+    } catch (err) {
+      logger.warn("[native-email] customer-date dedupe lookup failed (non-fatal)", {
+        dcrId: dcrId, customerSlug: customerSlugGuess, cleanDate: dcr.clean_date,
+        error: err && err.message
+      });
+    }
+  }
+
   // ---- 4. Block on readiness blockers (with already_sent / forceSend logic) ----
   if (!readiness.ready) {
     const firstBlocker = (readiness.blockers && readiness.blockers[0]) || {};
