@@ -854,6 +854,14 @@
       card.className = "card checklist-card";
       card.dataset.sectionId = section.id;
 
+      // V20260614 — Select All / Clear All control. Wraps the existing
+      // collapsible header in a positioning zone so a sibling button
+      // can sit at the top-right corner without producing an invalid
+      // nested-<button> tree. Click on the Select-All button stops
+      // propagation so it never toggles the collapse.
+      const headZone = document.createElement("div");
+      headZone.className = "checklist-card-head-zone";
+
       // Collapsible header: the whole top row is one button that toggles
       // the section's `is-collapsed` state. iOS Settings density — title +
       // progress count + chevron, no chrome between them.
@@ -899,7 +907,29 @@
       bar.appendChild(fill);
       headerBtn.appendChild(bar);
 
-      card.appendChild(headerBtn);
+      // V20260614 — Select All / Clear All sibling button. Positioned
+      // absolutely inside .checklist-card-head-zone (see CSS) so it
+      // sits at the top-right of the header without nesting inside
+      // headerBtn. Label flips between "Select All" and "Clear All"
+      // based purely on current state (every item has any state set ?
+      // "Clear All" : "Select All"). updateSelectAllLabel() recomputes
+      // on every state change so manual unchecks bring "Select All"
+      // back automatically.
+      const selectAllBtn = document.createElement("button");
+      selectAllBtn.type = "button";
+      selectAllBtn.className = "select-all-btn";
+      selectAllBtn.dataset.sectionId = section.id;
+      selectAllBtn.textContent = "Select All";
+      selectAllBtn.setAttribute("aria-label", "Select All for " + section.label);
+      selectAllBtn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleSelectAllForSection(section.id);
+      });
+
+      headZone.appendChild(headerBtn);
+      headZone.appendChild(selectAllBtn);
+      card.appendChild(headZone);
 
       // Compact instruction line under the header.
       const sub = document.createElement("p");
@@ -1032,6 +1062,108 @@
     });
   }
 
+  /* ---------- Select All / Clear All ----------
+     V20260614 — Per-section batch control.
+     - "Select All" sets every item to "done".
+     - "Clear All" clears state AND notes for every item in the section.
+     - Button label is derived purely from current state:
+         every item has any state ? "Clear All" : "Select All".
+       So a manual uncheck on a single item flips the label back to
+       "Select All" without any additional flag tracking. */
+  function toggleSelectAllForSection(sectionId) {
+    const cfg = window.DCR_FORM_CONFIG;
+    if (!cfg || !cfg.checklist_sections) return;
+    const section = cfg.checklist_sections.find(function (s) { return s.id === sectionId; });
+    if (!section) return;
+
+    if (!checklistState[sectionId]) checklistState[sectionId] = {};
+    if (!checklistNotes[sectionId]) checklistNotes[sectionId] = {};
+
+    const allHaveState = section.items.every(function (item) {
+      return !!checklistState[sectionId][item.id];
+    });
+
+    if (allHaveState) {
+      // Clear All — wipe state + notes for the whole section.
+      section.items.forEach(function (item) {
+        delete checklistState[sectionId][item.id];
+        delete checklistNotes[sectionId][item.id];
+      });
+    } else {
+      // Select All — set every item to "done" (overwriting existing).
+      // Notes for items previously at "issue" are PRESERVED in
+      // checklistNotes so the tech can re-flag the item without
+      // re-typing the note.
+      section.items.forEach(function (item) {
+        checklistState[sectionId][item.id] = "done";
+      });
+    }
+
+    // Re-paint each row's pills + status classes from the new state.
+    const card = document.querySelector('.checklist-card[data-section-id="' +
+      cssEscape(sectionId) + '"]');
+    if (card) {
+      section.items.forEach(function (item) {
+        const row = card.querySelector('.checklist-item[data-item-id="' +
+          cssEscape(item.id) + '"]');
+        if (!row) return;
+        const newState = checklistState[sectionId][item.id] || null;
+        // Reset pill active classes.
+        row.querySelectorAll(".pill").forEach(function (p) {
+          p.classList.remove("is-active--done", "is-active--issue", "is-active--na");
+          if (newState && p.dataset.state === newState) {
+            p.classList.add("is-active--" + newState);
+          }
+        });
+        // Reset row status classes.
+        row.classList.remove("status-done", "status-issue", "status-na", "has-issue", "issue-resolved");
+        if (newState) {
+          row.classList.add("is-answered", "status-" + newState);
+          if (newState === "issue") row.classList.add("has-issue");
+        } else {
+          row.classList.remove("is-answered");
+          // Also clear any inline note textarea value when fully cleared.
+          const note = row.querySelector(".issue-note");
+          if (note) note.value = "";
+        }
+        refreshIssueResolved(row, sectionId, item.id);
+      });
+    }
+
+    updateSectionProgress(sectionId);
+    scheduleSaveDraft();
+    refreshDcrCompletion();
+  }
+
+  // Minimal CSS.escape polyfill — needed because some section/item IDs
+  // contain hyphens or special characters that CSS attribute selectors
+  // can't parse directly.
+  function cssEscape(s) {
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(s);
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, function (c) {
+      return "\\" + c;
+    });
+  }
+
+  // Recompute and apply the Select-All button label for a section based
+  // on whether every item currently has any state set.
+  function updateSelectAllLabel(sectionId) {
+    const cfg = window.DCR_FORM_CONFIG;
+    if (!cfg || !cfg.checklist_sections) return;
+    const section = cfg.checklist_sections.find(function (s) { return s.id === sectionId; });
+    if (!section) return;
+    const btn = document.querySelector('.select-all-btn[data-section-id="' +
+      cssEscape(sectionId) + '"]');
+    if (!btn) return;
+    const allHaveState = section.items.every(function (item) {
+      return !!(checklistState[sectionId] && checklistState[sectionId][item.id]);
+    });
+    const newLabel = allHaveState ? "Clear All" : "Select All";
+    if (btn.textContent !== newLabel) btn.textContent = newLabel;
+    btn.classList.toggle("is-clear-all", allHaveState);
+    btn.setAttribute("aria-label", newLabel + " for " + section.label);
+  }
+
   function onChecklistPill(sectionId, itemId, state, row, btn) {
     // Defensive: section sub-map may have been cleared by a reset path
     // (e.g. onNewDcr). Without this guard, the assignment below throws
@@ -1137,6 +1269,11 @@
       .find(function (s) { return s.id === sectionId; });
     if (!section) return;
 
+    // V20260614 — Keep the per-section Select All / Clear All label
+    // in sync with current state. A manual uncheck on a single item
+    // flips the label back to "Select All" automatically.
+    updateSelectAllLabel(sectionId);
+
     const total = section.items.length;
     let completed = 0;
     let issueCount = 0;
@@ -1154,10 +1291,12 @@
     const pct = total > 0 ? (completed / total) * 100 : 0;
     if (fill)  fill.style.width = pct + "%";
     if (count) {
-      // Compact "X/Y" format saves horizontal space in the (now smaller) header.
+      // V20260614 — Append "Complete" word so the badge reads as a
+      // completion count (e.g. "5/6 Complete") per product spec. Stays
+      // mobile-friendly: pill width grows a few px but doesn't wrap.
       // `completed` counts an issue-with-note as 1 — typing the note bumps the
       // badge so the user sees their action register immediately.
-      count.textContent = `${completed}/${total}`;
+      count.textContent = `${completed}/${total} Complete`;
       count.classList.toggle("is-complete", isComplete);
       // `has-issues` colors the badge coral — section-level issue scanning
       // becomes a glance: green pill = clear, coral pill = noted issues.

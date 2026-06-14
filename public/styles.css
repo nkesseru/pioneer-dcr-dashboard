@@ -633,6 +633,83 @@ select {
   background: var(--pc-teal-100);
   color: var(--pc-teal-700);
 }
+
+/* V20260614 — Select All / Clear All control on each section header.
+   .checklist-card-head-zone is a positioning ancestor that wraps the
+   existing collapsible <button class="checklist-header"> plus a
+   sibling <button class="select-all-btn">. The sibling is positioned
+   absolutely at the top-right so the section header still functions
+   as a single collapse target, but the batch-action button stays
+   reachable without nesting buttons (which would be invalid HTML). */
+.checklist-card-head-zone {
+  position: relative;
+}
+.checklist-card-head-zone .checklist-header {
+  /* Leave room on the right so the Select All chip never collides with
+     the existing progress-count + chevron group. ~96px fits "Clear All"
+     comfortably with breathing room. */
+  padding-right: 108px;
+}
+.select-all-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: var(--radius-pill);
+  background: var(--pc-teal-50, #e6f7f4);
+  color: var(--pc-teal-700, #0f766e);
+  border: 1px solid var(--pc-teal-200, #b8e3da);
+  cursor: pointer;
+  transition: background var(--t-base), color var(--t-base),
+              border-color var(--t-base), transform var(--t-base);
+  /* Slightly bigger tap target on touch devices without affecting layout. */
+  -webkit-tap-highlight-color: rgba(15, 118, 110, 0.18);
+}
+.select-all-btn:hover {
+  background: var(--pc-teal-100, #ccefe9);
+  color: var(--pc-teal-700, #0f766e);
+}
+.select-all-btn:active {
+  transform: scale(0.97);
+}
+.select-all-btn:focus-visible {
+  outline: 2px solid var(--pc-teal-500, #14b8a6);
+  outline-offset: 2px;
+}
+/* Clear All state — slightly louder so the destructive flip is visible. */
+.select-all-btn.is-clear-all {
+  background: var(--pc-bg-strong, #f4f6fb);
+  color: var(--pc-text-strong, #1a1a1a);
+  border-color: var(--pc-border, #e5e7eb);
+}
+.select-all-btn.is-clear-all:hover {
+  background: var(--pc-bg, #fafbfc);
+}
+/* Hide the Select All button while the section is collapsed — collapsed
+   sections show only the title row and don't need their batch action
+   exposed. Keeps the header tight. */
+.checklist-card.is-collapsed .select-all-btn {
+  display: none;
+}
+/* Mobile — slightly smaller chip + tighter padding so it doesn't crowd
+   the count badge on iPhone widths. */
+@media (max-width: 480px) {
+  .checklist-card-head-zone .checklist-header { padding-right: 96px; }
+  .select-all-btn {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    top: 12px;
+    right: 12px;
+  }
+}
 .progress-bar {
   height: 4px;
   background: var(--pc-bg-strong);
