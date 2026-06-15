@@ -555,7 +555,6 @@
   /* ---------- boot ---------- */
 
   document.addEventListener("DOMContentLoaded", function () {
-    try { console.info("[admin] boot started"); } catch (_e) {}
     wireTabs();
     // Register on-activate lazy-load callbacks. Behavior matches the
     // original inline activateTab dispatch: feed mounts the shared
@@ -639,7 +638,6 @@
     // delegation wires up before the first refresh AND cover the case
     // where the tab is the default (active on boot, never clicked).
     window.__pioneerAdmin.tabs.yesterdaysWork.init();
-    try { console.info("[admin] officeIssues.init called"); } catch (_e) {}
     window.__pioneerAdmin.tabs.officeIssues.init();
     installModalCloseAffordances();
     installOverflowMenuOutsideClose();

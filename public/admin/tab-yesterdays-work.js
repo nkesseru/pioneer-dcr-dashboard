@@ -43,10 +43,6 @@
 (function () {
   "use strict";
 
-  // V20260615 — Temporary boot diagnostic. Remove after confirming
-  // init wiring lands cleanly on production.
-  try { console.info("[ydw] tab module loaded"); } catch (_e) {}
-
   if (!window.__pioneerAdmin || !window.__pioneerAdmin.utils || !window.__pioneerAdmin.shell) {
     throw new Error("admin/tab-yesterdays-work.js: admin/_utils.js + admin/_shell.js must load first");
   }
@@ -60,7 +56,6 @@
   let _ydwViewDcrWired = false;
 
   function initYesterdayOnce() {
-    try { console.info("[ydw] init called", { wired: yesterdayWired }); } catch (_e) {}
     wireYesterdayViewDcr();
     if (yesterdayWired) {
       loadYesterdayReport();
@@ -71,25 +66,13 @@
     const prevBtn = document.getElementById("yesterday-prev-day");
     const nextBtn = document.getElementById("yesterday-next-day");
     const refresh = document.getElementById("yesterday-refresh");
-    try {
-      console.info("[ydw] DOM lookups", {
-        dateEl: !!dateEl, prevBtn: !!prevBtn, nextBtn: !!nextBtn, refresh: !!refresh
-      });
-    } catch (_e) {}
     if (dateEl) {
       dateEl.value = pacificYesterdayDate();
-      try { console.info("[ydw] default date set:", dateEl.value); } catch (_e) {}
       dateEl.addEventListener("change", function () { loadYesterdayReport(); });
     }
     if (prevBtn) prevBtn.addEventListener("click", function () { shiftYesterdayDate(-1); });
     if (nextBtn) nextBtn.addEventListener("click", function () { shiftYesterdayDate(1); });
-    if (refresh) {
-      try { console.info("[ydw] refresh listener attached"); } catch (_e) {}
-      refresh.addEventListener("click", function () {
-        try { console.info("[ydw] refresh clicked"); } catch (_e) {}
-        loadYesterdayReport();
-      });
-    }
+    if (refresh) refresh.addEventListener("click", function () { loadYesterdayReport(); });
     loadYesterdayReport();
   }
 
@@ -171,7 +154,6 @@
     }
 
     try {
-      try { console.info("[ydw] query starting for service_date =", selected); } catch (_e) {}
       const db = firebase.firestore();
 
       const [assignmentsSnap, sessionsSnap, dcrsSnap, issuesSnap, techsSnap, customersSnap] = await Promise.all([

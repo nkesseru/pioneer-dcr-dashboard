@@ -491,11 +491,7 @@
 
   function wire() {
     const refreshBtn = $("office-issues-refresh");
-    try { console.info("[office-issues] refresh listener attached:", !!refreshBtn); } catch (_e) {}
-    if (refreshBtn) refreshBtn.addEventListener("click", function () {
-      try { console.info("[office-issues] refresh clicked"); } catch (_e) {}
-      refresh();
-    });
+    if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
 
     const statusFilter   = $("office-issues-filter-status");
     const categoryFilter = $("office-issues-filter-category");
@@ -541,10 +537,7 @@
 
   /* ---------- export ---------- */
 
-  function init() {
-    try { console.info("[office-issues] init called"); } catch (_e) {}
-    wire();
-  }
+  function init() { wire(); }
 
   window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
   window.__pioneerAdmin.tabs.officeIssues = {
