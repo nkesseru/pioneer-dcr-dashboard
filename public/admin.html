@@ -3768,11 +3768,12 @@
     </div>
   </div>
 
-  <!-- ================== V20260615 — DCR Issue detail modal ==================
-       Photos live on dcr_submissions, not dcr_issues. This modal fetches
-       the linked DCR by submission_id on open and renders photos[] via
-       the resolver in tab-dcr-issues.js. Click thumbnail = open original
-       in new tab. ============================================================ -->
+  <!-- ================== V20260615b — Shared DCR photos modal ================
+       One modal, used by DCR Issues, Recent DCRs, and Yesterday's Work.
+       Opened via shell.openDcrPhotosModal(ctx). Photos resolved from
+       dcr_submissions/{submissionId} via shell.collectPhotosFromDcr().
+       Issue summary + admin notes sections only render when ctx supplies
+       them (i.e. when opened from a dcr_issues card). ============================ -->
   <style>
     .issue-detail-photos {
       display: grid;
@@ -3809,47 +3810,58 @@
       color: #334155;
     }
     .issue-detail-photos-status { color: #64748b; font-size: 13px; font-style: italic; margin: 6px 0; }
-    .issue-detail-btn {
-      margin-left: 4px;
-      padding: 4px 10px;
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
+    /* V20260615b — Prominent "View photos" affordance shared across tabs. */
+    .issue-detail-btn, .dcr-view-photos-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 6px;
+      padding: 6px 12px;
+      background: #0b3d2e;
+      color: #ffffff;
+      border: 0;
       border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
       cursor: pointer;
+      text-decoration: none;
     }
-    .issue-detail-btn:hover { background: #e2e8f0; }
+    .issue-detail-btn:hover, .dcr-view-photos-btn:hover {
+      background: #134d3a;
+    }
+    .issue-detail-btn:before, .dcr-view-photos-btn:before {
+      content: "📷";
+      font-size: 14px;
+    }
   </style>
-  <div id="dcr-issue-detail-modal" class="admin-modal" hidden aria-hidden="true">
+  <div id="dcr-photos-modal" class="admin-modal" hidden aria-hidden="true">
     <div class="admin-modal-backdrop" data-modal-close></div>
-    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="dcr-issue-detail-title">
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="dcr-photos-modal-title">
       <header class="admin-modal-header">
-        <h2 id="dcr-issue-detail-title">Issue detail</h2>
+        <h2 id="dcr-photos-modal-title">DCR photos</h2>
         <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
       </header>
       <div class="admin-modal-body">
-        <p class="issue-detail-meta-line" id="dcr-issue-detail-meta">—</p>
+        <p class="issue-detail-meta-line" id="dcr-photos-modal-meta">—</p>
 
-        <div class="issue-detail-section">
+        <div class="issue-detail-section" id="dcr-photos-modal-issue-summary-wrap" hidden>
           <h3>Issue summary</h3>
-          <div class="issue-detail-text" id="dcr-issue-detail-summary">—</div>
+          <div class="issue-detail-text" id="dcr-photos-modal-issue-summary">—</div>
         </div>
 
-        <div class="issue-detail-section">
+        <div class="issue-detail-section" id="dcr-photos-modal-issue-notes-wrap" hidden>
           <h3>Admin notes</h3>
-          <div class="issue-detail-text" id="dcr-issue-detail-notes">—</div>
+          <div class="issue-detail-text" id="dcr-photos-modal-issue-notes">—</div>
           <p class="field-hint">Edit notes inline on the issue card; this modal is read-only for notes.</p>
         </div>
 
         <div class="issue-detail-section">
-          <h3>Photos from linked DCR</h3>
-          <p class="issue-detail-photos-status" id="dcr-issue-detail-photos-status" hidden>Loading photos…</p>
-          <div class="issue-detail-photos" id="dcr-issue-detail-photos"></div>
+          <h3>Photos</h3>
+          <p class="issue-detail-photos-status" id="dcr-photos-modal-status" hidden>Loading photos…</p>
+          <div class="issue-detail-photos" id="dcr-photos-modal-grid"></div>
           <p class="field-hint" style="margin-top:8px;">
-            Photos load from linked DCR submission
-            <code id="dcr-issue-detail-submission-id">—</code>.
+            From DCR submission
+            <code id="dcr-photos-modal-submission-id">—</code>.
             Click any thumbnail to open the full image in a new tab.
           </p>
         </div>
@@ -3878,7 +3890,7 @@
   <script src="celebrate.js?v=20260528-displayfallback"></script>
   <script src="customer-display.js?v=20260528-displayfallback"></script>
   <script src="admin/_utils.js?v=20260530-refactor-phase23-hotfix-2"></script>
-  <script src="admin/_shell.js?v=20260615b-wireTabs-activator"></script>
+  <script src="admin/_shell.js?v=20260615e-shared-photos-modal"></script>
   <script src="admin/_budget.js?v=20260529-refactor-phase4a"></script>
   <script src="admin/tab-sos.js?v=20260529-refactor-phase4b"></script>
   <script src="admin/tab-improvements.js?v=20260529-refactor-phase5"></script>
@@ -3887,10 +3899,10 @@
   <script src="admin/tab-training.js?v=20260529-refactor-phase8"></script>
   <script src="admin/tab-pilot-readiness.js?v=20260529-refactor-phase9"></script>
   <script src="admin/tab-feed.js?v=20260529-refactor-phase10"></script>
-  <script src="admin/tab-recent-dcrs.js?v=20260529-refactor-phase11"></script>
-  <script src="admin/tab-dcr-issues.js?v=20260615-issue-detail-modal"></script>
+  <script src="admin/tab-recent-dcrs.js?v=20260615e-view-photos"></script>
+  <script src="admin/tab-dcr-issues.js?v=20260615e-shared-modal"></script>
   <script src="admin/tab-tech-health.js?v=20260529-refactor-phase13"></script>
-  <script src="admin/tab-yesterdays-work.js?v=20260615d-strip-logs"></script>
+  <script src="admin/tab-yesterdays-work.js?v=20260615e-view-photos"></script>
   <script src="admin/tab-customers.js?v=20260601-phase1g-access-security"></script>
   <script src="admin/tab-techs.js?v=20260529-refactor-phase16b"></script>
   <script src="admin/tab-admins.js?v=20260529-refactor-phase17"></script>

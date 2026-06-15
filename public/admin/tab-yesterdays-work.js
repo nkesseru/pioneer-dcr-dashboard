@@ -523,6 +523,16 @@
     const dcrLink = r.dcr
       ? '<a class="ydw-link" href="#" data-ydw-dcr="' + escapeHtml(r.dcr.submission_id) + '">View DCR</a>'
       : '';
+    // V20260615b — View photos button, surfaces the shared dcr-photos-
+    // modal directly without bouncing to Recent DCRs first. Renders
+    // when the row has a linked DCR.
+    const photosBtn = r.dcr
+      ? '<button class="dcr-view-photos-btn" type="button" data-ydw-view-photos="' + escapeHtml(r.dcr.submission_id) + '" ' +
+          'data-ydw-customer="' + escapeHtml(r.customer_name || "") + '" ' +
+          'data-ydw-date="' + escapeHtml(r.dcr.clean_date || r.service_date || "") + '" ' +
+          'data-ydw-tech="' + escapeHtml(r.tech_display || "") + '" ' +
+          'title="View photos attached to this DCR">View photos</button>'
+      : '';
     const reportLink = (r.dcr && r.dcr.report_url)
       ? ' · <a class="ydw-link" href="' + escapeHtml(r.dcr.report_url) + '" target="_blank" rel="noopener noreferrer">Customer report ↗</a>'
       : '';
@@ -556,7 +566,7 @@
                startedChip + finishedChip + paidChip + dcrChip + issueChip + emailChip + viewCount +
              '</div>' +
              reason +
-             '<div class="ydw-row-actions">' + dcrLink + (dcrLink && custLink ? ' · ' : '') + custLink + reportLink + '</div>' +
+             '<div class="ydw-row-actions">' + dcrLink + (dcrLink && photosBtn ? ' · ' : '') + photosBtn + ((dcrLink || photosBtn) && custLink ? ' · ' : '') + custLink + reportLink + '</div>' +
              debugBlock +
            '</li>';
   }
@@ -627,6 +637,23 @@
     if (_ydwViewDcrWired) return;
     _ydwViewDcrWired = true;
     document.addEventListener("click", function (ev) {
+      // V20260615b — View photos: open the shared dcr-photos-modal
+      // directly. Checked before the View-DCR jump so a click on
+      // the photos button doesn't also re-route the tab.
+      const pb = ev.target && ev.target.closest && ev.target.closest("[data-ydw-view-photos]");
+      if (pb) {
+        ev.preventDefault();
+        const shell = window.__pioneerAdmin && window.__pioneerAdmin.shell;
+        if (shell && typeof shell.openDcrPhotosModal === "function") {
+          shell.openDcrPhotosModal({
+            submissionId: pb.getAttribute("data-ydw-view-photos"),
+            customerName: pb.getAttribute("data-ydw-customer") || "",
+            cleanDate:    pb.getAttribute("data-ydw-date")     || "",
+            techName:     pb.getAttribute("data-ydw-tech")     || ""
+          });
+        }
+        return;
+      }
       const a = ev.target && ev.target.closest && ev.target.closest("[data-ydw-dcr]");
       if (!a) return;
       ev.preventDefault();

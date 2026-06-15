@@ -103,6 +103,15 @@
           '<div class="pill-badges">' +
             photoBadge + problemBadge + zapBadge +
           '</div>' +
+          // V20260615b — View photos opens the shared dcr-photos-modal.
+          // Always shown so the operator has a one-click path to the
+          // images regardless of DCR email state.
+          (photoCount > 0
+            ? '<button class="dcr-view-photos-btn" type="button" data-action="view-photos" ' +
+                'title="View the ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') + ' on this DCR">' +
+                'View ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') +
+              '</button>'
+            : '') +
           // V6 — Review & Send opens the readiness modal for this DCR.
           // The modal calls getDcrEmailReadinessV1, renders blockers/
           // warnings, and only enables the actual Send button when
@@ -217,6 +226,21 @@
         if (!d) return;
         if (btn.dataset.action === "review-send") {
           window.__pioneerAdmin.tabs.dcrReview.openModal(d);
+        } else if (btn.dataset.action === "view-photos") {
+          // V20260615b — shared shell modal; resolver handles all
+          // photo field-name variants (photos[] / photo_urls[] /
+          // after_photos / before_photos / issue_photos /
+          // evidencePhotos / evidence_photos / attachments).
+          const shell = window.__pioneerAdmin && window.__pioneerAdmin.shell;
+          if (shell && typeof shell.openDcrPhotosModal === "function") {
+            shell.openDcrPhotosModal({
+              submissionId: d.submission_id || d.id,
+              customerName: d.customer_name || "",
+              location:     d.location_name || "",
+              cleanDate:    d.clean_date || "",
+              techName:     d.tech_display_name || ""
+            });
+          }
         }
       });
     }

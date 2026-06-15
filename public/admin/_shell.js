@@ -342,6 +342,158 @@
     }
   }
 
+  /* ---------- V20260615 — shared DCR photo viewer ------------------------
+   * One opener, one modal, one resolver. Called from tab-dcr-issues
+   * (View details & photos on an issue card), tab-recent-dcrs (View
+   * photos on a DCR row), and tab-yesterdays-work (View photos on a
+   * shift row with a linked DCR).
+   *
+   * Photos live on dcr_submissions/{id}. The issue doc itself has no
+   * photo fields; the writer (functions/index.js
+   * createDcrIssuesForSubmission) only stores text + workflow fields.
+   * The resolver below pulls all photo-shaped fields off a DCR doc,
+   * tolerating the field-name variants the operator surfaced:
+   *   photos[] / photo_urls[] / after_photos / before_photos /
+   *   issue_photos / evidencePhotos / evidence_photos / attachments
+   * --------------------------------------------------------------------- */
+  function _dcrEscapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function _dcrNormalizePhotoItem(p) {
+    if (!p) return null;
+    if (typeof p === "string") return { url: p, alt: "" };
+    if (typeof p !== "object") return null;
+    const url = p.download_url || p.downloadURL || p.url || "";
+    if (!url) return null;
+    return {
+      url: url,
+      alt: p.caption || p.tag || p.id || ""
+    };
+  }
+  function collectPhotosFromDcr(dcr) {
+    if (!dcr) return [];
+    const out = [];
+    const seen = new Set();
+    function push(p) {
+      const n = _dcrNormalizePhotoItem(p);
+      if (!n || seen.has(n.url)) return;
+      seen.add(n.url);
+      out.push(n);
+    }
+    if (Array.isArray(dcr.photos))       dcr.photos.forEach(push);
+    if (Array.isArray(dcr.photo_urls))   dcr.photo_urls.forEach(push);
+    ["after_photos", "before_photos", "issue_photos",
+     "evidencePhotos", "evidence_photos", "attachments"]
+      .forEach(function (k) { if (Array.isArray(dcr[k])) dcr[k].forEach(push); });
+    return out;
+  }
+
+  let _currentPhotoModalSubmissionId = null;
+
+  // ctx fields (all optional): customerName, location, cleanDate, techName,
+  // submissionId, issueSummary, adminNotes. The issue blocks render only
+  // when their text is non-empty — Recent DCRs / Yesterday's Work omit
+  // them. submissionId is REQUIRED — that's the parent DCR doc the
+  // photos are read from.
+  async function openDcrPhotosModal(ctx) {
+    ctx = ctx || {};
+    _currentPhotoModalSubmissionId = ctx.submissionId || null;
+    const modal = document.getElementById("dcr-photos-modal");
+    if (!modal) {
+      console.warn("[shell] dcr-photos-modal markup missing from page");
+      return;
+    }
+    const titleEl  = document.getElementById("dcr-photos-modal-title");
+    const metaEl   = document.getElementById("dcr-photos-modal-meta");
+    const subIdEl  = document.getElementById("dcr-photos-modal-submission-id");
+    const sumWrap  = document.getElementById("dcr-photos-modal-issue-summary-wrap");
+    const sumEl    = document.getElementById("dcr-photos-modal-issue-summary");
+    const notesWrap = document.getElementById("dcr-photos-modal-issue-notes-wrap");
+    const notesEl  = document.getElementById("dcr-photos-modal-issue-notes");
+    const photosEl = document.getElementById("dcr-photos-modal-grid");
+    const statusEl = document.getElementById("dcr-photos-modal-status");
+
+    if (titleEl)  titleEl.textContent = ctx.customerName || "DCR photos";
+    if (metaEl) {
+      const metaParts = [];
+      if (ctx.location && ctx.location !== ctx.customerName) metaParts.push(ctx.location);
+      if (ctx.cleanDate)  metaParts.push("Clean date " + ctx.cleanDate);
+      if (ctx.techName)   metaParts.push("Tech: " + ctx.techName);
+      metaEl.textContent = metaParts.join(" · ");
+    }
+    if (subIdEl)  subIdEl.textContent = ctx.submissionId || "—";
+    if (sumWrap)   sumWrap.hidden   = !ctx.issueSummary;
+    if (sumEl)     sumEl.textContent  = ctx.issueSummary || "";
+    if (notesWrap) notesWrap.hidden = !ctx.adminNotes;
+    if (notesEl)   notesEl.textContent = ctx.adminNotes || "";
+    if (photosEl)  photosEl.innerHTML = "";
+    if (statusEl) {
+      statusEl.hidden = false;
+      statusEl.textContent = "Loading photos…";
+    }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+
+    if (!ctx.submissionId) {
+      if (statusEl) statusEl.textContent = "No DCR submission id provided — nothing to load.";
+      return;
+    }
+    try {
+      const snap = await firebase.firestore()
+        .collection("dcr_submissions").doc(ctx.submissionId).get();
+      if (_currentPhotoModalSubmissionId !== ctx.submissionId) return;  // user closed/switched
+      if (!snap.exists) {
+        if (statusEl) statusEl.textContent = "DCR submission not found (id: " + ctx.submissionId + ").";
+        return;
+      }
+      const dcr = snap.data() || {};
+      const photos = collectPhotosFromDcr(dcr);
+      if (!photos.length) {
+        if (statusEl) statusEl.textContent = "No photos attached to this DCR.";
+        return;
+      }
+      if (statusEl) statusEl.hidden = true;
+      if (photosEl) {
+        photosEl.innerHTML = photos.map(function (p) {
+          const u = _dcrEscapeHtml(p.url);
+          const a = _dcrEscapeHtml(p.alt || "DCR photo");
+          return '<a class="issue-photo-thumb" href="' + u + '" target="_blank" rel="noopener noreferrer" title="Open original (new tab)">' +
+                   '<img src="' + u + '" alt="' + a + '" loading="lazy" />' +
+                 '</a>';
+        }).join("");
+      }
+    } catch (err) {
+      console.error("[shell] dcr-photos-modal fetch failed", err);
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Couldn't load photos: " + (err && err.message ? err.message : err);
+      }
+    }
+  }
+  function closeDcrPhotosModal() {
+    const modal = document.getElementById("dcr-photos-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    _currentPhotoModalSubmissionId = null;
+  }
+  // Wire backdrop / close button delegation once.
+  let _dcrPhotosModalWired = false;
+  function wireDcrPhotosModalOnce() {
+    if (_dcrPhotosModalWired) return;
+    _dcrPhotosModalWired = true;
+    document.addEventListener("click", function (ev) {
+      const t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("#dcr-photos-modal [data-modal-close]")) closeDcrPhotosModal();
+    });
+  }
+  wireDcrPhotosModalOnce();
+
   /* ---------- export surface ---------- */
 
   window.__pioneerAdmin.shell = {
@@ -358,6 +510,10 @@
     dcrEmailBadge: dcrEmailBadge,
     activateTab: activateTab,
     registerTabActivator: registerTabActivator,
+    // V20260615 — shared DCR photo viewer (one modal, one resolver).
+    collectPhotosFromDcr: collectPhotosFromDcr,
+    openDcrPhotosModal: openDcrPhotosModal,
+    closeDcrPhotosModal: closeDcrPhotosModal,
     setModalSaving: setModalSaving,
     setModalError: setModalError,
     handleAdminWriteError: handleAdminWriteError,
