@@ -3510,6 +3510,60 @@
     </div>
   </div>
 
+  <!-- ================== Sick-leave EDIT modal (V20260614) ==================
+       Direct-set Available + Used. Audit ledger entry uses entry_type
+       "admin_edit" with previous + new value pair. Confirmation step
+       (window.confirm with diff summary) before commit.
+       ===================================================================== -->
+  <div id="sick-edit-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-edit-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-edit-title">Edit sick-leave balance</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-edit-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-edit-available">Available balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-edit-available" autocomplete="off"
+                 min="0" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Direct set. Cap is 40h unless you check the override below.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-edit-used">Used balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-edit-used" autocomplete="off"
+                 min="0" max="1000" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Lifetime used. Leave unchanged if not correcting it.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-edit-reason">Reason <span class="req">*</span></label>
+          <textarea id="sick-edit-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Correcting data-entry error from 2026-06-10 manual seed."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the audit ledger.</p>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-edit-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — required if new Available exceeds 40h.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Posts an <code>admin_edit</code> ledger entry (with previous &amp; new values)
+          and updates the balance doc in one batch. You'll be asked to confirm before save.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-edit-save">Save changes</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Toast container — top-right slide-ins for success/error notifications. -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -3555,7 +3609,7 @@
   <script src="admin/tab-payroll.js?v=20260610-timeclock-addon"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260610-kirby-usability"></script>
-  <script src="admin/tab-sick-leave.js?v=20260601-phase1f"></script>
+  <script src="admin/tab-sick-leave.js?v=20260614-edit-balance"></script>
   <script src="admin.js?v=20260604-phase31-mission-control"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>

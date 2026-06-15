@@ -1237,10 +1237,11 @@ service cloud.firestore {
                     && request.resource.data.staff_uid is string
                     && request.resource.data.minutes_delta is number
                     && request.resource.data.entry_type in [
-                         "opening_balance", "earned", "used", "admin_adjustment"
+                         "opening_balance", "earned", "used",
+                         "admin_adjustment", "admin_edit"
                        ]
                     && request.resource.data.effective_date is string
-                    && (request.resource.data.entry_type != "admin_adjustment"
+                    && (!(request.resource.data.entry_type in ["admin_adjustment", "admin_edit"])
                         || (request.resource.data.reason is string
                             && request.resource.data.reason.size() > 0));
       // Append-only — corrections happen via NEW admin_adjustment entries.

@@ -248,9 +248,15 @@
           ? '<span class="sl-muted">—</span>'
           : escapeHtml(fmtMinutes(periodMin));
         updatedLabel = updated ? escapeHtml(fmtDateTime(updated)) : '<span class="sl-muted">—</span>';
+        // V20260614 — Adjust (delta-based) and Edit (direct-set). Adjust
+        // posts a signed minutes_delta + reason for routine credits/debits.
+        // Edit overwrites Available + Used directly for data corrections,
+        // with previous + new values captured on the audit ledger.
         actionHtml =
           '<button type="button" class="sick-btn" data-act="adjust" ' +
-            'data-tech-id="' + escapeHtml(t.id) + '">Adjust…</button>';
+            'data-tech-id="' + escapeHtml(t.id) + '">Adjust…</button>' +
+          '<button type="button" class="sick-btn" data-act="edit" ' +
+            'data-tech-id="' + escapeHtml(t.id) + '">Edit…</button>';
       }
 
       return (
@@ -387,6 +393,78 @@
     await batch.commit();
   }
 
+  // V20260614 — Direct-set Edit. Overwrites Available + Used with the
+  // values the admin typed (after window.confirm). Captures previous +
+  // new pair on the audit ledger so corrections are fully reconstructable.
+  // Reuses the same batch shape (ledger entry + balance update) as
+  // applyAdjustment — atomic; never overwrites the balance without a
+  // matching ledger row. minutes_delta on the ledger is computed as
+  // (newAvail - prevAvail) so existing balance reconciliation tooling
+  // that sums ledger deltas still nets to the right number.
+  async function applyEdit(opts) {
+    const tech            = opts.tech;
+    const newAvailMin     = opts.newAvailMinutes;     // integer minutes
+    const newUsedMin      = opts.newUsedMinutes;      // integer minutes
+    const reason          = opts.reason;
+    const adminEmail      = currentAdminEmail();
+    const adminUid        = (function () {
+      try { return (firebase.auth().currentUser || {}).uid || null; }
+      catch (_) { return null; }
+    })();
+    const staff_uid       = tech.uid || tech.auth_uid;
+    if (!staff_uid) throw new Error("Tech has no auth uid.");
+    const staff_email     = techEmail(tech);
+    const db              = firebase.firestore();
+    const sts             = firebase.firestore.FieldValue.serverTimestamp();
+    const effective_date  = pacificDateStringNow();
+
+    const balanceRef = db.collection("staff_labor_balances").doc(staff_uid);
+    const existingSnap = await balanceRef.get();
+    if (!existingSnap.exists) {
+      throw new Error("No balance doc to edit. Set the opening balance first.");
+    }
+    const existing      = existingSnap.data() || {};
+    const prevAvail     = Number(existing.sick_leave_balance_minutes)           || 0;
+    const prevUsed      = Number(existing.sick_leave_lifetime_used_minutes)     || 0;
+    const prevAdj       = Number(existing.sick_leave_lifetime_adjusted_minutes) || 0;
+    const minutesDelta  = newAvailMin - prevAvail;
+    if (newAvailMin < 0) throw new Error("Available cannot be negative.");
+    if (newUsedMin  < 0) throw new Error("Used cannot be negative.");
+
+    const ledgerRef = db.collection("sick_leave_ledger").doc();
+    const batch = db.batch();
+    batch.set(ledgerRef, {
+      staff_uid:                staff_uid,
+      staff_email:              staff_email,
+      entry_type:               "admin_edit",
+      minutes_delta:            minutesDelta,
+      effective_date:           effective_date,
+      reason:                   reason,
+      previous_balance_minutes: prevAvail,
+      new_balance_minutes:      newAvailMin,
+      previous_used_minutes:    prevUsed,
+      new_used_minutes:         newUsedMin,
+      edited_by_uid:            adminUid,
+      edited_by_email:          adminEmail,
+      edited_at:                sts,
+      source:                   { kind: "admin_ui", ref_id: null },
+      basis:                    null,
+      created_at:               sts,
+      created_by:               adminEmail,
+      batch_id:                 null
+    });
+    batch.update(balanceRef, {
+      sick_leave_balance_minutes:           newAvailMin,
+      sick_leave_lifetime_used_minutes:     newUsedMin,
+      sick_leave_lifetime_adjusted_minutes: prevAdj + minutesDelta,
+      last_ledger_entry_id:                 ledgerRef.id,
+      last_ledger_entry_at:                 sts,
+      updated_at:                           sts,
+      updated_by:                           adminEmail
+    });
+    await batch.commit();
+  }
+
   /* ---------- modals ---------- */
 
   function openOpeningBalanceModal(tech) {
@@ -423,6 +501,32 @@
     modal.hidden = false;
     modal.setAttribute("aria-hidden", "false");
     setTimeout(function () { $("sick-adj-hours").focus(); }, 60);
+  }
+
+  // V20260614 — Direct-set Edit modal. Pre-populates Available + Used
+  // from the current balance doc so the admin can correct typos without
+  // arithmetic.
+  function openEditModal(tech) {
+    currentTech    = tech;
+    const uid      = tech.uid || tech.auth_uid;
+    currentBalance = uid ? balancesByUid[uid] : null;
+    const modal = $("sick-edit-modal");
+    if (!modal) return;
+    const prevAvail = currentBalance ? Number(currentBalance.sick_leave_balance_minutes)       || 0 : 0;
+    const prevUsed  = currentBalance ? Number(currentBalance.sick_leave_lifetime_used_minutes) || 0 : 0;
+    $("sick-edit-summary").textContent =
+      techDisplayName(tech) + " · " + techEmail(tech) +
+      " · current Available " + fmtMinutes(prevAvail) +
+      " · Used " + fmtMinutes(prevUsed);
+    $("sick-edit-available").value = fmtHoursForInput(prevAvail);
+    $("sick-edit-used").value      = fmtHoursForInput(prevUsed);
+    $("sick-edit-reason").value    = "";
+    $("sick-edit-allow-cap").checked = false;
+    const errEl = $("sick-edit-err");
+    if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    setTimeout(function () { $("sick-edit-available").focus(); }, 60);
   }
 
   function closeSickModal(id) {
@@ -503,6 +607,78 @@
     }
   }
 
+  // V20260614 — Edit submit. Validates → confirms via window.confirm
+  // with a diff summary → applies → toast on success/error.
+  async function submitEdit() {
+    const errEl   = $("sick-edit-err");
+    const saveBtn = $("sick-edit-save");
+    function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }
+    function toast(kind, msg) {
+      try {
+        const shell = window.__pioneerAdmin && window.__pioneerAdmin.shell;
+        if (shell && typeof shell.showToast === "function") shell.showToast(kind, msg);
+      } catch (_) { /* non-fatal */ }
+    }
+
+    if (!currentTech)    { showErr("No tech selected.");    return; }
+    if (!currentBalance) { showErr("No balance doc to edit. Set the opening balance first."); return; }
+
+    const availStr = ($("sick-edit-available") && $("sick-edit-available").value) || "";
+    const usedStr  = ($("sick-edit-used")      && $("sick-edit-used").value)      || "";
+    const reason   = (($("sick-edit-reason")   && $("sick-edit-reason").value)    || "").trim();
+    const allowCap = !!($("sick-edit-allow-cap") && $("sick-edit-allow-cap").checked);
+
+    const newAvailMin = hoursToMinutes(availStr);
+    const newUsedMin  = hoursToMinutes(usedStr);
+    if (!Number.isFinite(newAvailMin) || newAvailMin < 0) {
+      showErr("Available must be a non-negative number of hours."); return;
+    }
+    if (!Number.isFinite(newUsedMin) || newUsedMin < 0) {
+      showErr("Used must be a non-negative number of hours."); return;
+    }
+    if (reason.length < 5) {
+      showErr("Reason must be at least 5 characters (required for admin edits)."); return;
+    }
+    if (newAvailMin > CAP_MINUTES && !allowCap) {
+      showErr("New Available exceeds the 40h cap (" + fmtMinutes(newAvailMin) +
+        "). Check 'Allow above cap' to override."); return;
+    }
+
+    const prevAvail = Number(currentBalance.sick_leave_balance_minutes)       || 0;
+    const prevUsed  = Number(currentBalance.sick_leave_lifetime_used_minutes) || 0;
+    if (newAvailMin === prevAvail && newUsedMin === prevUsed) {
+      showErr("No change — Available and Used match current values."); return;
+    }
+
+    const techName = techDisplayName(currentTech);
+    const confirmMsg =
+      "Save these changes for " + techName + "?\n\n" +
+      "Available: " + fmtMinutes(prevAvail) + " → " + fmtMinutes(newAvailMin) + "\n" +
+      "Used: "      + fmtMinutes(prevUsed)  + " → " + fmtMinutes(newUsedMin)  + "\n\n" +
+      "Reason: " + reason;
+    if (!window.confirm(confirmMsg)) return;
+
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await applyEdit({
+        tech:             currentTech,
+        newAvailMinutes:  newAvailMin,
+        newUsedMinutes:   newUsedMin,
+        reason:           reason
+      });
+      closeSickModal("sick-edit-modal");
+      toast("ok", "Sick-leave balance updated for " + techName);
+      refresh();
+    } catch (err) {
+      console.error("[sick-leave] edit failed", err);
+      const msg = (err && (err.message || err.code)) || "Save failed.";
+      showErr(msg);
+      toast("err", "Edit failed — " + msg);
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
   /* ---------- wire-up ---------- */
 
   function findTechById(id) {
@@ -513,7 +689,7 @@
     const refreshBtn = $("sick-leave-refresh");
     if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
 
-    // Delegated row-button clicks for both Seed and Adjust.
+    // Delegated row-button clicks for Seed, Adjust, and Edit.
     document.addEventListener("click", function (ev) {
       const btn = ev.target.closest && ev.target.closest('.sick-btn[data-act]');
       if (!btn) return;
@@ -523,12 +699,15 @@
       if (!tech) return;
       if (btn.dataset.act === "seed")   openOpeningBalanceModal(tech);
       if (btn.dataset.act === "adjust") openAdjustmentModal(tech);
+      if (btn.dataset.act === "edit")   openEditModal(tech);
     });
 
     const seedSave = $("sick-seed-save");
     if (seedSave) seedSave.addEventListener("click", submitOpeningBalance);
     const adjSave = $("sick-adj-save");
     if (adjSave) adjSave.addEventListener("click", submitAdjustment);
+    const editSave = $("sick-edit-save");
+    if (editSave) editSave.addEventListener("click", submitEdit);
   }
 
   /* ---------- export ---------- */
