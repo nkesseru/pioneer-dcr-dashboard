@@ -70,6 +70,33 @@
     return String((t && t.email) || "").toLowerCase().trim();
   }
 
+  // V20260614b — Resolve a stable identifier for sick-leave docs even
+  // when the tech has not yet signed into Firebase Auth. Preference
+  // order: real Firebase uid → Deputy employee id → internal employee
+  // id → normalized email. Fallback keys are namespace-prefixed so
+  // (a) their kind is obvious in the data and (b) they never collide
+  // with real Firebase auth uids (28-char base64-ish, no colons).
+  //
+  // Returns { key, kind } or null when nothing identifies this tech.
+  //
+  // Migration note: a balance doc seeded under a fallback key cannot
+  // be read by the tech themselves (the staff_labor_balances rule's
+  // isOwnUid(staffUid) check requires the doc id to equal the auth
+  // uid). For now the tech-facing balance view doesn't exist so this
+  // is acceptable; staff_uid_kind on the doc lets future tooling
+  // detect fallback-keyed balances and migrate them to the real uid
+  // once the tech signs in.
+  function resolveStaffKey(tech) {
+    if (!tech) return null;
+    if (tech.uid)                return { key: String(tech.uid),                                kind: "firebase_uid"       };
+    if (tech.auth_uid)           return { key: String(tech.auth_uid),                           kind: "firebase_uid"       };
+    if (tech.deputy_employee_id) return { key: "deputy:" + String(tech.deputy_employee_id),     kind: "deputy_employee_id" };
+    if (tech.employee_id)        return { key: "employee:" + String(tech.employee_id),          kind: "employee_id"        };
+    const email = String((tech && tech.email) || "").toLowerCase().trim();
+    if (email)                   return { key: "email:" + email.replace(/[^a-z0-9._\-]/g, "_"), kind: "email"              };
+    return null;
+  }
+
   function tsToMs(ts) {
     if (!ts) return 0;
     if (typeof ts.toMillis === "function") return ts.toMillis();
@@ -213,27 +240,32 @@
       '</div>';
 
     const rowsHtml = techs.map(function (t) {
-      const uid     = t.uid || t.auth_uid || "";
-      const balance = uid ? balancesByUid[uid] : null;
-      const name    = techDisplayName(t);
-      const email   = techEmail(t);
+      const resolved = resolveStaffKey(t);
+      const balance  = resolved ? balancesByUid[resolved.key] : null;
+      const name     = techDisplayName(t);
+      const email    = techEmail(t);
 
       let availLabel, usedLabel, periodLabel, updatedLabel, actionHtml;
-      if (!uid) {
-        availLabel = '<span class="sl-muted">—</span>';
-        usedLabel  = '<span class="sl-muted">—</span>';
-        periodLabel = '<span class="sl-muted">—</span>';
-        updatedLabel = '<span class="sl-muted" title="Tech has not signed in yet — no auth uid on cleaning_techs/' +
-                       escapeHtml(t.id || "") + '">No auth uid</span>';
+      if (!resolved) {
+        // V20260614b — Truly identifierless tech: no uid, no deputy id,
+        // no employee id, no email. Should be rare; previously this branch
+        // also caught techs missing an auth uid (causing the production
+        // "0 with balances seeded · No auth uid on every row" symptom).
+        availLabel   = '<span class="sl-muted">—</span>';
+        usedLabel    = '<span class="sl-muted">—</span>';
+        periodLabel  = '<span class="sl-muted">—</span>';
+        updatedLabel = '<span class="sl-muted" title="Tech has no email, employee id, or deputy id on cleaning_techs/' +
+                       escapeHtml(t.id || "") + '">No identifier</span>';
         actionHtml = '';
       } else if (!balance) {
-        availLabel = '<span class="sl-muted">Not seeded</span>';
-        usedLabel  = '<span class="sl-muted">—</span>';
-        periodLabel = '<span class="sl-muted">—</span>';
-        updatedLabel = '<span class="sl-muted">—</span>';
+        availLabel   = '<span class="sl-muted">Not seeded</span>';
+        usedLabel    = '<span class="sl-muted">—</span>';
+        periodLabel  = '<span class="sl-muted">—</span>';
+        updatedLabel = '<span class="sl-muted" title="Seed key: ' +
+                       escapeHtml(resolved.kind) + '">—</span>';
         actionHtml =
           '<button type="button" class="sick-btn sick-btn-primary" data-act="seed" ' +
-            'data-tech-id="' + escapeHtml(t.id) + '">Set opening balance…</button>';
+            'data-tech-id="' + escapeHtml(t.id) + '">Seed Balance</button>';
       } else {
         const avail    = balance.sick_leave_balance_minutes;
         const used     = balance.sick_leave_lifetime_used_minutes;
@@ -284,8 +316,9 @@
     const minutes   = opts.minutes;
     const reason    = opts.reason;
     const adminEmail = currentAdminEmail();
-    const staff_uid = tech.uid || tech.auth_uid;
-    if (!staff_uid) throw new Error("Tech has no auth uid yet. Ask them to sign in once and refresh.");
+    const resolved  = resolveStaffKey(tech);
+    if (!resolved) throw new Error("Tech has no identifier (uid, employee id, or email).");
+    const staff_uid = resolved.key;
     const staff_email = techEmail(tech);
     const db          = firebase.firestore();
     const sts         = firebase.firestore.FieldValue.serverTimestamp();
@@ -345,8 +378,9 @@
     const minutesDelta = opts.minutesDelta;   // signed integer
     const reason       = opts.reason;
     const adminEmail   = currentAdminEmail();
-    const staff_uid    = tech.uid || tech.auth_uid;
-    if (!staff_uid) throw new Error("Tech has no auth uid.");
+    const resolved     = resolveStaffKey(tech);
+    if (!resolved) throw new Error("Tech has no identifier.");
+    const staff_uid    = resolved.key;
     const staff_email  = techEmail(tech);
     const db           = firebase.firestore();
     const sts          = firebase.firestore.FieldValue.serverTimestamp();
@@ -411,8 +445,9 @@
       try { return (firebase.auth().currentUser || {}).uid || null; }
       catch (_) { return null; }
     })();
-    const staff_uid       = tech.uid || tech.auth_uid;
-    if (!staff_uid) throw new Error("Tech has no auth uid.");
+    const resolved        = resolveStaffKey(tech);
+    if (!resolved) throw new Error("Tech has no identifier.");
+    const staff_uid       = resolved.key;
     const staff_email     = techEmail(tech);
     const db              = firebase.firestore();
     const sts             = firebase.firestore.FieldValue.serverTimestamp();
@@ -465,6 +500,112 @@
     await batch.commit();
   }
 
+  // V20260614b — One-click zero-balance seed. Creates a
+  // staff_labor_balances doc + audit ledger entry of type "admin_seed"
+  // in one batch, keyed by resolveStaffKey(tech) so techs without
+  // Firebase auth uids are still seedable. Idempotent — refuses if
+  // a doc already exists at the resolved key.
+  //
+  // Schema notes:
+  //   • Canonical long-named fields (sick_leave_balance_minutes,
+  //     sick_leave_lifetime_used_minutes, current_period_work_minutes)
+  //     are written so the existing renderer + Adjust + Edit flows
+  //     consume them unchanged.
+  //   • User-spec short tags (source, staff_name, created_at,
+  //     created_by) added alongside for audit clarity.
+  //   • staff_uid_kind records which identifier kind produced the
+  //     key so future migration tooling (when a tech signs in and
+  //     gets a real Firebase uid) can detect fallback-keyed docs.
+  async function seedBalance(tech) {
+    const resolved = resolveStaffKey(tech);
+    if (!resolved) throw new Error("Tech has no identifier (uid, employee id, or email).");
+    const staff_uid      = resolved.key;
+    const staff_uid_kind = resolved.kind;
+    const adminEmail     = currentAdminEmail();
+    const staff_email    = techEmail(tech);
+    const staff_name     = techDisplayName(tech);
+    const db             = firebase.firestore();
+    const sts            = firebase.firestore.FieldValue.serverTimestamp();
+    const effective_date = pacificDateStringNow();
+
+    const balanceRef = db.collection("staff_labor_balances").doc(staff_uid);
+    const existing   = await balanceRef.get();
+    if (existing.exists) {
+      throw new Error("Balance already exists for " + (staff_email || staff_name) + ".");
+    }
+
+    const ledgerRef = db.collection("sick_leave_ledger").doc();
+    const batch = db.batch();
+    batch.set(ledgerRef, {
+      staff_uid:      staff_uid,
+      staff_email:    staff_email,
+      entry_type:     "admin_seed",
+      minutes_delta:  0,
+      effective_date: effective_date,
+      reason:         "Initial sick leave balance seed",
+      source:         { kind: "admin_ui", ref_id: null },
+      basis:          null,
+      created_at:     sts,
+      created_by:     adminEmail,
+      batch_id:       null
+    });
+    batch.set(balanceRef, {
+      staff_uid:                                     staff_uid,
+      staff_uid_kind:                                staff_uid_kind,
+      staff_email:                                   staff_email,
+      staff_name:                                    staff_name,
+      sick_leave_balance_minutes:                    0,
+      sick_leave_lifetime_earned_minutes:            0,
+      sick_leave_lifetime_used_minutes:              0,
+      sick_leave_lifetime_adjusted_minutes:          0,
+      sick_leave_lifetime_forfeited_minutes:         0,
+      sick_leave_opening_balance_minutes:            0,
+      current_period_id:                             null,
+      current_period_work_minutes:                   0,
+      current_period_paid_drive_minutes:             0,
+      current_period_paid_minutes:                   0,
+      current_period_sick_accrual_estimated_minutes: 0,
+      hire_date:                                     tech.hire_date || null,
+      sick_leave_usable_after:                       null,
+      last_ledger_entry_id:                          ledgerRef.id,
+      last_ledger_entry_at:                          sts,
+      source:                                        "admin_seed",
+      created_at:                                    sts,
+      created_by:                                    adminEmail,
+      updated_at:                                    sts,
+      updated_by:                                    adminEmail
+    });
+    await batch.commit();
+  }
+
+  // V20260614b — Bulk seed for every active tech without an existing
+  // balance. Skips techs whose resolveStaffKey already maps to a
+  // balance doc (idempotent across reruns). Sequential to keep error
+  // surfacing per-tech intelligible; volume is ~tens, not thousands.
+  async function seedAllMissing() {
+    const techs = getActiveTechs();
+    let seeded  = 0;
+    let skipped = 0;
+    let failed  = 0;
+    const errors = [];
+    for (let i = 0; i < techs.length; i++) {
+      const tech     = techs[i];
+      const resolved = resolveStaffKey(tech);
+      if (!resolved)                       { skipped++; continue; }
+      if (balancesByUid[resolved.key])     { skipped++; continue; }
+      try {
+        await seedBalance(tech);
+        seeded++;
+      } catch (err) {
+        failed++;
+        errors.push(techDisplayName(tech) + ": " +
+          ((err && (err.message || err.code)) || "unknown"));
+        console.error("[sick-leave] bulk seed failed for", tech && tech.id, err);
+      }
+    }
+    return { seeded: seeded, skipped: skipped, failed: failed, errors: errors };
+  }
+
   /* ---------- modals ---------- */
 
   function openOpeningBalanceModal(tech) {
@@ -485,8 +626,8 @@
 
   function openAdjustmentModal(tech) {
     currentTech    = tech;
-    const uid      = tech.uid || tech.auth_uid;
-    currentBalance = uid ? balancesByUid[uid] : null;
+    const resolved = resolveStaffKey(tech);
+    currentBalance = resolved ? balancesByUid[resolved.key] : null;
     const modal = $("sick-adj-modal");
     if (!modal) return;
     const currentMin = currentBalance ? currentBalance.sick_leave_balance_minutes : 0;
@@ -508,8 +649,8 @@
   // arithmetic.
   function openEditModal(tech) {
     currentTech    = tech;
-    const uid      = tech.uid || tech.auth_uid;
-    currentBalance = uid ? balancesByUid[uid] : null;
+    const resolved = resolveStaffKey(tech);
+    currentBalance = resolved ? balancesByUid[resolved.key] : null;
     const modal = $("sick-edit-modal");
     if (!modal) return;
     const prevAvail = currentBalance ? Number(currentBalance.sick_leave_balance_minutes)       || 0 : 0;
@@ -690,6 +831,10 @@
     if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
 
     // Delegated row-button clicks for Seed, Adjust, and Edit.
+    // V20260614b — "seed" is now a direct one-click write via
+    // submitSeedFromButton (was: open the "Set opening balance"
+    // modal). The modal + opener are kept dormant for now; future
+    // PR can remove them.
     document.addEventListener("click", function (ev) {
       const btn = ev.target.closest && ev.target.closest('.sick-btn[data-act]');
       if (!btn) return;
@@ -697,7 +842,7 @@
       if (!techId) return;
       const tech = findTechById(techId);
       if (!tech) return;
-      if (btn.dataset.act === "seed")   openOpeningBalanceModal(tech);
+      if (btn.dataset.act === "seed")   submitSeedFromButton(tech, btn);
       if (btn.dataset.act === "adjust") openAdjustmentModal(tech);
       if (btn.dataset.act === "edit")   openEditModal(tech);
     });
@@ -708,6 +853,65 @@
     if (adjSave) adjSave.addEventListener("click", submitAdjustment);
     const editSave = $("sick-edit-save");
     if (editSave) editSave.addEventListener("click", submitEdit);
+
+    // V20260614b — Bulk "Seed All Missing" panel-action button.
+    const seedAllBtn = $("sick-leave-seed-all");
+    if (seedAllBtn) seedAllBtn.addEventListener("click", submitSeedAll);
+  }
+
+  function toast(kind, msg) {
+    try {
+      const shell = window.__pioneerAdmin && window.__pioneerAdmin.shell;
+      if (shell && typeof shell.showToast === "function") shell.showToast(kind, msg);
+    } catch (_) { /* non-fatal */ }
+  }
+
+  async function submitSeedFromButton(tech, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      await seedBalance(tech);
+      toast("ok", "Seeded balance for " + techDisplayName(tech));
+      await refresh();
+    } catch (err) {
+      console.error("[sick-leave] seed failed", err);
+      toast("err", "Seed failed — " + ((err && (err.message || err.code)) || "unknown"));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function submitSeedAll() {
+    const techs = getActiveTechs();
+    const candidates = techs.filter(function (t) {
+      const r = resolveStaffKey(t);
+      return r && !balancesByUid[r.key];
+    });
+    if (!candidates.length) {
+      toast("ok", "No missing balances — everyone is seeded.");
+      return;
+    }
+    const msg = "Seed initial sick-leave balances (0h) for " + candidates.length +
+                " tech" + (candidates.length === 1 ? "" : "s") + " without an existing balance?";
+    if (!window.confirm(msg)) return;
+
+    const btn = $("sick-leave-seed-all");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await seedAllMissing();
+      const summary = "Seeded " + res.seeded + " · skipped " + res.skipped + " · failed " + res.failed;
+      if (res.failed === 0) {
+        toast("ok", summary);
+      } else {
+        toast("err", summary + " — see console for details");
+        console.warn("[sick-leave] bulk seed errors:", res.errors);
+      }
+      await refresh();
+    } catch (err) {
+      console.error("[sick-leave] bulk seed crashed", err);
+      toast("err", "Bulk seed crashed — " + ((err && (err.message || err.code)) || "unknown"));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   /* ---------- export ---------- */

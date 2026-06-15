@@ -1617,8 +1617,12 @@
           <h2 class="card-title">Sick Leave</h2>
           <p class="panel-sub" id="sick-leave-sub">Loading…</p>
         </div>
-        <button class="panel-action" id="sick-leave-refresh" type="button"
-                title="Re-read staff_labor_balances">Refresh</button>
+        <div class="panel-actions">
+          <button class="panel-action" id="sick-leave-seed-all" type="button"
+                  title="Seed zero-balance staff_labor_balances docs for every active tech missing one">Seed All Missing</button>
+          <button class="panel-action" id="sick-leave-refresh" type="button"
+                  title="Re-read staff_labor_balances">Refresh</button>
+        </div>
       </header>
 
       <div class="admin-status admin-loading" id="sick-leave-loading" hidden>Loading…</div>
@@ -3609,7 +3613,7 @@
   <script src="admin/tab-payroll.js?v=20260610-timeclock-addon"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260610-kirby-usability"></script>
-  <script src="admin/tab-sick-leave.js?v=20260614-edit-balance"></script>
+  <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
   <script src="admin.js?v=20260604-phase31-mission-control"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
