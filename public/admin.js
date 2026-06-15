@@ -54,7 +54,7 @@
     "tabs.yesterdaysWork", "tabs.customers", "tabs.techs", "tabs.admins",
     "tabs.supplyRequests", "tabs.dayHealth", "tabs.announcements",
     "tabs.dcrReview", "tabs.schedule", "tabs.attendance", "tabs.laborReview",
-    "tabs.payroll", "tabs.sickLeave"
+    "tabs.payroll", "tabs.sickLeave", "tabs.officeIssues"
     // tabs.deputyMapping has its own granular diagnostic — see below
   ];
   if (!window.__pioneerAdmin) {
@@ -275,6 +275,7 @@
     { key: "customer-info",  label: "Customer Info Hub",    href: "/tech.html",           roles: ["admin", "cleaning_tech"] },
     { key: "supply-station", label: "Supply Station Order", href: "/supply-station.html", roles: ["admin", "cleaning_tech"] },
     { key: "team-hub",       label: "Pioneer Team Hub",     href: "/team-hub.html",       roles: ["admin", "cleaning_tech"] },
+    { key: "office-issues",  label: "Message the Office",   href: "/office-issues.html",   roles: ["admin", "cleaning_tech"] },
     { key: "training",       label: "Safety Training",      href: "/training.html",       roles: ["admin", "cleaning_tech"] },
     { key: "inspections",    label: "Inspections",          href: "/inspections.html",    roles: ["admin"] },
     { key: "admin",          label: "Admin",                href: "/admin",               roles: ["admin"] }
@@ -569,6 +570,7 @@
     registerTabActivator("payroll",         window.__pioneerAdmin.tabs.payroll.refresh);
     registerTabActivator("payroll-exceptions", window.__pioneerAdmin.tabs.payrollExceptions.refresh);
     registerTabActivator("sick-leave",      window.__pioneerAdmin.tabs.sickLeave.refresh);
+    registerTabActivator("office-issues",   window.__pioneerAdmin.tabs.officeIssues.refresh);
     registerTabActivator("tech-health",     window.__pioneerAdmin.tabs.techHealth.refresh);
     registerTabActivator("pilot-readiness", window.__pioneerAdmin.tabs.pilotReadiness.init);
     registerTabActivator("yesterday",       window.__pioneerAdmin.tabs.yesterdaysWork.init);

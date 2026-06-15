@@ -38,6 +38,7 @@
     { key: "customer-info",  label: "Customer Info Hub",    href: "/tech.html",            roles: ["admin", "cleaning_tech"] },
     { key: "supply-station", label: "Supply Station Order", href: "/supply-station.html",  roles: ["admin", "cleaning_tech"] },
     { key: "team-hub",       label: "Pioneer Team Hub",     href: "/team-hub.html",        roles: ["admin", "cleaning_tech"] },
+    { key: "office-issues",  label: "Message the Office",   href: "/office-issues.html",   roles: ["admin", "cleaning_tech"] },
     { key: "training",       label: "Safety Training",      href: "/training.html",        roles: ["admin", "cleaning_tech"] },
     { key: "inspections",    label: "Inspections",          href: "/inspections.html",     roles: ["admin"] },
     { key: "admin",          label: "Admin",                href: "/admin",                roles: ["admin"] }

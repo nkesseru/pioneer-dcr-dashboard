@@ -1226,6 +1226,63 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ====================================================================
+    // office_issues — Message the Office accountability log.
+    // ====================================================================
+    // Employees submit issues for the back-office team to triage. Phase 1
+    // ingest is employee_submission only. Future ingest channels (customer
+    // email forward, external complaint webhook) will set source to
+    // "customer_email" / "external_complaint" and supply customer_* fields
+    // instead of employee_* — those creates will come from Cloud Functions
+    // via Admin SDK, bypassing these rules.
+    //
+    // Schema (employee_submission):
+    //   source              "employee_submission"
+    //   employee_uid        == request.auth.uid on create
+    //   employee_email      string
+    //   employee_name       string
+    //   category            one of: payroll | schedule | supplies |
+    //                       sick_leave | time_adjustment | equipment |
+    //                       customer_concern | other
+    //   description         string, 5+ chars
+    //   status              "new" on create; admin transitions through
+    //                       acknowledged | working | waiting | resolved | closed
+    //   priority            "normal" on create; admin sets low|normal|high|urgent
+    //   owner_uid           null on create; admin assigns
+    //   owner_email         denormalized for admin list rendering
+    //   created_at          serverTimestamp
+    //   updated_at          serverTimestamp
+    //   acknowledged_at / resolved_at / closed_at  null on create
+    //   status_history      [ {status,at,by_uid,by_email} ]
+    //
+    // Reads: admin reads all. Submitter reads their own. Future ingest
+    // channels (customer email) will not have an employee_uid so a tech
+    // can't read those.
+    //
+    // Writes: employee can create (own submission only). Admin owns all
+    // updates (status, priority, owner, notes). Delete denied forever
+    // (audit log).
+    match /office_issues/{issueId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.employee_uid == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.source == "employee_submission"
+                    && request.resource.data.employee_uid == request.auth.uid
+                    && request.resource.data.status == "new"
+                    && request.resource.data.priority == "normal"
+                    && request.resource.data.owner_uid == null
+                    && request.resource.data.category in [
+                         "payroll", "schedule", "supplies", "sick_leave",
+                         "time_adjustment", "equipment", "customer_concern", "other"
+                       ]
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() >= 5
+                    && request.resource.data.description.size() <= 4000;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
     match /sick_leave_ledger/{entryId} {
       allow read:   if isPioneerAdmin()
                     || (request.auth != null

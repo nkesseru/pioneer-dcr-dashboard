@@ -423,6 +423,7 @@
                   hidden>0</span>
           </button>
           <button class="admin-tab"           data-tab="sick-leave"    role="tab" aria-selected="false">Sick Leave</button>
+          <button class="admin-tab"           data-tab="office-issues" role="tab" aria-selected="false">Office Issues</button>
           <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
             Attendance
             <span class="admin-tab-badge" id="attendance-tab-badge"
@@ -1630,6 +1631,92 @@
 
       <div class="sick-leave-table" id="sick-leave-table"></div>
       <p class="admin-status admin-empty" id="sick-leave-empty" hidden>No active cleaning techs.</p>
+    </section>
+
+    <!-- ================== Office Issues (Phase 1) ==================
+         Message-the-Office triage. Employees submit via
+         /office-issues.html; admins read + transition status from
+         this panel. Future ingest channels (customer_email,
+         external_complaint) will land in the same office_issues
+         collection via Cloud Functions, surfacing here automatically. -->
+    <section class="card admin-panel" data-panel="office-issues" role="tabpanel" hidden>
+      <style>
+        /* V20260615 — Office Issues page-local styles. Compact grid;
+           reuses the admin panel chrome around it. */
+        .oi-admin-row {
+          display: grid;
+          grid-template-columns: 110px 130px 160px minmax(180px, 1fr) 80px 160px 60px;
+          gap: 10px; padding: 10px 12px;
+          border-bottom: 1px solid #e2e8f0;
+          align-items: center;
+          cursor: pointer;
+          font-size: 13px;
+        }
+        .oi-admin-row:hover { background: #f8fafc; }
+        .oi-admin-row-head { background: #f1f5f9; font-weight: 700; cursor: default; font-size: 12px; text-transform: uppercase; color: #475569; }
+        .oi-admin-row-head:hover { background: #f1f5f9; }
+        .oi-admin-muted   { color: #94a3b8; font-style: italic; }
+        .oi-admin-chip {
+          display: inline-block; padding: 2px 8px; border-radius: 999px;
+          font-size: 11px; font-weight: 700;
+        }
+        .oi-admin-chip.is-new          { background: #dbeafe; color: #1e40af; }
+        .oi-admin-chip.is-acknowledged { background: #e0e7ff; color: #3730a3; }
+        .oi-admin-chip.is-working      { background: #fef3c7; color: #92400e; }
+        .oi-admin-chip.is-waiting      { background: #fee2e2; color: #991b1b; }
+        .oi-admin-chip.is-resolved     { background: #d1fae5; color: #065f46; }
+        .oi-admin-chip.is-closed       { background: #e2e8f0; color: #475569; }
+        .oi-admin-prio {
+          display: inline-block; padding: 2px 8px; border-radius: 4px;
+          font-size: 11px; font-weight: 700;
+        }
+        .oi-admin-prio.is-low    { background: #f1f5f9; color: #64748b; }
+        .oi-admin-prio.is-high   { background: #fef3c7; color: #92400e; }
+        .oi-admin-prio.is-urgent { background: #fee2e2; color: #991b1b; }
+        .oi-admin-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .oi-admin-filters select { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+        .oi-admin-filters label  { font-size: 12px; color: #475569; font-weight: 600; }
+      </style>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Office Issues</h2>
+          <p class="panel-sub" id="office-issues-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="office-issues-refresh" type="button"
+                title="Re-read office_issues">Refresh</button>
+      </header>
+
+      <div class="oi-admin-filters">
+        <label for="office-issues-filter-status">Status</label>
+        <select id="office-issues-filter-status">
+          <option value="open" selected>Open (not resolved/closed)</option>
+          <option value="all">All</option>
+          <option value="new">New</option>
+          <option value="acknowledged">Acknowledged</option>
+          <option value="working">Working</option>
+          <option value="waiting">Waiting</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+        </select>
+        <label for="office-issues-filter-category">Category</label>
+        <select id="office-issues-filter-category">
+          <option value="all" selected>All</option>
+          <option value="payroll">Payroll</option>
+          <option value="schedule">Schedule</option>
+          <option value="supplies">Supplies</option>
+          <option value="sick_leave">Sick Leave</option>
+          <option value="time_adjustment">Time Adjustment</option>
+          <option value="equipment">Equipment</option>
+          <option value="customer_concern">Customer Concern</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div class="admin-status admin-loading" id="office-issues-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="office-issues-error"   hidden></div>
+
+      <div id="office-issues-table"></div>
+      <p class="admin-status admin-empty" id="office-issues-empty" hidden>No office issues yet.</p>
     </section>
 
     <!-- ================== Team Schedule ==================
@@ -3568,6 +3655,65 @@
     </div>
   </div>
 
+  <!-- ================== Office Issues — edit modal (Phase 1) ================== -->
+  <div id="office-issues-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="office-issues-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="office-issues-modal-title">Issue</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="office-issues-modal-meta" class="field-hint" style="display:flex;flex-direction:column;gap:4px;font-size:13px;margin-bottom:14px;"></div>
+
+        <div class="field-row">
+          <label>Description</label>
+          <div id="office-issues-modal-description"
+               style="padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;white-space:pre-wrap;font-size:14px;line-height:1.4;"></div>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-status">Status</label>
+          <select id="office-issues-status">
+            <option value="new">New</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="working">Working</option>
+            <option value="waiting">Waiting</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-priority">Priority</label>
+          <select id="office-issues-priority">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-owner-email">Owner (email)</label>
+          <input type="email" id="office-issues-owner-email" autocomplete="off"
+                 placeholder="e.g. kirby@pioneercomclean.com" />
+          <p class="field-hint">Leave blank to unassign. UID resolution is Phase 2 — Phase 1 stores email only.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Saving appends a <code>status_history</code> entry whenever status changes.
+          Internal notes subcollection lands in Phase 2.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="office-issues-modal-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save" id="office-issues-modal-save">Save changes</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Toast container — top-right slide-ins for success/error notifications. -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -3614,7 +3760,8 @@
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260610-kirby-usability"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
-  <script src="admin.js?v=20260614c-badge-audience"></script>
+  <script src="admin/tab-office-issues.js?v=20260615-office-issues"></script>
+  <script src="admin.js?v=20260615-office-issues"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>
