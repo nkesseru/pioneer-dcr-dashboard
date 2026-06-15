@@ -39,9 +39,30 @@
   const ENABLE_DCR_SUCCESS_SOUND   = true;
   const DCR_SUCCESS_SOUND_SRC      = "/assets/sounds/dcr-success.mp3";
   const DCR_SUCCESS_SOUND_VOLUME   = 0.30;
+  // V20260614d — Cap total submit-celebration audio at 4 seconds. Any
+  // asset longer than this plays back at a proportionally higher rate
+  // (e.g. a 6s file plays at 1.5x → ~4s). Caller-tunable so future
+  // assets can shorten without a code change.
+  const DCR_SUCCESS_SOUND_MAX_SEC  = 4;
+  // V20260614d — Per-device mute preference. Stored in localStorage so
+  // each device remembers independently (a tech can mute their phone
+  // without affecting their office laptop). "1" → muted; anything else
+  // (or unset) → sound on. Default is sound on for the fun moment.
+  const DCR_SUCCESS_SOUND_MUTE_KEY = "pioneer.dcr.successSound.muted";
   // Tracks the most-recent submissionId we played the sound for. Same
   // id arriving twice (e.g. success-card rerender) → no replay.
   let _dcrSuccessSoundLastPlayedId = null;
+
+  function isDcrSuccessSoundMuted() {
+    try { return localStorage.getItem(DCR_SUCCESS_SOUND_MUTE_KEY) === "1"; }
+    catch (_e) { return false; }
+  }
+  function setDcrSuccessSoundMuted(muted) {
+    try {
+      if (muted) localStorage.setItem(DCR_SUCCESS_SOUND_MUTE_KEY, "1");
+      else       localStorage.removeItem(DCR_SUCCESS_SOUND_MUTE_KEY);
+    } catch (_e) { /* private mode / quota — non-fatal */ }
+  }
 
   // Inline content for each checklist pill — done/issue are icon-only SVGs
   // (currentColor picks up the active state's color), N/A is short text.
@@ -2928,6 +2949,19 @@
       _dcrSuccessAudio = new Audio(DCR_SUCCESS_SOUND_SRC);
       _dcrSuccessAudio.volume  = DCR_SUCCESS_SOUND_VOLUME;
       _dcrSuccessAudio.preload = "auto";
+      // V20260614d — Once metadata lands we know the file's true
+      // duration. If it exceeds the 4s cap, bump playbackRate
+      // proportionally so the celebration ends inside the budget
+      // without re-encoding the asset. Rate floored at 1.0 (never
+      // slow the audio down on a short file).
+      _dcrSuccessAudio.addEventListener("loadedmetadata", function () {
+        try {
+          const d = Number(_dcrSuccessAudio.duration);
+          if (Number.isFinite(d) && d > DCR_SUCCESS_SOUND_MAX_SEC) {
+            _dcrSuccessAudio.playbackRate = d / DCR_SUCCESS_SOUND_MAX_SEC;
+          }
+        } catch (_e) { /* leave rate at default */ }
+      }, { once: true });
       // load() forces the browser to begin fetching the file so the
       // network round-trip doesn't add to submit latency.
       if (typeof _dcrSuccessAudio.load === "function") _dcrSuccessAudio.load();
@@ -2945,6 +2979,10 @@
   function playDcrSuccessSound(submissionId) {
     if (!ENABLE_DCR_SUCCESS_SOUND) return;
     if (typeof Audio === "undefined") return;
+    // V20260614d — Per-device mute. Checked BEFORE the dedup so a tech
+    // can flip the toggle on the success card and have it stick
+    // immediately (no replay risk inside this submission anyway).
+    if (isDcrSuccessSoundMuted()) return;
     const id = submissionId == null ? "" : String(submissionId);
     if (id && id === _dcrSuccessSoundLastPlayedId) return;
     _dcrSuccessSoundLastPlayedId = id || _dcrSuccessSoundLastPlayedId;
@@ -2958,6 +2996,16 @@
       try {
         audio = new Audio(DCR_SUCCESS_SOUND_SRC);
         audio.volume = DCR_SUCCESS_SOUND_VOLUME;
+        // Defensive duration cap for the fallback path. The primed
+        // element installs its own loadedmetadata handler above.
+        audio.addEventListener("loadedmetadata", function () {
+          try {
+            const d = Number(audio.duration);
+            if (Number.isFinite(d) && d > DCR_SUCCESS_SOUND_MAX_SEC) {
+              audio.playbackRate = d / DCR_SUCCESS_SOUND_MAX_SEC;
+            }
+          } catch (_e) { /* leave rate at default */ }
+        }, { once: true });
       } catch (_e) {
         return;
       }
@@ -3457,7 +3505,31 @@
     }
   }
 
+  // V20260614d — Mute-toggle button on the success card. Reflects the
+  // current localStorage preference; click toggles + persists. Doesn't
+  // replay the sound — the next DCR submit honors the new state.
+  // Defensive against missing element (the success card markup could
+  // theoretically be removed) and quota errors (private browsing).
+  function paintDcrSoundToggle() {
+    const btn = $("dcr-sound-toggle");
+    if (!btn) return;
+    const muted = isDcrSuccessSoundMuted();
+    btn.textContent  = muted ? "🔇 Submit sound off · Tap to unmute"
+                             : "🔊 Submit sound on · Tap to mute";
+    btn.setAttribute("aria-pressed", muted ? "true" : "false");
+  }
+  function wireDcrSoundToggle() {
+    const btn = $("dcr-sound-toggle");
+    if (!btn) return;
+    paintDcrSoundToggle();
+    btn.addEventListener("click", function () {
+      setDcrSuccessSoundMuted(!isDcrSuccessSoundMuted());
+      paintDcrSoundToggle();
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireDcrSoundToggle();
     els.form              = $("dcr-form");
     els.customer          = $("customer");
     els.tech              = $("tech");

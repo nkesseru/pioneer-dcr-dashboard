@@ -637,6 +637,14 @@
       </div>
       <!-- Populated by app.js when the function returns a zapier status. -->
       <div id="success-zapier" class="success-zapier" hidden></div>
+
+      <!-- V20260614d — Per-device mute toggle for the optional submit
+           celebration sound. Default is sound on. Label flips to match
+           current state; click toggles + persists in localStorage
+           (pioneer.dcr.successSound.muted). Doesn't replay sound. -->
+      <button type="button" id="dcr-sound-toggle" class="success-link" aria-pressed="false">
+        🔊 Submit sound on · Tap to mute
+      </button>
     </section>
 
     </div><!-- /#staff-auth-content -->
@@ -667,7 +675,7 @@
        any future DCR-form code that needs to scope a customer list to
        "today's workable assignments" uses the same rule as /work. -->
   <script src="assignment-eligibility.js?v=20260607-phase33-shared-eligibility"></script>
-  <script src="app.js?v=20260614c-badge-audience"></script>
+  <script src="app.js?v=20260614d-sound-mute"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
 </body>
