@@ -1,50 +1,44 @@
-/* Pioneer DCR Hub — Admin Yesterday's Work tab (vanilla JS, no build).
+/* Pioneer DCR Hub — Admin Yesterday's Work tab.
  *
  * Yesterday's Work / Nightly Recap — admin-only operational recap.
  *
- * Pure frontend. Admin reads cover every collection it needs:
- *   deputy_shift_cache · pioneer_work_sessions · dcr_submissions ·
- *   dcr_issues · cleaning_techs · customers.
+ * V20260615 — Pioneer Time Clock cutover. The prior implementation
+ * read deputy_shift_cache + pioneer_work_sessions; pioneer_work_sessions
+ * has not been written to since today-work.js was retired in early
+ * June and the tab silently returned "no data" for every selected
+ * date. This rewrite uses the current source of truth:
  *
- * The selected ops day window = [selected date 4:00pm PT,
- *                                next date  4:00pm PT).
- * Pacific 4pm cutoff is the operational close-of-day for PioneerOps.
+ *   service_assignments        — one row per scheduled stop
+ *   pioneer_service_sessions   — the clock-in/clock-out records
+ *   dcr_submissions            — joined by pioneer_service_session_id
  *
- * Matching shift → DCR runs strongest-first:
- *   1. dcr.pioneer_session_id === shift.shift_id
- *   2. dcr.deputy_shift_id    === shift.shift_id
- *   3. tech_slug + customer_slug + clean_date == sync_date
- *   4. tech_email + customer_slug + clean_date (final fallback)
+ * Iteration unit is service_assignment (not Deputy shift). One
+ * assignment can spawn zero, one, or many sessions (Phase 1b.3 resume
+ * flow); we report on the latest completed session. Assignments with
+ * no completed session render as "Started" / "Scheduled" / "Missed"
+ * per assignment.status.
  *
- * Email status comes from `emailStatus` on the dcr_submissions doc
- * (set by dcrEmail.js). Legacy `zapier.status` is shown only in the
- * debug payload — it is NOT used to decide GREEN/YELLOW/RED.
+ * Window:
+ *   service_date == selected   (calendar day; no 4pm cutoff)
+ *   clean_date   == selected   (DCRs use the form's clean_date)
+ *
+ * DCR match (single tier — no more guess-and-pray):
+ *   dcr.pioneer_service_session_id === session._id
  *
  * Status traffic light:
- *   GREEN  — DCR submitted, no issue, native email sent or skipped
+ *   GREEN  — completed session + DCR submitted with no issue,
+ *            email sent or skipped (customer opt-out), OR session
+ *            was cleanly waived ("No DCR Needed")
  *   YELLOW — DCR submitted but: issue flagged, OR email failed,
  *            OR has_problem on form
- *   RED    — scheduled/started but no DCR submitted, OR red-tier issue
+ *   RED    — completed session but no DCR (and not waived), OR
+ *            DCR with red-tier issue, OR assignment.status in
+ *            {missed, canceled}
  *
  * Surface lives at window.__pioneerAdmin.tabs.yesterdaysWork:
  *   { init: initYesterdayOnce }
  *
- * Idempotent init wires the date selector, prev/next-day buttons,
- * refresh button, and the global "View DCR" click delegator. Each
- * subsequent activation re-fetches via loadYesterdayReport without
- * re-wiring.
- *
  * Loaded AFTER admin/_utils.js + admin/_shell.js and BEFORE admin.js.
- *
- * External dependencies:
- *   • escapeHtml, tsToMs, cssEsc from __pioneerAdmin.utils
- *   • activateTab from __pioneerAdmin.shell (used by the "View DCR"
- *     click delegator to jump to the Recent DCRs tab)
- *   • window.firebase compat SDK (firestore)
- *   • window.PioneerCustomerDisplay (from public/customer-display.js)
- *
- * No closure deps on admin.js. No cross-tab state escape — the report
- * cache and once-wired flag live inside this IIFE.
  */
 (function () {
   "use strict";
@@ -62,12 +56,8 @@
   let _ydwViewDcrWired = false;
 
   function initYesterdayOnce() {
-    // First call wires the document-level "View DCR" click delegator —
-    // idempotent via its own once-only flag. Subsequent re-activations
-    // re-fetch only.
     wireYesterdayViewDcr();
     if (yesterdayWired) {
-      // Already wired — keep current date but re-fetch fresh data.
       loadYesterdayReport();
       return;
     }
@@ -86,7 +76,8 @@
     loadYesterdayReport();
   }
 
-  // YYYY-MM-DD in America/Los_Angeles for today and yesterday.
+  /* ---------- date helpers ---------- */
+
   function pacificDateString(d) {
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Los_Angeles",
@@ -106,26 +97,6 @@
     loadYesterdayReport();
   }
 
-  function nextDay(yyyymmdd) {
-    const [y, m, d] = yyyymmdd.split("-").map(Number);
-    const base = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-    base.setUTCDate(base.getUTCDate() + 1);
-    return pacificDateString(base);
-  }
-
-  // The ops window for a selected date = [selected 4pm PT, next 4pm PT).
-  // Returns ISO strings for label rendering + millisecond bounds for
-  // optional scheduled_start filtering (the primary key is sync_date).
-  function opsWindowFor(selectedDate) {
-    const start = new Date(selectedDate + "T16:00:00-07:00");
-    const end   = new Date(nextDay(selectedDate) + "T16:00:00-07:00");
-    // -07:00 is fine year-round here because PioneerOps is fixed Pacific
-    // — DST jitter of one hour at the boundary doesn't change WHICH
-    // shifts fall in the window, since deputy_shift_cache buckets by
-    // sync_date.
-    return { startMs: start.getTime(), endMs: end.getTime() };
-  }
-
   function formatTimeRangePT(startMs, endMs) {
     function fmt(ms) {
       if (!ms) return "";
@@ -141,9 +112,21 @@
     if (s && e) return s + " – " + e;
     return s || e || "";
   }
+  function formatMinutes(m) {
+    if (m == null || !isFinite(m)) return "";
+    const n = Math.round(m);
+    if (n === 0) return "0m";
+    const h = Math.floor(n / 60);
+    const r = n % 60;
+    if (h === 0) return r + "m";
+    if (r === 0) return h + "h";
+    return h + "h " + r + "m";
+  }
 
   function normEmail(e) { return String(e == null ? "" : e).trim().toLowerCase(); }
   function normSlug(s)  { return String(s == null ? "" : s).trim().toLowerCase(); }
+
+  /* ---------- load + build ---------- */
 
   async function loadYesterdayReport() {
     const dateEl  = document.getElementById("yesterday-date");
@@ -158,8 +141,6 @@
     if (!dateEl) return;
 
     const selected = dateEl.value || pacificYesterdayDate();
-    const nextDate = nextDay(selected);
-    const opsWindow = opsWindowFor(selected);
 
     if (loading) loading.hidden = false;
     if (errEl)   errEl.hidden   = true;
@@ -169,48 +150,36 @@
     if (unshEl)  unshEl.hidden  = true;
     if (emptyEl) emptyEl.hidden = true;
     if (labelEl) {
-      labelEl.textContent = "Ops window · " + selected + " 4:00pm PT → " +
-        nextDate + " 4:00pm PT";
+      labelEl.textContent = "Pioneer Time Clock · service date " + selected;
     }
 
     try {
       const db = firebase.firestore();
-      const dateRange = [selected, nextDate];
 
-      const [shiftsSnap, sessionsSnap, dcrsSnap, issuesSnap, techsSnap, customersSnap] = await Promise.all([
-        db.collection("deputy_shift_cache").where("sync_date", "in", dateRange).get(),
-        db.collection("pioneer_work_sessions").where("sync_date", "in", dateRange).get(),
-        db.collection("dcr_submissions").where("clean_date", "in", dateRange).get(),
-        db.collection("dcr_issues").where("clean_date", "in", dateRange).get().catch(function () { return { docs: [] }; }),
+      const [assignmentsSnap, sessionsSnap, dcrsSnap, issuesSnap, techsSnap, customersSnap] = await Promise.all([
+        db.collection("service_assignments").where("service_date", "==", selected).get(),
+        db.collection("pioneer_service_sessions").where("service_date", "==", selected).get(),
+        db.collection("dcr_submissions").where("clean_date", "==", selected).get(),
+        db.collection("dcr_issues").where("clean_date", "==", selected).get().catch(function () { return { docs: [] }; }),
         db.collection("cleaning_techs").get(),
         db.collection("customers").get()
       ]);
 
-      const shifts    = shiftsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      const sessions  = sessionsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      const dcrs      = dcrsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      const issues    = (issuesSnap.docs || []).map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      const techs     = techsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      const customers = customersSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-
-      // Optional finer filter: when a shift carries a scheduled_start
-      // outside the 24h ops window, drop it. Shifts with no start time
-      // fall back to sync_date attribution.
-      const inWindow = function (shift) {
-        const sMs = tsToMs(shift.start_time);
-        if (sMs == null) return true;
-        return sMs >= opsWindow.startMs && sMs < opsWindow.endMs;
-      };
-      const filteredShifts = shifts.filter(inWindow);
+      const assignments = assignmentsSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data()); });
+      const sessions    = sessionsSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data()); });
+      const dcrs        = dcrsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const issues      = (issuesSnap.docs || []).map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const techs       = techsSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      const customers   = customersSnap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
 
       const report = buildYesterdayReport({
-        selected:   selected,
-        shifts:     filteredShifts,
-        sessions:   sessions,
-        dcrs:       dcrs,
-        issues:     issues,
-        techs:      techs,
-        customers:  customers
+        selected:    selected,
+        assignments: assignments,
+        sessions:    sessions,
+        dcrs:        dcrs,
+        issues:      issues,
+        techs:       techs,
+        customers:   customers
       });
       yesterdayLastReport = report;
 
@@ -233,18 +202,53 @@
   }
 
   function buildYesterdayReport(ctx) {
-    const sessionByShiftId = Object.create(null);
+    // Index sessions by assignment_id (one assignment → many sessions
+    // possible with the resume flow; we surface the latest completed
+    // one per assignment).
+    const sessionsByAssignment = Object.create(null);
     ctx.sessions.forEach(function (s) {
-      const k = String(s.deputy_shift_id || s.id);
-      sessionByShiftId[k] = s;
+      const k = String(s.assignment_id || "");
+      if (!k) return;
+      if (!sessionsByAssignment[k]) sessionsByAssignment[k] = [];
+      sessionsByAssignment[k].push(s);
     });
+    function latestCompleted(list) {
+      if (!list || !list.length) return null;
+      const done = list.filter(function (s) { return s.status === "completed"; });
+      if (!done.length) return null;
+      done.sort(function (a, b) {
+        return (tsToMs(b.clock_out_at) || 0) - (tsToMs(a.clock_out_at) || 0);
+      });
+      return done[0];
+    }
+    function anyStartedOrActive(list) {
+      if (!list || !list.length) return false;
+      return list.some(function (s) {
+        const st = String(s.status || "").toLowerCase();
+        return st === "active" || st === "paused" || st === "completed";
+      });
+    }
+
+    // DCR match: single key by pioneer_service_session_id. Built once
+    // per render; no fallback chain (the rewrite's whole point is that
+    // we no longer need to guess which Deputy/Pioneer id pairs up).
+    const dcrBySessionId = Object.create(null);
+    ctx.dcrs.forEach(function (d) {
+      const sid = String(d.pioneer_service_session_id || "").trim();
+      if (sid) dcrBySessionId[sid] = d;
+    });
+
+    // Lookup tables.
     const customerBySlug = Object.create(null);
     ctx.customers.forEach(function (c) {
       customerBySlug[normSlug(c.customer_slug || c.id)] = c;
     });
-    const techBySlug = Object.create(null);
+    const techByUid   = Object.create(null);
+    const techBySlug  = Object.create(null);
     const techByEmail = Object.create(null);
     ctx.techs.forEach(function (t) {
+      if (t.auth_uid) techByUid[String(t.auth_uid)] = t;
+      if (t.uid)      techByUid[String(t.uid)]      = t;
       techBySlug[normSlug(t.tech_slug || t.id)] = t;
       if (t.email) techByEmail[normEmail(t.email)] = t;
     });
@@ -256,70 +260,28 @@
       issuesByDcrId[k].push(i);
     });
 
-    // Build the dcr-match index by every key we might match on.
-    const dcrByPioneerSession = Object.create(null);
-    const dcrByDeputyShift    = Object.create(null);
-    const dcrByTripleKey      = Object.create(null); // techSlug|custSlug|cleanDate
-    const dcrByEmailKey       = Object.create(null); // techEmail|custSlug|cleanDate
-    ctx.dcrs.forEach(function (d) {
-      const psid = String(d.pioneer_session_id || "").trim();
-      if (psid) dcrByPioneerSession[psid] = d;
-      const dsid = String(d.deputy_shift_id || "").trim();
-      if (dsid) dcrByDeputyShift[dsid] = d;
-      const triple = normSlug(d.tech_slug) + "|" + normSlug(d.customer_slug) + "|" + (d.clean_date || "");
-      dcrByTripleKey[triple] = d;
-      const emailKey = normEmail(d.submitted_by_email || d.tech_email) + "|" + normSlug(d.customer_slug) + "|" + (d.clean_date || "");
-      dcrByEmailKey[emailKey] = d;
-    });
     const matchedDcrIds = Object.create(null);
 
-    function matchDcrForShift(shift, session) {
-      const sid = String(shift.shift_id || shift.id);
-      // 1. pioneer_session_id (set when DCR opened from Start Work)
-      if (dcrByPioneerSession[sid]) {
-        matchedDcrIds[dcrByPioneerSession[sid].submission_id] = true;
-        return { dcr: dcrByPioneerSession[sid], match_path: "pioneer_session_id" };
-      }
-      // 2. deputy_shift_id (same value but stamped via the session writeback)
-      if (dcrByDeputyShift[sid]) {
-        matchedDcrIds[dcrByDeputyShift[sid].submission_id] = true;
-        return { dcr: dcrByDeputyShift[sid], match_path: "deputy_shift_id" };
-      }
-      // 3. tech_slug + customer_slug + clean_date
-      const techSlug   = normSlug(shift.employee_slug || (session && session.tech_slug));
-      const custSlug   = normSlug(shift.customer_slug || (session && session.selected_customer_slug));
-      const cleanDate  = shift.sync_date || (session && session.sync_date) || "";
-      if (techSlug && custSlug && cleanDate) {
-        const k = techSlug + "|" + custSlug + "|" + cleanDate;
-        if (dcrByTripleKey[k]) {
-          matchedDcrIds[dcrByTripleKey[k].submission_id] = true;
-          return { dcr: dcrByTripleKey[k], match_path: "tech_slug+customer_slug+clean_date" };
-        }
-      }
-      // 4. tech_email + customer_slug + clean_date (final fallback)
-      const techEmail = normEmail(shift.employee_email || (session && session.tech_email));
-      if (techEmail && custSlug && cleanDate) {
-        const k = techEmail + "|" + custSlug + "|" + cleanDate;
-        if (dcrByEmailKey[k]) {
-          matchedDcrIds[dcrByEmailKey[k].submission_id] = true;
-          return { dcr: dcrByEmailKey[k], match_path: "tech_email+customer_slug+clean_date" };
-        }
-      }
-      return { dcr: null, match_path: null };
-    }
+    // One row per assignment.
+    const rows = ctx.assignments.map(function (a) {
+      const sessList    = sessionsByAssignment[a._id] || [];
+      const completed   = latestCompleted(sessList);
+      const startedAny  = anyStartedOrActive(sessList);
+      const dcr         = completed ? (dcrBySessionId[completed._id] || null) : null;
+      if (dcr) matchedDcrIds[dcr.submission_id] = true;
 
-    // Per-shift row.
-    const rows = ctx.shifts.map(function (shift) {
-      const sid = String(shift.shift_id || shift.id);
-      const session = sessionByShiftId[sid] || null;
-      const matched = matchDcrForShift(shift, session);
-      const dcr = matched.dcr;
+      const assignStatus = String(a.status || "").toLowerCase();
+      const sessStatus   = completed ? "completed"
+                          : (sessList.length ? String(sessList[sessList.length - 1].status || "").toLowerCase() : "");
 
-      const sessStatus = session ? String(session.status || "").toLowerCase() : "";
-      const started   = !!session && sessStatus !== "not_started";
-      const finished  = sessStatus === "finished" || sessStatus === "needs_finish" || !!dcr;
+      // Waived = the session itself was marked dcr_status:"waived" via
+      // the "No DCR Needed" button. Mirrored on the assignment doc too.
+      const waived = !!(
+        (completed && completed.dcr_status === "waived") ||
+        a.dcr_waived === true ||
+        a.dcr_status === "waived"
+      );
 
-      // Email status (native). Ignore zapier.status — legacy.
       const emailStatus = dcr ? String(dcr.emailStatus || "").toLowerCase() : "";
       const emailError  = dcr ? (dcr.emailError || "") : "";
       const issueTier   = dcr
@@ -330,58 +292,76 @@
 
       // Traffic light.
       let status = "RED";
-      let statusReason = "Scheduled but no DCR submitted";
+      let statusReason = "Scheduled but no clock-in";
       if (dcr) {
         if (issueTier === "red") {
           status = "RED"; statusReason = "DCR flagged red tier";
         } else if (issueTier === "yellow" || hasProblem) {
-          status = "YELLOW"; statusReason = hasProblem
-            ? "DCR notes a problem on this visit"
-            : "DCR flagged yellow tier";
+          status = "YELLOW";
+          statusReason = hasProblem ? "DCR notes a problem on this visit" : "DCR flagged yellow tier";
         } else if (emailStatus === "failed") {
           status = "YELLOW"; statusReason = "Customer email delivery failed";
         } else {
           status = "GREEN"; statusReason = "Submitted cleanly";
         }
-      } else if (started && !dcr) {
-        status = "RED"; statusReason = "Started but no DCR submitted";
+      } else if (waived) {
+        status = "GREEN"; statusReason = "Marked No DCR Needed";
+      } else if (assignStatus === "missed" || assignStatus === "canceled") {
+        status = "RED"; statusReason = "Shift " + assignStatus;
+      } else if (completed) {
+        status = "RED"; statusReason = "Clocked out but no DCR";
+      } else if (startedAny) {
+        status = "YELLOW"; statusReason = "Started but not finished";
       }
 
-      const techSlug = normSlug(shift.employee_slug || (session && session.tech_slug));
-      const techRecord = techBySlug[techSlug] ||
-        techByEmail[normEmail(shift.employee_email)] ||
-        null;
-      const techDisplay = (techRecord && techRecord.display_name) ||
-        shift.employee_display_name ||
-        shift.employee_email || "(unknown tech)";
+      // Tech identity.
+      const techRecord = (a.staff_uid && techByUid[String(a.staff_uid)]) ||
+                         techByEmail[normEmail(a.staff_email)] ||
+                         null;
+      const techDisplay = a.staff_display_name ||
+                         (techRecord && techRecord.display_name) ||
+                         a.staff_email || "(unknown tech)";
+      const techSlug    = normSlug((techRecord && (techRecord.tech_slug || techRecord.id)) || "");
 
-      const custSlug = normSlug(shift.customer_slug || (session && session.selected_customer_slug));
+      // Customer display.
+      const custSlug = normSlug(a.customer_id || (dcr && dcr.customer_slug));
       const customer = customerBySlug[custSlug] || null;
-      // Canonical helper — applies displayNameMode + customDisplayName
-      // when the customer doc carries the new schema fields. Falls back
-      // to the shift-level customer_name (Deputy sync output) when no
-      // doc lookup is available.
       const customerName =
         (customer && window.PioneerCustomerDisplay
           && window.PioneerCustomerDisplay.getCustomerDisplayName(customer)) ||
         (customer && (customer.customer_name || customer.name)) ||
-        shift.customer_name || "(no customer)";
+        a.customer_name || "(no customer)";
+
+      // Times — scheduled from the assignment, actual from the
+      // completed session (when present).
+      const scheduledStart = tsToMs(a.service_window_start) || tsToMs(a.available_from);
+      const scheduledEnd   = tsToMs(a.service_deadline)     || tsToMs(a.available_until);
+      const actualStart    = completed ? tsToMs(completed.clock_in_at)  : null;
+      const actualEnd      = completed ? tsToMs(completed.clock_out_at) : null;
+      const paidMinutes    = completed ? Number(completed.paid_minutes || 0) : 0;
 
       return {
-        shift_id:        sid,
+        assignment_id:   a._id,
+        session_id:      completed ? completed._id : null,
         tech_slug:       techSlug,
         tech_display:    techDisplay,
-        tech_email:      normEmail(shift.employee_email || (techRecord && techRecord.email)),
+        tech_email:      normEmail(a.staff_email),
+        tech_uid:        String(a.staff_uid || ""),
         customer_slug:   custSlug,
         customer_name:   customerName,
-        scheduled_start: tsToMs(shift.start_time),
-        scheduled_end:   tsToMs(shift.end_time),
-        sync_date:       shift.sync_date || "",
-        session:         session,
-        started:         started,
-        finished:        finished,
+        scheduled_start: scheduledStart,
+        scheduled_end:   scheduledEnd,
+        actual_start:    actualStart,
+        actual_end:      actualEnd,
+        paid_minutes:    paidMinutes,
+        service_date:    a.service_date || "",
+        assignment_status: assignStatus,
+        session_status:  sessStatus,
+        started:         startedAny,
+        finished:        !!completed,
+        waived:          waived,
         dcr:             dcr,
-        match_path:      matched.match_path,
+        match_path:      dcr ? "pioneer_service_session_id" : null,
         email_status:    emailStatus || (dcr ? "(not run)" : ""),
         email_error:     emailError,
         issue_tier:      issueTier,
@@ -392,57 +372,67 @@
       };
     });
 
-    // Aggregate per-tech.
+    // Group by tech.
     const byTechKey = Object.create(null);
     rows.forEach(function (r) {
-      const k = r.tech_slug || r.tech_email || r.tech_display;
+      const k = r.tech_uid || r.tech_slug || r.tech_email || r.tech_display;
       if (!byTechKey[k]) {
         byTechKey[k] = {
+          tech_uid:      r.tech_uid,
           tech_slug:     r.tech_slug,
           tech_display:  r.tech_display,
           tech_email:    r.tech_email,
           rows:          [],
-          counts: { scheduled: 0, started: 0, finished: 0, dcrs: 0, issues: 0,
-                    emails_sent: 0, emails_failed: 0 }
+          counts: { scheduled: 0, started: 0, finished: 0, dcrs: 0, waived: 0,
+                    issues: 0, emails_sent: 0, emails_failed: 0,
+                    paid_minutes: 0 }
         };
       }
       const bucket = byTechKey[k];
       bucket.rows.push(r);
       bucket.counts.scheduled++;
-      if (r.started)  bucket.counts.started++;
-      if (r.finished) bucket.counts.finished++;
-      if (r.dcr)      bucket.counts.dcrs++;
+      if (r.started)        bucket.counts.started++;
+      if (r.finished)       bucket.counts.finished++;
+      if (r.dcr)            bucket.counts.dcrs++;
+      if (r.waived)         bucket.counts.waived++;
       if (r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem) bucket.counts.issues++;
       if (r.email_status === "sent")   bucket.counts.emails_sent++;
       if (r.email_status === "failed") bucket.counts.emails_failed++;
+      bucket.counts.paid_minutes += r.paid_minutes || 0;
     });
     const byTech = Object.keys(byTechKey).map(function (k) { return byTechKey[k]; });
     byTech.sort(function (a, b) {
       return String(a.tech_display || "").localeCompare(String(b.tech_display || ""));
     });
 
-    // Unmatched DCRs (in window but didn't match any shift).
+    // Unmatched DCRs (clean_date == selected but no session link).
     const unmatchedDcrs = ctx.dcrs.filter(function (d) {
       return !matchedDcrIds[d.submission_id];
     });
 
-    // Unmatched shifts (no DCR found).
-    const unmatchedShifts = rows.filter(function (r) { return !r.dcr; });
+    // Unmatched assignments = finished sessions with no DCR AND not waived,
+    // plus missed/canceled assignments. Surface them so admins see what
+    // needs follow-up.
+    const unmatchedShifts = rows.filter(function (r) {
+      return !r.dcr && !r.waived;
+    });
 
-    // Top-line counts.
+    // Summary.
     const summary = {
       window_start_date: ctx.selected,
-      window_end_date:   nextDay(ctx.selected),
+      window_end_date:   ctx.selected,
       scheduled:         rows.length,
       started:           rows.filter(function (r) { return r.started;  }).length,
       finished:          rows.filter(function (r) { return r.finished; }).length,
+      waived:            rows.filter(function (r) { return r.waived;   }).length,
       dcrs_submitted:    ctx.dcrs.length,
       dcrs_missing:      unmatchedShifts.length,
       issues:            rows.filter(function (r) {
                            return r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem;
                          }).length,
       emails_sent:       rows.filter(function (r) { return r.email_status === "sent";   }).length,
-      emails_failed:     rows.filter(function (r) { return r.email_status === "failed"; }).length
+      emails_failed:     rows.filter(function (r) { return r.email_status === "failed"; }).length,
+      paid_minutes:      rows.reduce(function (sum, r) { return sum + (r.paid_minutes || 0); }, 0)
     };
 
     return {
@@ -455,17 +445,21 @@
     };
   }
 
+  /* ---------- render ---------- */
+
   function renderYesterdaySummary(report) {
     const el = document.getElementById("yesterday-summary");
     if (!el) return;
     const s = report.summary;
     el.innerHTML =
-      '<div class="ydw-stat"><span class="ydw-stat-label">Scheduled shifts</span><strong>'  + s.scheduled       + '</strong></div>' +
-      '<div class="ydw-stat"><span class="ydw-stat-label">Started</span><strong>'           + s.started         + '</strong></div>' +
-      '<div class="ydw-stat"><span class="ydw-stat-label">Finished</span><strong>'          + s.finished        + '</strong></div>' +
-      '<div class="ydw-stat"><span class="ydw-stat-label">DCRs submitted</span><strong>'    + s.dcrs_submitted  + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Scheduled stops</span><strong>'  + s.scheduled       + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Started</span><strong>'          + s.started         + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Finished</span><strong>'         + s.finished        + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Paid time</span><strong>'        + escapeHtml(formatMinutes(s.paid_minutes) || "—") + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">DCRs submitted</span><strong>'   + s.dcrs_submitted  + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Waived</span><strong>'           + s.waived          + '</strong></div>' +
       '<div class="ydw-stat ydw-stat-warn"><span class="ydw-stat-label">DCRs missing</span><strong>' + s.dcrs_missing + '</strong></div>' +
-      '<div class="ydw-stat"><span class="ydw-stat-label">Issues</span><strong>'            + s.issues          + '</strong></div>' +
+      '<div class="ydw-stat"><span class="ydw-stat-label">Issues</span><strong>'           + s.issues          + '</strong></div>' +
       '<div class="ydw-stat ydw-stat-pass"><span class="ydw-stat-label">Emails sent</span><strong>' + s.emails_sent  + '</strong></div>' +
       '<div class="ydw-stat ydw-stat-fail"><span class="ydw-stat-label">Emails failed</span><strong>' + s.emails_failed + '</strong></div>';
     el.hidden = false;
@@ -481,16 +475,17 @@
     const debug = isYesterdayDebug();
     el.innerHTML = report.by_tech.map(function (bucket) {
       const c = bucket.counts;
+      const paidLabel = c.paid_minutes ? ' · ' + escapeHtml(formatMinutes(c.paid_minutes)) + ' paid' : '';
       const techHeader =
         '<header class="ydw-tech-head">' +
           '<strong class="ydw-tech-name">' + escapeHtml(bucket.tech_display || "(unknown)") + '</strong> ' +
           '<span class="ydw-tech-meta">' +
-            escapeHtml(bucket.tech_slug || "") +
-            (bucket.tech_email ? " · " + escapeHtml(bucket.tech_email) : "") +
+            escapeHtml(bucket.tech_email || "") +
           '</span>' +
           '<span class="ydw-tech-counts">' +
-            c.scheduled + ' assigned · ' + c.started + ' started · ' + c.finished + ' finished · ' +
+            c.scheduled + ' assigned · ' + c.started + ' started · ' + c.finished + ' finished' + paidLabel + ' · ' +
             c.dcrs + ' DCR' + (c.dcrs === 1 ? '' : 's') +
+            (c.waived > 0 ? ' · ' + c.waived + ' waived' : '') +
             (c.issues > 0 ? ' · <span class="ydw-tag warn">' + c.issues + ' issue' + (c.issues === 1 ? '' : 's') + '</span>' : '') +
             (c.emails_failed > 0 ? ' · <span class="ydw-tag fail">' + c.emails_failed + ' email failed</span>' : '') +
           '</span>' +
@@ -501,13 +496,20 @@
   }
 
   function renderYesterdayRow(r, debug) {
-    const timeText = formatTimeRangePT(r.scheduled_start, r.scheduled_end) || "(no scheduled time)";
+    const schedText = formatTimeRangePT(r.scheduled_start, r.scheduled_end);
+    const actText   = formatTimeRangePT(r.actual_start,    r.actual_end);
+    const timeText  = actText || schedText || "(no time)";
     const statusBadge = '<span class="ydw-status ydw-' + r.status + '">' + r.status + '</span>';
     const startedChip  = r.started  ? '<span class="ydw-chip">Started</span>'  : '';
     const finishedChip = r.finished ? '<span class="ydw-chip">Finished</span>' : '';
-    const dcrChip = r.dcr
-      ? '<span class="ydw-chip pass">DCR</span>'
-      : '<span class="ydw-chip fail">No DCR</span>';
+    const paidChip = r.paid_minutes
+      ? '<span class="ydw-chip">' + escapeHtml(formatMinutes(r.paid_minutes)) + ' paid</span>'
+      : '';
+    let dcrChip;
+    if (r.dcr)              dcrChip = '<span class="ydw-chip pass">DCR</span>';
+    else if (r.waived)      dcrChip = '<span class="ydw-chip">DCR waived</span>';
+    else if (r.finished)    dcrChip = '<span class="ydw-chip fail">No DCR</span>';
+    else                    dcrChip = '';
     const issueChip = (r.issue_tier === "yellow" || r.issue_tier === "red" || r.has_problem)
       ? '<span class="ydw-chip warn">Issue</span>'
       : '';
@@ -538,12 +540,10 @@
     const reason  = '<span class="ydw-row-reason">' + escapeHtml(r.status_reason) + '</span>';
     const debugBlock = debug
       ? '<div class="ydw-debug">' +
-          'shift_id=' + escapeHtml(r.shift_id) +
+          'assignment=' + escapeHtml(r.assignment_id) +
+          (r.session_id ? ' · session=' + escapeHtml(r.session_id) : '') +
           (r.dcr ? ' · dcr=' + escapeHtml(r.dcr.submission_id) : '') +
           (r.match_path ? ' · matched_by=' + escapeHtml(r.match_path) : '') +
-          (r.dcr && r.dcr.zapier && r.dcr.zapier.status
-            ? ' · zapier=' + escapeHtml(String(r.dcr.zapier.status)) + ' (legacy)'
-            : '') +
         '</div>'
       : '';
     return '<li class="ydw-row ydw-row-' + r.status + '">' +
@@ -553,7 +553,7 @@
                '<span class="ydw-row-time">' + escapeHtml(timeText) + '</span>' +
              '</div>' +
              '<div class="ydw-row-chips">' +
-               startedChip + finishedChip + dcrChip + issueChip + emailChip + viewCount +
+               startedChip + finishedChip + paidChip + dcrChip + issueChip + emailChip + viewCount +
              '</div>' +
              reason +
              '<div class="ydw-row-actions">' + dcrLink + (dcrLink && custLink ? ' · ' : '') + custLink + reportLink + '</div>' +
@@ -590,7 +590,7 @@
           return '<div class="ydw-unmatched-row">' +
                    '<strong>' + escapeHtml(r.customer_name) + '</strong>' +
                    ' — ' + escapeHtml(r.tech_display) +
-                   ' · ' + escapeHtml(formatTimeRangePT(r.scheduled_start, r.scheduled_end) || r.sync_date) +
+                   ' · ' + escapeHtml(formatTimeRangePT(r.scheduled_start, r.scheduled_end) || r.service_date) +
                    ' · <em>' + escapeHtml(r.status_reason) + '</em>' +
                  '</div>';
         }).join("");
@@ -633,8 +633,6 @@
       const submissionId = a.getAttribute("data-ydw-dcr");
       if (!submissionId) return;
       activateTab("dcrs");
-      // Defer the scroll-into-view a beat so the Recent DCRs panel has
-      // a chance to render if it hadn't been opened yet.
       setTimeout(function () {
         const row = document.querySelector('#dcr-list [data-id="' + cssEsc(submissionId) + '"]');
         if (row) {
