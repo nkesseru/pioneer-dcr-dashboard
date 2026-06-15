@@ -631,6 +631,13 @@
     window.__pioneerAdmin.tabs.payroll.init();
     window.__pioneerAdmin.tabs.sickLeave.init();
     window.__pioneerAdmin.tabs.techHealth.init();
+    // V20260615 — yesterdaysWork was lazy-init'd via registerTabActivator
+    // only, but wireTabs() doesn't dispatch activators on click — so the
+    // tab never bootstrapped its DOM listeners and the date field stayed
+    // blank with no refresh handler. Boot init matches the sickLeave /
+    // attendance / training pattern; activator stays registered for
+    // programmatic activation (e.g. Mission Control routing).
+    window.__pioneerAdmin.tabs.yesterdaysWork.init();
     installModalCloseAffordances();
     installOverflowMenuOutsideClose();
     wireSignIn();
