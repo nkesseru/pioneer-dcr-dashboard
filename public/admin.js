@@ -555,6 +555,7 @@
   /* ---------- boot ---------- */
 
   document.addEventListener("DOMContentLoaded", function () {
+    try { console.info("[admin] boot started"); } catch (_e) {}
     wireTabs();
     // Register on-activate lazy-load callbacks. Behavior matches the
     // original inline activateTab dispatch: feed mounts the shared
@@ -631,13 +632,15 @@
     window.__pioneerAdmin.tabs.payroll.init();
     window.__pioneerAdmin.tabs.sickLeave.init();
     window.__pioneerAdmin.tabs.techHealth.init();
-    // V20260615 — yesterdaysWork was lazy-init'd via registerTabActivator
-    // only, but wireTabs() doesn't dispatch activators on click — so the
-    // tab never bootstrapped its DOM listeners and the date field stayed
-    // blank with no refresh handler. Boot init matches the sickLeave /
-    // attendance / training pattern; activator stays registered for
-    // programmatic activation (e.g. Mission Control routing).
+    // V20260615b — Office Issues + Yesterday's Work boot init. Both tabs
+    // were lazy-loaded via registerTabActivator only. The shell now
+    // dispatches activators on pill click (see _shell.js wireTabs), so
+    // these inits are belt-and-suspenders — they guarantee click-
+    // delegation wires up before the first refresh AND cover the case
+    // where the tab is the default (active on boot, never clicked).
     window.__pioneerAdmin.tabs.yesterdaysWork.init();
+    try { console.info("[admin] officeIssues.init called"); } catch (_e) {}
+    window.__pioneerAdmin.tabs.officeIssues.init();
     installModalCloseAffordances();
     installOverflowMenuOutsideClose();
     wireSignIn();

@@ -36,18 +36,21 @@
   /* ---------- tab wiring ---------- */
 
   function wireTabs() {
+    // V20260615b — Click now routes through activateTab() so click-based
+    // and programmatic activation share the same path: toggle classes,
+    // toggle panel visibility, AND dispatch the registered activator.
+    // Previously this handler did only the visibility swap, so lazy-
+    // loaded tabs (yesterdaysWork, officeIssues, etc.) that depend on
+    // their registerTabActivator callback never bootstrapped from a
+    // pill click — they only fired from cross-tab nav (Mission Control,
+    // "View DCR" jumps). Tabs whose init/refresh runs on every click
+    // are idempotent by design (wired-flag guards + Firestore reads
+    // are cheap at this scale).
     const tabs = Array.from(document.querySelectorAll(".admin-tab"));
     tabs.forEach(function (tab) {
       tab.addEventListener("click", function () {
         const name = tab.dataset.tab;
-        tabs.forEach(function (t) {
-          const active = t === tab;
-          t.classList.toggle("is-active", active);
-          t.setAttribute("aria-selected", active ? "true" : "false");
-        });
-        Array.from(document.querySelectorAll(".admin-panel")).forEach(function (p) {
-          p.hidden = p.dataset.panel !== name;
-        });
+        if (name) activateTab(name);
       });
     });
   }

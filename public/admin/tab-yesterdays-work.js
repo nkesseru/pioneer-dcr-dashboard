@@ -83,10 +83,13 @@
     }
     if (prevBtn) prevBtn.addEventListener("click", function () { shiftYesterdayDate(-1); });
     if (nextBtn) nextBtn.addEventListener("click", function () { shiftYesterdayDate(1); });
-    if (refresh) refresh.addEventListener("click", function () {
-      try { console.info("[ydw] refresh clicked"); } catch (_e) {}
-      loadYesterdayReport();
-    });
+    if (refresh) {
+      try { console.info("[ydw] refresh listener attached"); } catch (_e) {}
+      refresh.addEventListener("click", function () {
+        try { console.info("[ydw] refresh clicked"); } catch (_e) {}
+        loadYesterdayReport();
+      });
+    }
     loadYesterdayReport();
   }
 
