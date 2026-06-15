@@ -53,6 +53,16 @@
 
   // Pioneer Team Hub unread-announcements badge — KEEP IN SYNC across
   // app.js / tech.js / admin.js / supply-station.js / team-hub.js.
+  //
+  // V20260614c — Audience filter inlined. Previously the badge trusted
+  // the Firestore rule to filter audience-mismatched announcements, but
+  // admins (isPioneerAdmin() rule-bypass) read EVERY active doc — so
+  // admin badges over-counted by the number of audienceType="selected"
+  // announcements that don't include them. The team-hub UI applies
+  // announcementTargetsMe locally for exactly this reason; we mirror
+  // it here so badge count === number of cards the hub would render.
+  // Pass-through helper because each KEEP-IN-SYNC copy lives in its
+  // own IIFE — no shared module yet.
   async function paintTeamHubUnreadBadge(staff) {
     if (!staff || !staff.uid) return;
     if (!window.firebase || typeof firebase.firestore !== "function") return;
@@ -75,6 +85,19 @@
         if (typeof ts.seconds === "number") return ts.seconds * 1000;
         return null;
       }
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMe(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;  // unknown — fail open
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
       const now = Date.now();
       let unread = 0;
       annsSnap.docs.forEach(function (d) {
@@ -82,6 +105,7 @@
         if (a.archived_at) return;
         const s = toMs(a.starts_at);   if (s != null && s > now) return;
         const e = toMs(a.expires_at);  if (e != null && e <= now) return;
+        if (!targetsMe(a)) return;                                     // V20260614c
         if (!readIds.has(d.id)) unread += 1;
       });
       const pills = document.querySelectorAll(".role-nav-link");
@@ -96,6 +120,7 @@
         const dot = document.createElement("span");
         dot.className = "role-nav-badge";
         dot.textContent = unread > 9 ? "9+" : String(unread);
+        dot.setAttribute("aria-label", unread + " unread announcement" + (unread === 1 ? "" : "s"));
         target.appendChild(dot);
       }
     } catch (err) {
@@ -519,6 +544,15 @@
         announcementId: announcementId, version: v, uid: uid
       });
     } catch (_e) {}
+    // V20260614c — repaint the nav badge so the user sees the count
+    // drop immediately. Without this the badge in role-nav stayed
+    // at its page-load value until the next full navigation, which
+    // looked like "I marked it read but the red dot is still there".
+    try {
+      const cached = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff)
+        ? window.STAFF_AUTH.getCachedStaff() : null;
+      paintTeamHubUnreadBadge(cached || { uid: uid, email: email });
+    } catch (_e) { /* non-fatal */ }
   }
 
   // Cap on the read-but-active "past" section so the collapsed list
@@ -2337,6 +2371,211 @@
     }
   }
 
+  /* ---------- debug panel (V20260614c) ---------------------------------
+   * Activates when the URL has ?debug=announcements. Renders a fixed-
+   * position panel with per-announcement diagnosis so we can spot WHY
+   * the badge says N and the hub UI shows M cards.
+   *
+   * Read-only: same queries the badge already runs. No new write
+   * surface. Self-contained — remove the maybeRunAnnouncementDebug
+   * function + its single call site to retire.
+   * --------------------------------------------------------------------- */
+  function _annDebugToMs(ts) {
+    if (!ts) return null;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    return null;
+  }
+  function _annDebugFmtTs(ts) {
+    const ms = _annDebugToMs(ts);
+    if (ms == null) return "—";
+    try {
+      return new Date(ms).toISOString().replace("T", " ").slice(0, 19) + "Z";
+    } catch (_e) { return String(ms); }
+  }
+  function _annDebugEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  async function maybeRunAnnouncementDebug(staff) {
+    try {
+      const qs = new URLSearchParams(window.location.search || "");
+      if (qs.get("debug") !== "announcements") return;
+      if (!staff || !staff.uid) return;
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+      const db = firebase.firestore();
+      const [annsSnap, readsSnap] = await Promise.all([
+        db.collection("announcements").where("active", "==", true).get(),
+        db.collection("announcement_reads").where("uid", "==", staff.uid).get()
+      ]);
+      const readIds = new Set();
+      const readMap = {};
+      readsSnap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.announcement_id) {
+          readIds.add(data.announcement_id);
+          readMap[data.announcement_id] = data;
+        }
+      });
+
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMeDbg(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
+
+      const now = Date.now();
+      const rows = annsSnap.docs.map(function (d) {
+        const a = d.data() || {};
+        const archived = !!a.archived_at;
+        const s = _annDebugToMs(a.starts_at);
+        const e = _annDebugToMs(a.expires_at);
+        const beforeStart = (s != null && s > now);
+        const afterEnd    = (e != null && e <= now);
+        const isActiveWindow = !archived && !beforeStart && !afterEnd;
+        const inReads        = readIds.has(d.id);
+        const targets        = targetsMeDbg(a);
+        // Old badge logic = activeWindow && !inReads (no audience filter)
+        const countedByOldBadge = isActiveWindow && !inReads;
+        // New badge logic (this preview) = activeWindow && targetsMe && !inReads
+        const countedByNewBadge = isActiveWindow && targets && !inReads;
+        // Hub UI shows the card if: targetsMe && isActiveWindow && !inReads
+        const renderedByHub     = isActiveWindow && targets && !inReads;
+        return {
+          id: d.id,
+          title:        a.title || "(untitled)",
+          audienceType: a.audienceType || "(undefined→all)",
+          mandatory:    !!a.mandatory,
+          archived:     archived,
+          starts_at:    _annDebugFmtTs(a.starts_at),
+          expires_at:   _annDebugFmtTs(a.expires_at),
+          beforeStart:  beforeStart,
+          afterEnd:     afterEnd,
+          recipUids:    Array.isArray(a.recipientUids)      ? a.recipientUids.length      : 0,
+          recipEmails:  Array.isArray(a.recipientEmails)    ? a.recipientEmails.length    : 0,
+          recipSlugs:   Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs.length : 0,
+          inReads:      inReads,
+          targets:      targets,
+          countedOld:   countedByOldBadge,
+          countedNew:   countedByNewBadge,
+          renderedHub:  renderedByHub
+        };
+      });
+
+      const oldBadge = rows.reduce(function (n, r) { return n + (r.countedOld  ? 1 : 0); }, 0);
+      const newBadge = rows.reduce(function (n, r) { return n + (r.countedNew  ? 1 : 0); }, 0);
+      const hubCount = rows.reduce(function (n, r) { return n + (r.renderedHub ? 1 : 0); }, 0);
+
+      const summaryHtml =
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;">' +
+          '<div><strong>Old badge (pre-fix)</strong>: ' + oldBadge + '</div>' +
+          '<div><strong>New badge (this preview)</strong>: ' + newBadge + '</div>' +
+          '<div><strong>Hub UI cards</strong>: ' + hubCount + '</div>' +
+          '<div><strong>Reads on file</strong>: ' + readIds.size + '</div>' +
+        '</div>';
+
+      const authHtml =
+        '<div style="font-family:monospace;font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;margin-bottom:12px;">' +
+          'uid: ' + _annDebugEsc(myUid || "(none)") +
+          ' · email: ' + _annDebugEsc(myEmail || "(none)") +
+          ' · tech_slug: ' + _annDebugEsc(mySlug || "(none)") +
+        '</div>';
+
+      const headerHtml =
+        '<tr style="background:#1e293b;color:#fff;">' +
+          ['Title','aud','Mand','Active','In reads','Targets me','Old badge','New badge','Hub card','starts_at','expires_at','recipUids/Emails/Slugs','Action']
+            .map(function (h) { return '<th style="padding:6px 8px;text-align:left;font-weight:600;">' + h + '</th>'; })
+            .join("") +
+        '</tr>';
+
+      function bool(v, goodTrue) {
+        const yes = '<span style="color:#16a34a;font-weight:700;">YES</span>';
+        const no  = '<span style="color:#dc2626;font-weight:700;">no</span>';
+        return v ? yes : no;
+      }
+      function neutralBool(v) {
+        return v
+          ? '<span style="color:#0369a1;font-weight:700;">YES</span>'
+          : '<span style="color:#64748b;">no</span>';
+      }
+      const bodyHtml = rows.map(function (r) {
+        const activeWindow = !r.archived && !r.beforeStart && !r.afterEnd;
+        const recipSummary = r.recipUids + ' / ' + r.recipEmails + ' / ' + r.recipSlugs;
+        const action = r.countedNew
+          ? '<button data-debug-mark-read="' + _annDebugEsc(r.id) + '" style="padding:4px 8px;background:#dc2626;color:#fff;border:0;border-radius:4px;cursor:pointer;">Force mark read</button>'
+          : '<span style="color:#64748b;font-size:11px;">—</span>';
+        return '<tr style="border-bottom:1px solid #e2e8f0;">' +
+          '<td style="padding:6px 8px;max-width:240px;"><div style="font-weight:600;">' + _annDebugEsc(r.title) + '</div>' +
+            '<div style="font-family:monospace;font-size:11px;color:#64748b;">' + _annDebugEsc(r.id) + '</div></td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.audienceType) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.mandatory) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(activeWindow) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.inReads) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.targets) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.countedOld) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.countedNew) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.renderedHub) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.starts_at) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.expires_at) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(recipSummary) + '</td>' +
+          '<td style="padding:6px 8px;">' + action + '</td>' +
+        '</tr>';
+      }).join("");
+
+      const panel = document.createElement("section");
+      panel.id = "team-hub-debug-panel";
+      panel.style.cssText = "margin:16px;padding:16px;background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;font-family:-apple-system,sans-serif;";
+      panel.innerHTML =
+        '<h2 style="margin:0 0 12px;font-size:16px;color:#92400e;">🐛 Announcement Badge Debug (?debug=announcements)</h2>' +
+        authHtml +
+        summaryHtml +
+        '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead>' + headerHtml + '</thead>' +
+          '<tbody>' + bodyHtml + '</tbody>' +
+        '</table></div>' +
+        '<p style="margin:12px 0 0;font-size:11px;color:#92400e;">' +
+          'Old badge = pre-fix count (no audience filter). New badge = this preview (audience-filtered).<br>' +
+          'Hub UI cards = what /team-hub.html actually renders in the unread section.<br>' +
+          'Force mark read writes announcement_reads/{annId}_{uid} for the current user.' +
+        '</p>';
+
+      const main = document.querySelector("main") || document.body;
+      if (main) main.insertBefore(panel, main.firstChild);
+
+      // Wire Force-mark-read buttons → call markAnnouncementRead → reload.
+      panel.addEventListener("click", function (ev) {
+        const btn = ev.target.closest && ev.target.closest("[data-debug-mark-read]");
+        if (!btn) return;
+        const annId = btn.getAttribute("data-debug-mark-read");
+        if (!annId) return;
+        btn.disabled = true; btn.textContent = "writing…";
+        markAnnouncementRead(annId, staff.uid, staff.email || "", 1)
+          .then(function () { window.location.reload(); })
+          .catch(function (err) {
+            console.error("[debug] force mark read failed", err);
+            btn.disabled = false; btn.textContent = "FAILED — retry?";
+          });
+      });
+
+      try { console.info("[announcement-debug]", { oldBadge: oldBadge, newBadge: newBadge, hubCount: hubCount, rows: rows }); } catch (_e) {}
+    } catch (err) {
+      console.error("[announcement-debug] failed", err);
+    }
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -2366,6 +2605,10 @@
           // Also paints the nav-pill badge after the data lands.
           bootAnnouncementsForStaff(staff).then(function () {
             paintTeamHubUnreadBadge(staff);
+            // V20260614c — show debug panel if ?debug=announcements.
+            // Runs AFTER the regular boot so the panel reflects the
+            // same data + reads the user sees in the hub.
+            maybeRunAnnouncementDebug(staff);
           });
           // Pioneer Quality (public-safe morale surface). Soft-fails;
           // doesn't block the rest of the page.

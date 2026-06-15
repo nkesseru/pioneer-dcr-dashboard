@@ -329,6 +329,22 @@
         if (typeof ts.seconds === "number") return ts.seconds * 1000;
         return null;
       }
+      // V20260614c — inline targetsMe so badge count agrees with the
+      // team-hub UI for admins (rule-bypass otherwise over-counts
+      // audienceType="selected" announcements that don't target them).
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMe(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;  // unknown — fail open
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
       const now = Date.now();
       let unread = 0;
       annsSnap.docs.forEach(function (d) {
@@ -336,6 +352,7 @@
         if (a.archived_at) return;
         const s = toMs(a.starts_at);   if (s != null && s > now) return;
         const e = toMs(a.expires_at);  if (e != null && e <= now) return;
+        if (!targetsMe(a)) return;
         if (!readIds.has(d.id)) unread += 1;
       });
       const pills = document.querySelectorAll(".role-nav-link");
