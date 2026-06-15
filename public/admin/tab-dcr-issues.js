@@ -142,6 +142,18 @@
     if (it.source)             meta.push("Source: " + escapeHtml(it.source));
     if (it.issue_type)         meta.push(escapeHtml(it.issue_type));
 
+    // V20260615 — "View details" link surfaces the issue detail modal
+    // (customer + tech + photos from the linked dcr_submission). Photos
+    // live on the parent DCR, not the issue doc; the modal fetches them
+    // lazily on open.
+    const detailLink = it.submission_id
+      ? '<button class="issue-detail-btn" type="button" data-action="view-detail" ' +
+          'data-issue-id="' + escapeHtml(it.id) + '" ' +
+          'data-submission-id="' + escapeHtml(it.submission_id) + '">' +
+          'View details &amp; photos' +
+        '</button>'
+      : '';
+
     return (
       '<article class="issue-card" data-issue-id="' + escapeHtml(it.id) + '">' +
         '<div class="issue-head">' +
@@ -159,6 +171,7 @@
           '<input type="text" class="issue-notes-input" placeholder="Admin notes…" value="' +
             escapeHtml(it.admin_notes || "") + '" />' +
           '<button class="issue-save-btn" type="button" data-action="save">Save</button>' +
+          detailLink +
           '<span class="issue-saved-hint" data-role="saved-hint" hidden>Saved.</span>' +
         '</div>' +
         (stamps.length
@@ -166,6 +179,141 @@
           : '') +
       '</article>'
     );
+  }
+
+  /* ---------- V20260615 — Issue detail modal + photo resolver ----------
+   * Photos live on the parent dcr_submissions doc (see writer comment in
+   * functions/index.js createDcrIssuesForSubmission — the issue doc
+   * itself carries only text + workflow fields). On modal open we fetch
+   * the linked DCR by submission_id and resolve photo URLs defensively
+   * across the canonical field (photos[]) plus the fallback names
+   * surfaced in the Phase 1 audit (photo_urls / after_photos /
+   * before_photos / issue_photos / evidencePhotos).
+   *
+   * The fetch is admin-gated by the existing /dcr_submissions rule;
+   * no rule change required.
+   * --------------------------------------------------------------------- */
+
+  function _normalizePhotoItem(p) {
+    if (!p) return null;
+    if (typeof p === "string") return { url: p, alt: "" };
+    if (typeof p !== "object") return null;
+    const url = p.download_url || p.downloadURL || p.url || "";
+    if (!url) return null;
+    return {
+      url: url,
+      alt: p.caption || p.tag || p.id || ""
+    };
+  }
+  function _collectPhotosFromDcr(dcr) {
+    if (!dcr) return [];
+    const out = [];
+    const seen = new Set();
+    function push(p) {
+      const n = _normalizePhotoItem(p);
+      if (!n || seen.has(n.url)) return;
+      seen.add(n.url);
+      out.push(n);
+    }
+    // Canonical: photos[] with {download_url}
+    if (Array.isArray(dcr.photos)) dcr.photos.forEach(push);
+    // Flat URL list (Zapier convenience)
+    if (Array.isArray(dcr.photo_urls)) dcr.photo_urls.forEach(push);
+    // Defensive fallback field names per Phase 1 spec.
+    ["after_photos","before_photos","issue_photos","evidencePhotos","evidence_photos","attachments"]
+      .forEach(function (k) { if (Array.isArray(dcr[k])) dcr[k].forEach(push); });
+    return out;
+  }
+
+  let _currentDetailIssueId = null;
+
+  async function openIssueDetailModal(issueId, submissionId) {
+    _currentDetailIssueId = issueId;
+    const modal = $("dcr-issue-detail-modal");
+    if (!modal) return;
+    const it = dcrIssues.find(function (x) { return x.id === issueId; });
+    if (!it) return;
+
+    // Static fields from the issue doc (no fetch needed).
+    const titleEl = $("dcr-issue-detail-title");
+    if (titleEl) titleEl.textContent = it.customer_name || it.customer_slug || "Issue";
+
+    const metaParts = [];
+    if (it.location_name && it.location_name !== it.customer_name) metaParts.push(it.location_name);
+    if (it.clean_date)         metaParts.push("Clean date " + it.clean_date);
+    if (it.tech_display_name)  metaParts.push("Tech: " + it.tech_display_name);
+    if (it.source)             metaParts.push("Source: " + it.source);
+    if (it.issue_type)         metaParts.push(it.issue_type);
+    if (it.status)             metaParts.push("Status: " + (ISSUE_STATUS_LABELS[it.status] || it.status));
+    const metaEl = $("dcr-issue-detail-meta");
+    if (metaEl) metaEl.textContent = metaParts.join(" · ");
+
+    const sumEl = $("dcr-issue-detail-summary");
+    if (sumEl) sumEl.textContent = it.issue_summary || "(no summary)";
+
+    const notesEl = $("dcr-issue-detail-notes");
+    if (notesEl) notesEl.textContent = it.admin_notes || "(no admin notes yet)";
+
+    const subIdEl = $("dcr-issue-detail-submission-id");
+    if (subIdEl) subIdEl.textContent = submissionId || "—";
+
+    const photosEl = $("dcr-issue-detail-photos");
+    const photoStatusEl = $("dcr-issue-detail-photos-status");
+    if (photosEl) photosEl.innerHTML = "";
+    if (photoStatusEl) {
+      photoStatusEl.hidden = false;
+      photoStatusEl.textContent = "Loading photos…";
+    }
+
+    // Show the modal now; photos populate when the fetch returns.
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+
+    if (!submissionId) {
+      if (photoStatusEl) photoStatusEl.textContent = "No linked DCR submission on this issue — no photos available.";
+      return;
+    }
+
+    try {
+      const snap = await firebase.firestore().collection("dcr_submissions").doc(submissionId).get();
+      if (_currentDetailIssueId !== issueId) return;  // user closed/switched
+      if (!snap.exists) {
+        if (photoStatusEl) photoStatusEl.textContent = "Parent DCR submission not found (submission_id: " + submissionId + ").";
+        return;
+      }
+      const dcr = snap.data() || {};
+      const photos = _collectPhotosFromDcr(dcr);
+      if (!photos.length) {
+        if (photoStatusEl) photoStatusEl.textContent = "No photos attached to the linked DCR.";
+        return;
+      }
+      if (photoStatusEl) photoStatusEl.hidden = true;
+      if (photosEl) {
+        photosEl.innerHTML = photos.map(function (p) {
+          const safeUrl = escapeHtml(p.url);
+          const safeAlt = escapeHtml(p.alt || "DCR photo");
+          return '<a class="issue-photo-thumb" href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" title="Open original (new tab)">' +
+                   '<img src="' + safeUrl + '" alt="' + safeAlt + '" loading="lazy" />' +
+                 '</a>';
+        }).join("");
+      }
+    } catch (err) {
+      console.error("[dcr-issues] photo fetch failed", err);
+      if (photoStatusEl) {
+        photoStatusEl.hidden = false;
+        photoStatusEl.textContent = "Couldn't load photos: " + (err && err.message ? err.message : err);
+      }
+    }
+  }
+
+  function closeIssueDetailModal() {
+    const modal = $("dcr-issue-detail-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    _currentDetailIssueId = null;
   }
 
   function renderIssues(list) {
@@ -359,14 +507,31 @@
       });
     }
 
-    // Save delegation.
+    // Save + View-detail delegation.
     const list = $("issues-list");
     if (list) {
       list.addEventListener("click", function (ev) {
-        const btn = ev.target.closest('[data-action="save"]');
-        if (!btn) return;
-        const card = btn.closest(".issue-card");
-        saveIssueRow(card);
+        const saveBtn = ev.target.closest('[data-action="save"]');
+        if (saveBtn) {
+          const card = saveBtn.closest(".issue-card");
+          saveIssueRow(card);
+          return;
+        }
+        const detailBtn = ev.target.closest('[data-action="view-detail"]');
+        if (detailBtn) {
+          const issueId = detailBtn.dataset.issueId;
+          const subId   = detailBtn.dataset.submissionId;
+          openIssueDetailModal(issueId, subId);
+          return;
+        }
+      });
+    }
+
+    // V20260615 — Issue detail modal close affordances.
+    const modal = $("dcr-issue-detail-modal");
+    if (modal) {
+      modal.addEventListener("click", function (ev) {
+        if (ev.target.closest && ev.target.closest("[data-modal-close]")) closeIssueDetailModal();
       });
     }
 
