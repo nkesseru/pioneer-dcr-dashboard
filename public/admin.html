@@ -1676,6 +1676,43 @@
         .oi-admin-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
         .oi-admin-filters select { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
         .oi-admin-filters label  { font-size: 12px; color: #475569; font-weight: 600; }
+
+        /* V20260615b — Internal notes rendering in the edit modal. */
+        .oi-notes-section { margin-top: 18px; border-top: 1px solid #e2e8f0; padding-top: 14px; }
+        .oi-notes-list    { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; max-height: 280px; overflow-y: auto; }
+        .oi-note          { padding: 8px 12px; background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 4px; }
+        .oi-note-head     { font-size: 12px; color: #475569; margin-bottom: 4px; }
+        .oi-note-body     { font-size: 14px; color: #334155; white-space: pre-wrap; line-height: 1.4; }
+        .oi-notes-empty   { padding: 12px; text-align: center; color: #94a3b8; font-size: 13px; background: #f8fafc; border-radius: 6px; }
+
+        /* V20260615b — Mobile-responsive table. Below 720px, grid
+           collapses to a stacked card layout so each issue is fully
+           readable on a phone. Filter row stays full-width and
+           stacks its label/select pairs. */
+        @media (max-width: 720px) {
+          .oi-admin-row {
+            grid-template-columns: 1fr;
+            grid-gap: 4px;
+            padding: 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+          }
+          .oi-admin-row-head { display: none; }
+          .oi-admin-row > div:before {
+            content: attr(data-mobile-label);
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-right: 8px;
+            min-width: 80px;
+          }
+          .oi-admin-row .oi-col-desc { font-size: 14px; }
+          .oi-admin-filters { flex-direction: column; align-items: stretch; }
+          .oi-admin-filters select { width: 100%; }
+        }
       </style>
       <header class="panel-header">
         <div>
@@ -3703,8 +3740,25 @@
 
         <p class="field-hint" style="margin-top:8px;">
           Saving appends a <code>status_history</code> entry whenever status changes.
-          Internal notes subcollection lands in Phase 2.
         </p>
+
+        <!-- V20260615b — Internal notes section. Admin-only by rule;
+             employees can never read these. Append-only. -->
+        <div class="oi-notes-section">
+          <h3 style="margin:0 0 4px;font-size:14px;color:#1e293b;">🔒 Internal notes (admin-only)</h3>
+          <p class="field-hint" style="margin:0;">Employees cannot see these. Append-only audit log.</p>
+
+          <p id="office-issues-notes-loading" class="oi-notes-empty" hidden>Loading notes…</p>
+          <p id="office-issues-notes-empty"   class="oi-notes-empty" hidden>No notes yet.</p>
+          <div id="office-issues-notes-list" class="oi-notes-list"></div>
+
+          <div class="field-row" style="margin-top:8px;">
+            <label for="office-issues-note-body">Add a note</label>
+            <textarea id="office-issues-note-body" rows="3" maxlength="4000"
+                      placeholder="e.g. Called employee, confirmed payroll error from 2026-06-12. Routing to Kirby."></textarea>
+            <p class="field-hint">Appended when you click Save. Leave blank to skip.</p>
+          </div>
+        </div>
       </div>
       <footer class="admin-modal-footer">
         <div class="admin-modal-err" id="office-issues-modal-err" hidden></div>
@@ -3760,7 +3814,7 @@
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260610-kirby-usability"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
-  <script src="admin/tab-office-issues.js?v=20260615-office-issues"></script>
+  <script src="admin/tab-office-issues.js?v=20260615b-realtime-notes"></script>
   <script src="admin.js?v=20260615-office-issues"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>

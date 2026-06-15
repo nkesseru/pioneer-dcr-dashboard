@@ -1281,6 +1281,25 @@ service cloud.firestore {
                     && request.resource.data.description.size() <= 4000;
       allow update: if isPioneerAdmin();
       allow delete: if false;
+
+      // V20260615b — Internal notes subcollection (admin-only). Append-
+      // only audit log of admin annotations on an issue. Employees can
+      // never read these — the parent doc's read rule grants the
+      // employee access to fields they submitted; this subcollection
+      // is a separate hop the rule layer denies outright.
+      //
+      // Shape: { issue_id, body, author_uid, author_email, author_name,
+      //          created_at }. body required, non-empty, max 4000 chars.
+      // No update / delete — corrections happen as NEW notes.
+      match /internal_notes/{noteId} {
+        allow read:   if isPioneerAdmin();
+        allow create: if isPioneerAdmin()
+                      && request.resource.data.author_uid == request.auth.uid
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 4000;
+        allow update, delete: if false;
+      }
     }
 
     match /sick_leave_ledger/{entryId} {

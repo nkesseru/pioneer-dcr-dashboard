@@ -203,11 +203,11 @@
         }]
       });
 
-      // Reset form, refresh list, toast.
+      // Reset form + toast. The onSnapshot subscription picks up the
+      // new doc automatically — no manual reload needed.
       if (catEl)  catEl.value  = "";
       if (descEl) descEl.value = "";
       showToast("ok", "Sent to the office. We'll respond.");
-      await loadMyIssues();
     } catch (err) {
       console.error("[office-issues] submit failed", err);
       const code = (err && err.code) || "";
@@ -224,12 +224,19 @@
 
   /* ---------- readers ---------- */
 
-  let loadingMine = false;
+  let unsubscribeMine = null;
 
-  async function loadMyIssues() {
+  // V20260615b — Real-time subscription. Replaces the one-shot .get()
+  // so techs see admin status changes / owner assignments without a
+  // manual refresh. Subscription lives for the page session; the
+  // Refresh button forces a re-subscribe (handy after the initial
+  // index is built).
+  function loadMyIssues() {
     if (!currentStaff || !currentStaff.uid) return;
-    if (loadingMine) return;
-    loadingMine = true;
+    if (unsubscribeMine) {
+      try { unsubscribeMine(); } catch (_e) {}
+      unsubscribeMine = null;
+    }
     const loadingEl = $("oi-my-loading");
     const errorEl   = $("oi-my-error");
     const emptyEl   = $("oi-my-empty");
@@ -240,34 +247,40 @@
     if (listEl)    listEl.innerHTML = "";
 
     try {
-      const db   = firebase.firestore();
-      const snap = await db.collection("office_issues")
+      const q = firebase.firestore().collection("office_issues")
         .where("employee_uid", "==", currentStaff.uid)
         .orderBy("created_at", "desc")
-        .limit(50)
-        .get();
-
-      const docs = snap.docs.map(function (d) {
-        return Object.assign({ _id: d.id }, d.data() || {});
-      });
-
-      if (!docs.length) {
-        if (emptyEl) emptyEl.hidden = false;
-      } else if (listEl) {
-        listEl.innerHTML = docs.map(renderRow).join("");
-      }
+        .limit(50);
+      unsubscribeMine = q.onSnapshot(
+        function (snap) {
+          if (loadingEl) loadingEl.hidden = true;
+          const docs = snap.docs.map(function (d) {
+            return Object.assign({ _id: d.id }, d.data() || {});
+          });
+          if (!docs.length) {
+            if (listEl)  listEl.innerHTML = "";
+            if (emptyEl) emptyEl.hidden = false;
+          } else {
+            if (emptyEl) emptyEl.hidden = true;
+            if (listEl)  listEl.innerHTML = docs.map(renderRow).join("");
+          }
+        },
+        function (err) {
+          console.error("[office-issues] subscription failed", err);
+          const code = (err && err.code) || "";
+          const msg = code === "failed-precondition"
+            ? "Couldn't load your issues — Firestore index still building. Refresh in a minute."
+            : code === "permission-denied"
+              ? "Permission denied loading your issues. Confirm sign-in."
+              : "Couldn't load your issues: " + ((err && err.message) || "unknown");
+          if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
+          if (loadingEl) loadingEl.hidden = true;
+        }
+      );
     } catch (err) {
-      console.error("[office-issues] load mine failed", err);
-      const code = (err && err.code) || "";
-      const msg = code === "failed-precondition"
-        ? "Couldn't load your issues — Firestore index still building. Refresh in a minute."
-        : code === "permission-denied"
-          ? "Permission denied loading your issues. Confirm sign-in."
-          : "Couldn't load your issues: " + ((err && err.message) || "unknown");
-      if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
-    } finally {
+      console.error("[office-issues] subscribe crashed", err);
+      if (errorEl) { errorEl.textContent = "Subscription error: " + ((err && err.message) || "unknown"); errorEl.hidden = false; }
       if (loadingEl) loadingEl.hidden = true;
-      loadingMine = false;
     }
   }
 
