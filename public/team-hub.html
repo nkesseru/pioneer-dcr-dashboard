@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="styles/ui-cards.css" />
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20260616-emp-review" />
   <link rel="stylesheet" href="styles/team-hub-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -361,6 +361,29 @@
           <div class="my-hours-summary-loading">Reading the clock…</div>
         </div>
 
+        <!-- Phase 29D — Payroll Review acknowledgment. Tech can confirm
+             "Looks Good" or "Request Correction." Soft acknowledgment:
+             absence does NOT block payroll; export auto-finalizes any
+             un-acknowledged techs. UI uses "review/acknowledgment"
+             language, not "signature/consent." -->
+        <div class="my-hours-review" id="my-hours-review" hidden>
+          <div class="my-hours-review-status" id="my-hours-review-status"></div>
+          <div class="my-hours-review-actions" id="my-hours-review-actions">
+            <button type="button" class="my-hours-review-btn my-hours-review-btn-good"
+                    id="my-hours-review-good">
+              Looks Good
+            </button>
+            <button type="button" class="my-hours-review-btn my-hours-review-btn-correction"
+                    id="my-hours-review-correction">
+              Request Correction
+            </button>
+          </div>
+          <p class="my-hours-review-note">
+            This is a hours review, not a signature. You can request corrections at any
+            time before payroll runs.
+          </p>
+        </div>
+
         <div class="my-hours-shifts" id="my-hours-shifts"></div>
 
         <div class="my-hours-foot">
@@ -705,7 +728,7 @@
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="team-hub.js?v=20260615-office-issues"></script>
+  <script src="team-hub.js?v=20260616-emp-review"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.

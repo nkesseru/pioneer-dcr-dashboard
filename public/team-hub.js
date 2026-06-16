@@ -1808,6 +1808,10 @@
   let myHoursModalShiftId = null;
   let myHoursExpanded = false;       // false = show only first 5 shifts
   const MY_HOURS_PREVIEW_LIMIT = 5;
+  // Phase 29D — payroll review acknowledgment doc for the current period.
+  // null = not loaded yet OR no doc exists (no ack = "not reviewed").
+  // Shape mirrors firestore.rules /payroll_review_acknowledgments block.
+  let myHoursAck = null;
 
   const MY_HOURS_REASON_LABEL = {
     forgot_clock_in:  'Forgot to clock in',
@@ -1990,7 +1994,21 @@
         console.warn('[team-hub] my-hours adjustments read failed (non-fatal)', reqErr);
       }
 
+      // Phase 29D — load the existing acknowledgment doc for this period
+      // (idempotent doc id = `<period_id>__<staff_uid>`). Single doc-id
+      // read; soft-fails so a transient permission error doesn't kill
+      // the whole tab. Absence is meaningful — "no doc" = not reviewed.
+      myHoursAck = null;
+      try {
+        const ackId = period.period_id + '__' + myHoursStaff.uid;
+        const ackSnap = await db.collection('payroll_review_acknowledgments').doc(ackId).get();
+        myHoursAck = ackSnap.exists ? Object.assign({ _id: ackSnap.id }, ackSnap.data() || {}) : null;
+      } catch (ackErr) {
+        console.warn('[team-hub] my-hours ack read failed (non-fatal)', ackErr);
+      }
+
       renderMyHoursSummary(period);
+      renderMyHoursReview(period);
       renderMyHoursShifts(period);
     } catch (err) {
       console.error('[team-hub] my-hours load failed', err);
@@ -2171,6 +2189,154 @@
     );
   }
 
+  /* ---- Phase 29D — Payroll Review Acknowledgment ----
+   *
+   * Render the chip + buttons under the My Hours summary. Tech can:
+   *   • Click "Looks Good" → writes ack doc with status "looks_good".
+   *   • Click "Request Correction" → opens the existing Time Adjustment
+   *     modal. On successful adjustment submit, the ack is upserted to
+   *     "correction_requested" with the new request_id appended.
+   *
+   * Absence of a doc = "Not reviewed." Auto-finalized state ships in
+   * Step 4 (not in this preview).
+   *
+   * Section auto-hides when the tech has zero sessions in the period —
+   * there's nothing to review yet.
+   */
+  function renderMyHoursReview(period) {
+    const section = $('my-hours-review');
+    const statusEl = $('my-hours-review-status');
+    const goodBtn = $('my-hours-review-good');
+    const corrBtn = $('my-hours-review-correction');
+    if (!section || !statusEl || !goodBtn || !corrBtn) return;
+
+    // Nothing to review yet → hide entirely. Re-shows automatically the
+    // moment a session lands in the period.
+    if (!myHoursSessions.length) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+
+    const status = myHoursAck && myHoursAck.status;
+    if (status === 'looks_good') {
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-good">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">✓</span>' +
+          'You reviewed these hours and confirmed they look good.' +
+        '</span>';
+      goodBtn.textContent = 'Re-confirm hours';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Request Correction';
+      corrBtn.disabled = false;
+    } else if (status === 'correction_requested') {
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-warn">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">⚠</span>' +
+          'You requested a correction. Kirby will review it before payroll runs.' +
+        '</span>';
+      goodBtn.textContent = 'Looks Good (resolves correction)';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Add another correction';
+      corrBtn.disabled = false;
+    } else if (status === 'auto_finalized') {
+      // Pre-Step 4 this shouldn't appear, but render defensively in case
+      // a future Cloud Function writes it before the UI is updated.
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-info">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">🔒</span>' +
+          'Auto-finalized at payroll cutoff — no acknowledgment was captured.' +
+        '</span>';
+      goodBtn.disabled = true;
+      corrBtn.disabled = true;
+    } else {
+      // No ack doc yet.
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-pending">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">◌</span>' +
+          'Take a look at your hours and let Kirby know they\'re right.' +
+        '</span>';
+      goodBtn.textContent = 'Looks Good';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Request Correction';
+      corrBtn.disabled = false;
+    }
+  }
+
+  // Build the hours_snapshot map the rules require. Mirrors what the
+  // summary tiles show so the admin's "hours changed since review" check
+  // (Phase 2 enhancement) has a clean baseline.
+  function buildMyHoursSnapshot() {
+    let totalMin = 0;
+    (myHoursSessions || []).forEach(function (s) {
+      const m = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+              : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+              : (typeof s.work_minutes === 'number')      ? s.work_minutes
+              : 0;
+      totalMin += Math.max(0, m);
+    });
+    return {
+      total_minutes:     totalMin,
+      session_count:     myHoursSessions.length,
+      pending_adj_count: Object.keys(myHoursPendingByKey || {}).length,
+      approved_adj_count: myHoursApprovedCount || 0
+    };
+  }
+
+  // Upsert pattern. set({}, merge:true) creates if missing, updates if
+  // present. Rules already gate the allowed status transitions, so a
+  // client cannot downgrade an auto_finalized doc.
+  async function writeMyHoursAck(newStatus, extraFields) {
+    if (!myHoursStaff || !myHoursStaff.uid) return;
+    const period = myHoursCurrentPeriod();
+    const ackId = period.period_id + '__' + myHoursStaff.uid;
+    const ref = firebase.firestore()
+      .collection('payroll_review_acknowledgments').doc(ackId);
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const base = {
+      period_id:          period.period_id,
+      period_start_date:  period.start_date,
+      period_end_date:    period.end_date,
+      staff_uid:          myHoursStaff.uid,
+      staff_email:        myHoursStaff.email || '',
+      staff_name:         (myHoursStaff.display_name || myHoursStaff.first_name ||
+                           myHoursStaff.email || ''),
+      status:             newStatus,
+      acknowledged_at:    sts,
+      hours_snapshot:     buildMyHoursSnapshot(),
+      updated_at:         sts
+    };
+    // created_at only on first write — but with merge:true, including it
+    // every time would overwrite. Use serverTimestamp via merge-ignore by
+    // checking the existing doc first.
+    if (!myHoursAck) {
+      base.created_at = sts;
+    }
+    Object.assign(base, extraFields || {});
+    await ref.set(base, { merge: true });
+  }
+
+  async function submitMyHoursLooksGood() {
+    const goodBtn = $('my-hours-review-good');
+    if (goodBtn) goodBtn.disabled = true;
+    try {
+      await writeMyHoursAck('looks_good');
+      await reloadMyHours();
+    } catch (err) {
+      console.error('[team-hub] looks-good write failed', err);
+      alert('Couldn\'t save your acknowledgment: ' + ((err && err.message) || 'try again'));
+      if (goodBtn) goodBtn.disabled = false;
+    }
+  }
+
+  // Request Correction = open the existing Time Adjustment modal. The
+  // ack flip to "correction_requested" happens after a SUCCESSFUL
+  // adjustment submit (see submitMyHoursAdjustment below), so a tech who
+  // opens the modal and cancels doesn't change their ack state.
+  function submitMyHoursRequestCorrection() {
+    openMyHoursModal(null);
+  }
+
   /* ---- Modal wiring ---- */
 
   function wireMyHoursButtons() {
@@ -2178,6 +2344,17 @@
     if (requestBtn && !requestBtn.dataset.wired) {
       requestBtn.dataset.wired = '1';
       requestBtn.addEventListener('click', function () { openMyHoursModal(null); });
+    }
+    // Phase 29D — review buttons.
+    const goodBtn = $('my-hours-review-good');
+    if (goodBtn && !goodBtn.dataset.wired) {
+      goodBtn.dataset.wired = '1';
+      goodBtn.addEventListener('click', submitMyHoursLooksGood);
+    }
+    const corrBtn = $('my-hours-review-correction');
+    if (corrBtn && !corrBtn.dataset.wired) {
+      corrBtn.dataset.wired = '1';
+      corrBtn.addEventListener('click', submitMyHoursRequestCorrection);
     }
     const closeBtn = $('my-hours-modal-close');
     if (closeBtn && !closeBtn.dataset.wired) {
@@ -2363,6 +2540,19 @@
         throw new Error(msg);
       }
       setMyHoursModalStatus('Submitted — Kirby will review shortly.', 'ok');
+      // Phase 29D — flip the period ack to "correction_requested" and
+      // record the new request id. Best-effort: failure here doesn't
+      // undo the adjustment submit (which already succeeded). Tech can
+      // still click "Looks Good" manually if this write fails.
+      try {
+        const newRequestId = (body && (body.request_id || body.id)) || null;
+        const extra = newRequestId
+          ? { correction_request_ids: firebase.firestore.FieldValue.arrayUnion(newRequestId) }
+          : {};
+        await writeMyHoursAck('correction_requested', extra);
+      } catch (ackErr) {
+        console.warn('[team-hub] correction ack flip failed (non-fatal)', ackErr);
+      }
       setTimeout(closeMyHoursModal, 1100);
       await reloadMyHours();
     } catch (err) {

@@ -6803,9 +6803,59 @@
 }
 .payroll-ready-link-btn:hover { background: #dbeafe; }
 
+/* Phase 29D — Employee review bucket pills inline within the
+   Employee review item. Mirrors the dot-color logic so the line
+   visually reads as one whole status. */
+.payroll-ready-review-buckets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 4px;
+  align-items: center;
+}
+.payroll-ready-review-bucket {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.payroll-ready-review-bucket.is-reviewed {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.payroll-ready-review-bucket.has-count {
+  background: #fef3c7;
+  color: #78350f;
+  border-color: #fcd34d;
+}
+.payroll-ready-review-bucket.is-pending {
+  background: #ffffff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.payroll-ready-review-bucket.is-auto {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+}
+.payroll-ready-review-icon { font-size: 11px; line-height: 1; }
+.payroll-ready-review-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
 @media (max-width: 700px) {
   .payroll-ready-tiles { grid-template-columns: 1fr; }
   .payroll-ready-item { flex-wrap: wrap; }
+  .payroll-ready-review-buckets { width: 100%; margin-left: 0; margin-top: 4px; }
 }
 
 /* Verification Layer banner — 3 states. */

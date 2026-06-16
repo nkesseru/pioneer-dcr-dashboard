@@ -1417,6 +1417,70 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // Phase 29D — Employee Payroll Review Acknowledgment.
+    // ====================================================================
+    // Soft-acknowledgment: tech reviews their hours for the current pay
+    // period and clicks "Looks Good" or "Request Correction." Absence of
+    // a doc = "not reviewed." Auto-finalized status is set only by the
+    // export Cloud Function (Admin SDK bypasses rules) so a client
+    // cannot self-mark a missing acknowledgment.
+    //
+    // Doc id is idempotent: `<period_id>__<staff_uid>` (e.g.
+    // "2026-06-B__abc123"). Owner can re-click to update status (rules
+    // allow looks_good <-> correction_requested). No deletes — corrections
+    // happen as state transitions, never deletion (audit trail).
+    //
+    // Schema (client-writable subset):
+    //   period_id              "2026-06-B"
+    //   period_start_date      "2026-06-16"
+    //   period_end_date        "2026-06-30"
+    //   staff_uid              == request.auth.uid on create/update
+    //   staff_email            string
+    //   staff_name             string
+    //   status                 "looks_good" | "correction_requested"
+    //                          ("auto_finalized" written by Cloud Function only)
+    //   acknowledged_at        serverTimestamp
+    //   hours_snapshot         { total_minutes, session_count,
+    //                            pending_adj_count, approved_adj_count }
+    //   correction_request_ids array<string> | null
+    //   created_at             serverTimestamp (create only)
+    //   updated_at             serverTimestamp
+    match /payroll_review_acknowledgments/{ackId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+
+      // Create: owner-only. Status must be one of the two client-writable
+      // values. staff_uid must match the auth uid. period_id + dates +
+      // staff_email + staff_name + status + hours_snapshot are required.
+      allow create: if request.auth != null
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.status in ["looks_good", "correction_requested"]
+                    && request.resource.data.period_id      is string
+                    && request.resource.data.period_id.size() > 0
+                    && request.resource.data.period_start_date is string
+                    && request.resource.data.period_end_date   is string
+                    && request.resource.data.staff_email   is string
+                    && request.resource.data.staff_name    is string
+                    && request.resource.data.hours_snapshot is map;
+
+      // Update: owner-only state transitions between the two client-writable
+      // statuses. staff_uid + period_id + period dates are immutable. An
+      // auto_finalized doc (written by Cloud Function) cannot be downgraded
+      // back to looks_good or correction_requested by a client.
+      allow update: if request.auth != null
+                    && resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.staff_uid == resource.data.staff_uid
+                    && request.resource.data.period_id == resource.data.period_id
+                    && request.resource.data.period_start_date == resource.data.period_start_date
+                    && request.resource.data.period_end_date   == resource.data.period_end_date
+                    && resource.data.status in ["looks_good", "correction_requested"]
+                    && request.resource.data.status in ["looks_good", "correction_requested"];
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Phase 1A — Office Manager Mission Control.
     // ====================================================================
     // Four append-leaning collections that store the Office Manager's

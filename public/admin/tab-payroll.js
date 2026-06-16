@@ -51,8 +51,13 @@
   // card to surface "N pending requests" without forcing admin to click
   // into the Payroll Exceptions tab.
   let adjustmentRequests = [];  // [{ _id, status, shift_date, ... }]
+  // Phase 29D — employee review acknowledgments for the selected period.
+  // Loaded alongside the other reads. Each doc id =
+  // `<period_id>__<staff_uid>`. Absence of a doc for a staff with
+  // sessions in the period is meaningful — "not reviewed."
+  let reviewAcks = [];          // [{ _id, status, staff_uid, ... }]
 
-  const PAYROLL_BUILD_TAG = "Payroll v29C-readiness";
+  const PAYROLL_BUILD_TAG = "Payroll v29D-employee-review";
 
   /* ---------- date + period helpers ---------- */
 
@@ -254,7 +259,7 @@
       // effective_date range (single-field range, no composite needed).
       // Sick entries are filtered to entry_type === "used" client-side
       // to avoid forcing a new composite index for the pilot scale.
-      const [sessSnap, sickSnap, exportSnap, adjSnap] = await Promise.all([
+      const [sessSnap, sickSnap, exportSnap, adjSnap, ackSnap] = await Promise.all([
         db.collection("pioneer_service_sessions")
           .where("service_date", ">=", currentPeriod.start_date)
           .where("service_date", "<=", currentPeriod.end_date)
@@ -278,7 +283,17 @@
           .where("shift_date", ">=", currentPeriod.start_date)
           .where("shift_date", "<=", currentPeriod.end_date)
           .get()
-          .catch(function () { return null; })
+          .catch(function () { return null; }),
+        // Phase 29D — Employee review acknowledgments scoped to this
+        // period. Single-field equality on period_id (auto-indexed).
+        // Skipped for custom ranges since custom doesn't have a stable
+        // period_id; the readiness tile then renders "—" for review.
+        (currentPeriod.is_custom)
+          ? Promise.resolve(null)
+          : db.collection("payroll_review_acknowledgments")
+              .where("period_id", "==", currentPeriod.period_id)
+              .get()
+              .catch(function () { return null; })
       ]);
 
       sessions = sessSnap.docs.map(function (d) {
@@ -296,6 +311,11 @@
       // Phase 29C — adjustment requests in period.
       adjustmentRequests = adjSnap
         ? adjSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        : [];
+
+      // Phase 29D — review acknowledgments scoped to this period.
+      reviewAcks = ackSnap
+        ? ackSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
         : [];
 
       recentExports.sort(function (a, b) {
@@ -495,6 +515,40 @@
                            currentPeriod.start_date, currentPeriod.end_date);
     }) || null;
 
+    // Phase 29D — Employee review bucket counts.
+    //
+    // Universe = every distinct staff_uid with ≥1 counted session in the
+    // period (matches the auto-finalize sweep semantics we'll add in
+    // Step 4 — sick-leave-only techs don't appear).
+    //
+    // Mapping:
+    //   reviewed             = ack.status === "looks_good"
+    //   correctionRequested  = ack.status === "correction_requested"
+    //   autoFinalized        = ack.status === "auto_finalized" (Step 4 fills this)
+    //   notReviewed          = universe size − the three counts above
+    //                          (no ack OR ack for a uid we don't know about)
+    //
+    // Custom range → no period_id → reviewAcks is empty by construction;
+    // tile renders "—" and lets admin know review counts don't apply.
+    const sessionStaffUids = new Set();
+    (sessions || []).forEach(function (s) {
+      if (adminRemovedFlag(s)) return;
+      if (isQaTestSession(s))  return;
+      if (s.staff_uid) sessionStaffUids.add(s.staff_uid);
+    });
+    let reviewedCount = 0, correctionCount = 0, autoFinalizedCount = 0;
+    (reviewAcks || []).forEach(function (a) {
+      if (!a || !a.staff_uid) return;
+      if (!sessionStaffUids.has(a.staff_uid)) return;   // ack for a uid not in this period
+      if (a.status === "looks_good")            reviewedCount      += 1;
+      else if (a.status === "correction_requested") correctionCount    += 1;
+      else if (a.status === "auto_finalized")   autoFinalizedCount += 1;
+    });
+    const universeSize = sessionStaffUids.size;
+    const notReviewedCount = Math.max(
+      0, universeSize - reviewedCount - correctionCount - autoFinalizedCount
+    );
+
     return {
       totalOriginalMin:     totalOriginalMin,
       totalAdjDeltaMin:     totalAdjDeltaMin,
@@ -503,7 +557,13 @@
       pendingAdjCount:      pendingAdjCount,
       lockedCount:          lockedCount,
       countedSessions:      countedSessions,
-      activeExportForPeriod: activeExportForPeriod
+      activeExportForPeriod: activeExportForPeriod,
+      reviewUniverse:       universeSize,
+      reviewedCount:        reviewedCount,
+      correctionCount:      correctionCount,
+      autoFinalizedCount:   autoFinalizedCount,
+      notReviewedCount:     notReviewedCount,
+      reviewIsCustomRange:  !!currentPeriod.is_custom
     };
   }
 
@@ -544,6 +604,91 @@
     }
     const errEl = $("payroll-custom-err");
     if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+  }
+
+  // Phase 29D — Employee review line. Replaces the disabled "n/a" tile
+  // shipped in Phase 29C. Renders the 3 buckets (Reviewed / Correction
+  // Requested / Not Reviewed) once Step 3 ships. Auto-finalized count is
+  // shown only when non-zero (Step 4 will populate it). Custom date
+  // ranges have no period_id so we render an explanatory dash.
+  function renderEmployeeReviewLine(r) {
+    if (r.reviewIsCustomRange) {
+      return (
+        '<li class="payroll-ready-item is-disabled">' +
+          '<span class="payroll-ready-dot" aria-hidden="true"></span>' +
+          '<span class="payroll-ready-item-body">' +
+            '<strong>Employee review:</strong> ' +
+            '<span class="payroll-ready-na">' +
+              'select a semi-monthly period to see review counts (custom ranges aren\'t reviewable)' +
+            '</span>' +
+          '</span>' +
+        '</li>'
+      );
+    }
+    if (r.reviewUniverse === 0) {
+      return (
+        '<li class="payroll-ready-item is-zero">' +
+          '<span class="payroll-ready-dot" aria-hidden="true"></span>' +
+          '<span class="payroll-ready-item-body">' +
+            '<strong>Employee review:</strong> ' +
+            '<span class="payroll-ready-ok">no employees with sessions in this period yet</span>' +
+          '</span>' +
+        '</li>'
+      );
+    }
+    const parts = [];
+    parts.push(
+      '<span class="payroll-ready-review-bucket is-reviewed" ' +
+        'title="Tech clicked Looks Good">' +
+        '<span class="payroll-ready-review-icon" aria-hidden="true">✓</span> ' +
+        '<strong>' + r.reviewedCount + '</strong> reviewed' +
+      '</span>'
+    );
+    parts.push(
+      '<span class="payroll-ready-review-bucket' +
+        (r.correctionCount > 0 ? ' has-count' : '') +
+        '" title="Tech requested a correction">' +
+        '<span class="payroll-ready-review-icon" aria-hidden="true">⚠</span> ' +
+        '<strong>' + r.correctionCount + '</strong> correction' +
+        (r.correctionCount === 1 ? '' : 's') +
+      '</span>'
+    );
+    parts.push(
+      '<span class="payroll-ready-review-bucket' +
+        (r.notReviewedCount > 0 ? ' is-pending' : '') +
+        '" title="No acknowledgment yet">' +
+        '<span class="payroll-ready-review-icon" aria-hidden="true">◌</span> ' +
+        '<strong>' + r.notReviewedCount + '</strong> not yet reviewed' +
+      '</span>'
+    );
+    if (r.autoFinalizedCount > 0) {
+      parts.push(
+        '<span class="payroll-ready-review-bucket is-auto" ' +
+          'title="Auto-finalized at export">' +
+          '<span class="payroll-ready-review-icon" aria-hidden="true">🔒</span> ' +
+          '<strong>' + r.autoFinalizedCount + '</strong> auto-finalized' +
+        '</span>'
+      );
+    }
+    const link = r.correctionCount > 0
+      ? ' <button type="button" class="payroll-ready-link-btn" data-ready-link="payroll-exceptions">' +
+          'Open Exceptions →</button>'
+      : '';
+    const dotClass = (r.correctionCount > 0 || r.notReviewedCount > 0) ? 'has-count' : 'is-zero';
+    return (
+      '<li class="payroll-ready-item ' + dotClass + '">' +
+        '<span class="payroll-ready-dot" aria-hidden="true"></span>' +
+        '<span class="payroll-ready-item-body">' +
+          '<strong>Employee review:</strong> ' +
+          '<span class="payroll-ready-review-buckets">' + parts.join('') + '</span>' +
+          '<div class="payroll-ready-review-sub">' +
+            r.reviewUniverse + ' employee' + (r.reviewUniverse === 1 ? '' : 's') +
+            ' with sessions in this period · acknowledgment is optional and does not block payroll' +
+          '</div>' +
+        '</span>' +
+        link +
+      '</li>'
+    );
   }
 
   // Phase 29C — Payroll Readiness card. Sits above the existing
@@ -672,11 +817,7 @@
           linkKey:   'payroll-exceptions',
           linkLabel: r.pendingAdjCount > 0 ? 'Open Exceptions' : ''
         }) +
-        unresolvedLine({
-          title:     'Pending employee responses',
-          body:      '<span class="payroll-ready-na">n/a · employee hour sign-off feature not implemented yet</span>',
-          disabled:  true
-        }) +
+        renderEmployeeReviewLine(r) +
       '</ul>';
 
     wrap.innerHTML =
