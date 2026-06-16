@@ -6858,6 +6858,215 @@
   .payroll-ready-review-buckets { width: 100%; margin-left: 0; margin-top: 4px; }
 }
 
+/* ==========================================================================
+   Phase 29E-A — Payroll Workflow bar (UI scaffolding).
+   Five-stage progression: Review → Ready → Lock → Export → History.
+   No live writes in Phase A — Lock/Unlock buttons are disabled stubs.
+   ========================================================================== */
+.payroll-workflow-bar {
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.payroll-workflow-bar.is-blocked  { border-color: #fecaca; }
+.payroll-workflow-bar.is-ready    { border-color: #a7f3d0; }
+.payroll-workflow-bar.is-locked   { border-color: #1d4ed8; }
+.payroll-workflow-bar.is-exported { border-color: #94a3b8; background: #f8fafc; }
+.payroll-workflow-bar.is-custom   { border-color: #e2e8f0; background: #f8fafc; }
+.payroll-workflow-custom-note {
+  font-size: 13px;
+  color: #475569;
+}
+
+.payroll-workflow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.payroll-workflow-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.payroll-workflow-period {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Stage strip. Connectors are flex children between stages. */
+.payroll-workflow-stages {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.payroll-workflow-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 84px;
+  text-align: center;
+  padding: 4px 6px;
+}
+.payroll-workflow-stage-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-workflow-stage-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+.payroll-workflow-stage-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.payroll-workflow-stage.is-done .payroll-workflow-stage-icon    { color: #047857; }
+.payroll-workflow-stage.is-done .payroll-workflow-stage-sub     { color: #047857; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-icon    { color: #1d4ed8; font-weight: 800; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-label   { color: #1d4ed8; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-sub     { color: #1d4ed8; }
+.payroll-workflow-stage.is-blocked .payroll-workflow-stage-sub  { color: #b91c1c; }
+.payroll-workflow-stage.is-locked  .payroll-workflow-stage-sub  { color: #1d4ed8; }
+.payroll-workflow-stage.is-future  .payroll-workflow-stage-icon { opacity: 0.5; }
+.payroll-workflow-stage.is-future  .payroll-workflow-stage-sub  { opacity: 0.7; }
+
+/* Connectors. Heavy line for "completed" segments; thin grey for future. */
+.payroll-workflow-connector {
+  flex: 1 1 24px;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  margin: 0 2px;
+}
+.payroll-workflow-connector.is-done    { background: #047857; }
+.payroll-workflow-connector.is-now     { background: linear-gradient(to right, #047857 0%, #1d4ed8 70%, #cbd5e1 100%); }
+.payroll-workflow-connector.is-blocked { background: linear-gradient(to right, #047857 0%, #b91c1c 70%, #cbd5e1 100%); }
+.payroll-workflow-connector.is-locked  { background: #1d4ed8; }
+.payroll-workflow-connector.is-future  { background: #e2e8f0; }
+
+/* Status panel below the bar. Color matched to the active stage. */
+.payroll-workflow-panel {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-workflow-panel.is-blocked  { background: #fef2f2; border-color: #fecaca; }
+.payroll-workflow-panel.is-ready    { background: #ecfdf5; border-color: #a7f3d0; }
+.payroll-workflow-panel.is-locked   { background: #eff6ff; border-color: #c7d2fe; }
+.payroll-workflow-panel.is-exported { background: #f1f5f9; border-color: #cbd5e1; }
+.payroll-workflow-panel.is-review,
+.payroll-workflow-panel.is-empty    { background: #f8fafc; border-color: #e2e8f0; }
+
+.payroll-workflow-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+.payroll-workflow-panel-icon  { font-size: 16px; line-height: 1; }
+.payroll-workflow-panel-meta  { margin: 4px 0; font-size: 12.5px; color: #475569; }
+.payroll-workflow-panel-meta code {
+  background: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  font-size: 11.5px;
+}
+.payroll-workflow-panel-stats { margin: 4px 0 8px; font-size: 13px; font-weight: 600; }
+.payroll-workflow-panel-sub   { margin: 8px 0 0; font-size: 12px; color: #64748b; }
+.payroll-workflow-bullets {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  font-size: 12.5px;
+  color: #7f1d1d;
+}
+.payroll-workflow-bullets li { padding: 2px 0; }
+.payroll-workflow-explainer {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #475569;
+}
+.payroll-workflow-explainer li { padding: 1px 0; }
+
+/* CTA row — Lock / Continue / Unlock buttons. Phase A: all disabled. */
+.payroll-workflow-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.payroll-workflow-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.payroll-workflow-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.payroll-workflow-btn.is-lock {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+.payroll-workflow-btn.is-continue {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+.payroll-workflow-btn.is-unlock {
+  background: #ffffff;
+  color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.payroll-workflow-phase-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+
+@media (max-width: 700px) {
+  .payroll-workflow-stages { gap: 4px; }
+  .payroll-workflow-stage { min-width: 64px; }
+  .payroll-workflow-stage-icon { font-size: 20px; }
+  .payroll-workflow-stage-label, .payroll-workflow-stage-sub { font-size: 10px; }
+}
+
 /* Verification Layer banner — 3 states. */
 .payroll-banner {
   padding: 14px 16px;

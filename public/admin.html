@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="admin.css?v=20260616-emp-review" />
+  <link rel="stylesheet" href="admin.css?v=20260616-lock-workflow-A" />
   <link rel="stylesheet" href="training.css" />
   <link rel="stylesheet" href="styles/admin-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
@@ -1594,6 +1594,14 @@
           <button type="button" class="payroll-apply-btn" id="payroll-custom-apply">Apply</button>
           <div class="payroll-custom-err" id="payroll-custom-err" role="alert" hidden></div>
         </div>
+      </section>
+
+      <!-- Phase 29E-A — Payroll Workflow bar. Top-of-tab summary of
+           where the period is in the Review → Ready → Lock → Export →
+           History progression. Phase A is UI scaffolding only; Phase B
+           wires Lock/Unlock backend writers + Export gate. -->
+      <section class="payroll-block">
+        <div id="payroll-workflow-bar"></div>
       </section>
 
       <!-- Phase 29C — Payroll Readiness card. Read-only confidence
@@ -3978,7 +3986,7 @@
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
   <script src="admin/tab-labor-review.js?v=20260616-investigation"></script>
-  <script src="admin/tab-payroll.js?v=20260616-emp-review"></script>
+  <script src="admin/tab-payroll.js?v=20260616-lock-workflow-A"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260616b-operational-snapshot"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>

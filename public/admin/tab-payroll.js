@@ -56,8 +56,13 @@
   // `<period_id>__<staff_uid>`. Absence of a doc for a staff with
   // sessions in the period is meaningful — "not reviewed."
   let reviewAcks = [];          // [{ _id, status, staff_uid, ... }]
+  // Phase 29E-A — payroll_periods doc for the current period. Today
+  // nothing writes this collection, so the doc usually doesn't exist;
+  // we soft-fail and treat absence as `unlocked`. Phase B will start
+  // writing it via lockPayrollPeriodV1 / unlockPayrollPeriodV1.
+  let currentPeriodDoc = null;  // { lock_status, locked_at, locked_by, ... } | null
 
-  const PAYROLL_BUILD_TAG = "Payroll v29D-employee-review";
+  const PAYROLL_BUILD_TAG = "Payroll v29E-lock-workflow-A";
 
   /* ---------- date + period helpers ---------- */
 
@@ -259,7 +264,7 @@
       // effective_date range (single-field range, no composite needed).
       // Sick entries are filtered to entry_type === "used" client-side
       // to avoid forcing a new composite index for the pilot scale.
-      const [sessSnap, sickSnap, exportSnap, adjSnap, ackSnap] = await Promise.all([
+      const [sessSnap, sickSnap, exportSnap, adjSnap, ackSnap, periodDocSnap] = await Promise.all([
         db.collection("pioneer_service_sessions")
           .where("service_date", ">=", currentPeriod.start_date)
           .where("service_date", "<=", currentPeriod.end_date)
@@ -293,6 +298,15 @@
           : db.collection("payroll_review_acknowledgments")
               .where("period_id", "==", currentPeriod.period_id)
               .get()
+              .catch(function () { return null; }),
+        // Phase 29E-A — workflow bar reads payroll_periods/{id} for
+        // lock_status. Skipped for custom ranges (no stable period_id).
+        // Soft-fail: the bar reasons about absent docs as `unlocked`.
+        (currentPeriod.is_custom)
+          ? Promise.resolve(null)
+          : db.collection("payroll_periods")
+              .doc(currentPeriod.period_id)
+              .get()
               .catch(function () { return null; })
       ]);
 
@@ -317,6 +331,11 @@
       reviewAcks = ackSnap
         ? ackSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
         : [];
+
+      // Phase 29E-A — period doc (or null when not yet written).
+      currentPeriodDoc = (periodDocSnap && periodDocSnap.exists)
+        ? Object.assign({ _id: periodDocSnap.id }, periodDocSnap.data() || {})
+        : null;
 
       recentExports.sort(function (a, b) {
         const aOverlap = rangesOverlap(a.range_start, a.range_end, currentPeriod.start_date, currentPeriod.end_date) ? 1 : 0;
@@ -573,6 +592,7 @@
     if (!loaded) return;
     renderHeader();
     renderPeriodPicker();
+    renderWorkflowBar();
     renderPayrollReadiness();
     renderBanner();
     renderEmployeeTable();
@@ -604,6 +624,336 @@
     }
     const errEl = $("payroll-custom-err");
     if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+  }
+
+  /* ---------- Phase 29E-A — Payroll Workflow bar (UI scaffolding) ----------
+   *
+   * Five-stage progression: Review → Ready → Lock → Export → History.
+   * Phase A renders the bar from existing Firestore data only — no writes,
+   * no live Lock/Unlock actions. Phase B adds the backend.
+   *
+   * State precedence (highest wins):
+   *   exported            — any non-archived session has payroll_state
+   *                         "exported", OR an active export covers the period
+   *   locked              — currentPeriodDoc.lock_status === "locked"
+   *                         AND not exported
+   *   blocked             — totalBlockers > 0
+   *   ready               — 0 blockers AND ≥1 approved session
+   *   review_in_progress  — sessions exist but none approved yet
+   *   empty               — no sessions in period
+   */
+  function computeWorkflowState() {
+    const blockers = computeBlockers(sessions);
+    const totalBlockers = blockers.needs_review + blockers.active +
+                          blockers.dcr_pending + blockers.missing_clockout;
+    const nonArchived = (sessions || []).filter(function (s) {
+      return !adminRemovedFlag(s) && !isQaTestSession(s);
+    });
+    const approvedCount = nonArchived.filter(isApproved).length;
+    const exportedCount = nonArchived.filter(isExported).length;
+    const activeExport = (recentExports || []).find(function (e) {
+      return e && e.status === "active" &&
+             rangesOverlap(e.range_start, e.range_end,
+                           currentPeriod.start_date, currentPeriod.end_date);
+    }) || null;
+    const isLocked = !!(currentPeriodDoc && currentPeriodDoc.lock_status === "locked");
+
+    let stage;
+    if (activeExport || exportedCount > 0) stage = "exported";
+    else if (isLocked)                     stage = "locked";
+    else if (totalBlockers > 0)            stage = "blocked";
+    else if (approvedCount > 0)            stage = "ready";
+    else if (nonArchived.length > 0)       stage = "review_in_progress";
+    else                                   stage = "empty";
+
+    return {
+      stage:               stage,
+      blockers:            blockers,
+      totalBlockers:       totalBlockers,
+      sessionCount:        nonArchived.length,
+      approvedCount:       approvedCount,
+      exportedCount:       exportedCount,
+      activeExport:        activeExport,
+      isLocked:            isLocked,
+      lockedAt:            currentPeriodDoc && currentPeriodDoc.locked_at || null,
+      lockedBy:            currentPeriodDoc && currentPeriodDoc.locked_by || null,
+      hasRecentExports:    (recentExports || []).length > 0
+    };
+  }
+
+  // Map each of the 5 stages to its visual state in the current workflow.
+  // Returns one of: "done" | "now" | "blocked" | "future" | "locked".
+  function stageStateFor(stageName, w) {
+    switch (stageName) {
+      case "review":
+        // Review is "done" as soon as the period has sessions OR is past.
+        // For an empty period it stays "now" so admin sees something to act on.
+        return (w.sessionCount > 0) ? "done" : "now";
+      case "ready":
+        if (w.stage === "blocked")            return "blocked";
+        if (w.stage === "review_in_progress") return "future";
+        if (w.stage === "empty")              return "future";
+        return "done";
+      case "lock":
+        if (w.stage === "exported") return "locked";   // 🔒 icon, past tense
+        if (w.stage === "locked")   return "locked";
+        if (w.stage === "ready")    return "now";
+        return "future";
+      case "export":
+        if (w.stage === "exported") return "done";
+        if (w.stage === "locked")   return "now";
+        return "future";
+      case "history":
+        return w.hasRecentExports ? "done" : "future";
+    }
+    return "future";
+  }
+
+  function workflowStageIcon(state) {
+    switch (state) {
+      case "done":    return "✓";
+      case "now":     return "◌";
+      case "blocked": return "🔴";
+      case "locked":  return "🔒";
+      case "future":
+      default:        return "⚪";
+    }
+  }
+  function workflowStageSub(state) {
+    switch (state) {
+      case "done":    return "done";
+      case "now":     return "NOW";
+      case "blocked": return "BLOCKED";
+      case "locked":  return "LOCKED";
+      case "future":
+      default:        return "waiting";
+    }
+  }
+
+  function fmtPacificDateTimeShort(ts) {
+    if (!ts) return "—";
+    const ms = (ts && ts.toMillis) ? ts.toMillis()
+             : (ts && ts.seconds) ? ts.seconds * 1000 : 0;
+    if (!ms) return "—";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      }).format(new Date(ms)) + " PT";
+    } catch (_e) { return "—"; }
+  }
+
+  function renderWorkflowBar() {
+    const wrap = $("payroll-workflow-bar");
+    if (!wrap) return;
+
+    // Custom date range has no period_id, no payroll_periods doc, no
+    // committed workflow concept. Show a single-line explainer so the
+    // admin still sees the tab is wired but doesn't expect Lock/Export.
+    if (currentPeriod.is_custom) {
+      wrap.innerHTML =
+        '<div class="payroll-workflow-bar is-custom">' +
+          '<div class="payroll-workflow-custom-note">' +
+            '<strong>Workflow not available for custom ranges.</strong> ' +
+            'Pick a semi-monthly period to lock and export.' +
+          '</div>' +
+        '</div>';
+      return;
+    }
+
+    const w = computeWorkflowState();
+
+    const stages = [
+      { key: "review",  label: "Review" },
+      { key: "ready",   label: "Ready"  },
+      { key: "lock",    label: "Lock"   },
+      { key: "export",  label: "Export" },
+      { key: "history", label: "History"}
+    ];
+    const stagesHtml = stages.map(function (s, i) {
+      const state = stageStateFor(s.key, w);
+      const connector = (i < stages.length - 1)
+        ? '<span class="payroll-workflow-connector is-' + escapeHtml(state) +
+            '" aria-hidden="true"></span>'
+        : '';
+      return (
+        '<div class="payroll-workflow-stage is-' + escapeHtml(state) + '" ' +
+              'data-stage="' + escapeHtml(s.key) + '">' +
+          '<div class="payroll-workflow-stage-label">' + escapeHtml(s.label) + '</div>' +
+          '<div class="payroll-workflow-stage-icon" aria-hidden="true">' +
+            workflowStageIcon(state) +
+          '</div>' +
+          '<div class="payroll-workflow-stage-sub">' + escapeHtml(workflowStageSub(state)) + '</div>' +
+        '</div>' +
+        connector
+      );
+    }).join("");
+
+    wrap.innerHTML =
+      '<div class="payroll-workflow-bar is-' + escapeHtml(w.stage) + '">' +
+        '<div class="payroll-workflow-head">' +
+          '<h3 class="payroll-workflow-title">Payroll Workflow</h3>' +
+          '<span class="payroll-workflow-period">' + escapeHtml(currentPeriod.label) + '</span>' +
+        '</div>' +
+        '<div class="payroll-workflow-stages">' + stagesHtml + '</div>' +
+        renderWorkflowPanel(w) +
+      '</div>';
+  }
+
+  function renderWorkflowPanel(w) {
+    if (w.stage === "blocked") {
+      const lines = [];
+      if (w.blockers.needs_review > 0) lines.push({
+        key: "needs_review",
+        text: w.blockers.needs_review + ' session' + (w.blockers.needs_review === 1 ? '' : 's') + ' need review'
+      });
+      if (w.blockers.dcr_pending > 0) lines.push({
+        key: "dcr_pending",
+        text: w.blockers.dcr_pending + ' session' + (w.blockers.dcr_pending === 1 ? '' : 's') + ' DCR pending'
+      });
+      if (w.blockers.active > 0) lines.push({
+        key: "active",
+        text: w.blockers.active + ' active session' + (w.blockers.active === 1 ? '' : 's')
+      });
+      if (w.blockers.missing_clockout > 0) lines.push({
+        key: "missing_clockout",
+        text: w.blockers.missing_clockout + ' session' + (w.blockers.missing_clockout === 1 ? '' : 's') + ' missing clock-out'
+      });
+      return (
+        '<div class="payroll-workflow-panel is-blocked">' +
+          '<div class="payroll-workflow-panel-head">' +
+            '<span class="payroll-workflow-panel-icon" aria-hidden="true">🔴</span>' +
+            '<strong>' + w.totalBlockers + ' blocker' +
+            (w.totalBlockers === 1 ? '' : 's') + ' — fix in Labor to move forward</strong>' +
+          '</div>' +
+          '<ul class="payroll-workflow-bullets">' +
+            lines.map(function (l) {
+              return '<li>• ' + escapeHtml(l.text) +
+                ' <button type="button" class="payroll-link-btn" data-payroll-link="' +
+                escapeHtml(l.key) + '">Open in Labor →</button></li>';
+            }).join("") +
+          '</ul>' +
+          '<p class="payroll-workflow-panel-sub">' +
+            w.approvedCount + ' of ' + w.sessionCount + ' session' +
+            (w.sessionCount === 1 ? '' : 's') +
+            ' approved · Lock unavailable until 0 blockers' +
+          '</p>' +
+        '</div>'
+      );
+    }
+
+    if (w.stage === "ready") {
+      return (
+        '<div class="payroll-workflow-panel is-ready">' +
+          '<div class="payroll-workflow-panel-head">' +
+            '<strong>Period is READY to lock</strong>' +
+          '</div>' +
+          '<p class="payroll-workflow-panel-stats">' +
+            w.approvedCount + ' of ' + w.sessionCount + ' sessions approved · 0 blockers' +
+          '</p>' +
+          '<div class="payroll-workflow-cta">' +
+            '<button type="button" class="payroll-workflow-btn is-lock" disabled ' +
+              'title="Phase B — backend writer ships next; this button is scaffolding only">' +
+              '🔒 Lock period for export →' +
+            '</button>' +
+            '<span class="payroll-workflow-phase-tag">Phase A · UI scaffolding</span>' +
+          '</div>' +
+          '<ul class="payroll-workflow-explainer">' +
+            '<li>Mark the period committed</li>' +
+            '<li>Prevent Approve / Unapprove / Archive in Labor</li>' +
+            '<li>Auto-finalize un-reviewed employee acknowledgments</li>' +
+            '<li>Enable the Export button below</li>' +
+          '</ul>' +
+          '<p class="payroll-workflow-panel-sub">Unlock will be allowed any time before Export.</p>' +
+        '</div>'
+      );
+    }
+
+    if (w.stage === "locked") {
+      const byEmail = (w.lockedBy && (w.lockedBy.email || w.lockedBy.displayName)) || "admin";
+      const whenStr = fmtPacificDateTimeShort(w.lockedAt);
+      return (
+        '<div class="payroll-workflow-panel is-locked">' +
+          '<div class="payroll-workflow-panel-head">' +
+            '<span class="payroll-workflow-panel-icon" aria-hidden="true">🔒</span>' +
+            '<strong>Period is LOCKED</strong>' +
+          '</div>' +
+          '<p class="payroll-workflow-panel-meta">' +
+            'Committed by ' + escapeHtml(byEmail) + ' · ' + escapeHtml(whenStr) +
+          '</p>' +
+          '<p class="payroll-workflow-panel-stats">' +
+            w.approvedCount + ' session' + (w.approvedCount === 1 ? '' : 's') +
+            ' ready to export' +
+          '</p>' +
+          '<div class="payroll-workflow-cta">' +
+            '<button type="button" class="payroll-workflow-btn is-continue" disabled ' +
+              'title="Phase B — Continue button will dispatch to existing export modal">' +
+              'Continue to Export →' +
+            '</button>' +
+            '<button type="button" class="payroll-workflow-btn is-unlock" disabled ' +
+              'title="Phase B — unlockPayrollPeriodV1 ships next">' +
+              'Unlock period' +
+            '</button>' +
+            '<span class="payroll-workflow-phase-tag">Phase A · UI scaffolding</span>' +
+          '</div>' +
+          '<p class="payroll-workflow-panel-sub">' +
+            'Approve / Unapprove / Archive in Labor will be blocked until you unlock.' +
+          '</p>' +
+        '</div>'
+      );
+    }
+
+    if (w.stage === "exported") {
+      const exp = w.activeExport || {};
+      const hours = (typeof exp.total_paid_hours === "number") ? exp.total_paid_hours.toFixed(2) : '—';
+      const emp = exp.employee_count || 0;
+      const sess = exp.session_count || w.exportedCount || 0;
+      const expId = exp.export_id || exp._id || '—';
+      return (
+        '<div class="payroll-workflow-panel is-exported">' +
+          '<div class="payroll-workflow-panel-head">' +
+            '<span class="payroll-workflow-panel-icon" aria-hidden="true">✓</span>' +
+            '<strong>Period EXPORTED</strong>' +
+          '</div>' +
+          '<p class="payroll-workflow-panel-meta">Export ID: ' +
+            '<code>' + escapeHtml(expId) + '</code></p>' +
+          '<p class="payroll-workflow-panel-stats">' +
+            hours + ' paid hrs · ' + sess + ' session' + (sess === 1 ? '' : 's') +
+            ' · ' + emp + ' employee' + (emp === 1 ? '' : 's') +
+          '</p>' +
+          '<p class="payroll-workflow-panel-sub">' +
+            'To re-edit this period: Void the export in Recent Exports below, then Unlock here.' +
+          '</p>' +
+        '</div>'
+      );
+    }
+
+    if (w.stage === "review_in_progress") {
+      return (
+        '<div class="payroll-workflow-panel is-review">' +
+          '<div class="payroll-workflow-panel-head">' +
+            '<strong>Review in progress</strong>' +
+          '</div>' +
+          '<p class="payroll-workflow-panel-sub">' +
+            w.sessionCount + ' session' + (w.sessionCount === 1 ? '' : 's') +
+            ' in this period · none approved yet · approve in Labor to advance to Ready.' +
+          '</p>' +
+        '</div>'
+      );
+    }
+
+    // empty
+    return (
+      '<div class="payroll-workflow-panel is-empty">' +
+        '<div class="payroll-workflow-panel-head">' +
+          '<strong>No sessions in this period yet</strong>' +
+        '</div>' +
+        '<p class="payroll-workflow-panel-sub">' +
+          'The workflow stages light up as sessions land and get approved.' +
+        '</p>' +
+      '</div>'
+    );
   }
 
   // Phase 29D — Employee review line. Replaces the disabled "n/a" tile
