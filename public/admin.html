@@ -329,15 +329,14 @@
         <span class="admin-tabs-title">Admin Control Center</span>
       </header>
 
-      <!-- ---- Core Ops ---- -->
-      <div class="admin-tabs-group" data-group="core">
+      <!-- ---- Daily Ops (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="daily-ops">
         <span class="admin-tabs-group-label">
           <span class="admin-tabs-group-icon" aria-hidden="true">🧭</span>
-          Core Ops
+          Daily Ops
         </span>
         <div class="admin-tabs-row">
           <button class="admin-tab is-active" data-tab="customers" role="tab" aria-selected="true">Customers</button>
-          <button class="admin-tab"           data-tab="techs"     role="tab" aria-selected="false">Cleaning Techs</button>
           <button class="admin-tab"           data-tab="dcrs"      role="tab" aria-selected="false">Recent DCRs</button>
           <button class="admin-tab"           data-tab="yesterday" role="tab" aria-selected="false">Yesterday's Work</button>
           <button class="admin-tab"           data-tab="supply"    role="tab" aria-selected="false">
@@ -347,6 +346,55 @@
                   aria-label="Open supply requests"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="feed"      role="tab" aria-selected="false">Feed</button>
+        </div>
+      </div>
+
+      <!-- ---- People (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="people">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">👥</span>
+          People
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="techs"        role="tab" aria-selected="false">Cleaning Techs</button>
+          <button class="admin-tab"           data-tab="admins"       role="tab" aria-selected="false">Admins</button>
+          <button class="admin-tab"           data-tab="tech-health"  role="tab" aria-selected="false">
+            Tech Health
+            <span class="admin-tab-badge" id="tech-health-tab-badge"
+                  title="Techs flagged Watch or Needs Support"
+                  aria-label="Techs needing attention"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="attendance"   role="tab" aria-selected="false">
+            Attendance
+            <span class="admin-tab-badge" id="attendance-tab-badge"
+                  title="Pending time-off requests + new call-outs"
+                  aria-label="Pending attendance items"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="office-issues" role="tab" aria-selected="false">Office Issues</button>
+        </div>
+      </div>
+
+      <!-- ---- Payroll & Labor (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="payroll-labor">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">💵</span>
+          Payroll &amp; Labor
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="schedule"            role="tab" aria-selected="false">Schedule</button>
+          <button class="admin-tab"           data-tab="labor-review"        role="tab" aria-selected="false">Labor</button>
+          <button class="admin-tab"           data-tab="payroll"             role="tab" aria-selected="false">Payroll</button>
+          <button class="admin-tab"           data-tab="payroll-exceptions"  role="tab" aria-selected="false">
+            Payroll Exceptions
+            <span class="admin-tab-badge" id="payroll-exceptions-tab-badge"
+                  title="Pending time adjustment requests"
+                  aria-label="Pending time adjustment requests"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="sick-leave"          role="tab" aria-selected="false">Sick Leave</button>
         </div>
       </div>
 
@@ -391,54 +439,26 @@
                   title="New submissions awaiting review"
                   aria-label="New improvement submissions" hidden>0</span>
           </button>
-          <button class="admin-tab"           data-tab="tech-health" role="tab" aria-selected="false">
-            Tech Health
-            <span class="admin-tab-badge" id="tech-health-tab-badge"
-                  title="Techs flagged Watch or Needs Support"
-                  aria-label="Techs needing attention"
-                  hidden>0</span>
-          </button>
         </div>
       </div>
 
-      <!-- ---- System ---- -->
-      <div class="admin-tabs-group" data-group="system">
+      <!-- ---- System Setup (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="system-setup">
         <span class="admin-tabs-group-label">
           <span class="admin-tabs-group-icon" aria-hidden="true">⚙</span>
-          System
+          System Setup
         </span>
         <div class="admin-tabs-row">
-          <button class="admin-tab"           data-tab="feed"          role="tab" aria-selected="false">Feed</button>
-          <button class="admin-tab"           data-tab="announcements" role="tab" aria-selected="false">Announcements</button>
-          <button class="admin-tab"           data-tab="admins"        role="tab" aria-selected="false">Admins</button>
-          <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
-          <button class="admin-tab"           data-tab="schedule"      role="tab" aria-selected="false">Schedule</button>
-          <button class="admin-tab"           data-tab="labor-review"  role="tab" aria-selected="false">Labor</button>
-          <button class="admin-tab"           data-tab="payroll"       role="tab" aria-selected="false">Payroll</button>
-          <button class="admin-tab"           data-tab="payroll-exceptions" role="tab" aria-selected="false">
-            Payroll Exceptions
-            <span class="admin-tab-badge" id="payroll-exceptions-tab-badge"
-                  title="Pending time adjustment requests"
-                  aria-label="Pending time adjustment requests"
-                  hidden>0</span>
-          </button>
-          <button class="admin-tab"           data-tab="sick-leave"    role="tab" aria-selected="false">Sick Leave</button>
-          <button class="admin-tab"           data-tab="office-issues" role="tab" aria-selected="false">Office Issues</button>
-          <button class="admin-tab"           data-tab="attendance"    role="tab" aria-selected="false">
-            Attendance
-            <span class="admin-tab-badge" id="attendance-tab-badge"
-                  title="Pending time-off requests + new call-outs"
-                  aria-label="Pending attendance items"
-                  hidden>0</span>
-          </button>
-          <button class="admin-tab"           data-tab="deputy"        role="tab" aria-selected="false">Deputy</button>
-          <button class="admin-tab"           data-tab="sos"           role="tab" aria-selected="false">
+          <button class="admin-tab"           data-tab="deputy"          role="tab" aria-selected="false">Deputy</button>
+          <button class="admin-tab"           data-tab="pilot-readiness" role="tab" aria-selected="false">Pilot Readiness</button>
+          <button class="admin-tab"           data-tab="training"        role="tab" aria-selected="false">Training</button>
+          <button class="admin-tab"           data-tab="announcements"   role="tab" aria-selected="false">Announcements</button>
+          <button class="admin-tab"           data-tab="sos"             role="tab" aria-selected="false">
             SOS Events
             <span class="admin-tab-badge" id="sos-tab-badge"
                   title="Open SOS events awaiting acknowledgment"
                   aria-label="Open SOS events" hidden>0</span>
           </button>
-          <button class="admin-tab"           data-tab="pilot-readiness" role="tab" aria-selected="false">Pilot Readiness</button>
         </div>
       </div>
     </nav>
@@ -3916,7 +3936,7 @@
   <script src="admin/tab-labor-review.js?v=20260610-clock-prominent"></script>
   <script src="admin/tab-payroll.js?v=20260610-timeclock-addon"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
-  <script src="admin/tab-mission-control.js?v=20260610-kirby-usability"></script>
+  <script src="admin/tab-mission-control.js?v=20260616-operator-friendly-buckets"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
   <script src="admin/tab-office-issues.js?v=20260615d-strip-logs"></script>
   <script src="admin.js?v=20260615d-strip-logs"></script>

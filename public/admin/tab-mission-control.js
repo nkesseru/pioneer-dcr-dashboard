@@ -665,6 +665,27 @@
       "#mission-control .mc-inbox-sev-pill[data-severity='RED']{background:rgba(239,68,68,0.22);color:#fecaca;border:1px solid rgba(239,68,68,0.45);}",
       "#mission-control .mc-inbox-sev-pill[data-severity='YELLOW']{background:rgba(250,204,21,0.18);color:#fde68a;border:1px solid rgba(250,204,21,0.40);}",
       "#mission-control .mc-inbox-sev-pill[data-severity='GREEN']{background:rgba(34,197,94,0.18);color:#bbf7d0;border:1px solid rgba(34,197,94,0.40);}",
+      // V20260616 — operator-friendly bucket pills + Today's Operations + System Setup helper
+      "#mission-control .mc-inbox-sev-pill[data-bucket='needs-action']{background:rgba(239,68,68,0.22);color:#fecaca;border:1px solid rgba(239,68,68,0.45);}",
+      "#mission-control .mc-inbox-sev-pill[data-bucket='system-setup']{background:rgba(120,160,255,0.18);color:#c7d8f5;border:1px solid rgba(120,160,255,0.40);}",
+      "#mission-control .mc-inbox-sev-pill[data-bucket='healthy-hidden']{background:rgba(148,163,184,0.18);color:#cbd5e1;border:1px solid rgba(148,163,184,0.40);}",
+      "#mission-control .mc-inbox-section-helper{margin:8px 0 12px;padding:8px 12px;background:rgba(120,160,255,0.10);border-left:3px solid rgba(120,160,255,0.50);color:#c7d8f5;font-size:12.5px;border-radius:0 6px 6px 0;}",
+      "#mission-control .mc-todays-ops{margin:0 0 16px;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;}",
+      "#mission-control .mc-todays-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px;}",
+      "#mission-control .mc-todays-eyebrow{font-size:11px;font-weight:800;letter-spacing:0.6px;color:#7ea3d6;text-transform:uppercase;}",
+      "#mission-control .mc-todays-sub{font-size:11px;color:#94a3b8;}",
+      "#mission-control .mc-todays-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px;}",
+      "#mission-control .mc-todays-tile{appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;background:rgba(255,255,255,0.06);color:#e6edf7;border:1px solid rgba(255,255,255,0.10);border-radius:8px;cursor:default;text-align:left;}",
+      "#mission-control .mc-todays-tile.is-link{cursor:pointer;}",
+      "#mission-control .mc-todays-tile.is-link:hover{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.18);}",
+      "#mission-control .mc-todays-tile-value{font-size:24px;font-weight:800;line-height:1;color:#fff;}",
+      "#mission-control .mc-todays-tile-label{font-size:11.5px;color:#a8c0e1;letter-spacing:0.3px;text-transform:uppercase;font-weight:600;}",
+      "#mission-control .mc-healthy-hidden .mc-healthy-hidden-body{padding-top:8px;}",
+      "#mission-control .mc-healthy-hidden-h{margin:10px 0 6px;font-size:12px;font-weight:700;color:#a8c0e1;text-transform:uppercase;letter-spacing:0.5px;}",
+      "#mission-control .mc-inbox-count[data-bucket='needs-action'] .mc-inbox-count-value{color:#fecaca;}",
+      "#mission-control .mc-inbox-count[data-bucket='system-setup'] .mc-inbox-count-value{color:#c7d8f5;}",
+      "#mission-control .mc-inbox-count[data-bucket='healthy'] .mc-inbox-count-value{color:#bbf7d0;}",
+      "@media (max-width:720px){#mission-control .mc-todays-grid{grid-template-columns:repeat(2,1fr);}#mission-control .mc-todays-tile-value{font-size:20px;}}",
       "#mission-control .mc-inbox-sev-count{font-size:11.5px;font-weight:600;color:#a8c0e1;}",
       "#mission-control .mc-inbox-empty{margin:10px 14px;font-size:12.5px;color:#a8c0e1;}",
       "#mission-control .mc-inbox-healthy{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;}",
@@ -834,6 +855,93 @@
     return item.subject || "";
   }
 
+  // V20260616 — Operator-friendly bucket classifier.
+  // Splits the existing alert categories into two operator-visible
+  // sections per the redesign brief:
+  //   "needs_action"  — real cleaning/customer/payroll items
+  //   "system_setup"  — configuration / Deputy / data hygiene
+  // No new alerts are introduced; this is a pure rebucketing pass over
+  // existing model.items[].category values.
+  function bucketForCategory(cat) {
+    const c = String(cat || "").toLowerCase();
+    if (c.indexOf("blocked-shift") === 0) return "system_setup";
+    if (c === "unmapped-customer")       return "system_setup";
+    if (c === "customer-config")         return "system_setup";
+    return "needs_action";
+  }
+
+  // V20260616 — Today's Operations stat strip. Glanceable + neutral.
+  // All values are derived from the existing snapshot — no new reads.
+  // Office Messages is wired in via the deps bridge if the office
+  // issues tab has populated; otherwise renders as "—".
+  function buildTodaysOpsTiles(snap) {
+    const todayPT = snap && snap.todayPT;
+    const scheduled = (snap && snap.assignments)
+      ? snap.assignments.filter(a => a && a.service_date === todayPT && !isQaTestAssignment(a)).length
+      : 0;
+    const clockedIn = (snap && snap.activeSess) ? snap.activeSess.length : 0;
+    const completedToday = (snap && snap.sessions)
+      ? snap.sessions.filter(s => s && s.service_date === todayPT && s.status === "completed" && !isQaTestSession(s)).length
+      : 0;
+    const supplyOpen = (snap && snap.supply)
+      ? snap.supply.filter(s => {
+          const st = String((s && s.status) || "").toLowerCase();
+          return st && st !== "closed" && st !== "received" && st !== "denied" && st !== "fulfilled";
+        }).length
+      : 0;
+    let openIssues = "—";
+    try {
+      const deps = window.__pioneerAdmin && window.__pioneerAdmin.deps;
+      if (deps && typeof deps.getDcrIssues === "function") {
+        const arr = deps.getDcrIssues() || [];
+        openIssues = arr.filter(i => i && (i.status === "new" || !i.status)).length;
+      }
+    } catch (_e) {}
+    let openOfficeMsg = "—";
+    try {
+      const tabs = window.__pioneerAdmin && window.__pioneerAdmin.tabs;
+      if (tabs && tabs.officeIssues && typeof tabs.officeIssues.getCount === "function") {
+        openOfficeMsg = tabs.officeIssues.getCount("open");
+      }
+    } catch (_e) {}
+
+    function tile(label, value, tab, dataset) {
+      const onclick = tab ? ' data-mc-action-route="' + escapeHtml(tab) + '"' : '';
+      const cls = tab ? "mc-todays-tile is-link" : "mc-todays-tile";
+      return '<button type="button" class="' + cls + '"' + onclick + ' data-mc-stat="' + escapeHtml(dataset || "") + '">' +
+               '<span class="mc-todays-tile-value">' + escapeHtml(String(value)) + '</span>' +
+               '<span class="mc-todays-tile-label">' + escapeHtml(label) + '</span>' +
+             '</button>';
+    }
+    return '<div class="mc-todays-ops" aria-label="Today\'s Operations">' +
+             '<header class="mc-todays-head">' +
+               '<span class="mc-todays-eyebrow">1 · Today\'s Operations</span>' +
+               '<span class="mc-todays-sub">Pacific calendar day, neutral status</span>' +
+             '</header>' +
+             '<div class="mc-todays-grid">' +
+               tile("Scheduled shifts",  scheduled,      "yesterday",      "scheduled") +
+               tile("Clocked in",        clockedIn,      "yesterday",      "clocked_in") +
+               tile("Completed DCRs",    completedToday, "dcrs",           "completed_dcrs") +
+               tile("Open issues",       openIssues,     "issues",         "open_issues") +
+               tile("Supply requests",   supplyOpen,     "supply",         "supply_open") +
+               tile("Office messages",   openOfficeMsg,  "office-issues",  "office_messages") +
+             '</div>' +
+           '</div>';
+  }
+
+  // Defensive QA-test filters for the snapshot tiles — same intent as
+  // the existing isQaTestSession helper but covering assignments too.
+  // Conservative: skip ONLY if the customer slug includes "test" or
+  // assignment is_test flag set. The mission-control alert pipeline
+  // already filters QA noise in its own paths.
+  function isQaTestAssignment(a) {
+    if (!a) return false;
+    if (a.is_test === true) return true;
+    const slug = String((a.customer_id || a.customer_slug || "")).toLowerCase();
+    if (!slug) return false;
+    return slug.indexOf("test") >= 0 && slug.indexOf("pioneer") >= 0;
+  }
+
   function render(model, opsWindow, snap) {
     ensureStyles();
     const root = $("mission-control");
@@ -863,27 +971,30 @@
     const hiddenCount  = hiddenByDismissal.length + hiddenBySuppression.length;
     const healthyCount = (model.healthy || []).length;
 
-    /* ---- Phase 33C — group + split by severity ---- */
+    /* ---- V20260616 — group + bucket by operator-friendly category ----
+     * Replaces the prior severity-only split. Same item bodies, same
+     * dismiss/snooze/suppress wiring, same row HTML — just routed to
+     * Needs Action vs System Setup based on bucketForCategory(). */
     const allGroups   = groupByEntity(items);
-    const redGroups   = allGroups.filter(g => g.severity === "RED");
-    const yellowGroups= allGroups.filter(g => g.severity === "YELLOW");
-    const topPriorities = deriveTopPriorities(allGroups, 3);
+    const needsActionGroups = allGroups.filter(g => bucketForCategory(g.category) === "needs_action");
+    const systemSetupGroups = allGroups.filter(g => bucketForCategory(g.category) === "system_setup");
+    const topPriorities     = deriveTopPriorities(allGroups, 3);
 
-    const redCount    = redGroups.reduce((acc, g) => acc + g.items.length, 0);
-    const yellowCount = yellowGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const needsActionCount = needsActionGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const systemSetupCount = systemSetupGroups.reduce((acc, g) => acc + g.items.length, 0);
 
-    /* ---- Top summary banner ---- */
+    /* ---- V20260616 — operator-friendly summary ---- */
     const countTiles =
       '<div class="mc-inbox-summary">' +
-        '<div class="mc-inbox-count" data-severity="RED">' +
-          '<span class="mc-inbox-count-label">Critical</span>' +
-          '<span class="mc-inbox-count-value">' + redCount + '</span>' +
+        '<div class="mc-inbox-count" data-bucket="needs-action">' +
+          '<span class="mc-inbox-count-label">Needs action</span>' +
+          '<span class="mc-inbox-count-value">' + needsActionCount + '</span>' +
         '</div>' +
-        '<div class="mc-inbox-count" data-severity="YELLOW">' +
-          '<span class="mc-inbox-count-label">Attention</span>' +
-          '<span class="mc-inbox-count-value">' + yellowCount + '</span>' +
+        '<div class="mc-inbox-count" data-bucket="system-setup">' +
+          '<span class="mc-inbox-count-label">System setup</span>' +
+          '<span class="mc-inbox-count-value">' + systemSetupCount + '</span>' +
         '</div>' +
-        '<div class="mc-inbox-count" data-severity="GREEN">' +
+        '<div class="mc-inbox-count" data-bucket="healthy">' +
           '<span class="mc-inbox-count-label">Healthy</span>' +
           '<span class="mc-inbox-count-value">' + healthyCount + '</span>' +
         '</div>' +
@@ -961,15 +1072,41 @@
       );
     }
 
-    const redSection = redGroups.length === 0
-      ? '<details class="mc-inbox-section" data-severity="RED" open><summary><span class="mc-inbox-sev-pill" data-severity="RED">CRITICAL</span><span class="mc-inbox-sev-count">0</span></summary><p class="mc-inbox-empty">No critical alerts.</p></details>'
-      : '<details class="mc-inbox-section" data-severity="RED" open><summary><span class="mc-inbox-sev-pill" data-severity="RED">CRITICAL</span><span class="mc-inbox-sev-count">' + redGroups.length + ' · ' + redCount + ' alert' + (redCount === 1 ? '' : 's') + '</span></summary>' +
-        redGroups.map(rowHtml).join("") + '</details>';
+    /* ---- V20260616 — 2 · NEEDS ACTION (customer-facing + payroll) ---- */
+    const needsActionSection = needsActionGroups.length === 0
+      ? '<details class="mc-inbox-section" data-bucket="needs-action" open>' +
+          '<summary>' +
+            '<span class="mc-inbox-sev-pill" data-bucket="needs-action">2 · NEEDS ACTION</span>' +
+            '<span class="mc-inbox-sev-count">All clear</span>' +
+          '</summary>' +
+          '<p class="mc-inbox-empty">No customer or payroll-impacting items right now.</p>' +
+        '</details>'
+      : '<details class="mc-inbox-section" data-bucket="needs-action" open>' +
+          '<summary>' +
+            '<span class="mc-inbox-sev-pill" data-bucket="needs-action">2 · NEEDS ACTION</span>' +
+            '<span class="mc-inbox-sev-count">' + needsActionGroups.length + ' · ' + needsActionCount + ' item' + (needsActionCount === 1 ? '' : 's') + '</span>' +
+          '</summary>' +
+          needsActionGroups.map(rowHtml).join("") +
+        '</details>';
 
-    const yellowSection = yellowGroups.length === 0
-      ? '<details class="mc-inbox-section" data-severity="YELLOW" open><summary><span class="mc-inbox-sev-pill" data-severity="YELLOW">ATTENTION</span><span class="mc-inbox-sev-count">0</span></summary><p class="mc-inbox-empty">No attention items.</p></details>'
-      : '<details class="mc-inbox-section" data-severity="YELLOW" open><summary><span class="mc-inbox-sev-pill" data-severity="YELLOW">ATTENTION</span><span class="mc-inbox-sev-count">' + yellowGroups.length + ' · ' + yellowCount + ' alert' + (yellowCount === 1 ? '' : 's') + '</span></summary>' +
-        yellowGroups.map(rowHtml).join("") + '</details>';
+    /* ---- V20260616 — 3 · SYSTEM SETUP ISSUES (config / hygiene) ---- */
+    const systemSetupSection = systemSetupGroups.length === 0
+      ? '<details class="mc-inbox-section" data-bucket="system-setup">' +
+          '<summary>' +
+            '<span class="mc-inbox-sev-pill" data-bucket="system-setup">3 · SYSTEM SETUP ISSUES</span>' +
+            '<span class="mc-inbox-sev-count">All clear</span>' +
+          '</summary>' +
+          '<p class="mc-inbox-section-helper">These are setup / configuration issues, not cleaning service issues.</p>' +
+          '<p class="mc-inbox-empty">No setup gaps detected.</p>' +
+        '</details>'
+      : '<details class="mc-inbox-section" data-bucket="system-setup" open>' +
+          '<summary>' +
+            '<span class="mc-inbox-sev-pill" data-bucket="system-setup">3 · SYSTEM SETUP ISSUES</span>' +
+            '<span class="mc-inbox-sev-count">' + systemSetupGroups.length + ' · ' + systemSetupCount + ' item' + (systemSetupCount === 1 ? '' : 's') + '</span>' +
+          '</summary>' +
+          '<p class="mc-inbox-section-helper">These are setup / configuration issues, not cleaning service issues.</p>' +
+          systemSetupGroups.map(rowHtml).join("") +
+        '</details>';
 
     const healthyChips = (model.healthy || []).length === 0
       ? '<p class="mc-inbox-empty">Nothing to celebrate yet.</p>'
@@ -1008,6 +1145,25 @@
       ? '<div class="mc-warnings">⚠ ' + escapeHtml(model.failedReads.length + " read(s) failed: " + model.failedReads.join("; ")) + '</div>'
       : "";
 
+    /* ---- V20260616 — 4 · HEALTHY / HIDDEN (collapsed by default) ---- */
+    const healthyHiddenSection =
+      '<details class="mc-inbox-section mc-healthy-hidden" data-bucket="healthy-hidden">' +
+        '<summary>' +
+          '<span class="mc-inbox-sev-pill" data-bucket="healthy-hidden">4 · HEALTHY / HIDDEN</span>' +
+          '<span class="mc-inbox-sev-count">' +
+            healthyCount + ' healthy' +
+            (hiddenCount > 0 ? ' · ' + hiddenCount + ' hidden' : '') +
+            ' · ' + suppRows.length + ' suppressed' +
+          '</span>' +
+        '</summary>' +
+        '<div class="mc-healthy-hidden-body">' +
+          '<h4 class="mc-healthy-hidden-h">Healthy checks</h4>' +
+          healthyChips +
+          '<h4 class="mc-healthy-hidden-h">Suppressed alerts</h4>' +
+          '<div class="mc-supp-body">' + supHtml + '</div>' +
+        '</div>' +
+      '</details>';
+
     root.innerHTML =
       '<header class="mc-head">' +
         '<div>' +
@@ -1017,16 +1173,18 @@
         '</div>' +
         '<button type="button" class="mc-refresh" id="mission-control-refresh">Refresh</button>' +
       '</header>' +
+      buildTodaysOpsTiles(snap) +
       countTiles +
-      '<div class="mc-inbox-priorities-wrap">' +
-        '<div class="mc-inbox-priorities-label">Top priorities</div>' +
-        priorityBlock +
-      '</div>' +
-      redSection +
-      yellowSection +
-      healthySection +
-      warningsHtml +
-      suppressedSection;
+      (topPriorities.length > 0
+        ? '<div class="mc-inbox-priorities-wrap">' +
+            '<div class="mc-inbox-priorities-label">Top priorities</div>' +
+            priorityBlock +
+          '</div>'
+        : '') +
+      needsActionSection +
+      systemSetupSection +
+      healthyHiddenSection +
+      warningsHtml;
   }
 
   function fmtSuppressionDate(ts) {
