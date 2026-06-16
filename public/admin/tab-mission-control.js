@@ -686,6 +686,33 @@
       "#mission-control .mc-inbox-count[data-bucket='system-setup'] .mc-inbox-count-value{color:#c7d8f5;}",
       "#mission-control .mc-inbox-count[data-bucket='healthy'] .mc-inbox-count-value{color:#bbf7d0;}",
       "@media (max-width:720px){#mission-control .mc-todays-grid{grid-template-columns:repeat(2,1fr);}#mission-control .mc-todays-tile-value{font-size:20px;}}",
+      // V20260616b — Operational Snapshot (Yesterday + Today)
+      "#mission-control .mc-snap-wrap{margin:0 0 16px;padding:14px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;}",
+      "#mission-control .mc-snap-head{margin-bottom:10px;}",
+      "#mission-control .mc-snap-eyebrow{font-size:11px;font-weight:800;letter-spacing:0.6px;color:#7ea3d6;text-transform:uppercase;}",
+      "#mission-control .mc-snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}",
+      "#mission-control .mc-snap-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.10);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;}",
+      "#mission-control .mc-snap-card[data-side='today']{background:linear-gradient(180deg,rgba(120,160,255,0.08) 0%,rgba(255,255,255,0.05) 100%);border-color:rgba(120,160,255,0.18);}",
+      "#mission-control .mc-snap-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;}",
+      "#mission-control .mc-snap-card-title{margin:0;font-size:15px;font-weight:800;color:#fff;letter-spacing:0.2px;}",
+      "#mission-control .mc-snap-card-sub{margin:2px 0 0;font-size:12px;color:#a8c0e1;}",
+      "#mission-control .mc-snap-chip{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:0.3px;text-transform:uppercase;white-space:nowrap;}",
+      "#mission-control .mc-snap-chip-clean-close,#mission-control .mc-snap-chip-on-track{background:rgba(34,197,94,0.20);color:#bbf7d0;border:1px solid rgba(34,197,94,0.45);}",
+      "#mission-control .mc-snap-chip-needs-review,#mission-control .mc-snap-chip-watch{background:rgba(250,204,21,0.20);color:#fde68a;border:1px solid rgba(250,204,21,0.45);}",
+      "#mission-control .mc-snap-body{display:flex;flex-direction:column;gap:8px;flex:1 1 auto;}",
+      "#mission-control .mc-snap-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13.5px;color:#dbe6f5;}",
+      "#mission-control .mc-snap-row-label{color:#a8c0e1;}",
+      "#mission-control .mc-snap-row-value{color:#fff;font-variant-numeric:tabular-nums;}",
+      "#mission-control .mc-snap-row-value strong{font-weight:800;color:#fff;font-size:15px;}",
+      "#mission-control .mc-snap-row-sep{color:#94a3b8;font-weight:400;font-size:13px;}",
+      "#mission-control .mc-snap-row-hint{margin:-2px 0 4px;font-size:11px;color:#94a3b8;font-style:italic;}",
+      "#mission-control .mc-snap-pct{margin-left:6px;padding:1px 7px;background:rgba(120,160,255,0.18);color:#c7d8f5;border-radius:999px;font-size:11.5px;font-weight:700;}",
+      "#mission-control .mc-snap-progress{height:6px;background:rgba(255,255,255,0.10);border-radius:999px;overflow:hidden;margin:2px 0 4px;}",
+      "#mission-control .mc-snap-progress-bar{height:100%;background:linear-gradient(90deg,#34d399,#10b981);border-radius:999px;transition:width 0.35s ease;}",
+      "#mission-control .mc-snap-foot{margin-top:12px;}",
+      "#mission-control .mc-snap-cta{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(255,255,255,0.10);color:#e6edf7;border:1px solid rgba(255,255,255,0.18);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;}",
+      "#mission-control .mc-snap-cta:hover{background:rgba(255,255,255,0.16);}",
+      "@media (max-width:720px){#mission-control .mc-snap-grid{grid-template-columns:1fr;}}",
       "#mission-control .mc-inbox-sev-count{font-size:11.5px;font-weight:600;color:#a8c0e1;}",
       "#mission-control .mc-inbox-empty{margin:10px 14px;font-size:12.5px;color:#a8c0e1;}",
       "#mission-control .mc-inbox-healthy{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;}",
@@ -870,61 +897,237 @@
     return "needs_action";
   }
 
-  // V20260616 — Today's Operations stat strip. Glanceable + neutral.
-  // All values are derived from the existing snapshot — no new reads.
-  // Office Messages is wired in via the deps bridge if the office
-  // issues tab has populated; otherwise renders as "—".
-  function buildTodaysOpsTiles(snap) {
-    const todayPT = snap && snap.todayPT;
-    const scheduled = (snap && snap.assignments)
-      ? snap.assignments.filter(a => a && a.service_date === todayPT && !isQaTestAssignment(a)).length
-      : 0;
-    const clockedIn = (snap && snap.activeSess) ? snap.activeSess.length : 0;
-    const completedToday = (snap && snap.sessions)
-      ? snap.sessions.filter(s => s && s.service_date === todayPT && s.status === "completed" && !isQaTestSession(s)).length
-      : 0;
-    const supplyOpen = (snap && snap.supply)
-      ? snap.supply.filter(s => {
-          const st = String((s && s.status) || "").toLowerCase();
-          return st && st !== "closed" && st !== "received" && st !== "denied" && st !== "fulfilled";
-        }).length
-      : 0;
-    let openIssues = "—";
+  // V20260616b — Operational Snapshot: Yesterday Closeout + Today Live Ops.
+  // Replaces the prior single 6-tile strip. All values derived from the
+  // existing snap + deps bridge — no new Firestore reads.
+  function _opsPtDateFromTs(ts) {
+    if (!ts) return null;
+    let ms = null;
+    if (typeof ts.toMillis === "function") ms = ts.toMillis();
+    else if (typeof ts.seconds === "number") ms = ts.seconds * 1000;
+    else if (typeof ts === "number") ms = ts;
+    else if (typeof ts === "string") { const t = Date.parse(ts); if (!isNaN(t)) ms = t; }
+    if (ms == null) return null;
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        year: "numeric", month: "2-digit", day: "2-digit"
+      }).format(new Date(ms));
+    } catch (_e) { return null; }
+  }
+  function _opsGetDcrs() {
+    try {
+      const tabs = window.__pioneerAdmin && window.__pioneerAdmin.tabs;
+      if (tabs && tabs.recentDcrs && typeof tabs.recentDcrs.getDcrs === "function") {
+        return tabs.recentDcrs.getDcrs() || [];
+      }
+    } catch (_e) {}
+    return null;
+  }
+  function _opsGetIssues() {
     try {
       const deps = window.__pioneerAdmin && window.__pioneerAdmin.deps;
       if (deps && typeof deps.getDcrIssues === "function") {
-        const arr = deps.getDcrIssues() || [];
-        openIssues = arr.filter(i => i && (i.status === "new" || !i.status)).length;
+        return deps.getDcrIssues() || [];
+      }
+      const tabs = window.__pioneerAdmin && window.__pioneerAdmin.tabs;
+      if (tabs && tabs.dcrIssues && typeof tabs.dcrIssues.getDcrIssues === "function") {
+        return tabs.dcrIssues.getDcrIssues() || [];
       }
     } catch (_e) {}
-    let openOfficeMsg = "—";
+    return null;
+  }
+  function _opsGetOfficeMsg() {
     try {
       const tabs = window.__pioneerAdmin && window.__pioneerAdmin.tabs;
       if (tabs && tabs.officeIssues && typeof tabs.officeIssues.getCount === "function") {
-        openOfficeMsg = tabs.officeIssues.getCount("open");
+        const v = tabs.officeIssues.getCount("open");
+        return (typeof v === "number") ? v : "—";
       }
     } catch (_e) {}
+    return "—";
+  }
+  function _opsFmtHours(min) {
+    if (min == null || min === 0) return "0h";
+    const h = Math.floor(min / 60);
+    const r = Math.round(min % 60);
+    if (r === 0) return h + "h";
+    return h + "h " + r + "m";
+  }
+  function _opsIsCancelledAsmt(a) {
+    const s = String(a && a.status || "").toLowerCase();
+    return s === "cancelled" || s === "canceled" || s === "canceled_by_deputy" || s === "deleted" || s === "admin_removed";
+  }
 
-    function tile(label, value, tab, dataset) {
-      const onclick = tab ? ' data-mc-action-route="' + escapeHtml(tab) + '"' : '';
-      const cls = tab ? "mc-todays-tile is-link" : "mc-todays-tile";
-      return '<button type="button" class="' + cls + '"' + onclick + ' data-mc-stat="' + escapeHtml(dataset || "") + '">' +
-               '<span class="mc-todays-tile-value">' + escapeHtml(String(value)) + '</span>' +
-               '<span class="mc-todays-tile-label">' + escapeHtml(label) + '</span>' +
-             '</button>';
+  function buildOperationalSnapshot(snap, needsActionGroups) {
+    const yPT = snap && snap.yesterdayPT;
+    const tPT = snap && snap.todayPT;
+    const assignments = (snap && snap.assignments) || [];
+    const sessions    = (snap && snap.sessions) || [];
+    const activeSess  = (snap && snap.activeSess) || [];
+    const supply      = (snap && snap.supply) || [];
+    const timeAdj     = (snap && snap.timeAdj) || [];
+
+    const dcrs   = _opsGetDcrs();    // null if deps not populated
+    const issues = _opsGetIssues();  // null if deps not populated
+
+    // ---- Yesterday ----
+    const yAsmtsAll = assignments.filter(a => a && a.service_date === yPT && !isQaTestAssignment(a));
+    const yAsmts    = yAsmtsAll.filter(a => !_opsIsCancelledAsmt(a));
+    const ySessAll  = sessions.filter(s => s && s.service_date === yPT && !isQaTestSession(s));
+    const ySessComplete = ySessAll.filter(s => s.status === "completed");
+    const yScheduled = yAsmts.length;
+    const yCompleted = ySessComplete.length;
+    const yWorkedMin = ySessComplete.reduce((acc, s) =>
+      acc + Number(s.paid_minutes || 0) + Number(s.paid_drive_minutes || 0), 0);
+    const ySchedMinRaw = yAsmts.reduce((acc, a) =>
+      acc + Number(a.budget_minutes || a.estimated_minutes || 0), 0);
+    const ySchedHrsAvail = ySchedMinRaw > 0;
+    const yExceptions = timeAdj.filter(r => {
+      const d = r && (r.shift_date || r.service_date);
+      return d === yPT;
+    }).length;
+    const yMissed = yAsmtsAll.filter(a => String(a.status || "").toLowerCase() === "missed").length;
+    const yCompletedNoDcr = ySessComplete.filter(s =>
+      !s.dcr_submission_id && s.dcr_status !== "waived"
+    ).length;
+
+    let yIssuesOpened = "—";
+    let yNewIssuesStillOpen = 0;
+    if (issues) {
+      const yIssues = issues.filter(i => _opsPtDateFromTs(i && i.created_at) === yPT);
+      yIssuesOpened = yIssues.length;
+      yNewIssuesStillOpen = yIssues.filter(i => i.status === "new" || !i.status).length;
     }
-    return '<div class="mc-todays-ops" aria-label="Today\'s Operations">' +
-             '<header class="mc-todays-head">' +
-               '<span class="mc-todays-eyebrow">1 · Today\'s Operations</span>' +
-               '<span class="mc-todays-sub">Pacific calendar day, neutral status</span>' +
+
+    let yDcrCount = "—";
+    if (dcrs) {
+      yDcrCount = dcrs.filter(d => d && d.clean_date === yPT).length;
+    }
+
+    // Yesterday status
+    const yIsCleanClose =
+      yMissed === 0 &&
+      yCompletedNoDcr === 0 &&
+      yExceptions === 0 &&
+      yNewIssuesStillOpen === 0;
+    const yStatusKey   = yIsCleanClose ? "clean-close" : "needs-review";
+    const yStatusLabel = yIsCleanClose ? "Clean close"  : "Needs review";
+
+    // ---- Today ----
+    const tAsmtsAll = assignments.filter(a => a && a.service_date === tPT && !isQaTestAssignment(a));
+    const tAsmts    = tAsmtsAll.filter(a => !_opsIsCancelledAsmt(a));
+    const tSessAll  = sessions.filter(s => s && s.service_date === tPT && !isQaTestSession(s));
+    const tSessComplete = tSessAll.filter(s => s.status === "completed");
+    const tScheduled = tAsmts.length;
+    const tCompletedSoFar = tSessComplete.length;
+    const tProgressPct = tScheduled > 0
+      ? Math.min(100, Math.round((tCompletedSoFar / tScheduled) * 100))
+      : 0;
+    const tClockedIn = activeSess.length;
+    const tSchedMinRaw = tAsmts.reduce((acc, a) =>
+      acc + Number(a.budget_minutes || a.estimated_minutes || 0), 0);
+    const tSchedHrsAvail = tSchedMinRaw > 0;
+
+    let tDcrCount = "—";
+    if (dcrs) tDcrCount = dcrs.filter(d => d && d.clean_date === tPT).length;
+
+    let tOpenIssues = "—";
+    if (issues) tOpenIssues = issues.filter(i => i && (i.status === "new" || !i.status)).length;
+
+    const tSupplyOpen = supply.filter(s => {
+      const st = String((s && s.status) || "").toLowerCase();
+      return st && st !== "closed" && st !== "received" && st !== "denied" && st !== "fulfilled";
+    }).length;
+    const tOfficeMsg = _opsGetOfficeMsg();
+
+    // Today status
+    const tRedActionCount = (needsActionGroups || []).filter(g => g.severity === "RED").length;
+    const tStuckClockIn   = activeSess.filter(s => {
+      const inTs = s && s.clock_in_at;
+      let inMs = null;
+      if (inTs && typeof inTs.toMillis === "function") inMs = inTs.toMillis();
+      else if (inTs && typeof inTs.seconds === "number") inMs = inTs.seconds * 1000;
+      if (!inMs) return false;
+      return (Date.now() - inMs) > 14 * 60 * 60 * 1000;  // > 14h
+    }).length;
+    const tIsOnTrack = tRedActionCount === 0 && tStuckClockIn === 0;
+    const tStatusKey   = tIsOnTrack ? "on-track" : "watch";
+    const tStatusLabel = tIsOnTrack ? "On track" : "Watch";
+
+    // ---- Render ----
+    function row(label, valueHtml, hintHtml) {
+      return '<div class="mc-snap-row">' +
+               '<span class="mc-snap-row-label">' + label + '</span>' +
+               '<span class="mc-snap-row-value">' + valueHtml + '</span>' +
+             '</div>' +
+             (hintHtml ? '<p class="mc-snap-row-hint">' + hintHtml + '</p>' : '');
+    }
+    const hoursHint = 'scheduled budget not set on some shifts';
+
+    // Yesterday card — operational completion + labor BEFORE DCR counts
+    const yBody =
+      row('Shifts completed / scheduled',
+          '<strong>' + yCompleted + '</strong> <span class="mc-snap-row-sep">/ ' + yScheduled + '</span>') +
+      row('Hours worked / scheduled',
+          '<strong>' + _opsFmtHours(yWorkedMin) + '</strong> <span class="mc-snap-row-sep">/ ' +
+            (ySchedHrsAvail ? _opsFmtHours(ySchedMinRaw) : '—') + '</span>',
+          ySchedHrsAvail ? '' : hoursHint) +
+      row('Exceptions needing review',
+          '<strong>' + yExceptions + '</strong>') +
+      row('Customer issues opened',
+          '<strong>' + yIssuesOpened + '</strong>') +
+      row('DCRs completed',
+          '<strong>' + yDcrCount + '</strong>');
+
+    // Today card — operational completion + progress bar FIRST
+    const tBody =
+      row('Shifts completed / scheduled',
+          '<strong>' + tCompletedSoFar + '</strong> <span class="mc-snap-row-sep">/ ' + tScheduled + '</span> <span class="mc-snap-pct">' + tProgressPct + '%</span>') +
+      '<div class="mc-snap-progress" aria-label="Shift completion progress"><div class="mc-snap-progress-bar" style="width:' + tProgressPct + '%"></div></div>' +
+      row('Clocked in now',
+          '<strong>' + tClockedIn + '</strong>') +
+      row('Hours scheduled',
+          '<strong>' + (tSchedHrsAvail ? _opsFmtHours(tSchedMinRaw) : '—') + '</strong>',
+          tSchedHrsAvail ? '' : hoursHint) +
+      row('Completed DCRs so far',
+          '<strong>' + tDcrCount + '</strong>') +
+      row('Open issues',
+          '<strong>' + tOpenIssues + '</strong>') +
+      row('Supply / office messages',
+          '<strong>' + tSupplyOpen + '</strong> <span class="mc-snap-row-sep">·</span> <strong>' + tOfficeMsg + '</strong>');
+
+    return '<div class="mc-snap-wrap" aria-label="Operational Snapshot">' +
+             '<header class="mc-snap-head">' +
+               '<span class="mc-snap-eyebrow">1 · Operational Snapshot</span>' +
              '</header>' +
-             '<div class="mc-todays-grid">' +
-               tile("Scheduled shifts",  scheduled,      "yesterday",      "scheduled") +
-               tile("Clocked in",        clockedIn,      "yesterday",      "clocked_in") +
-               tile("Completed DCRs",    completedToday, "dcrs",           "completed_dcrs") +
-               tile("Open issues",       openIssues,     "issues",         "open_issues") +
-               tile("Supply requests",   supplyOpen,     "supply",         "supply_open") +
-               tile("Office messages",   openOfficeMsg,  "office-issues",  "office_messages") +
+             '<div class="mc-snap-grid">' +
+               '<section class="mc-snap-card" data-side="yesterday">' +
+                 '<header class="mc-snap-card-head">' +
+                   '<div>' +
+                     '<h3 class="mc-snap-card-title">Yesterday · Closeout</h3>' +
+                     '<p class="mc-snap-card-sub">Did the day close cleanly?</p>' +
+                   '</div>' +
+                   '<span class="mc-snap-chip mc-snap-chip-' + yStatusKey + '">' + yStatusLabel + '</span>' +
+                 '</header>' +
+                 '<div class="mc-snap-body">' + yBody + '</div>' +
+                 '<footer class="mc-snap-foot">' +
+                   '<button type="button" class="mc-snap-cta" data-mc-action-route="yesterday">Open Yesterday\'s Work</button>' +
+                 '</footer>' +
+               '</section>' +
+               '<section class="mc-snap-card" data-side="today">' +
+                 '<header class="mc-snap-card-head">' +
+                   '<div>' +
+                     '<h3 class="mc-snap-card-title">Today · Live Ops</h3>' +
+                     '<p class="mc-snap-card-sub">What is happening right now?</p>' +
+                   '</div>' +
+                   '<span class="mc-snap-chip mc-snap-chip-' + tStatusKey + '">' + tStatusLabel + '</span>' +
+                 '</header>' +
+                 '<div class="mc-snap-body">' + tBody + '</div>' +
+                 '<footer class="mc-snap-foot">' +
+                   '<button type="button" class="mc-snap-cta" data-mc-action-route="dcrs">Open Recent DCRs</button>' +
+                 '</footer>' +
+               '</section>' +
              '</div>' +
            '</div>';
   }
@@ -1173,7 +1376,7 @@
         '</div>' +
         '<button type="button" class="mc-refresh" id="mission-control-refresh">Refresh</button>' +
       '</header>' +
-      buildTodaysOpsTiles(snap) +
+      buildOperationalSnapshot(snap, needsActionGroups) +
       countTiles +
       (topPriorities.length > 0
         ? '<div class="mc-inbox-priorities-wrap">' +

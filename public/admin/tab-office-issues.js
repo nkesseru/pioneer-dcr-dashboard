@@ -539,9 +539,28 @@
 
   function init() { wire(); }
 
+  // V20260616b — exposed for Mission Control Operational Snapshot.
+  // Returns a count from the in-memory `allIssues` array. Safe to call
+  // before the onSnapshot has populated — returns 0 in that case.
+  //   "open"  → count of NOT resolved AND NOT closed
+  //   "all"   → total
+  //   <status> → exact status match
+  function getCount(filterKey) {
+    const key = String(filterKey || "open");
+    if (!Array.isArray(allIssues)) return 0;
+    if (key === "all") return allIssues.length;
+    if (key === "open") {
+      return allIssues.filter(function (i) {
+        return i && i.status !== "resolved" && i.status !== "closed";
+      }).length;
+    }
+    return allIssues.filter(function (i) { return i && i.status === key; }).length;
+  }
+
   window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
   window.__pioneerAdmin.tabs.officeIssues = {
-    init:    init,
-    refresh: refresh
+    init:     init,
+    refresh:  refresh,
+    getCount: getCount
   };
 }());
