@@ -2,7 +2,7 @@
   "name": "PioneerOps",
   "short_name": "PioneerOps",
   "description": "Pioneer Commercial Cleaning field operations hub.",
-  "start_url": "/",
+  "start_url": "/work",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

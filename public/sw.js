@@ -30,7 +30,7 @@
  *     changes so installed PWAs detect the new SW.
  */
 
-const SW_VERSION = "20260528-pwa-v1";
+const SW_VERSION = "20260616-pwa-start-url-work";
 
 self.addEventListener("install", function (event) {
   // Take over old SWs without waiting for tabs to close.
