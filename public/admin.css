@@ -6521,6 +6521,34 @@
   font-style: italic;
   font-weight: 600;
 }
+
+/* Phase 29A — Approved Time Adjustment surface on the Worked column.
+   ".lr-adj-line" is the muted Original / +adj subtext under Final.
+   ".lr-adj-chip" is the green Approved badge mirrored from the Payroll
+   Exceptions tab's is-approved chip palette. */
+.lr-adj-line {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #475569;
+  line-height: 1.3;
+}
+.lr-adj-delta {
+  color: #065f46;
+  font-weight: 600;
+}
+.lr-adj-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  vertical-align: middle;
+}
 .labor-be-ot {
   display: inline-block;
   padding: 1px 7px;

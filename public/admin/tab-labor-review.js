@@ -317,13 +317,29 @@
     } catch (_e) { return workweekId + " → " + endId; }
   }
 
+  // Phase 29A — payroll-facing minutes per session. Returns effective_minutes
+  // when an approved time adjustment exists, otherwise the stored
+  // work_minutes. Original session timestamps (clock_in_at / clock_out_at /
+  // work_minutes) are never overwritten on approve, so this is the only
+  // accessor that surfaces the adjusted total at read time. Mirrors the
+  // helper of the same name in tab-payroll.js so summary totals across the
+  // two surfaces agree to the minute.
+  function effectiveWorkMinutes(s) {
+    if (!s) return 0;
+    if (s.has_approved_time_adjustment === true &&
+        typeof s.effective_minutes === "number") {
+      return s.effective_minutes;
+    }
+    return (typeof s.work_minutes === "number" && s.work_minutes > 0) ? s.work_minutes : 0;
+  }
+
   // Pure allocation function — mutates each session with regular_minutes,
   // overtime_minutes, payable_work_minutes. Order of input array IS the
   // chronological order; caller must sort by clock_in_at ascending first.
   function allocateOvertime(sortedSessions) {
     let cumulativeRegular = 0;
     (sortedSessions || []).forEach(function (s) {
-      const total = (typeof s.work_minutes === "number" && s.work_minutes > 0) ? s.work_minutes : 0;
+      const total = effectiveWorkMinutes(s);
       const budget = Math.max(0, WEEKLY_REGULAR_CAP_MINUTES - cumulativeRegular);
       let regular, overtime;
       if (total <= budget) {
@@ -380,8 +396,11 @@
       : (assignment && typeof assignment.budget_minutes === "number"
           ? assignment.budget_minutes : null);
     if (budget == null || budget <= 0) return false;
-    if (typeof s.work_minutes !== "number") return false;
-    return s.work_minutes > budget + 15;
+    // Phase 29A — over-budget is a payroll signal, so compare against the
+    // post-adjustment total. Falls back to work_minutes when no adjustment.
+    const total = effectiveWorkMinutes(s);
+    if (!(total > 0)) return false;
+    return total > budget + 15;
   }
   function offsiteFlag(s) {
     return s && (s.clock_in_geo_status === "offsite" || s.clock_out_geo_status === "offsite");
@@ -498,8 +517,10 @@
       const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
       if (isRunningSession(s)) {
         out.totalRunning += (liveElapsedMinutes(s.clock_in_at) || 0);
-      } else if (typeof s.work_minutes === "number") {
-        out.totalWorked += s.work_minutes;
+      } else {
+        // Phase 29A — totalWorked must reflect approved adjustments so the
+        // Labor Review header matches Payroll Summary and the CSV.
+        out.totalWorked += effectiveWorkMinutes(s);
       }
       if (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0) {
         out.totalOvertime += s.overtime_minutes;
@@ -536,8 +557,9 @@
       row.sessions_count += 1;
       if (isRunningSession(s)) {
         row.running_minutes += (liveElapsedMinutes(s.clock_in_at) || 0);
-      } else if (typeof s.work_minutes === "number") {
-        row.worked_minutes += s.work_minutes;
+      } else {
+        // Phase 29A — per-employee aggregate must match Payroll Summary.
+        row.worked_minutes += effectiveWorkMinutes(s);
       }
       if (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0) {
         row.overtime_minutes += s.overtime_minutes;
@@ -702,7 +724,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v28B-overtime";
+  const LABOR_BUILD_TAG = "Labor v29A-adj-visibility";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -770,7 +792,7 @@
              '</div>';
     }
     const exSubLines =
-      '<span title="work_minutes > budget + 15">OB ' + ex.overBudget + '</span> · ' +
+      '<span title="effective minutes (post-adjustment) > budget + 15">OB ' + ex.overBudget + '</span> · ' +
       '<span title="clock_in or clock_out offsite">OS ' + ex.offsite + '</span> · ' +
       '<span title="admin_removed = true">AR ' + ex.adminRemoved + '</span> · ' +
       '<span title="force_closed_by_admin">FC ' + ex.forceClosed + '</span>';
@@ -984,13 +1006,34 @@
         workedHtml = escapeHtml("Review Required");
         workedClass = " is-review-required";
       } else if (s.work_minutes != null) {
+        // Phase 29A — adjusted sessions render Final (effective) on the
+        // primary line plus an Original / +adj subline. Original session
+        // timestamps and work_minutes are never overwritten on approve, so
+        // this is purely a read-time presentation layer.
+        const adjusted = (s.has_approved_time_adjustment === true &&
+                         typeof s.effective_minutes === "number");
+        const finalMin = adjusted ? s.effective_minutes : s.work_minutes;
         const hasOt = (typeof s.overtime_minutes === "number" && s.overtime_minutes > 0);
         if (hasOt) {
-          const reg = (typeof s.regular_minutes === "number") ? s.regular_minutes : s.work_minutes;
+          const reg = (typeof s.regular_minutes === "number") ? s.regular_minutes : finalMin;
           workedHtml = escapeHtml(fmtMinutes(reg)) +
             '<span class="lr-ot-line"> + ' + escapeHtml(fmtMinutes(s.overtime_minutes)) + ' OT</span>';
         } else {
-          workedHtml = escapeHtml(fmtMinutes(s.work_minutes));
+          workedHtml = escapeHtml(fmtMinutes(finalMin));
+        }
+        if (adjusted) {
+          const delta = (typeof s.effective_minutes === "number" &&
+                         typeof s.work_minutes === "number")
+            ? (s.effective_minutes - s.work_minutes) : 0;
+          const sign = delta > 0 ? "+" : (delta < 0 ? "−" : "±");
+          const deltaMag = Math.abs(delta);
+          workedHtml +=
+            '<div class="lr-adj-line">' +
+              'Original ' + escapeHtml(fmtMinutes(s.work_minutes)) +
+              ' · <span class="lr-adj-delta">' + sign +
+                escapeHtml(fmtMinutes(deltaMag)) + ' adj</span>' +
+              ' <span class="lr-adj-chip" title="Time adjustment approved">Adj ✓</span>' +
+            '</div>';
         }
       } else {
         workedHtml = "—";
