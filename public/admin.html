@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="admin.css?v=20260616-adj-visibility" />
+  <link rel="stylesheet" href="admin.css?v=20260616-investigation" />
   <link rel="stylesheet" href="training.css" />
   <link rel="stylesheet" href="styles/admin-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
@@ -1456,41 +1456,73 @@
       <div class="admin-status admin-loading" id="labor-loading" hidden>Loading…</div>
       <div class="admin-status admin-error"   id="labor-error"   hidden></div>
 
-      <!-- Phase 2A.3 — date-range controls. Quick filters set the inputs
-           AND fetch immediately. Custom dates require clicking Apply. -->
-      <section class="labor-range-row">
-        <div class="labor-range-inputs">
-          <label for="labor-range-start">Start</label>
-          <input type="date" id="labor-range-start" autocomplete="off" />
-          <span aria-hidden="true">→</span>
-          <label for="labor-range-end">End</label>
-          <input type="date" id="labor-range-end" autocomplete="off" />
-          <button type="button" class="labor-range-apply" id="labor-range-apply">Apply</button>
-        </div>
-        <div class="labor-quick-filters" role="group" aria-label="Quick date filters">
+      <!-- Phase 29B — Sessions Filtering & Investigation Tools. Date
+           range + status filter (existing) plus pay-period dropdown,
+           employee dropdown, free-text search, and an active-filter
+           chip strip. All filters compose client-side after the
+           Firestore range query — only the date range triggers a refresh. -->
+      <section class="labor-filters">
+        <div class="labor-filter-row labor-filter-row-date">
           <span class="labor-filter-label">Date:</span>
-          <button type="button" class="labor-quick-btn" data-labor-quick="today"      aria-pressed="true">Today</button>
-          <button type="button" class="labor-quick-btn" data-labor-quick="yesterday"  aria-pressed="false">Yesterday</button>
-          <button type="button" class="labor-quick-btn" data-labor-quick="last_7"     aria-pressed="false">Last 7 Days</button>
-          <button type="button" class="labor-quick-btn" data-labor-quick="last_30"    aria-pressed="false">Last 30 Days</button>
-          <button type="button" class="labor-quick-btn" data-labor-quick="pay_period" aria-pressed="false">Current Pay Period</button>
+          <div class="labor-quick-filters" role="group" aria-label="Quick date filters">
+            <button type="button" class="labor-quick-btn" data-labor-quick="today"      aria-pressed="true">Today</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="yesterday"  aria-pressed="false">Yesterday</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="last_7"     aria-pressed="false">Last 7 Days</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="last_30"    aria-pressed="false">Last 30 Days</button>
+          </div>
+          <div class="labor-range-inputs">
+            <label for="labor-range-start">Start</label>
+            <input type="date" id="labor-range-start" autocomplete="off" />
+            <span aria-hidden="true">→</span>
+            <label for="labor-range-end">End</label>
+            <input type="date" id="labor-range-end" autocomplete="off" />
+            <button type="button" class="labor-range-apply" id="labor-range-apply">Apply</button>
+          </div>
         </div>
+
+        <div class="labor-filter-row labor-filter-row-pickers">
+          <div class="labor-filter-cell">
+            <label class="labor-filter-label" for="labor-pay-period-select">Pay period</label>
+            <select id="labor-pay-period-select" class="labor-select" aria-label="Pay period">
+              <!-- options populated by renderPayPeriodPicker() -->
+            </select>
+          </div>
+          <div class="labor-filter-cell">
+            <label class="labor-filter-label" for="labor-employee-select">Employee</label>
+            <select id="labor-employee-select" class="labor-select" aria-label="Employee">
+              <!-- options populated by renderEmployeePicker() -->
+            </select>
+          </div>
+          <div class="labor-filter-cell labor-filter-cell-search">
+            <label class="labor-filter-label" for="labor-search-input">Search</label>
+            <input type="search" id="labor-search-input" class="labor-search-input"
+                   placeholder="Tech, customer, location, reason…"
+                   autocomplete="off" />
+          </div>
+        </div>
+
         <!-- Phase 2A.4 — status filter row. Defaults to "All" (excludes
              archived). "Archived" is the only path to see archived rows.
              Pure client-side filter; no Firestore round trip.
              Phase 28A — 4 new payroll-state chips appended on the right. -->
-        <div class="labor-quick-filters labor-status-filters" role="group" aria-label="Status filter">
+        <div class="labor-filter-row labor-filter-row-status">
           <span class="labor-filter-label">Status:</span>
-          <button type="button" class="labor-quick-btn" data-labor-status="all"            aria-pressed="true">All</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="needs_review"   aria-pressed="false">Needs Review</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"    aria-pressed="false">DCR Pending</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="archived"       aria-pressed="false">Archived</button>
-          <span class="labor-filter-sep" aria-hidden="true">·</span>
-          <button type="button" class="labor-quick-btn" data-labor-status="pending_review" aria-pressed="false">Pending Review</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="reviewed"       aria-pressed="false">Reviewed</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="approved"       aria-pressed="false">Approved</button>
-          <button type="button" class="labor-quick-btn" data-labor-status="exported"       aria-pressed="false">Exported</button>
+          <div class="labor-quick-filters labor-status-filters" role="group" aria-label="Status filter">
+            <button type="button" class="labor-quick-btn" data-labor-status="all"            aria-pressed="true">All</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="needs_review"   aria-pressed="false">Needs Review</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"    aria-pressed="false">DCR Pending</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="archived"       aria-pressed="false">Archived</button>
+            <span class="labor-filter-sep" aria-hidden="true">·</span>
+            <button type="button" class="labor-quick-btn" data-labor-status="pending_review" aria-pressed="false">Pending Review</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="reviewed"       aria-pressed="false">Reviewed</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="approved"       aria-pressed="false">Approved</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="exported"       aria-pressed="false">Exported</button>
+          </div>
         </div>
+
+        <!-- Phase 29B — Active filter chip strip. Each chip has an × that
+             clears its own filter. "Clear all" resets non-date filters. -->
+        <div class="labor-active-filters" id="labor-active-filters" hidden></div>
         <div class="labor-range-err" id="labor-range-err" role="alert" hidden></div>
       </section>
 
@@ -1503,7 +1535,7 @@
         <div class="labor-totals" id="labor-totals"></div>
       </section>
 
-      <section class="labor-block">
+      <section class="labor-block" id="labor-active-section">
         <h3 class="labor-block-title">Open active sessions</h3>
         <p class="labor-block-sub">Techs currently clocked in (not date-filtered). Force-close any session stuck after the shift ended.</p>
         <div class="labor-active-list" id="labor-active-list"></div>
@@ -1519,7 +1551,7 @@
       </section>
 
       <section class="labor-block">
-        <h3 class="labor-block-title">Sessions</h3>
+        <h3 class="labor-block-title">Sessions <span class="labor-sessions-count" id="labor-sessions-count"></span></h3>
         <!-- Phase 28A — bulk-approve bar. Populated by renderBulkApproveBar
              whenever there's at least one approvable row in the current
              filter view. Click → opens labor-bulk-approve-modal. -->
@@ -3933,7 +3965,7 @@
   <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
-  <script src="admin/tab-labor-review.js?v=20260616-adj-visibility"></script>
+  <script src="admin/tab-labor-review.js?v=20260616-investigation"></script>
   <script src="admin/tab-payroll.js?v=20260610-timeclock-addon"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260616b-operational-snapshot"></script>

@@ -73,6 +73,16 @@
                                        // | "pending_review" | "reviewed" | "approved" | "exported"
   let displaySessions      = [];      // filtered subset of `sessions`
 
+  // Phase 29B — investigation filters. All four are pure client-side
+  // after the Firestore range query. They compose with currentStatusFilter
+  // multiplicatively. Persisted in sessionStorage so a tab round-trip
+  // (e.g. Labor → Payroll → Labor) keeps the working set.
+  let currentEmployeeFilter = "";   // "" = all; otherwise staff_uid OR "email:foo@bar"
+  let currentSearchTerm     = "";   // case-insensitive substring
+  let currentPayPeriodId    = "";   // "" = not driven by pay-period picker
+  let payPeriodOptions      = [];   // [{ period_id, label, start_date, end_date }]
+  const FILTERS_STORAGE_KEY = "labor-review.filters.v1";
+
   /* ---------- helpers ---------- */
 
   function tsToMs(ts) {
@@ -236,6 +246,85 @@
       default:           return { start_date: todayPT, end_date: todayPT };
     }
   }
+
+  // Phase 29B — semi-monthly pay-period option builder. Mirrors the
+  // identical helper in tab-payroll.js so the two surfaces always agree
+  // on which periods exist and what their labels are. Period A = 1–15,
+  // Period B = 16–EOM. Returns 6 most recent periods (current + 5 prior).
+  function fmtMonthDayShort(yyyymmdd) {
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", month: "short", day: "numeric"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) { return yyyymmdd; }
+  }
+  function getSemiMonthlyPeriodForDate(yyyymmdd) {
+    const parts = String(yyyymmdd || "").split("-").map(Number);
+    const y = parts[0], m = parts[1], d = parts[2];
+    const mm = String(m).padStart(2, "0");
+    let start, end, suffix;
+    if (d <= 15) {
+      start = y + "-" + mm + "-01";
+      end   = y + "-" + mm + "-15";
+      suffix = "A";
+    } else {
+      const eod = lastDayOfMonth(y, m);
+      start = y + "-" + mm + "-16";
+      end   = y + "-" + mm + "-" + String(eod).padStart(2, "0");
+      suffix = "B";
+    }
+    return {
+      period_id:  y + "-" + mm + "-" + suffix,
+      label:      fmtMonthDayShort(start) + " – " + fmtMonthDayShort(end) + ", " + y,
+      start_date: start,
+      end_date:   end
+    };
+  }
+  function getPriorSemiMonthlyPeriod(period) {
+    const startParts = period.start_date.split("-").map(Number);
+    if (period.period_id.endsWith("-B")) {
+      const y = startParts[0], m = startParts[1];
+      return getSemiMonthlyPeriodForDate(y + "-" + String(m).padStart(2, "0") + "-01");
+    }
+    let prevY = startParts[0], prevM = startParts[1] - 1;
+    if (prevM === 0) { prevY -= 1; prevM = 12; }
+    const prevMm = String(prevM).padStart(2, "0");
+    const eod = lastDayOfMonth(prevY, prevM);
+    return getSemiMonthlyPeriodForDate(prevY + "-" + prevMm + "-" + String(eod).padStart(2, "0"));
+  }
+  function buildPayPeriodOptions(todayPT) {
+    let cur = getSemiMonthlyPeriodForDate(todayPT);
+    const out = [cur];
+    for (let i = 0; i < 5; i++) {
+      cur = getPriorSemiMonthlyPeriod(cur);
+      out.push(cur);
+    }
+    return out;
+  }
+
+  // Phase 29B — sessionStorage persistence so tab nav round-trips don't
+  // wipe the working set. Hard reload still resets (sessionStorage clears
+  // with the tab). Keyed v1 so a future schema bump is uneventful.
+  function saveFilterState() {
+    try {
+      const payload = {
+        rangeStart: rangeStart, rangeEnd: rangeEnd,
+        currentQuickFilter: currentQuickFilter,
+        currentStatusFilter: currentStatusFilter,
+        currentEmployeeFilter: currentEmployeeFilter,
+        currentSearchTerm: currentSearchTerm,
+        currentPayPeriodId: currentPayPeriodId
+      };
+      window.sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_e) { /* sessionStorage may be unavailable in private mode — ignore */ }
+  }
+  function loadFilterState() {
+    try {
+      const raw = window.sessionStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) || null;
+    } catch (_e) { return null; }
+  }
   function validateRange(start, end) {
     if (!start || !end) return "Pick both start and end dates.";
     if (start > end) return "End date is before start date.";
@@ -356,9 +445,22 @@
   }
 
   // Initial range state — used by the very first refresh() to query before
-  // the user has touched any control. Defaults to today/today (Pacific).
+  // the user has touched any control. Phase 29B: restores any filter set
+  // saved in sessionStorage from a prior visit during this browser session.
+  // Defaults to today/today (Pacific) when nothing is persisted.
   function ensureRangeInitialized() {
     if (rangeStart && rangeEnd) return;
+    const saved = loadFilterState();
+    if (saved && saved.rangeStart && saved.rangeEnd) {
+      rangeStart            = saved.rangeStart;
+      rangeEnd              = saved.rangeEnd;
+      currentQuickFilter    = saved.currentQuickFilter    || "custom";
+      currentStatusFilter   = saved.currentStatusFilter   || "all";
+      currentEmployeeFilter = saved.currentEmployeeFilter || "";
+      currentSearchTerm     = saved.currentSearchTerm     || "";
+      currentPayPeriodId    = saved.currentPayPeriodId    || "";
+      return;
+    }
     const today = pacificDateString(new Date());
     const r = getQuickFilterRange("today", today);
     rangeStart = r.start_date;
@@ -492,15 +594,61 @@
       default:               return !isArchived;
     }
   }
-  function filterSessions(arr) { return (arr || []).filter(passesStatusFilter); }
+  // Phase 29B — employee key for a session. Matches the key shape used
+  // by groupByEmployee so the same string drives the dropdown, the card
+  // selection state, and the filter predicate.
+  function employeeKeyFor(s) {
+    if (!s) return "";
+    if (s.staff_uid) return s.staff_uid;
+    if (s.staff_email) return "email:" + s.staff_email;
+    return "";
+  }
+  function passesEmployeeFilter(s) {
+    if (!currentEmployeeFilter) return true;
+    return employeeKeyFor(s) === currentEmployeeFilter;
+  }
+  // Phase 29B — search across tech display name, tech email, customer
+  // name, location name + address, and the two admin-write reason
+  // fields. Case-insensitive substring. Empty term → pass-through.
+  function passesSearchFilter(s) {
+    const term = (currentSearchTerm || "").trim().toLowerCase();
+    if (!term) return true;
+    const a = s && s.assignment_id ? assignmentsById[s.assignment_id] : null;
+    const techNm = techName(s.staff_email, s.staff_uid);
+    const haystack = [
+      techNm,
+      s.staff_email,
+      (a && a.customer_name) || s.customer_name,
+      (a && a.customer_slug) || s.customer_slug,
+      (a && a.location_name) || s.location_name,
+      (a && a.location_address) || s.location_address,
+      s.force_close_reason,
+      s.removed_reason
+    ].filter(Boolean).join("  ").toLowerCase();
+    return haystack.indexOf(term) !== -1;
+  }
+  function filterSessions(arr) {
+    return (arr || []).filter(function (s) {
+      return passesStatusFilter(s) && passesEmployeeFilter(s) && passesSearchFilter(s);
+    });
+  }
 
   // Centralized re-derive of the filtered subset + downstream caches.
-  // Called both at end of refresh() and on every status-filter click —
-  // the click path skips Firestore entirely (data is already loaded).
+  // Called both at end of refresh() and on every filter change — the
+  // click path skips Firestore entirely (data is already loaded).
+  //
+  // Phase 29B — `byEmployeeSource` is the status + search filter result
+  // WITHOUT the employee filter, so the By Employee cards always show the
+  // full roster scoped to the current view. That lets admin switch the
+  // selected employee with one click. The Sessions table itself
+  // ("displaySessions") respects all four filters.
   function recomputeDisplay() {
-    displaySessions = filterSessions(sessions);
+    const statusAndSearch = (sessions || []).filter(function (s) {
+      return passesStatusFilter(s) && passesSearchFilter(s);
+    });
+    displaySessions = statusAndSearch.filter(passesEmployeeFilter);
     totalsCache     = computeTotals(displaySessions);
-    byEmployeeCache = groupByEmployee(displaySessions);
+    byEmployeeCache = groupByEmployee(statusAndSearch);
   }
 
   function computeTotals(arr) {
@@ -539,18 +687,22 @@
   function groupByEmployee(arr) {
     const map = new Map();
     (arr || []).forEach(function (s) {
-      const key = s.staff_uid || ("email:" + (s.staff_email || "")) || "(unknown)";
+      const key = employeeKeyFor(s) || "(unknown)";
       if (!map.has(key)) {
         map.set(key, {
-          staff_uid: s.staff_uid || "",
-          staff_email: s.staff_email || "",
-          name: techName(s.staff_email, s.staff_uid),
-          sessions_count: 0,
-          worked_minutes: 0,
+          key:             key,
+          staff_uid:       s.staff_uid || "",
+          staff_email:     s.staff_email || "",
+          name:            techName(s.staff_email, s.staff_uid),
+          sessions_count:  0,
+          worked_minutes:  0,
           running_minutes: 0,
           overtime_minutes: 0,   // Phase 28B
-          needs_review: 0,
-          dcr_pending: 0
+          needs_review:    0,
+          dcr_pending:     0,
+          // Phase 29B — investigation counts on the card.
+          adjusted_count:   0,    // sessions with has_approved_time_adjustment === true
+          exception_count:  0     // unresolved exceptions (see definition below)
         });
       }
       const row = map.get(key);
@@ -566,6 +718,19 @@
       }
       if (needsReviewFlag(s)) row.needs_review += 1;
       if (dcrPendingFlag(s))  row.dcr_pending  += 1;
+      if (s.has_approved_time_adjustment === true) row.adjusted_count += 1;
+      // Phase 29B exception definition: any of needs_review, dcr_pending,
+      // over_budget (effective > budget+15), offsite, force_closed.
+      // Excludes admin_removed — those are archived and live under the
+      // "Archived" status filter, not the unresolved-exception bucket.
+      const assignment = s.assignment_id ? assignmentsById[s.assignment_id] : null;
+      if (needsReviewFlag(s) ||
+          dcrPendingFlag(s) ||
+          overBudgetFlag(s, assignment) ||
+          offsiteFlag(s) ||
+          forceClosedFlag(s)) {
+        row.exception_count += 1;
+      }
     });
     return Array.from(map.values()).sort(function (a, b) {
       const ta = a.worked_minutes + a.running_minutes;
@@ -690,11 +855,41 @@
     if (!loaded) return;
     renderHeader();
     renderRangeControlsState();
+    renderPayPeriodPicker();
+    renderEmployeePicker();
+    renderSearchInputState();
+    renderActiveFilterChips();
     renderTotals();
     renderActive();
     renderByEmployee();
     renderTable();
+    renderSessionsCount();
     renderBulkApproveBar();
+  }
+
+  // Phase 29B — keep the search input in sync with state (e.g. on
+  // navigation-restore or after a chip × clears the term).
+  function renderSearchInputState() {
+    const el = $("labor-search-input");
+    if (el && el.value !== currentSearchTerm) el.value = currentSearchTerm || "";
+  }
+  // Phase 29B — "Sessions (showing X of Y · {scope})" header. Y = total
+  // sessions in the Firestore range; X = sessions after all filters.
+  // Scope describes the non-default filters at a glance.
+  function renderSessionsCount() {
+    const el = $("labor-sessions-count");
+    if (!el) return;
+    const y = sessions.length;
+    const x = displaySessions.length;
+    const scopeParts = [];
+    if (currentStatusFilter && currentStatusFilter !== "all") scopeParts.push(currentStatusFilter.replace(/_/g, " "));
+    if (currentEmployeeFilter) {
+      const found = (byEmployeeCache || []).find(function (r) { return r.key === currentEmployeeFilter; });
+      scopeParts.push(found ? found.name : "1 employee");
+    }
+    if (currentSearchTerm && currentSearchTerm.trim()) scopeParts.push('"' + currentSearchTerm.trim() + '"');
+    const scope = scopeParts.length ? (" · " + scopeParts.join(" · ")) : "";
+    el.textContent = "(showing " + x + " of " + y + scope + ")";
   }
 
   // Phase 28A — Bulk Approve bar above the Sessions table. Visible
@@ -724,7 +919,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v29A-adj-visibility";
+  const LABOR_BUILD_TAG = "Labor v29B-investigation";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -825,31 +1020,187 @@
       const otChip = r.overtime_minutes > 0
         ? ' <span class="labor-be-ot">incl. ' + escapeHtml(fmtMinutes(r.overtime_minutes)) + ' OT</span>'
         : '';
+      // Phase 29B — Adj ✓ count + unresolved-exception count as
+      // dedicated card stats; the long flag chips below show what KIND
+      // of exception (review vs DCR pending) for quick recognition.
+      const adjChip = '<span class="labor-be-adj' + (r.adjusted_count > 0 ? ' has-count' : '') +
+        '">Adj ✓ ' + r.adjusted_count + '</span>';
+      const excChip = '<span class="labor-be-exc' + (r.exception_count > 0 ? ' has-count' : '') +
+        '">⚠ ' + r.exception_count + ' exception' + (r.exception_count === 1 ? '' : 's') + '</span>';
       const flags = [];
       if (r.needs_review > 0) flags.push('<span class="labor-be-flag is-review">' + r.needs_review + ' needs review</span>');
       if (r.dcr_pending  > 0) flags.push('<span class="labor-be-flag is-dcr">' + r.dcr_pending + ' DCR pending</span>');
+      const isSelected = (currentEmployeeFilter && currentEmployeeFilter === r.key);
+      const selectedMark = isSelected
+        ? '<span class="labor-be-check" aria-label="Filter active">✓</span>'
+        : '';
       return (
-        '<div class="labor-be-row">' +
-          '<div class="labor-be-name">' + escapeHtml(r.name) + '</div>' +
+        '<div class="labor-be-row' + (isSelected ? ' is-selected' : '') + '"' +
+            ' data-employee-key="' + escapeHtml(r.key) + '"' +
+            ' role="button" tabindex="0"' +
+            ' aria-pressed="' + (isSelected ? 'true' : 'false') + '"' +
+            ' title="Click to filter Sessions to ' + escapeHtml(r.name) + '">' +
+          '<div class="labor-be-name">' + escapeHtml(r.name) + selectedMark + '</div>' +
           '<div class="labor-be-count">' + r.sessions_count + ' session' +
             (r.sessions_count === 1 ? "" : "s") + '</div>' +
           '<div class="labor-be-time">' +
             escapeHtml(fmtMinutes(r.worked_minutes)) + ' worked' + otChip + runningChip +
           '</div>' +
+          '<div class="labor-be-stats">' + adjChip + ' · ' + excChip + '</div>' +
           '<div class="labor-be-flags">' + flags.join(" ") + '</div>' +
         '</div>'
       );
     }).join("");
   }
 
+  // Phase 29B — Pay-period dropdown. First option is current period
+  // (live since admin most often investigates the current bucket), then
+  // 5 prior periods. Final option is a Custom sentinel that just clears
+  // the pay-period filter and surfaces the date inputs.
+  function renderPayPeriodPicker() {
+    const sel = $("labor-pay-period-select");
+    if (!sel) return;
+    if (!payPeriodOptions.length) {
+      payPeriodOptions = buildPayPeriodOptions(pacificDateString(new Date()));
+    }
+    const opts = payPeriodOptions.map(function (p, i) {
+      const prefix = (i === 0) ? "Current · " : "";
+      const selected = (p.period_id === currentPayPeriodId) ? " selected" : "";
+      return '<option value="' + escapeHtml(p.period_id) + '"' + selected + '>' +
+             escapeHtml(prefix + p.label) + '</option>';
+    }).join("");
+    const customSelected = currentPayPeriodId === "" ? " selected" : "";
+    sel.innerHTML =
+      '<option value=""' + customSelected + '>— Not pay-period scoped —</option>' +
+      opts;
+  }
+
+  // Phase 29B — Employee dropdown. Union of (a) the techs roster
+  // (so techs with no sessions in range still appear and can be picked)
+  // and (b) any staff_uid/email present in the loaded sessions (covers
+  // historical sessions whose staff was archived from the roster).
+  // Single-select; "All employees" is the default.
+  function renderEmployeePicker() {
+    const sel = $("labor-employee-select");
+    if (!sel) return;
+    const seen = new Map();
+    function add(key, name) {
+      if (!key) return;
+      if (!seen.has(key)) seen.set(key, name || key);
+    }
+    // Roster.
+    try {
+      const deps = window.__pioneerAdmin && window.__pioneerAdmin.deps;
+      const list = (deps && typeof deps.getTechs === "function") ? (deps.getTechs() || []) : [];
+      list.forEach(function (t) {
+        if (!t) return;
+        const key = t.uid ? t.uid : (t.email ? "email:" + t.email : "");
+        add(key, t.display_name || t.first_name || t.email || "Tech");
+      });
+    } catch (_e) { /* roster optional */ }
+    // Sessions in the current Firestore range.
+    (sessions || []).forEach(function (s) {
+      add(employeeKeyFor(s), techName(s.staff_email, s.staff_uid));
+    });
+    const rows = Array.from(seen.entries()).map(function (e) {
+      return { key: e[0], name: e[1] };
+    });
+    rows.sort(function (a, b) {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    const allSelected = currentEmployeeFilter === "" ? " selected" : "";
+    const opts = rows.map(function (r) {
+      const selected = (r.key === currentEmployeeFilter) ? " selected" : "";
+      return '<option value="' + escapeHtml(r.key) + '"' + selected + '>' +
+             escapeHtml(r.name) + '</option>';
+    }).join("");
+    sel.innerHTML =
+      '<option value=""' + allSelected + '>All employees (' + rows.length + ')</option>' +
+      opts;
+  }
+
+  // Phase 29B — Active-filter chip strip beneath the filter controls.
+  // Shows every NON-DEFAULT filter as a removable chip so admin can see
+  // at a glance why the table is scoped the way it is. Date range is
+  // intentionally excluded — the date controls themselves are visible.
+  function renderActiveFilterChips() {
+    const wrap = $("labor-active-filters");
+    if (!wrap) return;
+    const chips = [];
+    if (currentStatusFilter && currentStatusFilter !== "all") {
+      const label = ({
+        needs_review:  "Needs Review",
+        dcr_pending:   "DCR Pending",
+        archived:      "Archived",
+        pending_review:"Pending Review",
+        reviewed:      "Reviewed",
+        approved:      "Approved",
+        exported:      "Exported"
+      })[currentStatusFilter] || currentStatusFilter;
+      chips.push(
+        '<button type="button" class="labor-active-chip" data-clear="status" ' +
+          'aria-label="Clear status filter">' +
+          'Status: ' + escapeHtml(label) +
+          ' <span aria-hidden="true">×</span>' +
+        '</button>'
+      );
+    }
+    if (currentEmployeeFilter) {
+      const found = (byEmployeeCache || []).find(function (r) { return r.key === currentEmployeeFilter; });
+      const label = found ? found.name : currentEmployeeFilter;
+      chips.push(
+        '<button type="button" class="labor-active-chip" data-clear="employee" ' +
+          'aria-label="Clear employee filter">' +
+          escapeHtml(label) +
+          ' <span aria-hidden="true">×</span>' +
+        '</button>'
+      );
+    }
+    if (currentSearchTerm && currentSearchTerm.trim()) {
+      chips.push(
+        '<button type="button" class="labor-active-chip" data-clear="search" ' +
+          'aria-label="Clear search">' +
+          '🔍 ' + escapeHtml(currentSearchTerm.trim()) +
+          ' <span aria-hidden="true">×</span>' +
+        '</button>'
+      );
+    }
+    if (currentPayPeriodId) {
+      const p = payPeriodOptions.find(function (x) { return x.period_id === currentPayPeriodId; });
+      if (p) {
+        chips.push(
+          '<button type="button" class="labor-active-chip" data-clear="payperiod" ' +
+            'aria-label="Clear pay period">' +
+            'Pay period: ' + escapeHtml(p.label) +
+            ' <span aria-hidden="true">×</span>' +
+          '</button>'
+        );
+      }
+    }
+    if (!chips.length) {
+      wrap.innerHTML = ""; wrap.hidden = true; return;
+    }
+    wrap.hidden = false;
+    wrap.innerHTML =
+      chips.join("") +
+      '<button type="button" class="labor-active-clear" data-clear="all">Clear all</button>';
+  }
+
   function renderActive() {
+    const section = $("labor-active-section");
     const list  = $("labor-active-list");
     const empty = $("labor-active-empty");
     if (!list || !empty) return;
     const uids = Object.keys(activeByUid);
+    // Phase 29B — when zero active sessions, hide the entire section
+    // (heading + sub + empty placeholder). The empty <p> is left in the
+    // DOM for code symmetry but is unreachable.
     if (!uids.length) {
-      list.innerHTML = ""; empty.hidden = false; return;
+      list.innerHTML = ""; empty.hidden = false;
+      if (section) section.hidden = true;
+      return;
     }
+    if (section) section.hidden = false;
     empty.hidden = true;
     // Sort by most recent clock-in first.
     uids.sort(function (a, b) {
@@ -1831,8 +2182,12 @@
         rangeStart = r.start_date;
         rangeEnd   = r.end_date;
         currentQuickFilter = key;
+        // Phase 29B — using a date quick button clears the pay-period
+        // chip (different way of selecting a range).
+        currentPayPeriodId = "";
         const startEl = $("labor-range-start"); if (startEl) startEl.value = rangeStart;
         const endEl   = $("labor-range-end");   if (endEl)   endEl.value   = rangeEnd;
+        saveFilterState();
         refresh();
       });
     });
@@ -1844,12 +2199,109 @@
         const key = b.getAttribute("data-labor-status");
         if (!key) return;
         currentStatusFilter = key;
+        saveFilterState();
         if (loaded) {
           recomputeDisplay();
           render();
         }
       });
     });
+
+    // Phase 29B — Pay-period dropdown. Selecting a period overrides the
+    // date range and re-fetches Firestore. Selecting the "" sentinel
+    // simply clears the pay-period chip without touching the range
+    // (admin can keep using the date quick buttons).
+    const periodSel = $("labor-pay-period-select");
+    if (periodSel) periodSel.addEventListener("change", function () {
+      const val = periodSel.value || "";
+      currentPayPeriodId = val;
+      if (val) {
+        const p = (payPeriodOptions || []).find(function (x) { return x.period_id === val; });
+        if (p) {
+          rangeStart = p.start_date;
+          rangeEnd   = p.end_date;
+          currentQuickFilter = "custom";   // none of the quick buttons matches a semi-monthly period
+          saveFilterState();
+          refresh();
+          return;
+        }
+      }
+      // "" sentinel — clear pay-period chip; don't reload.
+      saveFilterState();
+      if (loaded) { recomputeDisplay(); render(); }
+    });
+
+    // Phase 29B — Employee dropdown. Pure client-side filter; no
+    // Firestore round trip. Sessions table + totals scope to the
+    // selection; By Employee cards stay full so admin can switch.
+    const empSel = $("labor-employee-select");
+    if (empSel) empSel.addEventListener("change", function () {
+      currentEmployeeFilter = empSel.value || "";
+      saveFilterState();
+      if (loaded) { recomputeDisplay(); render(); }
+    });
+
+    // Phase 29B — Search input. Debounced 150ms so each keystroke
+    // doesn't re-render the table. Pure substring match; no fetch.
+    const searchEl = $("labor-search-input");
+    if (searchEl) {
+      let searchTimer = null;
+      searchEl.addEventListener("input", function () {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          currentSearchTerm = searchEl.value || "";
+          saveFilterState();
+          if (loaded) { recomputeDisplay(); render(); }
+        }, 150);
+      });
+    }
+
+    // Phase 29B — Active-filter chip strip × clicks. data-clear says
+    // which filter to drop. "all" clears every non-date filter.
+    const chipWrap = $("labor-active-filters");
+    if (chipWrap) chipWrap.addEventListener("click", function (ev) {
+      const btn = ev.target.closest && ev.target.closest("[data-clear]");
+      if (!btn) return;
+      const which = btn.getAttribute("data-clear");
+      if (which === "status")    currentStatusFilter = "all";
+      if (which === "employee")  currentEmployeeFilter = "";
+      if (which === "search")    currentSearchTerm = "";
+      if (which === "payperiod") currentPayPeriodId = "";
+      if (which === "all") {
+        currentStatusFilter   = "all";
+        currentEmployeeFilter = "";
+        currentSearchTerm     = "";
+        currentPayPeriodId    = "";
+      }
+      saveFilterState();
+      if (loaded) { recomputeDisplay(); render(); }
+    });
+
+    // Phase 29B — By Employee card click toggles the employee filter.
+    // Click on the selected card again to clear. Keyboard support via
+    // Enter / Space on the role="button" element.
+    const byEmpWrap = $("labor-by-employee-list");
+    function handleCardActivate(card) {
+      const key = card.getAttribute("data-employee-key");
+      if (!key) return;
+      currentEmployeeFilter = (currentEmployeeFilter === key) ? "" : key;
+      saveFilterState();
+      if (loaded) { recomputeDisplay(); render(); }
+    }
+    if (byEmpWrap) {
+      byEmpWrap.addEventListener("click", function (ev) {
+        const card = ev.target.closest && ev.target.closest("[data-employee-key]");
+        if (!card) return;
+        handleCardActivate(card);
+      });
+      byEmpWrap.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        const card = ev.target.closest && ev.target.closest("[data-employee-key]");
+        if (!card) return;
+        ev.preventDefault();
+        handleCardActivate(card);
+      });
+    }
     const applyBtn = $("labor-range-apply");
     if (applyBtn) applyBtn.addEventListener("click", function () {
       const startEl = $("labor-range-start");
@@ -1875,6 +2327,9 @@
         if (cand.start_date === start && cand.end_date === end) { matched = candidates[i]; break; }
       }
       currentQuickFilter = matched || "custom";
+      // Phase 29B — manual date range overrides any pay-period chip.
+      currentPayPeriodId = "";
+      saveFilterState();
       refresh();
     });
   }

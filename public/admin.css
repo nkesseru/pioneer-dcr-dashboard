@@ -7151,6 +7151,176 @@
 }
 
 /* ==========================================================================
+   Phase 29B — Sessions Filtering & Investigation Tools
+
+   New filter row layout (replaces .labor-range-row): three stacked rows
+   for date / pickers / status, plus an active-filter chip strip and the
+   existing range-error banner. Pickers row shows Pay period + Employee
+   + Search side-by-side on desktop.
+   ========================================================================== */
+
+.labor-filters {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.labor-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.labor-filter-row-pickers {
+  align-items: flex-end;
+  gap: 12px;
+}
+.labor-filter-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+.labor-filter-cell-search { flex: 1 1 280px; }
+.labor-select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #0f172a;
+  min-width: 200px;
+}
+.labor-select:focus { outline: 2px solid #2f6dd6; outline-offset: 1px; }
+.labor-search-input {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 100%;
+  min-width: 240px;
+}
+.labor-search-input:focus { outline: 2px solid #2f6dd6; outline-offset: 1px; }
+
+/* Active-filter chip strip beneath the picker row. Each chip is a button
+   so the × is keyboard-activatable. */
+.labor-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.labor-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #1e40af;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labor-active-chip:hover { background: #bfdbfe; }
+.labor-active-chip > span[aria-hidden="true"] {
+  font-size: 13px;
+  line-height: 1;
+}
+.labor-active-clear {
+  margin-left: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.labor-active-clear:hover { color: #0f172a; }
+
+/* Sessions section header — small grey "showing X of Y · …" suffix. */
+.labor-sessions-count {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* By Employee — Phase 29B card upgrades.
+   Five columns now: name · session count · time · stats · flags.
+   Whole row is clickable. */
+.labor-by-employee .labor-be-row {
+  grid-template-columns:
+    minmax(160px, 1.3fr)
+    minmax(90px, 0.7fr)
+    minmax(160px, 1.4fr)
+    minmax(170px, 1.4fr)
+    minmax(150px, 1.2fr);
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+.labor-by-employee .labor-be-row:hover { background: #f8fafc; }
+.labor-by-employee .labor-be-row:focus-visible {
+  outline: 2px solid #2f6dd6;
+  outline-offset: -2px;
+}
+.labor-by-employee .labor-be-row.is-selected {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #1d4ed8;
+}
+.labor-be-check {
+  display: inline-block;
+  margin-left: 6px;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+.labor-be-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #475569;
+  font-size: 12.5px;
+}
+.labor-be-adj,
+.labor-be-exc {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.labor-be-adj.has-count {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.labor-be-exc.has-count {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+@media (max-width: 800px) {
+  .labor-filter-row-pickers { flex-direction: column; align-items: stretch; }
+  .labor-filter-cell { min-width: 0; }
+  .labor-by-employee .labor-be-row {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+}
+
+/* ==========================================================================
    Phase 2A.1 — Pioneer Time Clock bridge block (inside Schedule tab).
    ========================================================================== */
 
