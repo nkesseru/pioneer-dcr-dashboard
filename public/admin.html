@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="admin.css?v=20260616-investigation" />
+  <link rel="stylesheet" href="admin.css?v=20260616-readiness" />
   <link rel="stylesheet" href="training.css" />
   <link rel="stylesheet" href="styles/admin-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
@@ -1594,6 +1594,18 @@
           <button type="button" class="payroll-apply-btn" id="payroll-custom-apply">Apply</button>
           <div class="payroll-custom-err" id="payroll-custom-err" role="alert" hidden></div>
         </div>
+      </section>
+
+      <!-- Phase 29C — Payroll Readiness card. Read-only confidence
+           layer ABOVE the verification banner. Surfaces total original
+           hours, approved-adjustment delta, final payroll hours, lock
+           status, export status, and three unresolved-item counts
+           (exceptions, pending adjustment requests, employee responses
+           which are an explicit n/a placeholder pending the sign-off
+           feature). Does NOT gate the export — banner below still owns
+           that decision. -->
+      <section class="payroll-block">
+        <div id="payroll-readiness-card"></div>
       </section>
 
       <!-- Verification Layer banner — rendered by tab-payroll.js. -->
@@ -3966,7 +3978,7 @@
   <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
   <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
   <script src="admin/tab-labor-review.js?v=20260616-investigation"></script>
-  <script src="admin/tab-payroll.js?v=20260610-timeclock-addon"></script>
+  <script src="admin/tab-payroll.js?v=20260616-readiness"></script>
   <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
   <script src="admin/tab-mission-control.js?v=20260616b-operational-snapshot"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>

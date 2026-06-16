@@ -6638,6 +6638,176 @@
   text-transform: uppercase;
 }
 
+/* ==========================================================================
+   Phase 29C — Payroll Readiness card. Sits above the Verification banner.
+   Three hours tiles + lock/export status rows + unresolved items list.
+   ========================================================================== */
+.payroll-readiness-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.payroll-readiness-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.payroll-readiness-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.payroll-readiness-period {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Hours tiles row */
+.payroll-ready-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.payroll-ready-tile {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.payroll-ready-tile.is-positive { border-color: #a7f3d0; background: #ecfdf5; }
+.payroll-ready-tile.is-negative { border-color: #fecaca; background: #fef2f2; }
+.payroll-ready-tile.is-final    { border-color: #1d4ed8; background: #eff6ff; }
+.payroll-ready-tile-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-ready-tile.is-final .payroll-ready-tile-label { color: #1e3a8a; }
+.payroll-ready-tile-value {
+  margin-top: 4px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.payroll-ready-tile.is-final .payroll-ready-tile-value { color: #1d4ed8; }
+.payroll-ready-tile.is-positive .payroll-ready-tile-value { color: #047857; }
+.payroll-ready-tile.is-negative .payroll-ready-tile-value { color: #b91c1c; }
+.payroll-ready-tile-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+/* Lock + Export status rows */
+.payroll-ready-status-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.payroll-ready-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.payroll-ready-status-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.payroll-ready-status-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.payroll-ready-status-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Unresolved items */
+.payroll-ready-items-block {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.payroll-ready-items-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.payroll-ready-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.payroll-ready-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-ready-item-body { flex: 1; }
+.payroll-ready-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+.payroll-ready-item.has-count  .payroll-ready-dot { background: #b91c1c; }
+.payroll-ready-item.is-zero    .payroll-ready-dot { background: #22c55e; }
+.payroll-ready-item.is-disabled { color: #64748b; }
+.payroll-ready-item.is-disabled .payroll-ready-dot { background: #cbd5e1; }
+.payroll-ready-ok {
+  color: #047857;
+  font-weight: 600;
+}
+.payroll-ready-na {
+  color: #64748b;
+  font-style: italic;
+}
+.payroll-ready-link-btn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #1e40af;
+  background: #fff;
+  color: #1e3a8a;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-ready-link-btn:hover { background: #dbeafe; }
+
+@media (max-width: 700px) {
+  .payroll-ready-tiles { grid-template-columns: 1fr; }
+  .payroll-ready-item { flex-wrap: wrap; }
+}
+
 /* Verification Layer banner — 3 states. */
 .payroll-banner {
   padding: 14px 16px;

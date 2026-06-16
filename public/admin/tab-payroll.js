@@ -45,8 +45,14 @@
   let loading        = false;
   // Phase 28D — Recent Exports state. Loaded alongside sessions/sick.
   let recentExports  = [];      // last 10 docs, sorted by generated_at desc
+  // Phase 29C — time-adjustment requests overlapping the selected period.
+  // Single-field range query on shift_date; no composite index needed.
+  // Loaded alongside sessions/sick in refresh(). Used by the Readiness
+  // card to surface "N pending requests" without forcing admin to click
+  // into the Payroll Exceptions tab.
+  let adjustmentRequests = [];  // [{ _id, status, shift_date, ... }]
 
-  const PAYROLL_BUILD_TAG = "Payroll v28D-export";
+  const PAYROLL_BUILD_TAG = "Payroll v29C-readiness";
 
   /* ---------- date + period helpers ---------- */
 
@@ -248,7 +254,7 @@
       // effective_date range (single-field range, no composite needed).
       // Sick entries are filtered to entry_type === "used" client-side
       // to avoid forcing a new composite index for the pilot scale.
-      const [sessSnap, sickSnap, exportSnap] = await Promise.all([
+      const [sessSnap, sickSnap, exportSnap, adjSnap] = await Promise.all([
         db.collection("pioneer_service_sessions")
           .where("service_date", ">=", currentPeriod.start_date)
           .where("service_date", "<=", currentPeriod.end_date)
@@ -264,7 +270,15 @@
           .orderBy("generated_at", "desc")
           .limit(10)
           .get()
-          .catch(function () { return null; })   // soft-fail if collection doesn't exist yet
+          .catch(function () { return null; }),  // soft-fail if collection doesn't exist yet
+        // Phase 29C — Time-adjustment requests overlapping the selected
+        // period. Single-field range; no composite index needed. Soft-
+        // fail so a permission hiccup doesn't blow up the entire tab.
+        db.collection("time_adjustment_requests")
+          .where("shift_date", ">=", currentPeriod.start_date)
+          .where("shift_date", "<=", currentPeriod.end_date)
+          .get()
+          .catch(function () { return null; })
       ]);
 
       sessions = sessSnap.docs.map(function (d) {
@@ -279,6 +293,11 @@
       recentExports = exportSnap
         ? exportSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
         : [];
+      // Phase 29C — adjustment requests in period.
+      adjustmentRequests = adjSnap
+        ? adjSnap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        : [];
+
       recentExports.sort(function (a, b) {
         const aOverlap = rangesOverlap(a.range_start, a.range_end, currentPeriod.start_date, currentPeriod.end_date) ? 1 : 0;
         const bOverlap = rangesOverlap(b.range_start, b.range_end, currentPeriod.start_date, currentPeriod.end_date) ? 1 : 0;
@@ -418,12 +437,83 @@
     });
   }
 
+  /* ---------- Phase 29C — Payroll Readiness computations ----------
+   *
+   * All numbers come from data already loaded by refresh():
+   *   sessions, sickEntries, recentExports, adjustmentRequests, currentPeriod.
+   * No additional Firestore reads here — render path stays cheap.
+   *
+   * Definitions:
+   *   • Original hours        = sum of work_minutes across non-archived,
+   *                             non-QA sessions in period. Pre-adjustment.
+   *   • Approved-adjustment Δ = sum of (effective_minutes − work_minutes)
+   *                             for sessions with has_approved_time_adjustment
+   *                             === true. By construction this also equals
+   *                             Final − Original.
+   *   • Final payroll hours   = sum of effectiveWorkMinutes across the same
+   *                             session set (matches per-employee table).
+   *   • Unresolved exceptions = Phase 29B 5-flag definition:
+   *                             needs_review || dcr_pending || over_budget
+   *                             || offsite || force_closed_by_admin.
+   *                             Counted per-session, not per-flag (one
+   *                             session with two flags counts once).
+   *   • Pending adj requests  = adjustmentRequests where status === "pending".
+   *   • Locked sessions       = count where workweek_locked_by_export === true.
+   *   • Active export         = recentExports.find(... status==="active" ...
+   *                             && rangesOverlap with currentPeriod).
+   */
+  function computePayrollReadiness() {
+    let totalOriginalMin = 0;
+    let totalFinalMin    = 0;
+    let exceptionCount   = 0;
+    let lockedCount      = 0;
+    let countedSessions  = 0;     // non-archived, non-QA sessions counted
+    (sessions || []).forEach(function (s) {
+      if (adminRemovedFlag(s)) return;
+      if (isQaTestSession(s))  return;
+      countedSessions += 1;
+      const orig = (typeof s.work_minutes === "number" && s.work_minutes > 0) ? s.work_minutes : 0;
+      const fin  = effectiveWorkMinutes(s);
+      totalOriginalMin += orig;
+      totalFinalMin    += fin;
+      // 5-flag exception count — any of the five fires this session once.
+      if (needsReviewFlag(s) || dcrPendingFlag(s) ||
+          overBudgetFlag(s)  || offsiteFlag(s)    || forceClosedFlag(s)) {
+        exceptionCount += 1;
+      }
+      if (s.workweek_locked_by_export === true) lockedCount += 1;
+    });
+    const totalAdjDeltaMin = totalFinalMin - totalOriginalMin;
+
+    const pendingAdjCount = (adjustmentRequests || []).filter(function (r) {
+      return r && r.status === "pending";
+    }).length;
+
+    const activeExportForPeriod = (recentExports || []).find(function (e) {
+      return e && e.status === "active" &&
+             rangesOverlap(e.range_start, e.range_end,
+                           currentPeriod.start_date, currentPeriod.end_date);
+    }) || null;
+
+    return {
+      totalOriginalMin:     totalOriginalMin,
+      totalAdjDeltaMin:     totalAdjDeltaMin,
+      totalFinalMin:        totalFinalMin,
+      exceptionCount:       exceptionCount,
+      pendingAdjCount:      pendingAdjCount,
+      lockedCount:          lockedCount,
+      countedSessions:      countedSessions,
+      activeExportForPeriod: activeExportForPeriod
+    };
+  }
+
   /* ---------- renderers ---------- */
 
   function render() {
     if (!loaded) return;
     renderHeader();
     renderPeriodPicker();
+    renderPayrollReadiness();
     renderBanner();
     renderEmployeeTable();
     renderRecentExports();
@@ -454,6 +544,157 @@
     }
     const errEl = $("payroll-custom-err");
     if (errEl) { errEl.textContent = ""; errEl.hidden = true; }
+  }
+
+  // Phase 29C — Payroll Readiness card. Sits above the existing
+  // Verification banner. Read-only — does NOT gate the export. The
+  // banner below still owns the BLOCKED/READY decision.
+  function renderPayrollReadiness() {
+    const wrap = $("payroll-readiness-card");
+    if (!wrap) return;
+    const r = computePayrollReadiness();
+
+    // --- Hours tiles (Original / +Adj / Final) ---
+    const deltaSign = r.totalAdjDeltaMin > 0 ? "+" : (r.totalAdjDeltaMin < 0 ? "−" : "±");
+    const deltaAbs  = Math.abs(r.totalAdjDeltaMin);
+    const deltaClass =
+      r.totalAdjDeltaMin > 0 ? " is-positive" :
+      r.totalAdjDeltaMin < 0 ? " is-negative" : "";
+    const hoursTiles =
+      '<div class="payroll-ready-tiles">' +
+        '<div class="payroll-ready-tile">' +
+          '<div class="payroll-ready-tile-label">Original hours</div>' +
+          '<div class="payroll-ready-tile-value">' + fmtHours(r.totalOriginalMin) + '</div>' +
+          '<div class="payroll-ready-tile-sub">pre-adjustment</div>' +
+        '</div>' +
+        '<div class="payroll-ready-tile' + deltaClass + '">' +
+          '<div class="payroll-ready-tile-label">Approved adjustments</div>' +
+          '<div class="payroll-ready-tile-value">' + deltaSign + ' ' + fmtHours(deltaAbs) + '</div>' +
+          '<div class="payroll-ready-tile-sub">net Δ from approvals</div>' +
+        '</div>' +
+        '<div class="payroll-ready-tile is-final">' +
+          '<div class="payroll-ready-tile-label">Final payroll hours</div>' +
+          '<div class="payroll-ready-tile-value">' + fmtHours(r.totalFinalMin) + '</div>' +
+          '<div class="payroll-ready-tile-sub">matches CSV total</div>' +
+        '</div>' +
+      '</div>';
+
+    // --- Lock status row ---
+    let lockIcon, lockLabel, lockDetail;
+    if (r.activeExportForPeriod) {
+      lockIcon   = '🔒';
+      lockLabel  = 'LOCKED BY EXPORT';
+      lockDetail = escapeHtml(r.activeExportForPeriod.export_id || r.activeExportForPeriod._id);
+    } else if (r.lockedCount > 0) {
+      // Sessions still carry workweek_locked_by_export but no active
+      // export covers the period — i.e. the export was voided after the
+      // fact. voidPayrollExportV1 clears the flag, so seeing it here
+      // usually means a partial state (one workweek touched another).
+      lockIcon   = '🟡';
+      lockLabel  = 'PARTIALLY LOCKED';
+      lockDetail = 'last export voided';
+    } else {
+      lockIcon   = '🟢';
+      lockLabel  = 'NOT YET LOCKED';
+      lockDetail = 'ready for export';
+    }
+    const lockRow =
+      '<div class="payroll-ready-status payroll-ready-lock">' +
+        '<span class="payroll-ready-status-icon" aria-hidden="true">' + lockIcon + '</span>' +
+        '<div class="payroll-ready-status-body">' +
+          '<div class="payroll-ready-status-label">Lock status: ' + escapeHtml(lockLabel) + '</div>' +
+          '<div class="payroll-ready-status-sub">' +
+            r.lockedCount + ' of ' + r.countedSessions + ' session' +
+            (r.countedSessions === 1 ? '' : 's') + ' locked · ' + escapeHtml(lockDetail) +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    // --- Export status row ---
+    let expIcon, expLabel, expSub;
+    if (r.activeExportForPeriod) {
+      const e = r.activeExportForPeriod;
+      expIcon  = '✓';
+      expLabel = 'ACTIVE EXPORT';
+      const totHrs = (typeof e.total_paid_hours === "number") ? e.total_paid_hours.toFixed(2) : '—';
+      expSub   = totHrs + ' paid hrs · ' + (e.employee_count || 0) + ' employee' +
+                 (e.employee_count === 1 ? '' : 's') + ' · ' + (e.session_count || 0) + ' session' +
+                 (e.session_count === 1 ? '' : 's');
+    } else {
+      expIcon  = '⚪';
+      expLabel = 'NO EXPORT YET';
+      expSub   = 'use the green banner below to generate the first CSV';
+    }
+    const exportRow =
+      '<div class="payroll-ready-status payroll-ready-export">' +
+        '<span class="payroll-ready-status-icon" aria-hidden="true">' + expIcon + '</span>' +
+        '<div class="payroll-ready-status-body">' +
+          '<div class="payroll-ready-status-label">Export status: ' + escapeHtml(expLabel) + '</div>' +
+          '<div class="payroll-ready-status-sub">' + escapeHtml(expSub) + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // --- Unresolved items ---
+    function unresolvedLine(opts) {
+      const dotClass = opts.count > 0 ? 'has-count' : 'is-zero';
+      const linkHtml = opts.linkLabel
+        ? ' <button type="button" class="payroll-ready-link-btn" data-ready-link="' +
+            escapeHtml(opts.linkKey) + '">' + escapeHtml(opts.linkLabel) + ' →</button>'
+        : '';
+      return (
+        '<li class="payroll-ready-item ' + dotClass + (opts.disabled ? ' is-disabled' : '') + '">' +
+          '<span class="payroll-ready-dot" aria-hidden="true"></span>' +
+          '<span class="payroll-ready-item-body">' +
+            '<strong>' + escapeHtml(opts.title) + '</strong>: ' + opts.body +
+          '</span>' +
+          linkHtml +
+        '</li>'
+      );
+    }
+    const itemsList =
+      '<ul class="payroll-ready-items">' +
+        unresolvedLine({
+          title:     'Unresolved exceptions',
+          body:      r.exceptionCount > 0
+                       ? '<strong>' + r.exceptionCount + '</strong> session' +
+                         (r.exceptionCount === 1 ? '' : 's') +
+                         ' (needs review · DCR pending · over budget · offsite · force-closed)'
+                       : '<span class="payroll-ready-ok">none</span>',
+          linkKey:   'labor-exceptions',
+          linkLabel: r.exceptionCount > 0 ? 'Open in Labor' : ''
+        }) +
+        unresolvedLine({
+          title:     'Pending adjustment requests',
+          body:      r.pendingAdjCount > 0
+                       ? '<strong>' + r.pendingAdjCount + '</strong> request' +
+                         (r.pendingAdjCount === 1 ? '' : 's') + ' awaiting review'
+                       : '<span class="payroll-ready-ok">none</span>',
+          linkKey:   'payroll-exceptions',
+          linkLabel: r.pendingAdjCount > 0 ? 'Open Exceptions' : ''
+        }) +
+        unresolvedLine({
+          title:     'Pending employee responses',
+          body:      '<span class="payroll-ready-na">n/a · employee hour sign-off feature not implemented yet</span>',
+          disabled:  true
+        }) +
+      '</ul>';
+
+    wrap.innerHTML =
+      '<div class="payroll-readiness-card">' +
+        '<header class="payroll-readiness-head">' +
+          '<h3 class="payroll-readiness-title">Payroll Readiness</h3>' +
+          '<span class="payroll-readiness-period">' + escapeHtml(currentPeriod.label) + '</span>' +
+        '</header>' +
+        hoursTiles +
+        '<div class="payroll-ready-status-block">' +
+          lockRow +
+          exportRow +
+        '</div>' +
+        '<div class="payroll-ready-items-block">' +
+          '<div class="payroll-ready-items-title">Unresolved items</div>' +
+          itemsList +
+        '</div>' +
+      '</div>';
   }
 
   function renderBanner() {
@@ -987,6 +1228,32 @@
       if (!btn) return;
       const key = btn.getAttribute("data-payroll-link");
       if (key) openInLabor(key);
+    });
+
+    // Phase 29C — Payroll Readiness card deep links. "labor-exceptions"
+    // opens the Labor tab scoped to the current period with the
+    // needs_review status filter (most common single click for the
+    // exception bucket). "payroll-exceptions" jumps to the Payroll
+    // Exceptions tab. Both expect the target tab to be wired in the
+    // shell's data-tab routing.
+    const readiness = $("payroll-readiness-card");
+    if (readiness) readiness.addEventListener("click", function (ev) {
+      const btn = ev.target.closest && ev.target.closest("[data-ready-link]");
+      if (!btn) return;
+      const key = btn.getAttribute("data-ready-link");
+      if (key === "labor-exceptions") {
+        // Reuse the Labor deep-link helper; "needs_review" is a
+        // reasonable default landing filter even though the readiness
+        // count spans 5 flags. Admin can clear it from the chip strip
+        // in the new Phase 29B Sessions filter row.
+        openInLabor("needs_review");
+        return;
+      }
+      if (key === "payroll-exceptions") {
+        const tabBtn = document.querySelector('.admin-tab[data-tab="payroll-exceptions"]');
+        if (tabBtn) tabBtn.click();
+        return;
+      }
     });
 
     // Phase 28D — Export button click (live) and Void button click
