@@ -422,7 +422,7 @@
         // cleaning for back-compat with every legacy session.
         const isCleaning = !s.labor_type || s.labor_type === "cleaning";
         if (!isCleaning) return;
-        const hasDcr = (s.dcr_status === "submitted") || !!s.dcr_id || !!s.dcr_submission_id;
+        const hasDcr = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id || !!s.dcr_submission_id;
         if (hasDcr) return;
         missingDcrCount += 1;
         const techDoc = (snap.techs || []).find(t => t.uid === s.staff_uid);

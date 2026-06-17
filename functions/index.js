@@ -5764,7 +5764,7 @@ function payrollIsBlocker(s) {
   // back-compat with every session written before the field existed.
   const isCleaning = !s.labor_type || s.labor_type === "cleaning";
   if (!isCleaning) return null;
-  const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+  const dcrSubmitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
   if (s.status === "dcr_pending") return "dcr_pending";
   if (s.status === "completed" && !dcrSubmitted) return "dcr_pending";
   return null;

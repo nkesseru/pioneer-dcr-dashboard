@@ -185,7 +185,7 @@
     if (!isCleaning) return false;
     if (s.status === "dcr_pending") return true;
     if (s.status !== "completed") return false;
-    const submitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+    const submitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
     return !submitted;
   }
   function missingClockoutFlag(s) {

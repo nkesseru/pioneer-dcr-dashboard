@@ -495,7 +495,7 @@
     if (!isCleaning) return false;
     if (s.status === "dcr_pending") return true;
     if (s.status !== "completed") return false;
-    const submitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+    const submitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
     return !submitted;
   }
   // Phase 1e.2 set the over-budget threshold at +15 min. Reusing the
@@ -566,7 +566,7 @@
     const isCleaning = !s.labor_type || s.labor_type === "cleaning";
     if (isCleaning) {
       if (!s.assignment_id) return false;
-      const dcrSubmitted = (s.dcr_status === "submitted") || !!s.dcr_id;
+      const dcrSubmitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
       if (!dcrSubmitted) return false;
     }
     return true;
