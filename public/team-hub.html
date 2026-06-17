@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="styles/ui-cards.css" />
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
-  <link rel="stylesheet" href="styles.css?v=20260616-emp-review" />
+  <link rel="stylesheet" href="styles.css?v=20260617-period-history" />
   <link rel="stylesheet" href="styles/team-hub-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -351,11 +351,21 @@
            already use. No new approval workflow. -->
       <section class="card team-hub-section team-hub-my-hours" id="team-hub-my-hours-section" hidden>
         <header class="team-hub-section-head">
-          <h2 class="team-hub-section-title">⏱ My Hours</h2>
-          <p class="team-hub-section-sub">
+          <h2 class="team-hub-section-title" id="my-hours-section-title">⏱ My Hours</h2>
+          <p class="team-hub-section-sub" id="my-hours-section-sub">
             Your current payroll hours. Something look wrong? Request an adjustment before payroll.
           </p>
         </header>
+
+        <!-- Phase 29G — Pay Period History picker. Current period is the
+             default (matches prior "My Hours" behavior). Picking a past
+             period swaps the section into Pay Period Summary mode. -->
+        <div class="my-hours-period-picker" id="my-hours-period-picker">
+          <label class="my-hours-period-picker-label" for="my-hours-period-select">Pay period</label>
+          <select id="my-hours-period-select" class="my-hours-period-select">
+            <!-- options populated by renderMyHoursPeriodPicker() -->
+          </select>
+        </div>
 
         <div class="my-hours-summary" id="my-hours-summary">
           <div class="my-hours-summary-loading">Reading the clock…</div>
@@ -728,7 +738,7 @@
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="team-hub.js?v=20260616-emp-review"></script>
+  <script src="team-hub.js?v=20260617-period-history"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.

@@ -1812,6 +1812,13 @@
   // null = not loaded yet OR no doc exists (no ack = "not reviewed").
   // Shape mirrors firestore.rules /payroll_review_acknowledgments block.
   let myHoursAck = null;
+  // Phase 29G — period history support. Current period is the default.
+  // Last 6 semi-monthly periods drive the picker. Sick + period doc are
+  // loaded per selection.
+  let myHoursSelectedPeriod = null;     // { period_id, start_date, end_date, label }
+  let myHoursPeriodOptions  = [];       // [{ period_id, label, start_date, end_date }, ...]
+  let myHoursSickEntries    = [];       // sick_leave_ledger entries for selected period
+  let myHoursPeriodDoc      = null;     // payroll_periods/{period_id} data or null
 
   const MY_HOURS_REASON_LABEL = {
     forgot_clock_in:  'Forgot to clock in',
@@ -1855,6 +1862,64 @@
       label:      monthNames[month - 1] + ' 16–' + lastDay + ', ' + year,
       period_id:  year + '-' + pad2(month) + '-B'
     };
+  }
+  // Phase 29G — generalized semi-monthly resolver. Returns the period
+  // (A or B) that contains any given Pacific YYYY-MM-DD. Mirrors the
+  // admin _utils.js getSemiMonthlyPeriod logic and Cloud Function
+  // payrollSemiMonthlyPeriodFor — kept independent here to avoid a
+  // shared-module dependency from /team-hub.
+  function myHoursPeriodForDate(yyyymmdd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ''))) return null;
+    const parts = yyyymmdd.split('-');
+    const year  = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day   = parseInt(parts[2], 10);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const mm = pad2(month);
+    if (day <= 15) {
+      return {
+        start_date: year + '-' + mm + '-01',
+        end_date:   year + '-' + mm + '-15',
+        label:      monthNames[month - 1] + ' 1–15, ' + year,
+        period_id:  year + '-' + mm + '-A'
+      };
+    }
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      start_date: year + '-' + mm + '-16',
+      end_date:   year + '-' + mm + '-' + pad2(lastDay),
+      label:      monthNames[month - 1] + ' 16–' + lastDay + ', ' + year,
+      period_id:  year + '-' + mm + '-B'
+    };
+  }
+  // Phase 29G — backward step from any period to its predecessor.
+  // For a Period B → prior is Period A of the same month.
+  // For a Period A → prior is Period B of the previous month.
+  function myHoursPriorPeriod(period) {
+    if (!period || !period.period_id) return null;
+    if (period.period_id.endsWith('-B')) {
+      const ym = period.period_id.slice(0, 7);
+      return myHoursPeriodForDate(ym + '-01');
+    }
+    const parts = period.start_date.split('-').map(Number);
+    let y = parts[0], m = parts[1] - 1;
+    if (m === 0) { y -= 1; m = 12; }
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return myHoursPeriodForDate(y + '-' + pad2(m) + '-' + pad2(lastDay));
+  }
+  // Phase 29G — six most recent semi-monthly periods (current + 5 prior).
+  function myHoursBuildPeriodOptions() {
+    let cur = myHoursCurrentPeriod();
+    const out = [cur];
+    for (let i = 0; i < 5; i++) {
+      cur = myHoursPriorPeriod(cur);
+      if (!cur) break;
+      out.push(cur);
+    }
+    return out;
   }
 
   function myHoursEscape(s) {
@@ -1950,9 +2015,12 @@
     await reloadMyHours();
   }
 
-  async function reloadMyHours() {
+  async function reloadMyHours(periodArg) {
     if (!myHoursStaff) return;
-    const period = myHoursCurrentPeriod();
+    // Phase 29G — period is now a parameter; defaults to current. The
+    // picker passes the selected period; the initial boot omits the arg.
+    const period = periodArg || myHoursCurrentPeriod();
+    myHoursSelectedPeriod = period;
     const db = firebase.firestore();
     try {
       // Sessions are owner-readable via the staff_uid match in the
@@ -1967,6 +2035,32 @@
       myHoursSessions = sessionSnap.docs.map(function (d) {
         return Object.assign({ _id: d.id }, d.data() || {});
       });
+
+      // Phase 29G — sick leave for this period. Owner-readable per rule;
+      // single-field range query, no composite index. Soft-fail.
+      myHoursSickEntries = [];
+      try {
+        const sickSnap = await db.collection('sick_leave_ledger')
+          .where('staff_uid', '==', myHoursStaff.uid)
+          .where('effective_date', '>=', period.start_date)
+          .where('effective_date', '<=', period.end_date)
+          .limit(50).get();
+        myHoursSickEntries = sickSnap.docs
+          .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+          .filter(function (e) { return e.entry_type === 'used'; });
+      } catch (sickErr) {
+        console.warn('[team-hub] my-hours sick read failed (non-fatal)', sickErr);
+      }
+
+      // Phase 29G — period doc carries lock_status + payday. Staff-readable
+      // per existing payroll_periods rule. Soft-fail when absent.
+      myHoursPeriodDoc = null;
+      try {
+        const pSnap = await db.collection('payroll_periods').doc(period.period_id).get();
+        myHoursPeriodDoc = pSnap.exists ? (pSnap.data() || {}) : null;
+      } catch (pErr) {
+        console.warn('[team-hub] my-hours period doc read failed (non-fatal)', pErr);
+      }
 
       // Pending + approved adjustment requests for THIS employee.
       // Equality on employee_uid uses the auto-built single-field index;
@@ -2007,6 +2101,8 @@
         console.warn('[team-hub] my-hours ack read failed (non-fatal)', ackErr);
       }
 
+      renderMyHoursSectionTitle(period);
+      renderMyHoursPeriodPicker(period);
       renderMyHoursSummary(period);
       renderMyHoursReview(period);
       renderMyHoursShifts(period);
@@ -2019,59 +2115,198 @@
     }
   }
 
+  /* ============================================================
+     Phase 29G — Pay Period History renderers + helpers.
+     ============================================================ */
+
+  function myHoursIsCurrentPeriod(period) {
+    if (!period || !period.period_id) return false;
+    return period.period_id === myHoursCurrentPeriod().period_id;
+  }
+
+  // Swaps the section heading + sub between "My Hours" (current period)
+  // and "Pay Period Summary" (any past period). Per scope: do not use
+  // "paystub" or any wage-statement language.
+  function renderMyHoursSectionTitle(period) {
+    const titleEl = $('my-hours-section-title');
+    const subEl   = $('my-hours-section-sub');
+    if (!titleEl || !subEl) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      titleEl.textContent = '⏱ My Hours';
+      subEl.textContent =
+        'Your current payroll hours. Something look wrong? Request an adjustment before payroll.';
+    } else {
+      titleEl.textContent = '📜 Pay Period Summary';
+      subEl.textContent =
+        'Your hours for a past pay period. Counts shown here are the same data the office uses for payroll.';
+    }
+  }
+
+  function renderMyHoursPeriodPicker(activePeriod) {
+    const sel = $('my-hours-period-select');
+    if (!sel) return;
+    if (!myHoursPeriodOptions.length) {
+      myHoursPeriodOptions = myHoursBuildPeriodOptions();
+    }
+    const opts = myHoursPeriodOptions.map(function (p, i) {
+      const labelPrefix = (i === 0) ? 'Current · ' : '';
+      const selected = (activePeriod && p.period_id === activePeriod.period_id) ? ' selected' : '';
+      return '<option value="' + myHoursEscape(p.period_id) + '"' + selected + '>' +
+             myHoursEscape(labelPrefix + p.label) + '</option>';
+    }).join('');
+    sel.innerHTML = opts;
+  }
+
+  // Derives the tech-facing period status from session.payroll_state +
+  // payroll_periods.lock_status. Read-only — no rules change. Falls back
+  // to "Open" when no signal can be derived (rare).
+  function derivePeriodStatusForTech(period) {
+    if (!period) return null;
+    const isCurrent = myHoursIsCurrentPeriod(period);
+    const lockStatus = myHoursPeriodDoc && myHoursPeriodDoc.lock_status;
+    const sessionStates = (myHoursSessions || [])
+      .map(function (s) { return s.payroll_state || null; })
+      .filter(Boolean);
+    const total = sessionStates.length;
+    const exported = sessionStates.filter(function (st) { return st === 'exported'; }).length;
+    const approved = sessionStates.filter(function (st) { return st === 'approved_for_payroll'; }).length;
+
+    if (lockStatus === 'locked' && exported > 0 && exported === total) {
+      return { label: 'Exported', tone: 'ok' };
+    }
+    if (lockStatus === 'locked' && approved > 0) {
+      return { label: 'Locked, pending export', tone: 'info' };
+    }
+    if (exported > 0 && lockStatus !== 'locked') {
+      return { label: 'Reopened', tone: 'warn' };
+    }
+    if (isCurrent) {
+      return { label: 'Open · current period', tone: 'info' };
+    }
+    if (total === 0) {
+      return { label: 'No sessions on file', tone: 'muted' };
+    }
+    return { label: 'Open', tone: 'info' };
+  }
+
   function renderMyHoursSummary(period) {
     const root = $('my-hours-summary');
     if (!root) return;
+    const isCurrent = myHoursIsCurrentPeriod(period);
+
+    // Total hours = sum of (effective_minutes || paid_minutes || work_minutes)
     let totalMin = 0;
     myHoursSessions.forEach(function (s) {
-      // Prefer effective_minutes (admin already approved a correction)
-      // over paid_minutes, falling back to work_minutes.
       const m = (typeof s.effective_minutes === 'number') ? s.effective_minutes
               : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
               : (typeof s.work_minutes === 'number')      ? s.work_minutes
               : 0;
       totalMin += Math.max(0, m);
     });
-    const pendingCount = Object.keys(myHoursPendingByKey).length;
+    // Phase 29G — sick hours sum, |minutes_delta| of used entries
+    let sickMin = 0;
+    (myHoursSickEntries || []).forEach(function (e) {
+      sickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    // Phase 29G — count adjusted sessions actually applied in this period
+    let adjustedCount = 0;
+    myHoursSessions.forEach(function (s) {
+      if (s.has_approved_time_adjustment === true) adjustedCount += 1;
+    });
+
+    const pendingCount  = Object.keys(myHoursPendingByKey).length;
     const approvedCount = myHoursApprovedCount;
-    // Confidence chip — green when no pending corrections, yellow when
-    // any exist. Gives the tech the "is payroll right?" answer at a
-    // glance before they read anything else.
-    const confidenceChip = (pendingCount > 0)
-      ? '<span class="my-hours-confidence my-hours-confidence-warn">' +
-          '<span class="my-hours-confidence-icon" aria-hidden="true">⚠</span>' +
-          'Pending correction' +
+
+    // Phase 29G — derived period status pill (Open / Locked / Exported / Reopened)
+    const status = derivePeriodStatusForTech(period);
+    const statusPill = status
+      ? '<span class="my-hours-period-status is-' + status.tone + '">' +
+          myHoursEscape(status.label) +
         '</span>'
-      : '<span class="my-hours-confidence my-hours-confidence-ok">' +
-          '<span class="my-hours-confidence-icon" aria-hidden="true">✓</span>' +
-          'Hours look good' +
-        '</span>';
+      : '';
+
+    // Confidence chip — only meaningful for the CURRENT period. For past
+    // periods, replace with the period status pill (above) so the head
+    // line still reads cleanly.
+    const confidenceChip = isCurrent
+      ? ((pendingCount > 0)
+          ? '<span class="my-hours-confidence my-hours-confidence-warn">' +
+              '<span class="my-hours-confidence-icon" aria-hidden="true">⚠</span>' +
+              'Pending correction' +
+            '</span>'
+          : '<span class="my-hours-confidence my-hours-confidence-ok">' +
+              '<span class="my-hours-confidence-icon" aria-hidden="true">✓</span>' +
+              'Hours look good' +
+            '</span>')
+      : statusPill;
+
+    const eyebrow = isCurrent
+      ? 'Your current payroll period'
+      : 'Pay Period Summary';
+
+    const closesLine = isCurrent
+      ? '<p class="my-hours-summary-closes">Payroll closes: <strong>' +
+          myHoursEscape(myHoursFormatDate(period.end_date)) + '</strong></p>'
+      : (statusPill
+          ? '<p class="my-hours-summary-closes">Status: ' + statusPill + '</p>'
+          : '');
+
+    // Tiles. Total / Sick / Pending corrections / Approved corrections /
+    // Adjustments applied — sick and adjustments only render when > 0
+    // so the tile row stays uncluttered on a typical week.
+    let tilesHtml =
+      '<div class="my-hours-tile">' +
+        '<span class="my-hours-tile-label">Total hours</span>' +
+        '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(totalMin)) + '</span>' +
+        '<span class="my-hours-tile-value-small">' + myHoursSessions.length + ' shift' +
+          (myHoursSessions.length === 1 ? '' : 's') + '</span>' +
+      '</div>';
+    if (sickMin > 0) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-sick">' +
+          '<span class="my-hours-tile-label">Sick hours</span>' +
+          '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(sickMin)) + '</span>' +
+          '<span class="my-hours-tile-value-small">' + myHoursSickEntries.length + ' entr' +
+            (myHoursSickEntries.length === 1 ? 'y' : 'ies') + '</span>' +
+        '</div>';
+    }
+    // Pending corrections tile only makes sense for the current period
+    // (past periods can no longer accept new adjustments via this UI).
+    if (isCurrent) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-pending">' +
+          '<span class="my-hours-tile-label">Pending corrections</span>' +
+          '<span class="my-hours-tile-value">' + pendingCount + '</span>' +
+          '<span class="my-hours-tile-value-small">awaiting Kirby</span>' +
+        '</div>';
+    }
+    if (adjustedCount > 0) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-approved">' +
+          '<span class="my-hours-tile-label">Adjustments included</span>' +
+          '<span class="my-hours-tile-value">' + adjustedCount + '</span>' +
+          '<span class="my-hours-tile-value-small">applied to your hours</span>' +
+        '</div>';
+    } else if (isCurrent && approvedCount > 0) {
+      // Back-compat with the prior "Approved corrections" tile shown on
+      // current period when adjustments have been approved but the
+      // session-level flag hasn't refreshed yet.
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-approved">' +
+          '<span class="my-hours-tile-label">Approved corrections</span>' +
+          '<span class="my-hours-tile-value">' + approvedCount + '</span>' +
+          '<span class="my-hours-tile-value-small">applied to your hours</span>' +
+        '</div>';
+    }
+
     root.innerHTML =
       '<div>' +
         confidenceChip +
-        '<p class="my-hours-summary-eyebrow">Your current payroll period</p>' +
+        '<p class="my-hours-summary-eyebrow">' + myHoursEscape(eyebrow) + '</p>' +
         '<h3 class="my-hours-summary-period">' + myHoursEscape(period.label) + '</h3>' +
-        '<p class="my-hours-summary-closes">Payroll closes: <strong>' +
-          myHoursEscape(myHoursFormatDate(period.end_date)) + '</strong></p>' +
+        closesLine +
         '<div class="my-hours-summary-tiles">' +
-          '<div class="my-hours-tile">' +
-            '<span class="my-hours-tile-label">Total hours</span>' +
-            '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(totalMin)) + '</span>' +
-            '<span class="my-hours-tile-value-small">' + myHoursSessions.length + ' shift' +
-              (myHoursSessions.length === 1 ? '' : 's') + '</span>' +
-          '</div>' +
-          '<div class="my-hours-tile my-hours-tile-pending">' +
-            '<span class="my-hours-tile-label">Pending corrections</span>' +
-            '<span class="my-hours-tile-value">' + pendingCount + '</span>' +
-            '<span class="my-hours-tile-value-small">awaiting Kirby</span>' +
-          '</div>' +
-          (approvedCount > 0
-            ? '<div class="my-hours-tile my-hours-tile-approved">' +
-                '<span class="my-hours-tile-label">Approved corrections</span>' +
-                '<span class="my-hours-tile-value">' + approvedCount + '</span>' +
-                '<span class="my-hours-tile-value-small">applied to your hours</span>' +
-              '</div>'
-            : '') +
+          tilesHtml +
         '</div>' +
       '</div>';
   }
@@ -2344,6 +2579,16 @@
     if (requestBtn && !requestBtn.dataset.wired) {
       requestBtn.dataset.wired = '1';
       requestBtn.addEventListener('click', function () { openMyHoursModal(null); });
+    }
+    // Phase 29G — pay period picker change.
+    const periodSel = $('my-hours-period-select');
+    if (periodSel && !periodSel.dataset.wired) {
+      periodSel.dataset.wired = '1';
+      periodSel.addEventListener('change', function () {
+        const pid = periodSel.value || '';
+        const found = (myHoursPeriodOptions || []).find(function (p) { return p.period_id === pid; });
+        if (found) reloadMyHours(found);
+      });
     }
     // Phase 29D — review buttons.
     const goodBtn = $('my-hours-review-good');
