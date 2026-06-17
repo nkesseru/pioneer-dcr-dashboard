@@ -83,6 +83,14 @@
   let payPeriodOptions      = [];   // [{ period_id, label, start_date, end_date }]
   const FILTERS_STORAGE_KEY = "labor-review.filters.v1";
 
+  // Phase 29E-B — period_ids that are currently locked. Populated by
+  // loadPayrollPeriodLocks() during refresh(). Sessions whose service_date
+  // falls into a locked period are refused for approve / unapprove /
+  // archive client-side; backend rules + Cloud Functions are the
+  // authoritative gate (Phase 2 hardening can move these writes behind
+  // a CF too).
+  let lockedPeriodIds = new Set();
+
   /* ---------- helpers ---------- */
 
   function tsToMs(ts) {
@@ -752,6 +760,49 @@
     }
   }
 
+  // Phase 29E-B — derive the semi-monthly period_id for a service_date.
+  // Mirrors functions/index.js payrollSemiMonthlyPeriodFor() and
+  // public/admin/tab-payroll.js getSemiMonthlyPeriodForDate(). Returns
+  // null when the date doesn't parse.
+  function semiMonthlyPeriodIdFor(yyyymmdd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ""))) return null;
+    const parts = yyyymmdd.split("-");
+    const day = parseInt(parts[2], 10);
+    const half = (day <= 15) ? "A" : "B";
+    return parts[0] + "-" + parts[1] + "-" + half;
+  }
+  // Phase 29E-B — collect distinct period_ids from sessions in current
+  // range and read payroll_periods/{id} for each. Build the lockedPeriodIds
+  // Set so isSessionLocked() can answer in O(1).
+  async function loadPayrollPeriodLocks() {
+    lockedPeriodIds = new Set();
+    const ids = new Set();
+    (sessions || []).forEach(function (s) {
+      const pid = semiMonthlyPeriodIdFor(s.service_date);
+      if (pid) ids.add(pid);
+    });
+    if (!ids.size) return;
+    const db = firebase.firestore();
+    const reads = [];
+    ids.forEach(function (pid) {
+      reads.push(db.collection("payroll_periods").doc(pid).get()
+        .catch(function () { return null; }));
+    });
+    const snaps = await Promise.all(reads);
+    snaps.forEach(function (snap) {
+      if (snap && snap.exists) {
+        const data = snap.data() || {};
+        if (data.lock_status === "locked") lockedPeriodIds.add(snap.id);
+      }
+    });
+  }
+  // Phase 29E-B — is this session in a locked semi-monthly period?
+  function isSessionLocked(s) {
+    if (!s) return false;
+    const pid = semiMonthlyPeriodIdFor(s.service_date);
+    return !!(pid && lockedPeriodIds.has(pid));
+  }
+
   async function loadAssignmentsByIds(ids) {
     const db = firebase.firestore();
     const unique = Array.from(new Set(ids.filter(Boolean)));
@@ -828,6 +879,11 @@
         if (a && a.assignment_id) ids.push(a.assignment_id);
       });
       await loadAssignmentsByIds(ids);
+
+      // Phase 29E-B — load lock_status for every semi-monthly period that
+      // overlaps the current loaded date range. Typically 1 period; up
+      // to 2 if the range straddles the 15/16 boundary in one month.
+      await loadPayrollPeriodLocks();
 
       // Phase 2A.4 — apply the active status filter to derive what
       // the panel actually shows. Totals + By Employee follow the
@@ -919,7 +975,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v29B-investigation";
+  const LABOR_BUILD_TAG = "Labor v29E-period-lock";
 
   function renderHeader() {
     const sub = $("labor-sub");
@@ -1389,7 +1445,9 @@
       } else {
         workedHtml = "—";
       }
-      const reviewBtn = needsReviewFlag(s)
+      // Phase 29E-B — compute lock state up-front so every button can gate.
+      const _sessionLocked = isSessionLocked(s);
+      const reviewBtn = (!_sessionLocked && needsReviewFlag(s))
         ? '<button type="button" class="labor-btn labor-btn-review" data-act="mark-reviewed">Review</button>'
         : '';
       // Phase 2A.4 — Link DCR placeholder. Visible per row when DCR is
@@ -1410,20 +1468,29 @@
       if (!s.assignment_id) {
         try { console.warn("[labor-review] session has no assignment_id — Archive disabled for this row", { id: s._id }); } catch (_e) {}
       }
-      const archiveBtn = (s.assignment_id && s.admin_removed !== true && payrollState(s) !== "exported")
+      // Phase 29E-B — when the session's semi-monthly period is locked,
+      // hide Approve / Unapprove / Archive. The action cell collapses to
+      // a "Period locked" pill so admin sees WHY there's nothing to do.
+      const sessionLocked = _sessionLocked;
+      const archiveBtn = (!sessionLocked && s.assignment_id && s.admin_removed !== true && payrollState(s) !== "exported")
         ? '<button type="button" class="labor-btn labor-btn-remove" data-act="remove-from-ptc">Archive</button>'
         : '';
       // Phase 28A — Approve / Unapprove buttons. Approve visible only
       // when the row passes all payroll gates. Unapprove visible only on
       // approved-but-not-yet-exported rows. Both are single-click writes;
       // bulk Approve has its own modal-confirmed path above the table.
-      const approveBtn = approveGatePasses(s)
+      const approveBtn = (!sessionLocked && approveGatePasses(s))
         ? '<button type="button" class="labor-btn labor-btn-approve" data-act="approve-session" title="Mark approved for payroll">Approve</button>'
         : '';
-      const unapproveBtn = unapproveGatePasses(s)
+      const unapproveBtn = (!sessionLocked && unapproveGatePasses(s))
         ? '<button type="button" class="labor-btn labor-btn-unapprove" data-act="unapprove-session" title="Revert approval (only allowed before export)">Unapprove</button>'
         : '';
-      const actionCellContent = (reviewBtn + linkDcrBtn + approveBtn + unapproveBtn + archiveBtn) ||
+      const lockedPill = sessionLocked
+        ? '<span class="lr-period-lock-pill" title="' +
+            escapeHtml("Period " + (semiMonthlyPeriodIdFor(s.service_date) || "") + " is locked — unlock from the Payroll tab to make changes") +
+          '">🔒 Period locked</span>'
+        : '';
+      const actionCellContent = (reviewBtn + linkDcrBtn + approveBtn + unapproveBtn + archiveBtn + lockedPill) ||
         (s.assignment_id
           ? '<span class="lr-no-actions">—</span>'
           : '<span class="lr-no-actions" title="Session has no assignment_id — cannot archive">no asgn id</span>');
@@ -1484,6 +1551,7 @@
     // approved/exported, we don't downgrade — only clear needs_review +
     // stamp the reviewer fields.
     const sess = sessions.find(function (s) { return s._id === sessionId; });
+    if (sess && isSessionLocked(sess)) throw lockedPeriodError(sess);
     const currentState = payrollState(sess);
     const patch = {
       needs_review: false,
@@ -1551,10 +1619,19 @@
       "Void the export first, then retry."
     );
   }
+  // Phase 29E-B — throw a friendly error when the target session is in a
+  // locked semi-monthly period. Caller surfaces via existing alert path.
+  function lockedPeriodError(s) {
+    const pid = semiMonthlyPeriodIdFor(s.service_date) || "(unknown)";
+    return new Error(
+      "Period " + pid + " is locked. Unlock it from the Payroll tab before changing sessions in this period."
+    );
+  }
 
   async function approveSession(sessionId) {
     const sess = sessions.find(function (s) { return s._id === sessionId; });
     if (!sess) throw new Error("Session not in current view — refresh and retry.");
+    if (isSessionLocked(sess)) throw lockedPeriodError(sess);
     if (!sess.service_date) throw new Error("Session has no service_date — cannot determine workweek.");
     if (!sess.staff_uid) throw new Error("Session has no staff_uid.");
     const wid = computeWorkweekId(sess.service_date);
@@ -1608,6 +1685,7 @@
   async function unapproveSession(sessionId) {
     const sess = sessions.find(function (s) { return s._id === sessionId; });
     if (!sess) throw new Error("Session not in current view — refresh and retry.");
+    if (isSessionLocked(sess)) throw lockedPeriodError(sess);
     const wid = sess.workweek_id || computeWorkweekId(sess.service_date);
     if (!wid) throw new Error("Could not determine workweek_id.");
     const actor = currentActor();
@@ -1659,6 +1737,13 @@
     const actor = currentActor();
     const sts = firebase.firestore.FieldValue.serverTimestamp();
     const db = firebase.firestore();
+
+    // Phase 29E-B — refuse the WHOLE batch if any target is in a locked
+    // period. Better to bail before partial writes than approve half.
+    for (const sid of sessionIds) {
+      const s = sessions.find(function (x) { return x._id === sid; });
+      if (s && isSessionLocked(s)) throw lockedPeriodError(s);
+    }
 
     // Group targets.
     const byBucket = new Map();
@@ -1887,6 +1972,26 @@
       throw new Error(
         "Cannot archive — one or more related sessions are already exported (payroll_state=\"exported\"). " +
         "Void the export in Payroll → Recent Exports first, then retry."
+      );
+    }
+
+    // Phase 29E-B — refuse archive if any related session lives in a
+    // locked semi-monthly period. Same backstop semantics as approve/
+    // unapprove: locked periods are committed and immutable.
+    const allRelatedSnap = await db.collection("pioneer_service_sessions")
+      .where("assignment_id", "==", assignmentId)
+      .get();
+    const lockedHit = allRelatedSnap.docs
+      .map(function (d) { return d.data() || {}; })
+      .find(function (s) {
+        const pid = semiMonthlyPeriodIdFor(s.service_date);
+        return !!(pid && lockedPeriodIds.has(pid));
+      });
+    if (lockedHit) {
+      const pid = semiMonthlyPeriodIdFor(lockedHit.service_date) || "(unknown)";
+      throw new Error(
+        "Cannot archive — at least one related session lives in locked period " + pid +
+        ". Unlock from the Payroll tab first, then retry."
       );
     }
 

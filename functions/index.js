@@ -5821,6 +5821,32 @@ exports.exportPayrollCsvV1 = onRequest({
   const db  = admin.firestore();
 
   try {
+    // ----- Phase 29E-B: LOCK_REQUIRED gate -----
+    // Only semi-monthly periods are exportable. Custom date ranges have
+    // no payroll_periods doc and therefore cannot be locked; refuse with
+    // a clear error. Then refuse if the period exists but is not locked.
+    const exportPeriod = payrollPeriodFromRange(rangeStart, rangeEnd);
+    if (!exportPeriod) {
+      res.status(412).json({
+        ok:    false,
+        error: "Custom date ranges are not supported. Pick a semi-monthly period (1–15 or 16–EOM) and Lock it first.",
+        code:  "PERIOD_NOT_SEMI_MONTHLY"
+      });
+      return;
+    }
+    const exportPeriodRef = db.collection("payroll_periods").doc(exportPeriod.period_id);
+    const exportPeriodSnap = await exportPeriodRef.get();
+    const exportPeriodDoc = exportPeriodSnap.exists ? (exportPeriodSnap.data() || {}) : null;
+    if (!exportPeriodDoc || exportPeriodDoc.lock_status !== "locked") {
+      res.status(412).json({
+        ok:    false,
+        error: "Period is not locked. Lock the period before exporting.",
+        code:  "LOCK_REQUIRED",
+        period_id: exportPeriod.period_id
+      });
+      return;
+    }
+
     // ----- Concurrency guard: refuse if an active export covers this range -----
     const activeSnap = await db.collection("payroll_exports")
       .where("status", "==", "active")
@@ -6368,6 +6394,452 @@ exports.voidPayrollExportV1 = onRequest({
   } catch (err) {
     logger.error("voidPayrollExportV1 failed", { error: err && err.message });
     res.status(500).json({ ok: false, error: (err && err.message) || "Void failed" });
+  }
+});
+
+/* ============================================================================
+   Phase 29E-B — Payroll Period Lock workflow.
+   ============================================================================
+
+   lockPayrollPeriodV1   — admin-only HTTPS POST. Validates the period is
+                           Ready (0 blockers + >=1 approved session),
+                           sweeps payroll_review_acknowledgments to
+                           auto-finalize any unreviewed techs, and writes
+                           payroll_periods/{period_id} with lock_status
+                           "locked" + snapshot + appended lock_history.
+
+   unlockPayrollPeriodV1 — admin-only HTTPS POST. Refuses if any session
+                           in the period is in exported state OR an
+                           active payroll_exports doc covers the period.
+                           Deletes the auto_finalized ack docs created
+                           at lock time, clears lock_* fields, appends
+                           lock_history.
+
+   Both functions write payroll_periods via the Admin SDK and therefore
+   bypass the (Phase 29E-B) firestore.rules tightening that denies
+   client writes on this collection.
+
+   Period identifier: semi-monthly only ("YYYY-MM-A" for days 1-15,
+   "YYYY-MM-B" for days 16-EOM). Custom date ranges have no period_id
+   and cannot be locked — exportPayrollCsvV1's LOCK_REQUIRED gate
+   refuses them.
+
+   No CSV column changes. No payroll hour math changes. The lock is
+   purely a workflow commitment + auto-finalize sweep + audit log.
+============================================================================ */
+
+// Lazy: only computed when needed. Mirrors public/admin/_utils.js
+// getSemiMonthlyPeriod() exactly so admin UI + backend always agree.
+function payrollSemiMonthlyPeriodFor(yyyymmdd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ""))) return null;
+  const parts = yyyymmdd.split("-").map(function (v) { return parseInt(v, 10); });
+  const y = parts[0], m = parts[1], d = parts[2];
+  const mm = String(m).padStart(2, "0");
+  if (d <= 15) {
+    return {
+      period_id:  y + "-" + mm + "-A",
+      half:       "A",
+      month:      mm,
+      year:       String(y),
+      start_date: y + "-" + mm + "-01",
+      end_date:   y + "-" + mm + "-15"
+    };
+  }
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    period_id:  y + "-" + mm + "-B",
+    half:       "B",
+    month:      mm,
+    year:       String(y),
+    start_date: y + "-" + mm + "-16",
+    end_date:   y + "-" + mm + "-" + String(lastDay).padStart(2, "0")
+  };
+}
+// Period derived from a range. Returns null if the range doesn't EXACTLY
+// match a known semi-monthly period — that's how we refuse custom
+// ranges from Lock/Unlock/Export-gated flows.
+function payrollPeriodFromRange(rangeStart, rangeEnd) {
+  const p = payrollSemiMonthlyPeriodFor(rangeStart);
+  if (!p) return null;
+  if (p.start_date !== rangeStart) return null;
+  if (p.end_date   !== rangeEnd)   return null;
+  return p;
+}
+
+/* --------------- lockPayrollPeriodV1 --------------- */
+exports.lockPayrollPeriodV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60,
+  invoker:        "public"
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("lockPayrollPeriodV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const periodId = String(body.period_id || "").trim();
+  if (!/^\d{4}-\d{2}-(A|B)$/.test(periodId)) {
+    res.status(400).json({ ok: false, error: "period_id must be YYYY-MM-A or YYYY-MM-B." });
+    return;
+  }
+  // Derive start/end from period_id so client can't fabricate a range.
+  const probeYmd = periodId.endsWith("-A")
+    ? (periodId.slice(0, 7) + "-01")
+    : (periodId.slice(0, 7) + "-20");
+  const period = payrollSemiMonthlyPeriodFor(probeYmd);
+  if (!period || period.period_id !== periodId) {
+    res.status(400).json({ ok: false, error: "Couldn't resolve period from period_id." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    // ----- Server-side Ready check (mirrors UI banner gate) -----
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", period.start_date)
+      .where("service_date", "<=", period.end_date)
+      .get();
+    const allSessions = sessSnap.docs.map(function (d) {
+      return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+    });
+    const verification_snapshot = {
+      needs_review_count: 0, active_count: 0,
+      dcr_pending_count: 0,  missing_clockout_count: 0
+    };
+    allSessions.forEach(function (s) {
+      const b = payrollIsBlocker(s);
+      if (b === "needs_review")     verification_snapshot.needs_review_count    += 1;
+      if (b === "active")           verification_snapshot.active_count           += 1;
+      if (b === "dcr_pending")      verification_snapshot.dcr_pending_count      += 1;
+      if (b === "missing_clockout") verification_snapshot.missing_clockout_count += 1;
+    });
+    const totalBlockers = verification_snapshot.needs_review_count +
+                          verification_snapshot.active_count +
+                          verification_snapshot.dcr_pending_count +
+                          verification_snapshot.missing_clockout_count;
+    if (totalBlockers > 0) {
+      res.status(412).json({
+        ok: false,
+        error: "Period is not Ready — resolve blockers in Labor first.",
+        blockers: verification_snapshot
+      });
+      return;
+    }
+    const counted = allSessions.filter(function (s) {
+      if (s.admin_removed === true) return false;
+      if (s.is_test === true || s.exclude_from_payroll_export === true) return false;
+      return true;
+    });
+    const approved = counted.filter(function (s) {
+      return s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported";
+    });
+    if (approved.length === 0) {
+      res.status(412).json({
+        ok: false,
+        error: "No approved sessions in this period. Approve in Labor first."
+      });
+      return;
+    }
+
+    // ----- Period doc preflight: refuse if already locked -----
+    const periodRef = db.collection("payroll_periods").doc(periodId);
+    const periodSnap = await periodRef.get();
+    const periodDoc = periodSnap.exists ? (periodSnap.data() || {}) : null;
+    if (periodDoc && periodDoc.lock_status === "locked") {
+      res.status(409).json({ ok: false, error: "Period is already locked." });
+      return;
+    }
+
+    // ----- Auto-finalize ack sweep -----
+    // Universe = distinct staff_uid across counted (non-archived,
+    // non-QA) sessions. Tech with no doc gets an auto_finalized ack.
+    const universeUids = new Set();
+    counted.forEach(function (s) { if (s.staff_uid) universeUids.add(s.staff_uid); });
+    const existingAcksSnap = await db.collection("payroll_review_acknowledgments")
+      .where("period_id", "==", periodId)
+      .get();
+    const existingByUid = {};
+    existingAcksSnap.docs.forEach(function (d) {
+      const a = d.data() || {};
+      if (a.staff_uid) existingByUid[a.staff_uid] = Object.assign({ _id: d.id }, a);
+    });
+    // techsByUid lookup so the ack doc has a friendly display name.
+    const techSnap = await db.collection("cleaning_techs").get();
+    const techByUid = {};
+    techSnap.docs.forEach(function (d) {
+      const t = d.data() || {};
+      if (t.uid) techByUid[t.uid] = t;
+    });
+    function techDisplayLocal(uid) {
+      const t = techByUid[uid];
+      if (!t) return uid || "Tech";
+      return t.display_name ||
+             ((t.first_name || "") + " " + (t.last_name || "")).trim() ||
+             t.email || uid || "Tech";
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin", email: staff.email || "" };
+
+    // Build the auto-finalize batch. Keep ack ids so unlock can reverse.
+    const autoFinalizedAckIds = [];
+    const ackBatchOps = [];
+    universeUids.forEach(function (uid) {
+      if (existingByUid[uid]) return;   // tech already acked manually
+      const ackId = periodId + "__" + uid;
+      const ackRef = db.collection("payroll_review_acknowledgments").doc(ackId);
+      const techEmail = (techByUid[uid] && techByUid[uid].email) || "";
+      const techName  = techDisplayLocal(uid);
+      ackBatchOps.push({
+        ref: ackRef,
+        payload: {
+          period_id:                periodId,
+          period_start_date:        period.start_date,
+          period_end_date:          period.end_date,
+          staff_uid:                uid,
+          staff_email:              techEmail,
+          staff_name:               techName,
+          status:                   "auto_finalized",
+          acknowledged_at:          sts,
+          hours_snapshot:           {
+            total_minutes:        0,         // not snapshotted at lock time; UI uses session reads
+            session_count:        0,
+            pending_adj_count:    0,
+            approved_adj_count:   0
+          },
+          auto_finalized_at:        sts,
+          auto_finalized_by_lock_period_id: periodId,
+          auto_finalized_by:        actor,
+          created_at:               sts,
+          updated_at:               sts
+        }
+      });
+      autoFinalizedAckIds.push(ackId);
+    });
+
+    // ----- Compose period doc payload -----
+    let reviewedCount = 0, correctionCount = 0;
+    Object.keys(existingByUid).forEach(function (uid) {
+      if (!universeUids.has(uid)) return;
+      const a = existingByUid[uid];
+      if (a.status === "looks_good")            reviewedCount   += 1;
+      else if (a.status === "correction_requested") correctionCount += 1;
+    });
+
+    const lockEntry = {
+      action:                  "locked",
+      at:                      sts,
+      by:                      actor,
+      session_count:           counted.length,
+      approved_count:          approved.length,
+      auto_finalized_count:    autoFinalizedAckIds.length
+    };
+
+    const periodPayload = {
+      period_id:                periodId,
+      period_label:             // Friendly label so service-clock.js etc. can read it
+                                (function () {
+                                  try {
+                                    const m = new Intl.DateTimeFormat("en-US", {
+                                      timeZone: PAYROLL_TZ, month: "short"
+                                    }).format(new Date(period.start_date + "T12:00:00Z"));
+                                    const yEnd = new Intl.DateTimeFormat("en-US", {
+                                      timeZone: PAYROLL_TZ, year: "numeric"
+                                    }).format(new Date(period.end_date + "T12:00:00Z"));
+                                    return m + " " +
+                                           parseInt(period.start_date.slice(8), 10) + "–" +
+                                           parseInt(period.end_date.slice(8),   10) + ", " + yEnd;
+                                  } catch (_e) { return periodId; }
+                                })(),
+      month:                    period.month,
+      half:                     period.half,
+      start_date:               period.start_date,
+      end_date:                 period.end_date,
+      lock_status:              "locked",
+      locked_at:                sts,
+      locked_by:                actor,
+      locked_state_snapshot: {
+        session_count:        counted.length,
+        approved_count:       approved.length,
+        exported_count:       counted.filter(function (s) { return s.payroll_state === "exported"; }).length,
+        employee_count:       universeUids.size,
+        reviewed_count:       reviewedCount,
+        correction_count:     correctionCount,
+        not_reviewed_count:   autoFinalizedAckIds.length,
+        auto_finalized_count: autoFinalizedAckIds.length,
+        auto_finalized_ack_ids: autoFinalizedAckIds
+      },
+      lock_history:             admin.firestore.FieldValue.arrayUnion(lockEntry),
+      updated_at:               sts
+    };
+
+    // ----- Atomic batch commit: acks + period doc -----
+    const batch = db.batch();
+    ackBatchOps.forEach(function (op) { batch.set(op.ref, op.payload, { merge: true }); });
+    batch.set(periodRef, periodPayload, { merge: true });
+    await batch.commit();
+
+    logger.info("lockPayrollPeriodV1 ok", {
+      caller:                 staff.email,
+      period_id:              periodId,
+      session_count:          counted.length,
+      approved_count:         approved.length,
+      auto_finalized_count:   autoFinalizedAckIds.length
+    });
+    res.status(200).json({
+      ok:                     true,
+      period_id:              periodId,
+      auto_finalized_count:   autoFinalizedAckIds.length,
+      auto_finalized_ack_ids: autoFinalizedAckIds,
+      locked_state_snapshot:  periodPayload.locked_state_snapshot
+    });
+  } catch (err) {
+    logger.error("lockPayrollPeriodV1 failed", { error: err && err.message, stack: err && err.stack });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Lock failed" });
+  }
+});
+
+/* --------------- unlockPayrollPeriodV1 --------------- */
+exports.unlockPayrollPeriodV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60,
+  invoker:        "public"
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("unlockPayrollPeriodV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const periodId = String(body.period_id || "").trim();
+  if (!/^\d{4}-\d{2}-(A|B)$/.test(periodId)) {
+    res.status(400).json({ ok: false, error: "period_id must be YYYY-MM-A or YYYY-MM-B." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    const periodRef = db.collection("payroll_periods").doc(periodId);
+    const periodSnap = await periodRef.get();
+    if (!periodSnap.exists) {
+      res.status(404).json({ ok: false, error: "Period not found." });
+      return;
+    }
+    const periodDoc = periodSnap.data() || {};
+    if (periodDoc.lock_status !== "locked") {
+      res.status(409).json({ ok: false, error: "Period is not locked." });
+      return;
+    }
+
+    // ----- Refuse if an active export covers this period -----
+    const activeExportSnap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .where("range_start", "==", periodDoc.start_date)
+      .where("range_end",   "==", periodDoc.end_date)
+      .get();
+    if (!activeExportSnap.empty) {
+      res.status(409).json({
+        ok: false,
+        error: "Period has an active export. Void the export in Recent Exports first.",
+        active_export_id: activeExportSnap.docs[0].id
+      });
+      return;
+    }
+    // Also refuse if any session in the period is in exported state
+    // (paranoia — should be impossible if there's no active export, but
+    // covers edge cases like a stale doc).
+    const sessExpSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", periodDoc.start_date)
+      .where("service_date", "<=", periodDoc.end_date)
+      .where("payroll_state", "==", "exported")
+      .get();
+    if (!sessExpSnap.empty) {
+      res.status(409).json({
+        ok: false,
+        error: "Period has " + sessExpSnap.size + " exported session(s). Void the export first."
+      });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin", email: staff.email || "" };
+
+    // ----- Reverse the auto-finalize sweep -----
+    const ackIds = (periodDoc.locked_state_snapshot &&
+                    Array.isArray(periodDoc.locked_state_snapshot.auto_finalized_ack_ids))
+                    ? periodDoc.locked_state_snapshot.auto_finalized_ack_ids
+                    : [];
+
+    const unlockEntry = {
+      action:               "unlocked",
+      at:                   sts,
+      by:                   actor,
+      reverted_ack_count:   ackIds.length
+    };
+
+    // ----- Atomic batch: delete auto_finalized acks + clear lock fields -----
+    const batch = db.batch();
+    ackIds.forEach(function (ackId) {
+      batch.delete(db.collection("payroll_review_acknowledgments").doc(ackId));
+    });
+    batch.update(periodRef, {
+      lock_status:              "unlocked",
+      locked_at:                admin.firestore.FieldValue.delete(),
+      locked_by:                admin.firestore.FieldValue.delete(),
+      locked_state_snapshot:    admin.firestore.FieldValue.delete(),
+      lock_history:             admin.firestore.FieldValue.arrayUnion(unlockEntry),
+      updated_at:               sts
+    });
+    await batch.commit();
+
+    logger.info("unlockPayrollPeriodV1 ok", {
+      caller:             staff.email,
+      period_id:          periodId,
+      reverted_ack_count: ackIds.length
+    });
+    res.status(200).json({
+      ok:                 true,
+      period_id:          periodId,
+      reverted_ack_count: ackIds.length
+    });
+  } catch (err) {
+    logger.error("unlockPayrollPeriodV1 failed", { error: err && err.message, stack: err && err.stack });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Unlock failed" });
   }
 });
 

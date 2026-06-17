@@ -62,7 +62,7 @@
   // writing it via lockPayrollPeriodV1 / unlockPayrollPeriodV1.
   let currentPeriodDoc = null;  // { lock_status, locked_at, locked_by, ... } | null
 
-  const PAYROLL_BUILD_TAG = "Payroll v29E-lock-workflow-A";
+  const PAYROLL_BUILD_TAG = "Payroll v29E-lock-workflow-B";
 
   /* ---------- date + period helpers ---------- */
 
@@ -853,11 +853,11 @@
             w.approvedCount + ' of ' + w.sessionCount + ' sessions approved · 0 blockers' +
           '</p>' +
           '<div class="payroll-workflow-cta">' +
-            '<button type="button" class="payroll-workflow-btn is-lock" disabled ' +
-              'title="Phase B — backend writer ships next; this button is scaffolding only">' +
+            '<button type="button" class="payroll-workflow-btn is-lock" id="payroll-workflow-lock-btn" ' +
+              'title="Lock the period and auto-finalize un-reviewed acknowledgments">' +
               '🔒 Lock period for export →' +
             '</button>' +
-            '<span class="payroll-workflow-phase-tag">Phase A · UI scaffolding</span>' +
+            '<span class="payroll-workflow-status-msg" id="payroll-workflow-status-msg"></span>' +
           '</div>' +
           '<ul class="payroll-workflow-explainer">' +
             '<li>Mark the period committed</li>' +
@@ -887,15 +887,13 @@
             ' ready to export' +
           '</p>' +
           '<div class="payroll-workflow-cta">' +
-            '<button type="button" class="payroll-workflow-btn is-continue" disabled ' +
-              'title="Phase B — Continue button will dispatch to existing export modal">' +
+            '<button type="button" class="payroll-workflow-btn is-continue" id="payroll-workflow-continue-btn">' +
               'Continue to Export →' +
             '</button>' +
-            '<button type="button" class="payroll-workflow-btn is-unlock" disabled ' +
-              'title="Phase B — unlockPayrollPeriodV1 ships next">' +
+            '<button type="button" class="payroll-workflow-btn is-unlock" id="payroll-workflow-unlock-btn">' +
               'Unlock period' +
             '</button>' +
-            '<span class="payroll-workflow-phase-tag">Phase A · UI scaffolding</span>' +
+            '<span class="payroll-workflow-status-msg" id="payroll-workflow-status-msg"></span>' +
           '</div>' +
           '<p class="payroll-workflow-panel-sub">' +
             'Approve / Unapprove / Archive in Labor will be blocked until you unlock.' +
@@ -1521,6 +1519,102 @@
     return body;
   }
 
+  /* ---------- Phase 29E-B — Lock / Unlock writers ---------- */
+
+  async function lockPayrollPeriodCall(periodId) {
+    const url = (window.LOCK_PAYROLL_PERIOD_URL || "").trim();
+    if (!url) throw new Error("LOCK_PAYROLL_PERIOD_URL is not configured in firebase-config.js.");
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ period_id: periodId })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    if (!res.ok || !body || !body.ok) {
+      const err = new Error((body && body.error) || ("HTTP " + res.status));
+      err.body = body; err.status = res.status;
+      throw err;
+    }
+    return body;
+  }
+  async function unlockPayrollPeriodCall(periodId) {
+    const url = (window.UNLOCK_PAYROLL_PERIOD_URL || "").trim();
+    if (!url) throw new Error("UNLOCK_PAYROLL_PERIOD_URL is not configured in firebase-config.js.");
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("Not signed in.");
+    const idToken = await u.getIdToken();
+    const res = await fetch(url, {
+      method:  "POST",
+      headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ period_id: periodId })
+    });
+    const body = await res.json().catch(function () { return {}; });
+    if (!res.ok || !body || !body.ok) {
+      const err = new Error((body && body.error) || ("HTTP " + res.status));
+      err.body = body; err.status = res.status;
+      throw err;
+    }
+    return body;
+  }
+
+  function setWorkflowStatusMsg(msg, tone) {
+    const el = $("payroll-workflow-status-msg");
+    if (!el) return;
+    el.textContent = msg || "";
+    if (tone) el.setAttribute("data-tone", tone);
+    else      el.removeAttribute("data-tone");
+  }
+
+  async function lockCurrentPayrollPeriod() {
+    if (!currentPeriod || currentPeriod.is_custom) {
+      alert("Custom date ranges can't be locked. Pick a semi-monthly period.");
+      return;
+    }
+    const lockBtn = $("payroll-workflow-lock-btn");
+    if (lockBtn) lockBtn.disabled = true;
+    setWorkflowStatusMsg("Locking…", null);
+    try {
+      const result = await lockPayrollPeriodCall(currentPeriod.period_id);
+      setWorkflowStatusMsg(
+        "Locked · " + (result.auto_finalized_count || 0) + " auto-finalized",
+        "ok"
+      );
+      await refresh();
+    } catch (err) {
+      console.error("[payroll] lock failed", err);
+      setWorkflowStatusMsg((err && err.message) || "Lock failed", "error");
+      if (lockBtn) lockBtn.disabled = false;
+    }
+  }
+
+  async function unlockCurrentPayrollPeriod() {
+    if (!currentPeriod || currentPeriod.is_custom) {
+      alert("Custom date ranges can't be unlocked.");
+      return;
+    }
+    if (!confirm("Unlock this period? Auto-finalized employee acknowledgments will be removed; manual Looks Good / Correction acks are preserved.")) {
+      return;
+    }
+    const unlockBtn = $("payroll-workflow-unlock-btn");
+    if (unlockBtn) unlockBtn.disabled = true;
+    setWorkflowStatusMsg("Unlocking…", null);
+    try {
+      const result = await unlockPayrollPeriodCall(currentPeriod.period_id);
+      setWorkflowStatusMsg(
+        "Unlocked · " + (result.reverted_ack_count || 0) + " auto-finalized ack(s) removed",
+        "ok"
+      );
+      await refresh();
+    } catch (err) {
+      console.error("[payroll] unlock failed", err);
+      setWorkflowStatusMsg((err && err.message) || "Unlock failed", "error");
+      if (unlockBtn) unlockBtn.disabled = false;
+    }
+  }
+
   /* ---------- Phase 28D — modals ---------- */
 
   function openExportConfirmModal() {
@@ -1754,6 +1848,25 @@
       if (exportBtn) {
         ev.preventDefault();
         openExportConfirmModal();
+        return;
+      }
+      // Phase 29E-B — Workflow bar buttons.
+      const lockBtn = ev.target.closest && ev.target.closest("#payroll-workflow-lock-btn");
+      if (lockBtn) {
+        ev.preventDefault();
+        lockCurrentPayrollPeriod();
+        return;
+      }
+      const continueBtn = ev.target.closest && ev.target.closest("#payroll-workflow-continue-btn");
+      if (continueBtn) {
+        ev.preventDefault();
+        openExportConfirmModal();
+        return;
+      }
+      const unlockBtn = ev.target.closest && ev.target.closest("#payroll-workflow-unlock-btn");
+      if (unlockBtn) {
+        ev.preventDefault();
+        unlockCurrentPayrollPeriod();
         return;
       }
       const voidBtn = ev.target.closest && ev.target.closest("[data-payroll-void-id]");

@@ -7059,6 +7059,27 @@
   color: #78350f;
   border: 1px solid #fcd34d;
 }
+.payroll-workflow-status-msg {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+.payroll-workflow-status-msg[data-tone="ok"]    { color: #047857; }
+.payroll-workflow-status-msg[data-tone="error"] { color: #b91c1c; }
+
+/* Phase 29E-B — Labor Review action-cell "Period locked" pill. Replaces
+   Approve / Unapprove / Archive buttons on any session whose semi-
+   monthly period is currently locked. */
+.lr-period-lock-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
 
 @media (max-width: 700px) {
   .payroll-workflow-stages { gap: 4px; }

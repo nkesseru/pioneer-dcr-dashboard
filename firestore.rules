@@ -1220,9 +1220,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Phase 29E-B — payroll_periods writes routed through Cloud Functions
+    // only (lockPayrollPeriodV1 / unlockPayrollPeriodV1). The Admin SDK
+    // bypasses these rules, so the lock/unlock writers continue to work;
+    // direct client writes are denied so an admin cannot Firestore-console-
+    // edit a period out of locked state without going through the audited
+    // function path. Read access unchanged.
     match /payroll_periods/{periodId} {
       allow read:   if isPioneerAdmin() || isActiveStaff();
-      allow create, update: if isPioneerAdmin();
+      allow create: if false;   // Cloud Function only — lockPayrollPeriodV1
+      allow update: if false;   // Cloud Function only — lock/unlockPayrollPeriodV1
       allow delete: if false;
     }
 
