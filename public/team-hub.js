@@ -2036,18 +2036,26 @@
         return Object.assign({ _id: d.id }, d.data() || {});
       });
 
-      // Phase 29G — sick leave for this period. Owner-readable per rule;
-      // single-field range query, no composite index. Soft-fail.
+      // Phase 29G — sick leave for this period. Owner-readable per rule.
+      // Phase 29G fix (2026-06-17) — original query combined staff_uid
+      // equality with effective_date range, which requires a composite
+      // index. Rewritten to single-field equality on staff_uid (uses
+      // auto-built index) + client-side date + entry_type filter. Mirrors
+      // the time_adjustment_requests read pattern in this same file.
+      // Sick rows per tech per cycle are very low (typically 0–3) so the
+      // O(N) client filter is negligible.
       myHoursSickEntries = [];
       try {
         const sickSnap = await db.collection('sick_leave_ledger')
           .where('staff_uid', '==', myHoursStaff.uid)
-          .where('effective_date', '>=', period.start_date)
-          .where('effective_date', '<=', period.end_date)
-          .limit(50).get();
+          .limit(120).get();
         myHoursSickEntries = sickSnap.docs
           .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
-          .filter(function (e) { return e.entry_type === 'used'; });
+          .filter(function (e) {
+            const ed = String(e.effective_date || '');
+            if (!ed || ed < period.start_date || ed > period.end_date) return false;
+            return e.entry_type === 'used';
+          });
       } catch (sickErr) {
         console.warn('[team-hub] my-hours sick read failed (non-fatal)', sickErr);
       }
