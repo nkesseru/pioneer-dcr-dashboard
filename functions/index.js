@@ -3178,39 +3178,48 @@ exports.submitDcrV1 = onRequest({
   // point; back-writes are operational ergonomics only.
   const pioneerAssignmentId     = String((payload && payload.pioneer_assignment_id)     || "").trim();
   const pioneerServiceSessionId = String((payload && payload.pioneer_service_session_id) || "").trim();
-  if (pioneerAssignmentId) {
-    // 2. session back-write (only when a session id was supplied).
-    // Phase 2B — Also stamp dcr_id + dcr_status so Phase 28A's
-    // approveGatePasses() (which reads s.dcr_id OR s.dcr_status ===
-    // "submitted") will recognize the DCR as complete. Without this,
-    // sessions remained DCR Pending forever even after submit, and the
-    // payroll Verification Layer blocked exports. merge:true + last-
-    // write-wins on serverTimestamp() means a later DCR resubmission
-    // (newest submission) wins primary status, per Phase 2B spec #2.
-    if (pioneerServiceSessionId) {
-      try {
-        await db.collection("pioneer_service_sessions").doc(pioneerServiceSessionId).set({
-          dcr_id:            submissionId,
-          dcr_submission_id: submissionId,
-          dcr_status:        "submitted",
-          dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
-          updated_at:        admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        logger.info("submitDcrV1 pioneer_service_sessions writeback ok", {
-          submission_id:              submissionId,
-          pioneer_assignment_id:      pioneerAssignmentId,
-          pioneer_service_session_id: pioneerServiceSessionId
-        });
-      } catch (err) {
-        logger.warn("submitDcrV1 pioneer_service_sessions writeback failed (non-fatal)", {
-          submission_id:              submissionId,
-          pioneer_service_session_id: pioneerServiceSessionId,
-          error:                      err && err.message
-        });
-      }
+  // Phase 29F-ticket1 (2026-06-17) — session and assignment back-writes
+  // now run INDEPENDENTLY. Previously both were nested inside
+  // `if (pioneerAssignmentId)`, which meant a DCR submitted with a session
+  // id but no assignment id (legacy Deputy handoff, direct URL, customer-
+  // slug-only bookmark) skipped the session back-stamp entirely. Result
+  // was orphan DCRs that left Mission Control's session-side check
+  // forever flagging "DCR Missing" while Yesterday's Work's
+  // dcr-side check rendered the DCR. Now each block is gated on its own
+  // id only, so either or both can fire as the payload allows.
+  // 2. session back-write (only when a session id was supplied).
+  // Phase 2B — Also stamp dcr_id + dcr_status so Phase 28A's
+  // approveGatePasses() (which reads s.dcr_id OR s.dcr_status ===
+  // "submitted") will recognize the DCR as complete. Without this,
+  // sessions remained DCR Pending forever even after submit, and the
+  // payroll Verification Layer blocked exports. merge:true + last-
+  // write-wins on serverTimestamp() means a later DCR resubmission
+  // (newest submission) wins primary status, per Phase 2B spec #2.
+  if (pioneerServiceSessionId) {
+    try {
+      await db.collection("pioneer_service_sessions").doc(pioneerServiceSessionId).set({
+        dcr_id:            submissionId,
+        dcr_submission_id: submissionId,
+        dcr_status:        "submitted",
+        dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
+        updated_at:        admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      logger.info("submitDcrV1 pioneer_service_sessions writeback ok", {
+        submission_id:              submissionId,
+        pioneer_assignment_id:      pioneerAssignmentId || null,
+        pioneer_service_session_id: pioneerServiceSessionId
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 pioneer_service_sessions writeback failed (non-fatal)", {
+        submission_id:              submissionId,
+        pioneer_service_session_id: pioneerServiceSessionId,
+        error:                      err && err.message
+      });
     }
-    // 3. service_assignments denormalized write — admin still owns the
-    //    .status field; we only set the DCR-completion signals.
+  }
+  // 3. service_assignments denormalized write — admin still owns the
+  //    .status field; we only set the DCR-completion signals.
+  if (pioneerAssignmentId) {
     try {
       await db.collection("service_assignments").doc(pioneerAssignmentId).set({
         dcr_submitted:     true,
