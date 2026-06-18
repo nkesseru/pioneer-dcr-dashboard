@@ -2293,10 +2293,14 @@
     // Tiles. Total / Sick / Pending corrections / Approved corrections /
     // Adjustments applied — sick and adjustments only render when > 0
     // so the tile row stays uncluttered on a typical week.
+    // Phase 29H — payroll-facing summary tiles render in decimal hours
+    // (X.XX hrs) to match the Pay Period Summary detail sections in the
+    // same surface and the Payroll tab + CSV. Tile label provides the
+    // "hours" context so the value cell stays concise.
     let tilesHtml =
       '<div class="my-hours-tile">' +
         '<span class="my-hours-tile-label">Total hours</span>' +
-        '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(totalMin)) + '</span>' +
+        '<span class="my-hours-tile-value">' + myHoursEscape(myHoursDecimalHours(totalMin)) + '</span>' +
         '<span class="my-hours-tile-value-small">' + myHoursSessions.length + ' shift' +
           (myHoursSessions.length === 1 ? '' : 's') + '</span>' +
       '</div>';
@@ -2304,7 +2308,7 @@
       tilesHtml +=
         '<div class="my-hours-tile my-hours-tile-sick">' +
           '<span class="my-hours-tile-label">Sick hours</span>' +
-          '<span class="my-hours-tile-value">' + myHoursEscape(myHoursFormatDuration(sickMin)) + '</span>' +
+          '<span class="my-hours-tile-value">' + myHoursEscape(myHoursDecimalHours(sickMin)) + '</span>' +
           '<span class="my-hours-tile-value-small">' + myHoursSickEntries.length + ' entr' +
             (myHoursSickEntries.length === 1 ? 'y' : 'ies') + '</span>' +
         '</div>';

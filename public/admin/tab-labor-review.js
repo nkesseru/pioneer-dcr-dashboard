@@ -130,6 +130,17 @@
     if (r === 0) return h + "h";
     return h + "h " + r + "m";
   }
+  // Phase 29H — payroll-facing totals render in decimal hours to match
+  // the Payroll tab + CSV format. Used at the Totals strip and the
+  // By-Employee aggregates ONLY. Per-session row Worked column,
+  // adjustment-breakdown line, live "Running Xh Ym" indicator, budget
+  // column, and OT tooltip deliberately keep fmtMinutes — those are
+  // shift-level operational signals where Xh Ym is more readable than
+  // a decimal at a glance. Mirrors tab-payroll.js's fmtHours.
+  function fmtHoursDecimal(m) {
+    if (m == null || !Number.isFinite(m)) return "0.00";
+    return (m / 60).toFixed(2);
+  }
   function liveElapsedMinutes(clockInAt) {
     const ms = tsToMs(clockInAt);
     if (!ms) return null;
@@ -1053,9 +1064,9 @@
       : 'No OT in this view';
     wrap.innerHTML =
       tile("Sessions",     String(sessions.length), null) +
-      tile("Worked",       fmtMinutes(t.totalWorked),  null) +
-      tile("Running",      fmtMinutes(t.totalRunning), t.totalRunning > 0 ? '<span class="labor-tile-running-dot" aria-hidden="true">●</span> live' : null) +
-      tile("Overtime",     fmtMinutes(t.totalOvertime), otSub) +
+      tile("Worked",       fmtHoursDecimal(t.totalWorked),  null) +
+      tile("Running",      fmtHoursDecimal(t.totalRunning), t.totalRunning > 0 ? '<span class="labor-tile-running-dot" aria-hidden="true">●</span> live' : null) +
+      tile("Overtime",     fmtHoursDecimal(t.totalOvertime), otSub) +
       tile("Needs review", String(t.needsReview),   null) +
       tile("DCR pending",  String(t.dcrPending),    null) +
       tile("Exceptions",   String(exTotal),         exSubLines);
@@ -1070,11 +1081,11 @@
     empty.hidden = true;
     wrap.innerHTML = rows.map(function (r) {
       const runningChip = r.running_minutes > 0
-        ? ' <span class="labor-be-running">+ running ' + escapeHtml(fmtMinutes(r.running_minutes)) + '</span>'
+        ? ' <span class="labor-be-running">+ running ' + escapeHtml(fmtHoursDecimal(r.running_minutes)) + '</span>'
         : '';
       // Phase 28B — inline OT chip on the time line when this tech has OT.
       const otChip = r.overtime_minutes > 0
-        ? ' <span class="labor-be-ot">incl. ' + escapeHtml(fmtMinutes(r.overtime_minutes)) + ' OT</span>'
+        ? ' <span class="labor-be-ot">incl. ' + escapeHtml(fmtHoursDecimal(r.overtime_minutes)) + ' OT</span>'
         : '';
       // Phase 29B — Adj ✓ count + unresolved-exception count as
       // dedicated card stats; the long flag chips below show what KIND
@@ -1100,7 +1111,7 @@
           '<div class="labor-be-count">' + r.sessions_count + ' session' +
             (r.sessions_count === 1 ? "" : "s") + '</div>' +
           '<div class="labor-be-time">' +
-            escapeHtml(fmtMinutes(r.worked_minutes)) + ' worked' + otChip + runningChip +
+            escapeHtml(fmtHoursDecimal(r.worked_minutes)) + ' worked' + otChip + runningChip +
           '</div>' +
           '<div class="labor-be-stats">' + adjChip + ' · ' + excChip + '</div>' +
           '<div class="labor-be-flags">' + flags.join(" ") + '</div>' +
