@@ -1358,6 +1358,55 @@ service cloud.firestore {
     }
 
     // ====================================================================
+    // SMS opt-in consent collection (A2P 10DLC compliance).
+    // ====================================================================
+    // The /sms-opt-in page is publicly viewable so A2P reviewers (and
+    // employees) can submit a consent record without first signing in.
+    // Allow anonymous create with strict field validation. Admin-only
+    // read so consent records aren't enumerable by the public. No
+    // updates / no deletes — consents are an append-only audit log.
+    //
+    // Required client payload (validated below):
+    //   first_name              non-empty string ≤ 60 chars
+    //   last_name               non-empty string ≤ 60 chars
+    //   phone                   non-empty string ≤ 20 chars
+    //   email                   non-empty string ≤ 120 chars
+    //   sms_consent             literal true (per A2P affirmative-consent
+    //                           requirement)
+    //   consent_language_version string (versioned snapshot)
+    //   consent_text_snapshot    string (≤ 4000 chars) — full consent
+    //                            text the user agreed to
+    //   source                   "sms-opt-in-page"
+    //   consented_at             serverTimestamp
+    //
+    // Twilio sending logic is NOT changed by this rule — receiving a
+    // consent record here does not trigger any outbound message.
+    match /sms_consents/{consentId} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.resource.data.sms_consent == true
+                    && request.resource.data.consent_language_version is string
+                    && request.resource.data.consent_language_version.size() > 0
+                    && request.resource.data.consent_text_snapshot is string
+                    && request.resource.data.consent_text_snapshot.size() > 0
+                    && request.resource.data.consent_text_snapshot.size() <= 4000
+                    && request.resource.data.first_name is string
+                    && request.resource.data.first_name.size() > 0
+                    && request.resource.data.first_name.size() <= 60
+                    && request.resource.data.last_name is string
+                    && request.resource.data.last_name.size() > 0
+                    && request.resource.data.last_name.size() <= 60
+                    && request.resource.data.phone is string
+                    && request.resource.data.phone.size() > 0
+                    && request.resource.data.phone.size() <= 20
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() > 0
+                    && request.resource.data.email.size() <= 120
+                    && request.resource.data.source == "sms-opt-in-page";
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====================================================================
     // Phase 29 — Payroll Exception Engine.
     // ====================================================================
     // time_adjustment_requests is the structured replacement for Slack-

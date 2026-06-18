@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <meta name="robots" content="index,follow" />
+  <title>SMS Notification Consent · Pioneer Commercial Cleaning</title>
+  <link rel="icon" href="/icons/pioneerops-icon-192.png" />
+  <style>
+    /* Inline, self-contained styles so this page renders cleanly for
+       A2P screenshot review without depending on other stylesheets. */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #0f172a;
+      background: #f1f5f9;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #1d4ed8; }
+    a:focus, button:focus, input:focus, label:focus-within {
+      outline: 2px solid #1d4ed8;
+      outline-offset: 2px;
+    }
+
+    .sms-header {
+      background: #0b1220;
+      color: #ffffff;
+      padding: 18px 20px;
+      border-bottom: 4px solid #1d4ed8;
+    }
+    .sms-header-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .sms-brand-name { font-size: 16px; font-weight: 800; letter-spacing: 0.02em; }
+    .sms-brand-tag  { font-size: 12.5px; color: rgba(255,255,255,0.7); margin-top: 2px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+    main.sms-main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 28px 20px 80px;
+    }
+    .sms-title {
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0 0 8px 0;
+      color: #0f172a;
+    }
+    .sms-subtitle {
+      font-size: 15px;
+      color: #334155;
+      margin: 0 0 24px 0;
+    }
+    .sms-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .sms-card h2 {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #475569;
+      margin: 0 0 14px 0;
+    }
+    .sms-categories {
+      margin: 0;
+      padding: 0 0 0 20px;
+      color: #1e293b;
+      font-size: 14.5px;
+    }
+    .sms-categories li { margin: 4px 0; }
+
+    .sms-field { margin-bottom: 14px; }
+    .sms-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 5px;
+      letter-spacing: 0.02em;
+    }
+    .sms-field .sms-required {
+      color: #b91c1c;
+      font-weight: 700;
+      margin-left: 2px;
+    }
+    .sms-field input[type="text"],
+    .sms-field input[type="tel"],
+    .sms-field input[type="email"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #94a3b8;
+      border-radius: 8px;
+      font-size: 15px;
+      color: #0f172a;
+      background: #ffffff;
+    }
+
+    .sms-consent-block {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin: 18px 0;
+      font-size: 14px;
+      color: #1e293b;
+    }
+    .sms-consent-text { margin: 0 0 12px 0; }
+    .sms-consent-disclosures { margin: 12px 0 0 0; font-weight: 600; }
+    .sms-consent-links { margin: 10px 0 0 0; font-size: 13.5px; }
+    .sms-consent-links a { font-weight: 600; }
+
+    .sms-checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px;
+      background: #ffffff;
+      border: 2px solid #1d4ed8;
+      border-radius: 10px;
+      margin: 18px 0;
+    }
+    .sms-checkbox-row input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: #1d4ed8;
+      cursor: pointer;
+    }
+    .sms-checkbox-row label {
+      font-size: 14.5px;
+      color: #0f172a;
+      line-height: 1.5;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .sms-submit {
+      display: inline-block;
+      padding: 14px 28px;
+      font-size: 15.5px;
+      font-weight: 800;
+      border-radius: 10px;
+      background: #1d4ed8;
+      color: #ffffff;
+      border: 1px solid #1d4ed8;
+      cursor: pointer;
+      width: 100%;
+    }
+    .sms-submit:hover:not(:disabled) { background: #1e40af; }
+    .sms-submit:disabled { background: #94a3b8; border-color: #94a3b8; cursor: not-allowed; }
+
+    .sms-status {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .sms-status[data-tone="error"] { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .sms-status[data-tone="ok"]    { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .sms-status[hidden] { display: none; }
+
+    .sms-footer {
+      text-align: center;
+      font-size: 12.5px;
+      color: #64748b;
+      padding: 24px 16px 40px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .sms-footer p { margin: 4px 0; }
+
+    @media (max-width: 520px) {
+      .sms-card { padding: 18px; }
+      main.sms-main { padding-top: 20px; }
+      .sms-title { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="sms-header">
+    <div class="sms-header-inner">
+      <div>
+        <div class="sms-brand-name">Pioneer Commercial Cleaning</div>
+        <div class="sms-brand-tag">PioneerOps</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="sms-main">
+    <h1 class="sms-title">SMS Notification Consent</h1>
+    <p class="sms-subtitle">
+      Pioneer Commercial Cleaning uses PioneerOps text messages to keep
+      employees informed about work-related updates.
+    </p>
+
+    <section class="sms-card">
+      <h2>What you may receive</h2>
+      <ul class="sms-categories">
+        <li>Schedule updates</li>
+        <li>Shift reminders</li>
+        <li>Clock-in / clock-out notices</li>
+        <li>Call-out or coverage requests</li>
+        <li>Office messages</li>
+        <li>Supply requests</li>
+        <li>Issue follow-up</li>
+        <li>Payroll / time adjustment notifications</li>
+        <li>Account / security notifications</li>
+      </ul>
+    </section>
+
+    <form id="sms-consent-form" novalidate>
+      <section class="sms-card">
+        <h2>Your information</h2>
+
+        <div class="sms-field">
+          <label for="sms-first-name">First name<span class="sms-required" aria-hidden="true">*</span></label>
+          <input id="sms-first-name" name="first_name" type="text" autocomplete="given-name" required maxlength="60" />
+        </div>
+
+        <div class="sms-field">
+          <label for="sms-last-name">Last name<span class="sms-required" aria-hidden="true">*</span></label>
+          <input id="sms-last-name" name="last_name" type="text" autocomplete="family-name" required maxlength="60" />
+        </div>
+
+        <div class="sms-field">
+          <label for="sms-phone">Mobile phone<span class="sms-required" aria-hidden="true">*</span></label>
+          <input id="sms-phone" name="phone" type="tel" autocomplete="tel" required maxlength="20"
+                 inputmode="tel" placeholder="(509) 555-1234" />
+        </div>
+
+        <div class="sms-field">
+          <label for="sms-email">Email<span class="sms-required" aria-hidden="true">*</span></label>
+          <input id="sms-email" name="email" type="email" autocomplete="email" required maxlength="120"
+                 placeholder="you@example.com" />
+        </div>
+
+        <div class="sms-consent-block">
+          <p class="sms-consent-text" id="sms-consent-text-snapshot">
+            I agree to receive operational text messages from Pioneer
+            Commercial Cleaning and PioneerOps at the mobile number I
+            provide. These messages may include schedule updates, shift
+            reminders, clock-in or clock-out notices, call-out or
+            coverage requests, office messages, supply requests, issue
+            follow-up, payroll/time adjustment notifications, and
+            account/security notifications.
+          </p>
+          <p class="sms-consent-disclosures">
+            Message frequency varies. Message and data rates may apply.
+            Reply STOP to opt out. Reply HELP for help.
+          </p>
+          <p class="sms-consent-links">
+            <a href="https://www.pioneercomclean.com/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+            &middot;
+            <a href="https://www.pioneercomclean.com/terms-of-service" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+          </p>
+        </div>
+
+        <div class="sms-checkbox-row">
+          <input id="sms-consent-checkbox" name="sms_consent" type="checkbox" required />
+          <label for="sms-consent-checkbox">
+            I agree to receive operational SMS messages from Pioneer
+            Commercial Cleaning / PioneerOps at the mobile number above
+            and have read the consent terms.
+          </label>
+        </div>
+
+        <button type="submit" id="sms-submit" class="sms-submit" disabled>Submit consent</button>
+
+        <div id="sms-status" class="sms-status" data-tone="" hidden role="status" aria-live="polite"></div>
+      </section>
+    </form>
+
+    <section class="sms-card">
+      <h2>How to manage your messages</h2>
+      <p style="margin:6px 0;">Reply <strong>STOP</strong> at any time to opt out of all messages.</p>
+      <p style="margin:6px 0;">Reply <strong>HELP</strong> for support information.</p>
+      <p style="margin:6px 0;">This is not marketing. Messages are operational and related to your work at Pioneer Commercial Cleaning.</p>
+    </section>
+  </main>
+
+  <footer class="sms-footer">
+    <p>Pioneer Commercial Cleaning · PioneerOps</p>
+    <p>Consent language version 20260618-v1</p>
+  </footer>
+
+  <!-- Firebase SDK (CDN, compat build for parity with rest of project). -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script>
+    (function () {
+      var CONSENT_LANGUAGE_VERSION = "20260618-v1";
+
+      function $(id) { return document.getElementById(id); }
+
+      var form        = $("sms-consent-form");
+      var submitBtn   = $("sms-submit");
+      var checkbox    = $("sms-consent-checkbox");
+      var statusEl    = $("sms-status");
+      var consentText = ($("sms-consent-text-snapshot") || {}).textContent || "";
+
+      function setStatus(msg, tone) {
+        if (!statusEl) return;
+        statusEl.textContent = msg || "";
+        if (tone) statusEl.setAttribute("data-tone", tone);
+        else      statusEl.removeAttribute("data-tone");
+        statusEl.hidden = !msg;
+      }
+
+      function refreshSubmitGate() {
+        if (!submitBtn || !checkbox) return;
+        var first = $("sms-first-name").value.trim();
+        var last  = $("sms-last-name").value.trim();
+        var phone = $("sms-phone").value.trim();
+        var email = $("sms-email").value.trim();
+        var canSubmit = checkbox.checked && first.length > 0 && last.length > 0 && phone.length >= 7 && email.length >= 5;
+        submitBtn.disabled = !canSubmit;
+      }
+
+      ["sms-first-name", "sms-last-name", "sms-phone", "sms-email"].forEach(function (id) {
+        var el = $(id);
+        if (el) el.addEventListener("input", refreshSubmitGate);
+      });
+      if (checkbox) checkbox.addEventListener("change", refreshSubmitGate);
+
+      // Initial state: checkbox unchecked, button disabled per A2P spec.
+      if (checkbox) checkbox.checked = false;
+      refreshSubmitGate();
+
+      if (form) form.addEventListener("submit", async function (ev) {
+        ev.preventDefault();
+        setStatus("", null);
+
+        if (!checkbox || !checkbox.checked) {
+          setStatus("You must check the consent box to submit.", "error");
+          return;
+        }
+
+        var payload = {
+          first_name:               $("sms-first-name").value.trim(),
+          last_name:                $("sms-last-name").value.trim(),
+          phone:                    $("sms-phone").value.trim(),
+          email:                    $("sms-email").value.trim().toLowerCase(),
+          sms_consent:              true,
+          consent_language_version: CONSENT_LANGUAGE_VERSION,
+          consent_text_snapshot:    consentText.replace(/\s+/g, " ").trim(),
+          source:                   "sms-opt-in-page"
+        };
+
+        // Firestore SDK may not be available (e.g. firebase-config.js
+        // failed to load). Page stays screenshot-ready either way; we
+        // surface the error to the submitter but never throw uncaught.
+        if (typeof firebase === "undefined" || !firebase.firestore) {
+          setStatus("Couldn't reach the consent service. Please try again later.", "error");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        setStatus("Submitting…", null);
+
+        try {
+          await firebase.firestore().collection("sms_consents").add(Object.assign({}, payload, {
+            consented_at: firebase.firestore.FieldValue.serverTimestamp()
+          }));
+          form.reset();
+          checkbox.checked = false;
+          refreshSubmitGate();
+          setStatus("Thank you. Your consent has been recorded. You can reply STOP at any time to opt out.", "ok");
+        } catch (err) {
+          console.error("[sms-opt-in] submit failed", err);
+          var msg = (err && err.message) || "Unknown error";
+          setStatus("Couldn't save your consent: " + msg + ". Please try again or contact Pioneer.", "error");
+          submitBtn.disabled = false;
+        }
+      });
+    }());
+  </script>
+</body>
+</html>
