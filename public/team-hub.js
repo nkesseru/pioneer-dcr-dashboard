@@ -1819,6 +1819,11 @@
   let myHoursPeriodOptions  = [];       // [{ period_id, label, start_date, end_date }, ...]
   let myHoursSickEntries    = [];       // sick_leave_ledger entries for selected period
   let myHoursPeriodDoc      = null;     // payroll_periods/{period_id} data or null
+  // Phase 29G v2 — retain ALL adjustment requests in the picked period
+  // (the pre-v2 code only kept the pending count + map). Each entry is
+  // a time_adjustment_requests doc; sorted by reviewed_at desc when set,
+  // submitted_at desc otherwise.
+  let myHoursAllRequests    = [];
 
   const MY_HOURS_REASON_LABEL = {
     forgot_clock_in:  'Forgot to clock in',
@@ -2077,20 +2082,30 @@
       // still works, you just won't see existing pending badges.
       myHoursPendingByKey = {};
       myHoursApprovedCount = 0;
+      myHoursAllRequests = [];
       try {
         const reqSnap = await db.collection('time_adjustment_requests')
           .where('employee_uid', '==', myHoursStaff.uid)
           .limit(120).get();
         reqSnap.docs.forEach(function (d) {
-          const r = d.data() || {};
+          const r = Object.assign({ _id: d.id }, d.data() || {});
           const sd = String(r.shift_date || '');
           if (sd < period.start_date || sd > period.end_date) return;
+          // Phase 29G v2 — retain every request in the period for the
+          // detailed Adjustments list.
+          myHoursAllRequests.push(r);
           const st = String(r.status || '').toLowerCase();
           if (st === 'pending' && r.service_session_id) {
-            myHoursPendingByKey[r.service_session_id] = Object.assign({ _id: d.id }, r);
+            myHoursPendingByKey[r.service_session_id] = r;
           } else if (st === 'approved') {
             myHoursApprovedCount++;
           }
+        });
+        // Sort: latest activity first (reviewed_at when set, else submitted_at)
+        myHoursAllRequests.sort(function (a, b) {
+          const ams = myHoursTsToMs(a.reviewed_at || a.submitted_at);
+          const bms = myHoursTsToMs(b.reviewed_at || b.submitted_at);
+          return bms - ams;
         });
       } catch (reqErr) {
         console.warn('[team-hub] my-hours adjustments read failed (non-fatal)', reqErr);
@@ -2114,6 +2129,13 @@
       renderMyHoursSummary(period);
       renderMyHoursReview(period);
       renderMyHoursShifts(period);
+      // Phase 29G v2 — past-period detail sections. The four renderers
+      // self-hide their containers when the picker is on the current
+      // period, so current-period UX is untouched.
+      renderMyHoursPeriodTotals(period);
+      renderMyHoursAdjustmentsListSection(period);
+      renderMyHoursSickListSection(period);
+      renderMyHoursStatusTimeline(period);
     } catch (err) {
       console.error('[team-hub] my-hours load failed', err);
       $('my-hours-summary').innerHTML =
@@ -2163,6 +2185,15 @@
              myHoursEscape(labelPrefix + p.label) + '</option>';
     }).join('');
     sel.innerHTML = opts;
+    // Phase 29G v2 — discovery hint that adapts to current vs past
+    // period so the affordance is obvious. Avoids the "where did the
+    // picker go" failure mode we hit on the first preview.
+    const hint = $('my-hours-period-picker-hint');
+    if (hint) {
+      hint.textContent = myHoursIsCurrentPeriod(activePeriod)
+        ? 'Pick a previous period to see its Pay Period Summary.'
+        : 'Viewing a past period. Pick Current to return to My Hours.';
+    }
   }
 
   // Derives the tech-facing period status from session.payroll_state +
@@ -2325,7 +2356,9 @@
     if (!myHoursSessions.length) {
       root.innerHTML =
         '<div class="my-hours-shifts-empty">' +
-          'No shifts logged for this payroll period yet. They\'ll appear here after you clock out.' +
+          (myHoursIsCurrentPeriod(period)
+            ? 'No shifts logged for this payroll period yet. They\'ll appear here after you clock out.'
+            : 'No shifts on file for this pay period.') +
         '</div>';
       return;
     }
@@ -2336,7 +2369,15 @@
     const total = myHoursSessions.length;
     const showAll = myHoursExpanded || total <= MY_HOURS_PREVIEW_LIMIT;
     const visible = showAll ? myHoursSessions : myHoursSessions.slice(0, MY_HOURS_PREVIEW_LIMIT);
-    let html = visible.map(renderMyHoursShiftRow).join('');
+    // Phase 29G v2 — past periods get the richer detail card (clock-in/
+    // out, original-vs-adjusted hours when divergent, DCR status, OT
+    // line, payroll-state pill). Current period keeps the existing
+    // compact row so the Adjust button + on-the-clock chip stay in
+    // their familiar place.
+    const renderRow = myHoursIsCurrentPeriod(period)
+      ? renderMyHoursShiftRow
+      : renderMyHoursSessionCardDetail;
+    let html = visible.map(renderRow).join('');
     if (total > MY_HOURS_PREVIEW_LIMIT) {
       const hidden = total - MY_HOURS_PREVIEW_LIMIT;
       html += '<button type="button" class="my-hours-toggle-all" id="my-hours-toggle-all">' +
@@ -2430,6 +2471,350 @@
         '<div class="my-hours-shift-actions">' + btn + '</div>' +
       '</div>'
     );
+  }
+
+  /* ============================================================
+     Phase 29G v2 — Past-period detail renderers.
+     ============================================================
+     All five are read-only — no Firestore writes, no new collections,
+     no new reads beyond what reloadMyHours() already loaded. Each
+     renderer self-hides its container when the picker is on the current
+     period so the current-period UX is byte-for-byte unchanged.
+     ============================================================ */
+
+  // Decimal helper: convert minutes to "X.XX" (Kirby's decimal-hours
+  // standard from the earlier payroll-display work). Returns "0.00" on
+  // null / non-numeric input.
+  function myHoursDecimalHours(m) {
+    if (m == null || !Number.isFinite(m)) return '0.00';
+    return (m / 60).toFixed(2);
+  }
+
+  // 1. Richer per-session card for past periods. Mirrors the layout of
+  //    the current-period row but adds: customer/location, clock-in →
+  //    clock-out times, original-vs-adjusted hours when divergent,
+  //    DCR status, overtime line, and a payroll-state pill.
+  function renderMyHoursSessionCardDetail(s) {
+    const labor = s.labor_type || 'cleaning';
+    const customer = (labor === 'inspection' && s.customer_name) ? s.customer_name
+                   : (labor === 'inspection' && s.customer_id)   ? s.customer_id
+                   : (labor === 'supply_station')                ? 'Supply Station'
+                   : (s.customer_name || s.customer_id || '');
+    const location = s.location_name || s.location_address || '';
+    const adjusted = s.has_approved_time_adjustment === true;
+    const origMin  = (typeof s.work_minutes === 'number') ? s.work_minutes : null;
+    const effMin   = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                   : (typeof s.paid_minutes === 'number')     ? s.paid_minutes
+                   : (typeof s.work_minutes === 'number')     ? s.work_minutes
+                   : 0;
+    const ci = s.effective_clock_in || s.clock_in_at;
+    const co = s.effective_clock_out || s.clock_out_at;
+
+    // Payroll-state pill — what was the office's decision for this row?
+    const ps = s.payroll_state || 'pending_review';
+    let pillLabel = 'Open';
+    let pillTone = 'info';
+    if      (ps === 'exported')              { pillLabel = 'Included in payroll export'; pillTone = 'ok'; }
+    else if (ps === 'approved_for_payroll')  { pillLabel = 'Approved for payroll';       pillTone = 'ok'; }
+    else if (ps === 'reviewed')              { pillLabel = 'Reviewed';                   pillTone = 'info'; }
+    else if (ps === 'pending_review')        { pillLabel = 'Pending review';             pillTone = 'muted'; }
+
+    // Hours row — single line when un-adjusted, two-part when adjusted.
+    let hoursLine;
+    if (adjusted && origMin != null && origMin !== effMin) {
+      const delta = effMin - origMin;
+      const sign  = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
+      const deltaAbs = Math.abs(delta);
+      hoursLine =
+        '<span class="my-hours-card-hours-orig">Original ' + myHoursEscape(myHoursDecimalHours(origMin)) + ' hrs</span>' +
+        ' <span class="my-hours-card-hours-arrow">→</span> ' +
+        '<span class="my-hours-card-hours-adj">Adjusted ' + myHoursEscape(myHoursDecimalHours(effMin)) + ' hrs</span>' +
+        ' <span class="my-hours-card-hours-delta">(' + sign + myHoursEscape(myHoursDecimalHours(deltaAbs)) + ' adj)</span>';
+    } else {
+      hoursLine =
+        '<strong>' + myHoursEscape(myHoursDecimalHours(effMin)) + ' hrs</strong> worked';
+    }
+
+    // DCR row — derived solely from session.dcr_status / session.status.
+    let dcrLine = '';
+    if (s.dcr_status === 'submitted' || s.dcr_id || s.dcr_submission_id) {
+      dcrLine = '<span class="my-hours-card-dcr is-submitted">DCR submitted</span>';
+    } else if (s.dcr_status === 'waived') {
+      const reason = s.dcr_waived_reason ? (' · ' + (MY_HOURS_REASON_LABEL[s.dcr_waived_reason] || s.dcr_waived_reason)) : '';
+      dcrLine = '<span class="my-hours-card-dcr is-waived">DCR waived' + myHoursEscape(reason) + '</span>';
+    } else if (s.status === 'dcr_pending') {
+      dcrLine = '<span class="my-hours-card-dcr is-pending">DCR pending</span>';
+    } else if (!s.labor_type || s.labor_type === 'cleaning') {
+      dcrLine = '<span class="my-hours-card-dcr is-missing">No DCR on file</span>';
+    } else {
+      dcrLine = '<span class="my-hours-card-dcr is-muted">DCR not required</span>';
+    }
+
+    // Overtime line — only visible when OT was allocated for this row.
+    const otLine = (typeof s.overtime_minutes === 'number' && s.overtime_minutes > 0)
+      ? '<div class="my-hours-card-ot">' +
+          myHoursEscape(myHoursDecimalHours(s.overtime_minutes)) + ' hrs OT included in total' +
+        '</div>'
+      : '';
+
+    return (
+      '<div class="my-hours-card" data-labor="' + myHoursEscape(labor) + '">' +
+        '<div class="my-hours-card-head">' +
+          '<div class="my-hours-card-head-main">' +
+            '<div class="my-hours-card-customer">' +
+              (customer ? '<strong>' + myHoursEscape(customer) + '</strong>' : '<em>(unmapped customer)</em>') +
+              (location ? ' · <span class="my-hours-card-location">' + myHoursEscape(location) + '</span>' : '') +
+            '</div>' +
+            '<div class="my-hours-card-date">' + myHoursEscape(myHoursFormatDate(s.service_date)) + '</div>' +
+          '</div>' +
+          '<span class="my-hours-card-pill is-' + pillTone + '">' + myHoursEscape(pillLabel) + '</span>' +
+        '</div>' +
+        '<div class="my-hours-card-body">' +
+          '<div class="my-hours-card-times">' +
+            '<span class="my-hours-card-time-label">Clock in</span> ' +
+            '<strong>' + myHoursEscape(myHoursFormatTime(ci)) + '</strong>' +
+            ' · <span class="my-hours-card-time-label">Clock out</span> ' +
+            '<strong>' + myHoursEscape(myHoursFormatTime(co)) + '</strong>' +
+          '</div>' +
+          '<div class="my-hours-card-hours">' + hoursLine + '</div>' +
+          otLine +
+          '<div class="my-hours-card-dcr-row">' + dcrLine + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  // 2. Period totals subtable. Regular / Overtime / Sick / Total in
+  //    decimal hours. Derived in JS from the loaded session + sick rows.
+  function renderMyHoursPeriodTotals(period) {
+    const root = $('my-hours-period-totals');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    let regularMin = 0, otMin = 0, totalMin = 0;
+    (myHoursSessions || []).forEach(function (s) {
+      const eff = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                : (typeof s.paid_minutes === 'number')     ? s.paid_minutes
+                : (typeof s.work_minutes === 'number')     ? s.work_minutes
+                : 0;
+      totalMin += Math.max(0, eff);
+      // OT is allocated by the Phase 28B engine; un-allocated rows
+      // contribute zero. Regular = max(0, eff - ot) keeps the math
+      // honest even if regular_minutes wasn't written.
+      const o = (typeof s.overtime_minutes === 'number' && s.overtime_minutes > 0) ? s.overtime_minutes : 0;
+      otMin += o;
+      regularMin += Math.max(0, eff - o);
+    });
+    let sickMin = 0;
+    (myHoursSickEntries || []).forEach(function (e) {
+      sickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    const grandTotal = regularMin + otMin + sickMin;
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Period totals</h4>' +
+      '<table class="my-hours-totals-table">' +
+        '<tbody>' +
+          '<tr><th scope="row">Regular</th><td>' + myHoursEscape(myHoursDecimalHours(regularMin)) + ' hrs</td></tr>' +
+          '<tr><th scope="row">Overtime</th><td>' + myHoursEscape(myHoursDecimalHours(otMin))     + ' hrs</td></tr>' +
+          '<tr><th scope="row">Sick</th><td>'    + myHoursEscape(myHoursDecimalHours(sickMin))   + ' hrs</td></tr>' +
+          '<tr class="my-hours-totals-grand"><th scope="row">Total payable</th><td>' +
+            myHoursEscape(myHoursDecimalHours(grandTotal)) + ' hrs</td></tr>' +
+        '</tbody>' +
+      '</table>' +
+      '<p class="my-hours-totals-foot">Hours only · informational.</p>';
+  }
+
+  // 3. Adjustments section — list every TAR owned by this tech in the
+  //    picked period (pending + approved + denied). Sorted latest-first
+  //    by reviewed_at when set, otherwise submitted_at.
+  function renderMyHoursAdjustmentsListSection(period) {
+    const root = $('my-hours-adjustments-list');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    if (!(myHoursAllRequests || []).length) {
+      root.hidden = false;
+      root.innerHTML =
+        '<h4 class="my-hours-subhead">Adjustments in this period</h4>' +
+        '<p class="my-hours-empty-row">No correction requests on file for this period.</p>';
+      return;
+    }
+    const rows = myHoursAllRequests.map(function (r) {
+      const st = String(r.status || 'pending').toLowerCase();
+      const stoneCls = (st === 'approved') ? 'is-ok'
+                    : (st === 'denied')   ? 'is-warn'
+                    : 'is-info';
+      const stLabel = (st === 'approved') ? 'Approved'
+                    : (st === 'denied')   ? 'Denied'
+                    : 'Pending';
+      // Effective range: approved → effective_*; otherwise → requested_*
+      const showIn  = (st === 'approved') ? r.effective_clock_in  : r.requested_clock_in;
+      const showOut = (st === 'approved') ? r.effective_clock_out : r.requested_clock_out;
+      const showMin = (st === 'approved') ? r.effective_minutes : r.requested_minutes;
+      const reviewerLine = (st === 'approved' || st === 'denied')
+        ? '<span class="my-hours-adj-meta">' +
+            stLabel +
+            (r.reviewed_by_name ? ' by ' + myHoursEscape(r.reviewed_by_name) : '') +
+            (r.reviewed_at ? ' · ' + myHoursEscape(myHoursFormatDate(myHoursTsToYmdPt(r.reviewed_at))) : '') +
+          '</span>'
+        : '<span class="my-hours-adj-meta">' + stLabel + ' · awaiting review</span>';
+      const reasonLine = r.reason
+        ? '<span class="my-hours-adj-reason">' +
+            myHoursEscape(MY_HOURS_REASON_LABEL[r.reason] || r.reason) +
+            (r.notes ? ' · ' + myHoursEscape(r.notes) : '') +
+          '</span>'
+        : '';
+      return (
+        '<div class="my-hours-adj-row">' +
+          '<div class="my-hours-adj-head">' +
+            '<span class="my-hours-adj-date">' +
+              myHoursEscape(myHoursFormatDate(r.shift_date || '')) +
+            '</span>' +
+            '<span class="my-hours-adj-status ' + stoneCls + '">' + stLabel + '</span>' +
+          '</div>' +
+          '<div class="my-hours-adj-detail">' +
+            'Requested: <strong>' + myHoursEscape(myHoursFormatTime(showIn)) +
+            ' → ' + myHoursEscape(myHoursFormatTime(showOut)) + '</strong>' +
+            (typeof showMin === 'number'
+              ? ' · ' + myHoursEscape(myHoursDecimalHours(showMin)) + ' hrs'
+              : '') +
+          '</div>' +
+          (reasonLine ? '<div class="my-hours-adj-foot">' + reasonLine + '</div>' : '') +
+          '<div class="my-hours-adj-foot">' + reviewerLine + '</div>' +
+        '</div>'
+      );
+    }).join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Adjustments in this period</h4>' +
+      rows;
+  }
+
+  // Helper: convert a Firestore Timestamp to a Pacific YYYY-MM-DD string.
+  // Used by the adjustments section's reviewed-at display so we render
+  // dates in the same format as service_date elsewhere.
+  function myHoursTsToYmdPt(ts) {
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '';
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date(ms));
+      const m = {};
+      parts.forEach(function (p) { if (p.type !== 'literal') m[p.type] = p.value; });
+      return m.year + '-' + m.month + '-' + m.day;
+    } catch (_e) { return ''; }
+  }
+
+  // 4. Sick leave section — list "used" entries in the period.
+  function renderMyHoursSickListSection(period) {
+    const root = $('my-hours-sick-list');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    if (!(myHoursSickEntries || []).length) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    const rows = myHoursSickEntries
+      .slice()
+      .sort(function (a, b) {
+        return String(b.effective_date || '').localeCompare(String(a.effective_date || ''));
+      })
+      .map(function (e) {
+        const min = Math.abs(Number(e.minutes_delta) || 0);
+        const reasonOk = e && e.visible_to_employee !== false && e.reason;
+        return (
+          '<div class="my-hours-sick-row">' +
+            '<div class="my-hours-sick-head">' +
+              '<span class="my-hours-sick-date">' + myHoursEscape(myHoursFormatDate(e.effective_date || '')) + '</span>' +
+              '<span class="my-hours-sick-hours">' + myHoursEscape(myHoursDecimalHours(min)) + ' hrs</span>' +
+            '</div>' +
+            (reasonOk
+              ? '<div class="my-hours-sick-reason">' + myHoursEscape(e.reason) + '</div>'
+              : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Sick leave in this period</h4>' +
+      rows;
+  }
+
+  // 5. Status timeline — compact 1-line-per-event display of period
+  //    lock + export milestones. Derived from payroll_periods doc +
+  //    max(session.exported_at) for the tech's own sessions.
+  function renderMyHoursStatusTimeline(period) {
+    const root = $('my-hours-status-timeline');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    const events = [];
+    const lockedAt = myHoursPeriodDoc && myHoursPeriodDoc.locked_at;
+    const lockStatus = myHoursPeriodDoc && myHoursPeriodDoc.lock_status;
+    if (lockedAt && lockStatus === 'locked') {
+      events.push({
+        when: lockedAt,
+        label: 'Locked',
+        sub: 'Period closed for changes.'
+      });
+    }
+    // Latest exported_at across this tech's own sessions in the period.
+    let latestExportedAt = null;
+    (myHoursSessions || []).forEach(function (s) {
+      if (!s.exported_at) return;
+      if (!latestExportedAt || myHoursTsToMs(s.exported_at) > myHoursTsToMs(latestExportedAt)) {
+        latestExportedAt = s.exported_at;
+      }
+    });
+    if (latestExportedAt) {
+      events.push({
+        when: latestExportedAt,
+        label: 'Exported',
+        sub: 'Your hours were sent to payroll.'
+      });
+    }
+    if (!events.length) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    events.sort(function (a, b) { return myHoursTsToMs(a.when) - myHoursTsToMs(b.when); });
+    const rows = events.map(function (ev) {
+      const ms = myHoursTsToMs(ev.when);
+      const when = ms
+        ? new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Los_Angeles',
+            month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+          }).format(new Date(ms)) + ' PT'
+        : '';
+      return (
+        '<li class="my-hours-timeline-row">' +
+          '<span class="my-hours-timeline-dot" aria-hidden="true"></span>' +
+          '<div class="my-hours-timeline-body">' +
+            '<span class="my-hours-timeline-label">' + myHoursEscape(ev.label) + '</span>' +
+            (when ? ' <span class="my-hours-timeline-when">' + myHoursEscape(when) + '</span>' : '') +
+            '<div class="my-hours-timeline-sub">' + myHoursEscape(ev.sub) + '</div>' +
+          '</div>' +
+        '</li>'
+      );
+    }).join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Status timeline</h4>' +
+      '<ul class="my-hours-timeline">' + rows + '</ul>';
   }
 
   /* ---- Phase 29D — Payroll Review Acknowledgment ----

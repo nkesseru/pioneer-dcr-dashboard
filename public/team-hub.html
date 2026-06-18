@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="styles/ui-cards.css" />
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
-  <link rel="stylesheet" href="styles.css?v=20260617-period-history" />
+  <link rel="stylesheet" href="styles.css?v=20260617-period-history-v2b" />
   <link rel="stylesheet" href="styles/team-hub-overrides.css" />
   <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -365,6 +365,7 @@
           <select id="my-hours-period-select" class="my-hours-period-select">
             <!-- options populated by renderMyHoursPeriodPicker() -->
           </select>
+          <p class="my-hours-period-picker-hint" id="my-hours-period-picker-hint"></p>
         </div>
 
         <div class="my-hours-summary" id="my-hours-summary">
@@ -395,6 +396,14 @@
         </div>
 
         <div class="my-hours-shifts" id="my-hours-shifts"></div>
+
+        <!-- Phase 29G v2 — past-period sub-sections. All four are hidden
+             by default and populated only when the picker selects a
+             past period. Current-period view keeps the original layout. -->
+        <div class="my-hours-period-totals" id="my-hours-period-totals" hidden></div>
+        <div class="my-hours-adjustments-list" id="my-hours-adjustments-list" hidden></div>
+        <div class="my-hours-sick-list" id="my-hours-sick-list" hidden></div>
+        <div class="my-hours-status-timeline" id="my-hours-status-timeline" hidden></div>
 
         <div class="my-hours-foot">
           <button type="button" class="my-hours-request-btn" id="my-hours-request-btn">
@@ -738,7 +747,7 @@
   <script src="celebrate.js?v=20260528-installux"></script>
   <script src="customer-display.js?v=20260528-installux"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="team-hub.js?v=20260617-period-history-b"></script>
+  <script src="team-hub.js?v=20260617-period-history-v2b"></script>
   <script src="pwa-install-ui.js?v=20260528-installux"></script>
   <script>
     // Need Help Now action sheet — pure DOM, no Firebase, no auth dep.
