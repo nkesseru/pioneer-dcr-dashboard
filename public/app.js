@@ -149,12 +149,14 @@
     if (!window.firebase) throw new Error("Firebase SDK script tags failed to load.");
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
     const storage = firebase.storage();
-    // 2026-06-18 hotfix — shrink the SDK's default retry budget so a weak
-    // signal surfaces as a real error in seconds, not minutes. The watchdog
-    // + hard cap in uploadPhoto/uploadSignature are the user-facing escape
-    // hatch; these caps just stop the SDK from grinding silently underneath.
-    try { storage.setMaxUploadRetryTime(60000); }    catch (_e) {}
-    try { storage.setMaxOperationRetryTime(20000); } catch (_e) {}
+    // 2026-06-18 hotfix v3 — raise SDK retry budget so it outlasts our
+    // 75s inter-progress watchdog. Previously 60s upload / 20s op, which
+    // meant the SDK could throw storage/retry-limit-exceeded BEFORE our
+    // friendly "DCR saved" watchdog message fired. 120s gives marginal
+    // signals real recovery runway; the watchdog stays authoritative for
+    // user-facing UX. See production incident 2026-06-18 (Bonnie).
+    try { storage.setMaxUploadRetryTime(120000); }   catch (_e) {}
+    try { storage.setMaxOperationRetryTime(45000); } catch (_e) {}
     return { storage: storage };
   }
 
@@ -1816,7 +1818,18 @@
       return file;
     }
     if (typeof self.createImageBitmap !== "function") {
-      try { console.info("[photo-compress] skip-no-bitmap-support", { name: file.name }); } catch (_e) {}
+      // 2026-06-18 hotfix v3 — louder log (warn vs info) so this jumps
+      // out in field reports. iOS Safari < 16.4 lacks createImageBitmap,
+      // so the original multi-MB file goes on the wire — which is the
+      // single biggest reason an upload still fails on a marginal signal
+      // after the compression hotfix. Includes UA so we can tell devices apart.
+      try {
+        console.warn("[photo-compress] DISABLED — createImageBitmap unsupported on this device", {
+          name: file.name,
+          original_kb: originalKb,
+          ua: (self.navigator && self.navigator.userAgent) || "unknown"
+        });
+      } catch (_e) {}
       return file;
     }
 
@@ -3244,15 +3257,25 @@
       // or user-clicked Cancel) from real server / network errors. Draft
       // survives in localStorage either way; the copy just tells the tech
       // what happened so they know to retry rather than escalate.
+      // 2026-06-18 hotfix v3 — also treat storage/retry-limit-exceeded as
+      // an abort. The SDK throws it when its retry budget runs out (see
+      // setMaxUploadRetryTime above); previously this fell through to the
+      // raw "Submission failed:" path. Map to the same calm "DCR saved,
+      // try again" UX as our own watchdog. Surfaced by Bonnie 2026-06-18.
       const isAbort =
         (err && err.code === "pioneer/upload-aborted") ||
-        (err && err.code === "storage/canceled");
+        (err && err.code === "storage/canceled") ||
+        (err && err.code === "storage/retry-limit-exceeded");
       if (isAbort) {
-        setStatus("err",
-          err.code === "storage/canceled"
-            ? "Submission canceled. Your DCR is saved — try again."
-            : (err.message || "Upload aborted — your DCR is saved.")
-        );
+        let abortMsg;
+        if (err.code === "storage/canceled") {
+          abortMsg = "Submission canceled. Your DCR is saved — try again.";
+        } else if (err.code === "storage/retry-limit-exceeded") {
+          abortMsg = "Photo upload couldn't complete. Your DCR is saved — try fewer photos or a stronger signal.";
+        } else {
+          abortMsg = err.message || "Upload aborted — your DCR is saved.";
+        }
+        setStatus("err", abortMsg);
       } else {
         setStatus("err", `Submission failed: ${err.message || err}`);
       }
