@@ -108,6 +108,11 @@
   let isSubmitting       = false;
   let isRestoringDraft   = false;
   let draftSaveTimer     = null;
+  // 2026-06-18 hotfix — references the in-flight Firebase Storage UploadTask
+  // so the "Cancel upload" button (and the offline pre-check, on the off
+  // chance a tech loses signal mid-upload) can abort it. Null when no upload
+  // is in flight.
+  let activeUploadTask   = null;
 
   /* ---------- DOM helpers ---------- */
 
@@ -143,7 +148,14 @@
   function initFirebase() {
     if (!window.firebase) throw new Error("Firebase SDK script tags failed to load.");
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
-    return { storage: firebase.storage() };
+    const storage = firebase.storage();
+    // 2026-06-18 hotfix — shrink the SDK's default retry budget so a weak
+    // signal surfaces as a real error in seconds, not minutes. The watchdog
+    // + hard cap in uploadPhoto/uploadSignature are the user-facing escape
+    // hatch; these caps just stop the SDK from grinding silently underneath.
+    try { storage.setMaxUploadRetryTime(60000); }    catch (_e) {}
+    try { storage.setMaxOperationRetryTime(20000); } catch (_e) {}
+    return { storage: storage };
   }
 
   /* ---------- render: dropdowns + date default ---------- */
@@ -1765,7 +1777,151 @@
     return null;
   }
 
-  function onFileInputChange(ev) {
+  /* ---------- 2026-06-18 hotfix v2 — client-side photo compression ----------
+   *
+   * Triggered at file-input time so the rest of the upload pipeline never
+   * sees the original 3-5 MB iPhone JPEGs. Targets:
+   *   • Long-edge cap: 1600 px (preserves 2x retina at the customer email's
+   *     ~800 px display size).
+   *   • JPEG quality: 0.78 (visually indistinguishable from the original
+   *     at email size; ~10x smaller on disk).
+   *   • Skip when: already <= 500 KB, OR non-JPEG/PNG MIME, OR
+   *     createImageBitmap throws (fall back to the original file —
+   *     better to upload a big file than to lose it).
+   *
+   * Returns the file to enqueue (compressed Blob wrapped as File, OR the
+   * original File). Always returns a File-shaped object so the rest of
+   * the pipeline (extFromFile, ref.put(file), etc.) treats it the same.
+   *
+   * Memory note: createImageBitmap decodes off the main thread on modern
+   * Chromium / Safari. Canvas draw + toBlob run on the main thread but
+   * with the bitmap at TARGET size, not source — keeps peak heap modest.
+   */
+  const COMPRESS_SKIP_BELOW_BYTES = 500 * 1024;
+  const COMPRESS_LONG_EDGE_PX     = 1600;
+  const COMPRESS_JPEG_QUALITY     = 0.78;
+
+  async function compressPhotoIfNeeded(file) {
+    const t0 = (self.performance && self.performance.now) ? self.performance.now() : Date.now();
+    const originalKb = Math.round(file.size / 1024);
+
+    // Skip-policy: tiny files and non-image-ish MIMEs go through unchanged.
+    if (file.size <= COMPRESS_SKIP_BELOW_BYTES) {
+      try { console.info("[photo-compress] skip-small", { name: file.name, kb: originalKb }); } catch (_e) {}
+      return file;
+    }
+    const mime = (file.type || "").toLowerCase();
+    if (mime !== "image/jpeg" && mime !== "image/jpg" && mime !== "image/png") {
+      try { console.info("[photo-compress] skip-unsupported-mime", { name: file.name, type: mime }); } catch (_e) {}
+      return file;
+    }
+    if (typeof self.createImageBitmap !== "function") {
+      try { console.info("[photo-compress] skip-no-bitmap-support", { name: file.name }); } catch (_e) {}
+      return file;
+    }
+
+    let bitmap = null;
+    try {
+      // imageOrientation: "from-image" applies the EXIF rotation so
+      // sideways iPhone photos don't end up rotated in the customer email.
+      // Supported on Chromium, Safari 17+. Falls back to default on older
+      // Safari (mostly a no-op since older Safari's createImageBitmap also
+      // honors EXIF by default).
+      bitmap = await self.createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch (e) {
+      try { console.warn("[photo-compress] decode failed — keeping original", { name: file.name, err: e && e.message }); } catch (_e) {}
+      return file;
+    }
+
+    const srcW = bitmap.width  || 1;
+    const srcH = bitmap.height || 1;
+    const longEdge = Math.max(srcW, srcH);
+
+    let dstW, dstH;
+    if (longEdge <= COMPRESS_LONG_EDGE_PX) {
+      // Image is already at or below target resolution. Re-encode anyway
+      // to capture the quality drop (a 4 MB JPEG at 12 MP is often 4x
+      // bigger than a re-encode at quality 0.78). Same dimensions.
+      dstW = srcW; dstH = srcH;
+    } else {
+      const scale = COMPRESS_LONG_EDGE_PX / longEdge;
+      dstW = Math.round(srcW * scale);
+      dstH = Math.round(srcH * scale);
+    }
+
+    let blob = null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width  = dstW;
+      canvas.height = dstH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("2D context unavailable");
+      ctx.drawImage(bitmap, 0, 0, dstW, dstH);
+      // toBlob is async — wrap as promise.
+      blob = await new Promise(function (resolve, reject) {
+        canvas.toBlob(function (b) {
+          if (b) resolve(b);
+          else reject(new Error("toBlob returned null"));
+        }, "image/jpeg", COMPRESS_JPEG_QUALITY);
+      });
+    } catch (e) {
+      try { console.warn("[photo-compress] encode failed — keeping original", { name: file.name, err: e && e.message }); } catch (_e) {}
+      return file;
+    } finally {
+      try { bitmap.close && bitmap.close(); } catch (_e) {}
+    }
+
+    // Defensive: if the "compressed" output is somehow bigger (already
+    // small + ultra-low entropy), keep the original. Rare but possible.
+    if (blob.size >= file.size) {
+      try { console.info("[photo-compress] skip-no-win", { name: file.name, original_kb: originalKb, compressed_kb: Math.round(blob.size / 1024) }); } catch (_e) {}
+      return file;
+    }
+
+    const t1 = (self.performance && self.performance.now) ? self.performance.now() : Date.now();
+    const compressedKb = Math.round(blob.size / 1024);
+    try {
+      console.info("[photo-compress] ok", {
+        name:           file.name,
+        original_kb:    originalKb,
+        compressed_kb:  compressedKb,
+        ratio:          +(blob.size / file.size).toFixed(3),
+        src_dims:       srcW + "x" + srcH,
+        dst_dims:       dstW + "x" + dstH,
+        elapsed_ms:     Math.round(t1 - t0)
+      });
+    } catch (_e) {}
+
+    // Wrap the Blob as a File so downstream code (uploadPhoto's
+    // ref.put(file, { contentType: file.type })) sees the same shape.
+    // Preserve the original name with a .jpg suffix so server-side path
+    // building stays stable.
+    const baseName = (file.name || "photo").replace(/\.[^.]+$/, "");
+    try {
+      return new File([blob], baseName + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
+    } catch (_e) {
+      // Older Safari: File constructor unsupported. Return the Blob —
+      // ref.put accepts Blob just fine; extFromFile falls back to MIME.
+      return blob;
+    }
+  }
+
+  async function compressIncomingPhotos(accepted) {
+    // Serial compression — keeps peak memory bounded to one decoded
+    // bitmap + one canvas at a time. Important on low-end Android.
+    const out = [];
+    for (let i = 0; i < accepted.length; i++) {
+      try {
+        out.push(await compressPhotoIfNeeded(accepted[i]));
+      } catch (e) {
+        try { console.warn("[photo-compress] unexpected throw — keeping original", { i, err: e && e.message }); } catch (_e) {}
+        out.push(accepted[i]);
+      }
+    }
+    return out;
+  }
+
+  async function onFileInputChange(ev) {
     const incoming = Array.from(ev.target.files || []);
     const errors = [];
     const accepted = [];
@@ -1775,7 +1931,14 @@
       else accepted.push(f);
     });
 
-    pendingFiles = pendingFiles.concat(accepted).slice(0, MAX_PHOTOS);
+    // 2026-06-18 hotfix v2 — compress before the photo enters
+    // pendingFiles. The original File is never referenced again. The
+    // small "Preparing photos…" status hint is best-effort: very fast
+    // compressions (<200ms) won't visibly flash, which is fine.
+    if (accepted.length) setStatus("busy", "Preparing photo" + (accepted.length > 1 ? "s" : "") + "…");
+    const compressed = await compressIncomingPhotos(accepted);
+
+    pendingFiles = pendingFiles.concat(compressed).slice(0, MAX_PHOTOS);
 
     if (errors.length) setStatus("err", errors.join(" "));
     else               setStatus("", "");
@@ -1819,14 +1982,16 @@
   /* ---------- upload progress UI ---------- */
 
   function showUploadProgress(label) {
-    const root = $("upload-progress");
-    const lbl  = $("upload-progress-label");
-    const pct  = $("upload-progress-pct");
-    const fill = $("upload-progress-bar-fill");
-    if (root) root.hidden = false;
-    if (lbl)  lbl.textContent  = label || "Uploading…";
-    if (pct)  pct.textContent  = "0%";
-    if (fill) fill.style.width = "0%";
+    const root   = $("upload-progress");
+    const lbl    = $("upload-progress-label");
+    const pct    = $("upload-progress-pct");
+    const fill   = $("upload-progress-bar-fill");
+    const cancel = $("upload-progress-cancel");
+    if (root)   root.hidden = false;
+    if (lbl)    lbl.textContent  = label || "Uploading…";
+    if (pct)    pct.textContent  = "0%";
+    if (fill)   fill.style.width = "0%";
+    if (cancel) cancel.hidden = false;
   }
   function setUploadProgress(label, pctValue) {
     const lbl  = $("upload-progress-label");
@@ -1838,8 +2003,10 @@
     if (fill) fill.style.width = clamped + "%";
   }
   function hideUploadProgress() {
-    const root = $("upload-progress");
-    if (root) root.hidden = true;
+    const root   = $("upload-progress");
+    const cancel = $("upload-progress-cancel");
+    if (root)   root.hidden = true;
+    if (cancel) cancel.hidden = true;
   }
 
   /* ---------- submission id ---------- */
@@ -1852,67 +2019,137 @@
 
   /* ---------- upload one photo (UNCHANGED storage path contract) ---------- */
 
-  function uploadPhoto(storage, customerSlug, submissionId, file, index, onProgress) {
-    const ext  = extFromFile(file);
-    const path = `dcr-photos/${customerSlug}/${submissionId}/photo-${index + 1}.${ext}`;
-    const ref  = storage.ref(path);
-    const task = ref.put(file, { contentType: file.type });
+  // 2026-06-18 hotfix v2 — per-upload escape hatches with split watchdog.
+  //
+  //   INITIAL_STALL_MS  : armed at upload start; cleared on first progress
+  //                       event. If it fires, no bytes ever flowed — likely
+  //                       a connection refused / DNS / true network failure.
+  //                       Short threshold (30s) so the user isn't stuck on
+  //                       a dead connection.
+  //
+  //   INTER_PROGRESS_MS : armed only AFTER the first progress event. Re-
+  //                       armed on every subsequent progress event. If it
+  //                       fires, the upload was moving but stopped — slow
+  //                       signal that gave up. Longer threshold (75s)
+  //                       because Firebase Storage SDK only fires events
+  //                       at chunk boundaries (256 KB), and one chunk on a
+  //                       weak cell signal can legitimately take >20s.
+  //
+  //   UPLOAD_HARD_MS    : absolute cap. 180s covers a single ~500KB
+  //                       compressed photo at ~3 KB/s with margin.
+  //
+  // Rejections carry code === "pioneer/upload-aborted" with a sub-reason
+  // surfaced via message, so onSubmit's catch can choose user-facing copy.
+  const UPLOAD_INITIAL_STALL_MS  = 30000;
+  const UPLOAD_INTER_PROGRESS_MS = 75000;
+  const UPLOAD_HARD_MS           = 180000;
 
+  function wrapUploadWithGuards(task, onProgress, completePayloadFn) {
     return new Promise(function (resolve, reject) {
+      let stallTimer       = null;
+      let hardTimer        = null;
+      let settled          = false;
+      let progressFiredYet = false;
+
+      function clearTimers() {
+        if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+        if (hardTimer)  { clearTimeout(hardTimer);  hardTimer  = null; }
+      }
+      function abort(message) {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        const err = new Error(message);
+        err.code = "pioneer/upload-aborted";
+        try { task.cancel(); } catch (_e) {}
+        reject(err);
+      }
+      function armInitialStall() {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(function () {
+          abort("Couldn't reach upload server. Your DCR is saved on this device — try again with a stronger signal.");
+        }, UPLOAD_INITIAL_STALL_MS);
+      }
+      function armInterProgressStall() {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(function () {
+          abort("Photo upload is struggling. Your DCR is saved — try fewer photos or a stronger signal.");
+        }, UPLOAD_INTER_PROGRESS_MS);
+      }
+
+      hardTimer = setTimeout(function () {
+        abort("Photo upload taking too long. Your DCR is saved — try fewer photos or a stronger signal.");
+      }, UPLOAD_HARD_MS);
+      armInitialStall();
+
       task.on(
         "state_changed",
         function (snap) {
+          if (settled) return;
+          // First progress event flips us into the inter-progress
+          // (longer-threshold) watchdog mode. Subsequent events just
+          // re-arm that watchdog.
+          if (!progressFiredYet) progressFiredYet = true;
+          armInterProgressStall();
           const pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
           if (onProgress) onProgress(pct);
         },
-        reject,
+        function (err) {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          reject(err);
+        },
         async function () {
+          if (settled) return;
+          settled = true;
+          clearTimers();
           try {
-            const url = await task.snapshot.ref.getDownloadURL();
-            resolve({
-              id: `ph_${index + 1}`,
-              storage_path: path,
-              download_url: url,
-              content_type: file.type || null,
-              size_bytes:   file.size,
-              width:  null,
-              height: null,
-              caption: "",
-              tag: "general"
-            });
+            const payload = await completePayloadFn();
+            resolve(payload);
           } catch (e) { reject(e); }
         }
       );
     });
   }
 
+  function uploadPhoto(storage, customerSlug, submissionId, file, index, onProgress, onTask) {
+    const ext  = extFromFile(file);
+    const path = `dcr-photos/${customerSlug}/${submissionId}/photo-${index + 1}.${ext}`;
+    const ref  = storage.ref(path);
+    const task = ref.put(file, { contentType: file.type });
+    if (onTask) onTask(task);
+    return wrapUploadWithGuards(task, onProgress, async function () {
+      const url = await task.snapshot.ref.getDownloadURL();
+      return {
+        id: `ph_${index + 1}`,
+        storage_path: path,
+        download_url: url,
+        content_type: file.type || null,
+        size_bytes:   file.size,
+        width:  null,
+        height: null,
+        caption: "",
+        tag: "general"
+      };
+    });
+  }
+
   /* ---------- upload signature (UNCHANGED storage path contract) ---------- */
 
-  function uploadSignature(storage, customerSlug, submissionId, blob, onProgress) {
+  function uploadSignature(storage, customerSlug, submissionId, blob, onProgress, onTask) {
     const path = `dcr-signatures/${customerSlug}/${submissionId}/signature.png`;
     const ref  = storage.ref(path);
     const task = ref.put(blob, { contentType: "image/png" });
-
-    return new Promise(function (resolve, reject) {
-      task.on(
-        "state_changed",
-        function (snap) {
-          const pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
-          if (onProgress) onProgress(pct);
-        },
-        reject,
-        async function () {
-          try {
-            const url = await task.snapshot.ref.getDownloadURL();
-            resolve({
-              storage_path: path,
-              download_url: url,
-              content_type: "image/png",
-              size_bytes:   blob.size
-            });
-          } catch (e) { reject(e); }
-        }
-      );
+    if (onTask) onTask(task);
+    return wrapUploadWithGuards(task, onProgress, async function () {
+      const url = await task.snapshot.ref.getDownloadURL();
+      return {
+        storage_path: path,
+        download_url: url,
+        content_type: "image/png",
+        size_bytes:   blob.size
+      };
     });
   }
 
@@ -2660,6 +2897,17 @@
       return;
     }
 
+    // 2026-06-18 hotfix — offline pre-check. Bails before we kick off any
+    // Storage upload so the SDK doesn't grind silently in the background.
+    // Draft is already auto-saved (DRAFT_KEY) so the form survives a reload.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setStatus("err",
+        "You're offline — your form is saved on this device. " +
+        "Reconnect and tap Submit again."
+      );
+      return;
+    }
+
     // One-shot validation — collect every missing/incomplete field and show
     // a clean checklist instead of failing one item at a time.
     setStatus("busy", "Checking…");
@@ -2670,6 +2918,11 @@
       return;
     }
     hideValidationSummary();
+    // 2026-06-18 hotfix — clear the "Checking…" busy status that was set
+    // above. Without this, the busy line stays painted on screen while the
+    // upload progress chip renders below it, which is what Bonnie saw at
+    // Baker Construction ("Checking…" + "Uploading photo 1 of 2… 0%").
+    setStatus("", "");
 
     // Past the gate — the validator above guarantees these are populated.
     const customerOpt   = els.customer.selectedOptions[0];
@@ -2684,19 +2937,35 @@
     isSubmitting = true;
     els.submitBtn.disabled = true;
 
+    // 2026-06-18 hotfix v2 — soft 6-minute banner. Non-blocking. After
+    // 6 minutes of cumulative upload wall-clock since this Submit click,
+    // amend the upload-progress label so the tech knows it's working but
+    // slow. Doesn't abort anything — the per-file watchdog + hard cap
+    // remain authoritative. Cleared by hideUploadProgress on success/abort.
+    const softBannerTimer = setTimeout(function () {
+      const lbl = $("upload-progress-label");
+      if (lbl) lbl.textContent = "Still uploading — feel free to keep waiting, or Cancel and try with fewer photos.";
+    }, 360000);
+    const clearSoftBanner = function () { try { clearTimeout(softBannerTimer); } catch (_e) {} };
+
     // ------------------------------------------------------------------
     // Phase 31 prototype — queue branch.
     //
     // When OFFLINE_QUEUE_ENABLED, capture photos + signature into IDB
     // queue and return immediately with a local success. The drain
     // (background processQueue) handles uploads + submitDcrV1 POST. The
-    // flag-off path below is unchanged.
+    // flag-off path below is unchanged from the 2026-06-18 hotfix.
     // ------------------------------------------------------------------
     if (window.OFFLINE_QUEUE_ENABLED && window.PIONEER_QUEUE_WORKER) {
       try {
+        // Capture signature NOW — signaturePad is in-memory and gets
+        // reset on form clear. The blob travels into IDB; the worker
+        // uploads it at drain time and splices the URL into the payload.
         const signatureBlobQ = await signaturePad.toBlob("image/png");
 
         const formDataQ = buildFormData(window.DCR_FORM_CONFIG);
+        // Signature URL gets filled in by the worker after upload. The
+        // form_data.signature placeholder keeps the doc shape stable.
         formDataQ.signature = { storage_path: null, download_url: null };
 
         const customerNameQ        = customerOpt.dataset.name             || customerOpt.textContent;
@@ -2725,6 +2994,7 @@
           clean_date: els.cleanDate.value,
           occupancy:  formDataQ.occupancy_level || "",
           notes:      els.notes.value || "",
+          // Worker fills these in after upload.
           photos:     [],
           affirmation: {
             affirmed:        true,
@@ -2735,6 +3005,8 @@
         });
         payloadQ.form_data = formDataQ;
 
+        // Carry deputy / pioneer handoffs through the queue so the
+        // server-side writebacks still fire when the row drains.
         if (deputyShiftParams && deputyShiftParams.deputy_shift_id) {
           payloadQ.deputy_shift_id          = deputyShiftParams.deputy_shift_id;
           payloadQ.deputy_sync_date         = deputyShiftParams.sync_date         || "";
@@ -2775,13 +3047,24 @@
 
         try { console.info("[phase31] enqueued", { submission_id: submissionId, photos: queuePhotos.length }); } catch (_e) {}
         clearDraft();
+        clearSoftBanner();
         onSuccess(submissionId, { offline_queued: true });
+        // Kick a drain so the row leaves immediately if we're online.
+        // If we're offline, processQueue's first upload will hit its
+        // watchdog and the row will reschedule itself.
         setTimeout(function () { runQueueDrain("post-submit"); }, 250);
         return;
       } catch (err) {
         console.error("[phase31] enqueue failed — falling back to inline path", err);
+        // Drop through to the inline upload path below. The user keeps
+        // their form data and gets the standard error UX if that path
+        // also fails. Re-enable the button so they can retry.
         isSubmitting = false;
         els.submitBtn.disabled = false;
+        clearSoftBanner();
+        // Fall through to the existing try-block by re-entering the
+        // submit handler with a synthetic event would be too risky;
+        // instead, we re-arm and require the user to tap again.
         setStatus("err", "Couldn't save locally — tap Submit again to upload now.");
         return;
       }
@@ -2799,8 +3082,10 @@
             firebaseCtx.storage, customerSlug, submissionId, pendingFiles[i], i,
             function (pct) {
               setUploadProgress(`Uploading photo ${photoIndex} of ${pendingFiles.length}…`, pct);
-            }
+            },
+            function (task) { activeUploadTask = task; }
           );
+          activeUploadTask = null;
           uploadedPhotos.push(meta);
         }
       }
@@ -2809,8 +3094,10 @@
       const signatureBlob = await signaturePad.toBlob("image/png");
       const signatureMeta = await uploadSignature(
         firebaseCtx.storage, customerSlug, submissionId, signatureBlob,
-        function (pct) { setUploadProgress("Uploading signature…", pct); }
+        function (pct) { setUploadProgress("Uploading signature…", pct); },
+        function (task) { activeUploadTask = task; }
       );
+      activeUploadTask = null;
 
       hideUploadProgress();
       setStatus("busy", "Saving DCR…");
@@ -2953,10 +3240,27 @@
     } catch (err) {
       console.error("[DCR] submit failed", err);
       hideUploadProgress();
-      setStatus("err", `Submission failed: ${err.message || err}`);
+      // 2026-06-18 hotfix — distinguish aborted uploads (watchdog, hard cap,
+      // or user-clicked Cancel) from real server / network errors. Draft
+      // survives in localStorage either way; the copy just tells the tech
+      // what happened so they know to retry rather than escalate.
+      const isAbort =
+        (err && err.code === "pioneer/upload-aborted") ||
+        (err && err.code === "storage/canceled");
+      if (isAbort) {
+        setStatus("err",
+          err.code === "storage/canceled"
+            ? "Submission canceled. Your DCR is saved — try again."
+            : (err.message || "Upload aborted — your DCR is saved.")
+        );
+      } else {
+        setStatus("err", `Submission failed: ${err.message || err}`);
+      }
     } finally {
       isSubmitting = false;
       els.submitBtn.disabled = false;
+      activeUploadTask = null;
+      clearSoftBanner();
     }
   }
 
@@ -3744,6 +4048,18 @@
       els.photos.addEventListener("change", onFileInputChange);
       els.form.addEventListener("submit",  onSubmit);
 
+      // 2026-06-18 hotfix — Cancel upload. Click cancels the in-flight
+      // Storage UploadTask; the watchdog/hard-cap path takes care of
+      // re-enabling Submit and showing a "draft saved" message. Idempotent
+      // when no task is active (rare race between progress event and click).
+      const cancelBtn = $("upload-progress-cancel");
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          if (!activeUploadTask) return;
+          try { activeUploadTask.cancel(); } catch (_e) {}
+        });
+      }
+
       // ---------- Phase 31 prototype — drain triggers ----------
       // Online listener + boot-time drain are no-ops when the flag is
       // off (runQueueDrain early-returns). Registering them
@@ -3754,6 +4070,7 @@
         window.addEventListener("online", function () {
           runQueueDrain("online-event");
         });
+        // Boot-time drain catches rows enqueued in a prior tab/session.
         setTimeout(function () { runQueueDrain("boot"); }, 1500);
       }
 
