@@ -1499,22 +1499,43 @@
           </details>
         </section>
 
-        <!-- Phase Customer Economics v1 — QuickBooks connection status +
-             Connect button + manual refresh for the daily Customer Economics
-             sync. Anchor id "qbo-connect" so the /ceo card's CTA link lands
-             on this card. -->
-        <section class="mc-health-card" id="manager-financial-pulse" style="anchor-name:--qbo-connect;">
-          <span class="mc-health-card-eyebrow">Financial Pulse</span>
+        <!-- QuickBooks Connection — admin-only configuration surface.
+             Financial reporting itself lives on /ceo; this card only handles
+             connection state, sync timestamps, and manual triggers.
+             Anchor id "qbo-connect" so the /ceo card's CTA link lands here.
+             Phase 30 — Added CEO Financial Pulse refresh + Disconnect button. -->
+        <section class="mc-health-card" id="manager-qbo-admin" style="anchor-name:--qbo-connect;">
+          <span class="mc-health-card-eyebrow">QuickBooks Connection</span>
           <a id="qbo-connect" style="position:absolute;visibility:hidden;"></a>
+
+          <!-- Connection status line. Populated by manager.js loadStatus()
+               from quickbooks_status/current (admin-safe mirror). -->
           <div id="manager-qbo-display" class="mc-loading">Checking connection…</div>
-          <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+
+          <!-- Last sync timestamps. Two independent rows so admin can see
+               whether either pipeline is stale. Populated by
+               manager.js loadSyncStatus(). -->
+          <div id="manager-qbo-syncs" style="margin-top:8px;font-size:11.5px;color:var(--mc-ink-soft);line-height:1.6;">
+            <div id="manager-sync-pulse">Financial Pulse: <span data-empty>checking…</span></div>
+            <div id="manager-sync-economics">Customer Economics: <span data-empty>checking…</span></div>
+          </div>
+
+          <!-- Button row: Connect / Refresh (x2) / Disconnect.
+               Visibility controlled by manager.js based on connection
+               state — Connect shows when not connected; Refreshes +
+               Disconnect show when connected. -->
+          <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <button type="button" id="manager-qbo-connect" class="mc-btn" style="padding:6px 12px;font-size:12px;">Connect QuickBooks</button>
+            <button type="button" id="manager-pulse-refresh" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:var(--mc-ink);border:1px solid var(--mc-border-soft);" hidden>Refresh Financial Pulse</button>
             <button type="button" id="manager-economics-refresh" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:var(--mc-ink);border:1px solid var(--mc-border-soft);" hidden>Refresh Customer Economics</button>
+            <button type="button" id="manager-qbo-disconnect" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:#b00020;border:1px solid #b00020;" hidden>Disconnect</button>
             <span id="manager-qbo-status" style="font-size:12px;color:var(--mc-ink-soft);" hidden></span>
           </div>
-          <p style="margin-top:8px;font-size:11px;color:var(--mc-ink-soft);line-height:1.5;">
-            Powers the Customer Economics card on /ceo. Daily sync runs at 7 AM Pacific.
-            Connect once; refresh anytime.
+
+          <p style="margin-top:10px;font-size:11px;color:var(--mc-ink-soft);line-height:1.5;">
+            Admin only. Connection powers the Financial Pulse + Customer Economics cards on
+            <a href="/ceo">/ceo</a>. Daily sync: Customer Economics at 7:00 AM PT, Financial
+            Pulse at 7:05 AM PT. Connect once; refresh anytime; disconnect to revoke at Intuit.
           </p>
         </section>
       </div>
@@ -1872,6 +1893,6 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="manager.js?v=20260610-econ-v1"></script>
+  <script src="manager.js?v=20260618-qbo-admin"></script>
 </body>
 </html>

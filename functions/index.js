@@ -10070,6 +10070,104 @@ exports.quickbooksOAuthCallbackV1 = onRequest(
   }
 );
 
+/* ----------------------------- quickbooksOAuthDisconnectV1 -----------------------------
+ *
+ * Admin-only HTTPS POST. Closes the QuickBooks connection:
+ *   1. Reads the current connection doc (no-op if already disconnected).
+ *   2. Best-effort revokes the refresh_token at Intuit's revoke endpoint
+ *      (qboAuth.revokeRefreshToken). Non-fatal on failure — the local
+ *      mark always runs.
+ *   3. Calls qboAuth.markDisconnected(reason) which sets status:
+ *      "disconnected" + disconnect_reason + disconnected_at on both the
+ *      private auth doc AND the read-safe status doc.
+ *   4. Returns JSON { ok, status_before, intuit_revoke }.
+ *
+ * Audit trail preserved: existing tokens stay on the connection doc
+ * (status flips) so a future audit/forensics task can inspect what was
+ * connected when. Re-authorization overwrites with fresh tokens.
+ *
+ * Scope: this function performs NO QBO data writes. The only outbound
+ * call is the revoke endpoint, which Intuit treats as authorization
+ * management (not an accounting write).
+ * ------------------------------------------------------------------------ */
+exports.quickbooksOAuthDisconnectV1 = onRequest(
+  {
+    cors:           false,
+    timeoutSeconds: 30,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[qbo.oauth.disconnect] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to disconnect QuickBooks." });
+      return;
+    }
+
+    const body   = req.body || {};
+    const reason = String(body.reason || "manual via /manager").trim() || "manual via /manager";
+
+    try {
+      const conn = await qboAuth.loadConnection();
+      const statusBefore = (conn && conn.status) || "never_connected";
+      if (!conn || statusBefore === "disconnected") {
+        // Idempotent — still mark + return so the UI can show "already
+        // disconnected" without retry contention.
+        await qboAuth.markDisconnected(reason + " (was: " + statusBefore + ")");
+        res.json({
+          ok:            true,
+          status_before: statusBefore,
+          intuit_revoke: { revoked: false, http_status: 0, message: "Skipped — no active token to revoke." },
+          message:       "Connection was already " + statusBefore + ". Local state cleared."
+        });
+        logger.info("[qbo.oauth.disconnect] no-op", { email: staff.email, statusBefore: statusBefore });
+        return;
+      }
+
+      const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+      const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+
+      const revoke = await qboAuth.revokeRefreshToken({
+        clientId:     clientId,
+        clientSecret: clientSecret,
+        refreshToken: conn.refresh_token
+      });
+
+      await qboAuth.markDisconnected(reason + " by " + (staff.email || "admin"));
+
+      logger.info("[qbo.oauth.disconnect] ok", {
+        email:           staff.email,
+        status_before:   statusBefore,
+        intuit_revoked:  revoke.revoked,
+        intuit_http:     revoke.http_status,
+        intuit_message:  revoke.message
+      });
+      res.json({
+        ok:            true,
+        status_before: statusBefore,
+        intuit_revoke: revoke,
+        message:       revoke.revoked
+                         ? "Disconnected. Token revoked at Intuit."
+                         : "Disconnected locally. Intuit revoke attempt: " + revoke.message
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.disconnect] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
 /* ============================================================================
  * Phase Customer Economics v1 — Sync + Manual Refresh
  *
@@ -10334,6 +10432,275 @@ exports.refreshFinancialPulseV1 = onRequest(
       res.json(result);
     } catch (err) {
       logger.error("[economics.refresh] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
+/* ============================================================================
+   Phase 30 — CEO Dashboard Financial Pulse pipeline
+   ============================================================================
+
+   Distinct from the existing syncFinancialPulseV1 (which despite its name
+   syncs Customer Economics / RPLH and writes customer_economics/current).
+   That function is NOT renamed per scope direction.
+
+   New pipeline:
+     syncCeoFinancialPulseV1     scheduled 07:05 PT daily (5 min after
+                                 the economics sync to space out OAuth
+                                 token-refresh contention).
+     refreshCeoFinancialPulseV1  admin + executive HTTPS for manual refresh
+                                 from the CEO dashboard "↻ Refresh" button.
+
+   Both call runCeoFinancialPulse(opts) which:
+     1. Probes QBO connection. Writes a not-connected snapshot if absent.
+     2. Fetches in parallel:
+          - bank accounts (CurrentBalance per account)
+          - BalanceSheet Report at today, today-30, today-90
+          - open invoices (Balance > 0)
+          - payments in last 30d
+          - last 2 payroll_exports docs (Pioneer-side)
+     3. Hands the raw rows to financialPulse.buildSnapshot() which is a
+        pure function — no I/O.
+     4. Writes financial_pulse/current + financial_pulse_history/{YYYY-MM-DD}.
+
+   Writes immediately even on partial failure (graceful degradation): if
+   BalanceSheet Report fails for one date, trends mark themselves
+   unavailable and Cash Today still renders.
+============================================================================ */
+
+const financialPulse = require("./financialPulse");
+const CEO_PULSE_CURRENT_DOC = "financial_pulse/current";
+const CEO_PULSE_HISTORY_COLL = "financial_pulse_history";
+
+// Pacific YYYY-MM-DD already defined as pacificYmd() near line 10095.
+
+// Read Pioneer's two most recent active payroll exports for the payroll
+// snapshot card. status="active" matches the same filter used by the
+// admin's voidPayrollExportV1 + the existing Workflow bar.
+async function readLastPayrollExports(limitN) {
+  try {
+    const snap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .orderBy("generated_at", "desc")
+      .limit(limitN || 2)
+      .get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (err) {
+    logger.warn("[ceo-pulse] payroll_exports read failed (non-fatal)", { error: err && err.message });
+    return [];
+  }
+}
+
+// Compute "days until close of current semi-monthly period" + blocker
+// count, used by Needs Nick payroll rule. Periods are 1-15 (A) and
+// 16-EOM (B), matching the rest of the codebase. Blocker count comes
+// from a quick scan of in-window pioneer_service_sessions.
+async function readCurrentPayrollCycleStatus() {
+  try {
+    const todayYmd = pacificYmd(new Date());
+    const parts = todayYmd.split("-");
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    const mm = String(month).padStart(2, "0");
+    let startDate, endDate, periodLabel;
+    if (day <= 15) {
+      startDate = year + "-" + mm + "-01";
+      endDate   = year + "-" + mm + "-15";
+      periodLabel = "Period A (1-15)";
+    } else {
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      startDate = year + "-" + mm + "-16";
+      endDate   = year + "-" + mm + "-" + String(lastDay).padStart(2, "0");
+      periodLabel = "Period B (16-EOM)";
+    }
+    const daysUntilClose = (function () {
+      const today = Date.parse(todayYmd + "T12:00:00Z");
+      const close = Date.parse(endDate  + "T12:00:00Z");
+      if (!Number.isFinite(today) || !Number.isFinite(close)) return null;
+      return Math.max(0, Math.round((close - today) / 86400000));
+    }());
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", startDate)
+      .where("service_date", "<=", endDate)
+      .get();
+    let blockerCount = 0;
+    sessSnap.docs.forEach(function (d) {
+      const s = d.data() || {};
+      const b = payrollIsBlocker(s);
+      if (b) blockerCount += 1;
+    });
+    return {
+      period_label:     periodLabel,
+      period_start:     startDate,
+      period_end:       endDate,
+      days_until_close: daysUntilClose,
+      blocker_count:    blockerCount
+    };
+  } catch (err) {
+    logger.warn("[ceo-pulse] payroll cycle status failed (non-fatal)", { error: err && err.message });
+    return null;
+  }
+}
+
+async function readLastSyncAgeHours() {
+  try {
+    const cur = await db.doc(CEO_PULSE_CURRENT_DOC).get();
+    if (!cur.exists) return null;
+    const data = cur.data() || {};
+    const ms = data.snapshot_at && data.snapshot_at.toMillis ? data.snapshot_at.toMillis() : 0;
+    if (!ms) return null;
+    return (Date.now() - ms) / 3600000;
+  } catch (_e) { return null; }
+}
+
+async function writeCeoPulseSnapshot(snap, triggeredBy) {
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const doc = Object.assign({}, snap, {
+    snapshot_at:  sts,
+    triggered_by: String(triggeredBy || "schedule")
+  });
+  await db.doc(CEO_PULSE_CURRENT_DOC).set(doc);
+  await db.collection(CEO_PULSE_HISTORY_COLL).doc(snap.snapshot_date).set(doc);
+  return doc;
+}
+
+async function runCeoFinancialPulse(opts) {
+  const triggeredBy = String((opts && opts.triggeredBy) || "schedule");
+  const todayYmd = pacificYmd(new Date());
+  const day30Ymd = addDaysYmd(todayYmd, -30);
+  const day90Ymd = addDaysYmd(todayYmd, -90);
+
+  const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+  const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+  if (!clientId || !clientSecret) {
+    logger.warn("[ceo-pulse] QBO secrets missing - writing not_connected");
+    const snap = financialPulse.buildNotConnectedSnapshot("QBO secrets not configured.", todayYmd);
+    await writeCeoPulseSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: "secrets_missing" };
+  }
+
+  let probe;
+  try {
+    probe = await qboApi.probeConnection({ clientId: clientId, clientSecret: clientSecret });
+  } catch (err) {
+    probe = { connected: false, error: err && err.message };
+  }
+  if (!probe.connected) {
+    logger.warn("[ceo-pulse] QBO not connected - writing not_connected", { reason: probe.error });
+    const snap = financialPulse.buildNotConnectedSnapshot(probe.error || "Not connected.", todayYmd);
+    await writeCeoPulseSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: probe.error };
+  }
+
+  // Parallel fetch. Each is wrapped in catch so one failure doesn't poison
+  // the whole snapshot - the snapshot builder degrades gracefully.
+  const qboOpts = { clientId: clientId, clientSecret: clientSecret };
+  const settle = function (p) { return p.then(function (v) { return { ok: true, value: v }; },
+                                              function (e) { return { ok: false, error: e && e.message }; }); };
+  const [
+    bankAccountsR, bsTodayR, bs30R, bs90R, openInvR, paymentsR, payrollExportsR, cycleStatusR
+  ] = await Promise.all([
+    settle(qboApi.fetchBankAccounts(qboOpts)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, todayYmd)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, day30Ymd)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, day90Ymd)),
+    settle(qboApi.fetchOpenInvoices(qboOpts)),
+    settle(qboApi.fetchPaymentsInWindow(qboOpts, day30Ymd, todayYmd)),
+    settle(readLastPayrollExports(2)),
+    settle(readCurrentPayrollCycleStatus())
+  ]);
+
+  // Log non-fatal failures so we can investigate without breaking the snapshot.
+  [["bankAccounts", bankAccountsR], ["balanceSheetToday", bsTodayR],
+   ["balanceSheet30", bs30R], ["balanceSheet90", bs90R],
+   ["openInvoices", openInvR], ["payments", paymentsR],
+   ["payrollExports", payrollExportsR], ["cycleStatus", cycleStatusR]
+  ].forEach(function (pair) {
+    if (!pair[1].ok) logger.warn("[ceo-pulse] partial fetch failure", { what: pair[0], error: pair[1].error });
+  });
+
+  const lastSyncAgeHours = await readLastSyncAgeHours();
+
+  const snap = financialPulse.buildSnapshot({
+    todayYmd:           todayYmd,
+    day30Ymd:           day30Ymd,
+    day90Ymd:           day90Ymd,
+    bankAccounts:       bankAccountsR.ok      ? bankAccountsR.value      : [],
+    balanceSheetToday:  bsTodayR.ok           ? bsTodayR.value           : null,
+    balanceSheet30:     bs30R.ok              ? bs30R.value              : null,
+    balanceSheet90:     bs90R.ok              ? bs90R.value              : null,
+    openInvoices:       openInvR.ok           ? openInvR.value           : [],
+    paidPayments:       paymentsR.ok          ? paymentsR.value          : [],
+    payrollExports:     payrollExportsR.ok    ? payrollExportsR.value    : [],
+    payrollCycle:       cycleStatusR.ok       ? cycleStatusR.value       : null,
+    qboStatus:          "fresh",
+    qboErrorMessage:    null,
+    hoursSinceLastSync: lastSyncAgeHours
+  });
+  snap.status = "fresh";
+
+  await writeCeoPulseSnapshot(snap, triggeredBy);
+  logger.info("[ceo-pulse] sync ok", {
+    triggered_by:           triggeredBy,
+    total_cash:             snap.cash_today && snap.cash_today.total_cash_on_hand,
+    runway_state:           snap.cash_runway && snap.cash_runway.state,
+    open_total:             snap.invoices && snap.invoices.open_total_amount,
+    overdue_total:          snap.invoices && snap.invoices.overdue_total_amount,
+    collections_watch_size: (snap.collections_watch || []).length,
+    needs_nick_size:        (snap.needs_nick || []).length
+  });
+  return { ok: true, status: "fresh" };
+}
+
+exports.syncCeoFinancialPulseV1 = onSchedule(
+  {
+    schedule:       "5 7 * * *",
+    timeZone:       "America/Los_Angeles",
+    timeoutSeconds: 300,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (_event) => {
+    try {
+      await runCeoFinancialPulse({ triggeredBy: "schedule" });
+    } catch (err) {
+      logger.error("[ceo-pulse.schedule] crashed", { error: err && err.message });
+    }
+  }
+);
+
+exports.refreshCeoFinancialPulseV1 = onRequest(
+  {
+    cors:           false,
+    timeoutSeconds: 300,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT],
+    invoker:        "public"
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    // Executive + owner emails always pass; admins pass via role. The CEO
+    // surface refresh button shows up for any signed-in caller in this set.
+    if (staff.role !== "admin" && staff.role !== "executive" && staff.role !== "owner") {
+      logger.warn("[ceo-pulse.refresh] denied", { email: staff.email, role: staff.role });
+      res.status(403).json({ ok: false, error: "Executive or admin access required." });
+      return;
+    }
+    try {
+      const result = await runCeoFinancialPulse({ triggeredBy: "manual:" + staff.email });
+      res.json(result);
+    } catch (err) {
+      logger.error("[ceo-pulse.refresh] crashed", { error: err && err.message });
       res.status(500).json({ ok: false, error: err && err.message });
     }
   }

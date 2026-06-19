@@ -454,6 +454,12 @@
     renderCustomerEconomics().catch(function (err) {
       console.warn('[ceo] customer economics failed', err);
     });
+    // Phase 30 — Financial Pulse card. Reads financial_pulse/current.
+    // Sync runs daily via syncCeoFinancialPulseV1. Soft-fails so a QBO
+    // outage doesn't blank the whole CEO surface.
+    renderFinancialPulse().catch(function (err) {
+      console.warn('[ceo] financial pulse failed', err);
+    });
   }
 
   // ---- Section 1: Company Health ----
@@ -2236,6 +2242,297 @@
       setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1200);
     } catch (err) {
       console.warn('[ceo] economics refresh threw', err);
+      btn.textContent = 'Failed';
+      setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1800);
+    }
+  }
+
+  /* ============================================================
+     Phase 30 — Financial Pulse renderer.
+     ============================================================ */
+
+  function pulseFmtMoney(n, opts) {
+    if (n == null || isNaN(n)) return '—';
+    const o = opts || {};
+    const sign = (o.signed && n > 0) ? '+' : (o.signed && n < 0) ? '−' : '';
+    const abs = Math.abs(n);
+    return sign + '$' + abs.toLocaleString('en-US', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+  function pulseFmtMoneyShort(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Math.round(n).toLocaleString('en-US');
+  }
+  function pulseFmtPct(n) {
+    if (n == null || isNaN(n)) return '';
+    const sign = n > 0 ? '+' : (n < 0 ? '−' : '');
+    return ' (' + sign + Math.abs(n).toFixed(1) + '%)';
+  }
+  function pulseArrow(direction) {
+    if (direction === 'up')   return '<span class="ceo-pulse-arrow-up">↑</span> ';
+    if (direction === 'down') return '<span class="ceo-pulse-arrow-down">↓</span> ';
+    return '<span class="ceo-pulse-arrow-flat">→</span> ';
+  }
+  function pulseEmptyHtml(title, sub) {
+    return '<div class="ceo-pulse-empty">' +
+             '<p style="font-weight:600;">' + escapeHtml(title) + '</p>' +
+             (sub ? '<p style="margin-top:6px;">' + sub + '</p>' : '') +
+           '</div>';
+  }
+  function pulseFreshnessLabel(snap) {
+    if (!snap || !snap.snapshot_at) return '';
+    const ts = snap.snapshot_at;
+    const ms = (ts && ts.toMillis) ? ts.toMillis()
+            : (ts && ts.seconds)   ? ts.seconds * 1000
+            : 0;
+    if (!ms) return '';
+    try {
+      return 'as of ' + new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Los_Angeles',
+        month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      }).format(new Date(ms)) + ' PT';
+    } catch (_e) { return ''; }
+  }
+
+  async function renderFinancialPulse() {
+    const bodyEl    = $('ceo-pulse-body');
+    const periodEl  = $('ceo-pulse-period');
+    const refreshBtn = $('ceo-pulse-refresh');
+    if (!bodyEl) return;
+
+    let snap;
+    try {
+      const doc = await db.collection('financial_pulse').doc('current').get();
+      if (!doc.exists) {
+        bodyEl.innerHTML = pulseEmptyHtml(
+          'No Financial Pulse snapshot yet.',
+          'The daily sync runs at 7:05 AM Pacific. Once QuickBooks is connected, this card will populate on the next sync.'
+        );
+        if (periodEl) periodEl.textContent = '';
+        return;
+      }
+      snap = Object.assign({ _id: doc.id }, doc.data() || {});
+    } catch (err) {
+      console.warn('[ceo] financial_pulse read failed', err);
+      bodyEl.innerHTML = pulseEmptyHtml('Couldn\'t load Financial Pulse.', err.message || 'unknown');
+      return;
+    }
+
+    if (periodEl) periodEl.textContent = pulseFreshnessLabel(snap);
+
+    if (refreshBtn && window.REFRESH_CEO_FINANCIAL_PULSE_URL) {
+      refreshBtn.hidden = false;
+      refreshBtn.onclick = function () { handlePulseRefresh(refreshBtn); };
+    }
+
+    if (snap.status === 'not_connected') {
+      bodyEl.innerHTML = pulseEmptyHtml(
+        'QuickBooks not connected.',
+        (snap.error_message || 'Connect from /manager to enable Financial Pulse.') +
+          '<br><a class="ceo-pulse-cta" href="/manager.html#qbo-connect">Open /manager</a>'
+      );
+      return;
+    }
+    if (snap.status === 'error') {
+      bodyEl.innerHTML = pulseEmptyHtml('Financial Pulse sync error.', snap.error_message || 'unknown');
+      return;
+    }
+
+    bodyEl.innerHTML =
+      '<div class="ceo-pulse-grid">' +
+        pulseTileCashToday(snap.cash_today) +
+        pulseTileCashRunway(snap.cash_runway) +
+        pulseTileTrend('30-Day Trend', snap.trend_30d) +
+        pulseTileTrend('90-Day Trend', snap.trend_90d) +
+        pulseTileOpenInvoices(snap.invoices) +
+        pulseTileOverdueInvoices(snap.invoices) +
+        pulseTileCollectionsWatch(snap.collections_watch) +
+        pulseTilePayroll(snap.payroll) +
+        pulseTileNeedsNick(snap.needs_nick) +
+      '</div>';
+  }
+
+  function pulseTileCashToday(c) {
+    if (!c) return '<div class="ceo-pulse-tile"><p class="ceo-pulse-tile-eyebrow">Cash Today</p><p class="ceo-pulse-tile-value">—</p></div>';
+    const sub = c.accounts && c.accounts.length
+      ? '<ul class="ceo-pulse-tile-list">' +
+          c.accounts.map(function (a) {
+            return '<li><span>' + escapeHtml(a.name) + '</span>' +
+                   '<span class="ceo-pulse-list-amt">' + pulseFmtMoneyShort(a.current_balance) + '</span></li>';
+          }).join('') +
+        '</ul>'
+      : '<p class="ceo-pulse-tile-sub">No bank accounts on file.</p>';
+    return '<div class="ceo-pulse-tile">' +
+             '<p class="ceo-pulse-tile-eyebrow">Cash Today</p>' +
+             '<p class="ceo-pulse-tile-value">' + pulseFmtMoney(c.total_cash_on_hand) + '</p>' +
+             sub +
+             '<p class="ceo-pulse-tile-disclosure">' + escapeHtml(c.disclosure || '') + '</p>' +
+           '</div>';
+  }
+
+  function pulseTileCashRunway(r) {
+    if (!r) return '';
+    let valHtml, sub;
+    if (r.state === 'burning' && r.months_remaining != null) {
+      valHtml = '<span class="ceo-pulse-runway-state-burning">' + r.months_remaining.toFixed(1) + ' mo</span>';
+      sub = 'Net out: ' + pulseFmtMoney(Math.abs(r.monthly_net_change)) + '/mo · cap 24 mo';
+    } else if (r.state === 'growing') {
+      valHtml = '<span class="ceo-pulse-runway-state-growing">Growing</span>';
+      sub = 'Net in: ' + pulseFmtMoney(Math.abs(r.monthly_net_change)) + '/mo';
+    } else if (r.state === 'stable') {
+      valHtml = '<span class="ceo-pulse-runway-state-stable">Stable</span>';
+      sub = 'Cash holding steady';
+    } else {
+      valHtml = '<span class="ceo-pulse-runway-state-unknown">—</span>';
+      sub = 'Need 90 days of QB history to estimate';
+    }
+    return '<div class="ceo-pulse-tile">' +
+             '<p class="ceo-pulse-tile-eyebrow">Cash Runway</p>' +
+             '<p class="ceo-pulse-tile-value">' + valHtml + '</p>' +
+             '<p class="ceo-pulse-tile-sub">' + escapeHtml(sub) + '</p>' +
+             '<p class="ceo-pulse-tile-disclosure">' + escapeHtml(r.disclosure || '') + '</p>' +
+           '</div>';
+  }
+
+  function pulseTileTrend(title, t) {
+    if (!t || !t.available) {
+      return '<div class="ceo-pulse-tile">' +
+               '<p class="ceo-pulse-tile-eyebrow">' + escapeHtml(title) + '</p>' +
+               '<p class="ceo-pulse-tile-value" style="font-size:18px;">Unavailable</p>' +
+               '<p class="ceo-pulse-tile-sub">' + escapeHtml(t && t.reason || '') + '</p>' +
+             '</div>';
+    }
+    const pct = t.delta_percent != null ? pulseFmtPct(t.delta_percent) : '';
+    return '<div class="ceo-pulse-tile">' +
+             '<p class="ceo-pulse-tile-eyebrow">' + escapeHtml(title) + '</p>' +
+             '<p class="ceo-pulse-tile-value">' + pulseArrow(t.direction) +
+                pulseFmtMoney(t.delta_dollars, { signed: true }) + escapeHtml(pct) + '</p>' +
+             '<p class="ceo-pulse-tile-sub">vs ' + escapeHtml(t.comparison_date || '') + '</p>' +
+           '</div>';
+  }
+
+  function pulseTileOpenInvoices(inv) {
+    if (!inv) return '';
+    return '<div class="ceo-pulse-tile">' +
+             '<p class="ceo-pulse-tile-eyebrow">Open Invoices</p>' +
+             '<p class="ceo-pulse-tile-value">' + pulseFmtMoneyShort(inv.open_total_amount) + '</p>' +
+             '<p class="ceo-pulse-tile-sub">' + (inv.open_count || 0) + ' invoice' +
+                ((inv.open_count === 1) ? '' : 's') +
+                ' · paid last 30d ' + pulseFmtMoneyShort(inv.paid_last_30d_amount) + '</p>' +
+           '</div>';
+  }
+
+  function pulseTileOverdueInvoices(inv) {
+    if (!inv) return '';
+    const oldestLine = (inv.oldest_overdue_days != null)
+      ? ' · oldest ' + inv.oldest_overdue_days + ' days'
+      : '';
+    return '<div class="ceo-pulse-tile">' +
+             '<p class="ceo-pulse-tile-eyebrow">Overdue</p>' +
+             '<p class="ceo-pulse-tile-value">' + pulseFmtMoneyShort(inv.overdue_total_amount) + '</p>' +
+             '<p class="ceo-pulse-tile-sub">' + (inv.overdue_count || 0) + ' invoice' +
+                ((inv.overdue_count === 1) ? '' : 's') + escapeHtml(oldestLine) + '</p>' +
+           '</div>';
+  }
+
+  function pulseTileCollectionsWatch(list) {
+    const rows = (list || []).map(function (r) {
+      const days = (r.days_overdue != null) ? r.days_overdue + 'd' : '—';
+      const inv  = r.doc_number ? 'Inv #' + r.doc_number : '';
+      return '<li>' +
+               '<span>' +
+                 '<strong>' + escapeHtml(r.customer_name) + '</strong>' +
+                 ' <span class="ceo-pulse-list-sub">' + escapeHtml(days) +
+                   (inv ? ' · ' + escapeHtml(inv) : '') + '</span>' +
+               '</span>' +
+               '<span class="ceo-pulse-list-amt">' + pulseFmtMoneyShort(r.amount_outstanding) + '</span>' +
+             '</li>';
+    }).join('');
+    const body = rows
+      ? '<ul class="ceo-pulse-tile-list">' + rows + '</ul>'
+      : '<p class="ceo-pulse-tile-sub">No overdue invoices on file.</p>';
+    return '<div class="ceo-pulse-tile ceo-pulse-grid-full">' +
+             '<p class="ceo-pulse-tile-eyebrow">Collections Watch</p>' +
+             body +
+           '</div>';
+  }
+
+  function pulseTilePayroll(p) {
+    if (!p || !p.available) {
+      return '<div class="ceo-pulse-tile ceo-pulse-grid-full">' +
+               '<p class="ceo-pulse-tile-eyebrow">Payroll Snapshot</p>' +
+               '<p class="ceo-pulse-tile-sub">' + escapeHtml((p && p.reason) || 'No payroll exports yet.') + '</p>' +
+             '</div>';
+    }
+    const trendLine = p.trend
+      ? pulseArrow(p.trend.direction) +
+        (p.trend.delta_hours > 0 ? '+' : (p.trend.delta_hours < 0 ? '−' : '±')) +
+        Math.abs(p.trend.delta_hours).toFixed(2) + ' hrs vs ' +
+        escapeHtml(p.trend.prior_export_period || 'prior cycle')
+      : '';
+    return '<div class="ceo-pulse-tile ceo-pulse-grid-full">' +
+             '<p class="ceo-pulse-tile-eyebrow">Payroll Snapshot</p>' +
+             '<p class="ceo-pulse-tile-value" style="font-size:22px;">' +
+               p.last_export_total_paid_hours.toFixed(2) + ' hrs · ' +
+               (p.last_export_employee_count || 0) + ' employees' +
+             '</p>' +
+             '<p class="ceo-pulse-tile-sub">' + escapeHtml(p.last_export_period || '') +
+                ' · ' + (p.last_export_session_count || 0) + ' sessions</p>' +
+             (trendLine ? '<p class="ceo-pulse-tile-disclosure" style="font-style:normal;">' + trendLine + '</p>' : '') +
+           '</div>';
+  }
+
+  function pulseTileNeedsNick(list) {
+    const rows = (list || []).map(function (n) {
+      return '<li>' +
+               '<p class="ceo-pulse-nick-title">' +
+                 '<span class="ceo-pulse-nick-sev ceo-pulse-nick-sev-' + escapeHtml(n.severity) + '">' +
+                   escapeHtml(n.severity) +
+                 '</span>' +
+                 escapeHtml(n.title || '') +
+               '</p>' +
+               '<p class="ceo-pulse-nick-msg">' + escapeHtml(n.message || '') +
+                 (n.action_url ? ' <a class="ceo-pulse-cta" style="padding:2px 12px;font-size:11px;" href="' +
+                   escapeHtml(n.action_url) + '">Open</a>' : '') +
+               '</p>' +
+             '</li>';
+    }).join('');
+    const body = rows
+      ? '<ul class="ceo-pulse-nick-list">' + rows + '</ul>'
+      : '<p class="ceo-pulse-nick-empty">No items need your attention right now.</p>';
+    return '<div class="ceo-pulse-tile ceo-pulse-grid-full ceo-pulse-nick">' +
+             '<p class="ceo-pulse-tile-eyebrow ceo-pulse-nick-eyebrow">Needs Nick</p>' +
+             body +
+           '</div>';
+  }
+
+  async function handlePulseRefresh(btn) {
+    if (!btn || !window.REFRESH_CEO_FINANCIAL_PULSE_URL) return;
+    const originalText = btn.textContent;
+    btn.textContent = 'Refreshing…';
+    btn.disabled = true;
+    try {
+      const idToken = await currentUser.getIdToken();
+      const res = await fetch(window.REFRESH_CEO_FINANCIAL_PULSE_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + idToken,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify({})
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body || !body.ok) {
+        const msg = (body && body.error) || ('HTTP ' + res.status);
+        throw new Error(msg);
+      }
+      await renderFinancialPulse();
+      btn.textContent = 'Refreshed';
+      setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1200);
+    } catch (err) {
+      console.warn('[ceo] pulse refresh threw', err);
       btn.textContent = 'Failed';
       setTimeout(function () { btn.textContent = originalText; btn.disabled = false; }, 1800);
     }

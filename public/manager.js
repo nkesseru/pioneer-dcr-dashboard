@@ -1567,17 +1567,67 @@
     });
   }
 
-  // Phase Customer Economics v1 — QuickBooks connection card on /manager.
-  // Status text from quickbooks_auth/connection, plus two buttons:
-  //   Connect QuickBooks       → POSTs to quickbooksOAuthStartV1, opens
-  //                              the Intuit authorize URL in a new tab
-  //   Refresh Customer Economics → POSTs to refreshFinancialPulseV1
+  // QuickBooks Connection admin card on /manager. Read-only status panel
+  // + 4 action buttons. Financial reporting itself lives on /ceo — this
+  // surface only handles connection state and manual triggers.
+  //
+  // Buttons:
+  //   Connect QuickBooks            → POST quickbooksOAuthStartV1
+  //   Refresh Financial Pulse       → POST refreshCeoFinancialPulseV1 (Phase 30)
+  //   Refresh Customer Economics    → POST refreshFinancialPulseV1
+  //   Disconnect                    → POST quickbooksOAuthDisconnectV1 (Phase 30)
+  //
+  // Plus two last-sync rows showing financial_pulse/current.snapshot_at
+  // and customer_economics/current.snapshot_at so admin sees freshness.
   function wireQboConnect() {
-    const display = $("manager-qbo-display");
-    const connectBtn = $("manager-qbo-connect");
-    const refreshBtn = $("manager-economics-refresh");
-    const status     = $("manager-qbo-status");
+    const display      = $("manager-qbo-display");
+    const connectBtn   = $("manager-qbo-connect");
+    const refreshBtn   = $("manager-economics-refresh");
+    const pulseBtn     = $("manager-pulse-refresh");
+    const disconnectBtn = $("manager-qbo-disconnect");
+    const status       = $("manager-qbo-status");
     if (!display) return;
+
+    function relativeAge(ts) {
+      const d = ts && ts.toDate ? ts.toDate() : null;
+      if (!d) return null;
+      const ms = Date.now() - d.getTime();
+      const h = ms / 3600000;
+      if (h < 1)  return Math.max(1, Math.round(ms / 60000)) + " min ago";
+      if (h < 24) return Math.round(h * 10) / 10 + " hr ago";
+      const days = Math.round(h / 24 * 10) / 10;
+      return days + " days ago";
+    }
+
+    async function loadSyncStatus() {
+      const db = firebase.firestore();
+      const setLine = function (id, label, snapDoc) {
+        const el = $(id);
+        if (!el) return;
+        if (!snapDoc || !snapDoc.exists) {
+          el.innerHTML = label + ': <span style="color:var(--mc-ink-soft)">no snapshot yet</span>';
+          return;
+        }
+        const data = snapDoc.data() || {};
+        const age = relativeAge(data.snapshot_at);
+        const stat = String(data.status || "unknown");
+        const tone = (stat === "fresh") ? "var(--mc-good, #1d7d3a)"
+                   : (stat === "not_connected" || stat === "error") ? "var(--mc-critical, #b00020)"
+                   : "var(--mc-ink-soft)";
+        el.innerHTML = label + ': <span style="color:' + tone + '">' + stat + '</span>'
+                     + (age ? ' · ' + age : '');
+      };
+      try {
+        const [pulseSnap, econSnap] = await Promise.all([
+          db.collection("financial_pulse").doc("current").get().catch(function(){ return null; }),
+          db.collection("customer_economics").doc("current").get().catch(function(){ return null; })
+        ]);
+        setLine("manager-sync-pulse",     "Financial Pulse",     pulseSnap);
+        setLine("manager-sync-economics", "Customer Economics",  econSnap);
+      } catch (err) {
+        console.warn("[manager] sync status read failed", err);
+      }
+    }
 
     async function loadStatus() {
       try {
@@ -1585,11 +1635,15 @@
         // Read from the admin-safe mirror, NOT quickbooks_auth/connection.
         // The mirror has no tokens — see qboAuth.saveConnection() server-side.
         const snap = await db.collection("quickbooks_status").doc("current").get();
+        const setHidden = function (btn, hidden) { if (btn) btn.hidden = !!hidden; };
         if (!snap.exists) {
           display.classList.remove("mc-loading");
           display.innerHTML = '<strong style="color:var(--mc-critical, #b00020)">Not connected.</strong> ' +
                               'Click <em>Connect QuickBooks</em> to authorize.';
-          if (refreshBtn) refreshBtn.hidden = true;
+          setHidden(refreshBtn, true);
+          setHidden(pulseBtn, true);
+          setHidden(disconnectBtn, true);
+          loadSyncStatus();
           return;
         }
         const data = snap.data() || {};
@@ -1597,7 +1651,10 @@
           display.classList.remove("mc-loading");
           display.innerHTML = '<strong>Status: ' + (data.status || "unknown") + '</strong>'
                             + (data.disconnect_reason ? '<br><small>' + data.disconnect_reason + '</small>' : '');
-          if (refreshBtn) refreshBtn.hidden = true;
+          setHidden(refreshBtn, true);
+          setHidden(pulseBtn, true);
+          setHidden(disconnectBtn, true);
+          loadSyncStatus();
           return;
         }
         const connectedAt = data.connected_at && data.connected_at.toDate ? data.connected_at.toDate() : null;
@@ -1607,7 +1664,10 @@
           'Realm: <code>' + String(data.realm_id || "?") + '</code> · ' +
           'Env: <code>' + String(data.environment || "production") + '</code>' +
           (connectedAt ? '<br><small>Connected ' + connectedAt.toLocaleDateString() + '</small>' : '');
-        if (refreshBtn) refreshBtn.hidden = false;
+        setHidden(refreshBtn, false);
+        setHidden(pulseBtn, false);
+        setHidden(disconnectBtn, false);
+        loadSyncStatus();
       } catch (err) {
         console.warn("[manager] QBO connection read failed", err);
         display.classList.remove("mc-loading");
@@ -1615,6 +1675,40 @@
       }
     }
     loadStatus();
+
+    // Generic POST helper for the three POST-only endpoints. Surfaces
+    // errors on the shared status line and re-runs loadStatus() at the end.
+    async function postQbo(url, btn, beforeMsg, okMsgFn) {
+      if (!url) { alert("Endpoint not configured."); return; }
+      if (!currentUser) { alert("Not signed in."); return; }
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = beforeMsg + "…";
+      if (status) { status.hidden = false; status.textContent = beforeMsg + "…"; status.style.color = "var(--mc-ink-soft)"; }
+      try {
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+          body: "{}"
+        });
+        const body = await res.json().catch(function () { return {}; });
+        if (!res.ok || !body.ok) {
+          const msg = (body && body.error) || ("HTTP " + res.status);
+          if (status) { status.textContent = "Failed: " + msg; status.style.color = "var(--mc-critical, #b00020)"; }
+          return;
+        }
+        const okMsg = (typeof okMsgFn === "function") ? okMsgFn(body) : "Done.";
+        if (status) { status.textContent = okMsg; status.style.color = "var(--mc-good, #1d7d3a)"; }
+      } catch (err) {
+        console.error("[manager] QBO action failed", err);
+        if (status) { status.textContent = "Failed: " + (err.message || "unknown"); status.style.color = "var(--mc-critical, #b00020)"; }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        setTimeout(loadStatus, 600);
+      }
+    }
 
     if (connectBtn) {
       connectBtn.addEventListener("click", async function () {
@@ -1656,40 +1750,43 @@
       });
     }
 
+    // Refresh Customer Economics — POSTs to refreshFinancialPulseV1.
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", async function () {
-        const url = window.REFRESH_FINANCIAL_PULSE_URL;
-        if (!url) { alert("Refresh URL not configured."); return; }
-        if (!currentUser) { alert("Not signed in."); return; }
-        refreshBtn.disabled = true;
-        const originalLabel = refreshBtn.textContent;
-        refreshBtn.textContent = "Refreshing…";
-        if (status) { status.hidden = false; status.textContent = "Pulling latest from QuickBooks…"; }
-        try {
-          const idToken = await currentUser.getIdToken();
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
-            body: "{}"
+      refreshBtn.addEventListener("click", function () {
+        postQbo(window.REFRESH_FINANCIAL_PULSE_URL, refreshBtn, "Refreshing economics",
+          function (body) {
+            return "Customer Economics synced (status: " + (body.status || "ok") +
+                   (typeof body.included === "number" ? ", " + body.included + " customers" : "") + ")";
           });
-          const body = await res.json().catch(function () { return {}; });
-          if (!res.ok || !body.ok) {
-            const msg = (body && body.error) || ("HTTP " + res.status);
-            if (status) { status.textContent = "Refresh failed: " + msg; status.style.color = "var(--mc-critical, #b00020)"; }
-          } else {
-            if (status) {
-              status.textContent = "Synced (status: " + (body.status || "ok") +
-                                   (typeof body.included === "number" ? ", " + body.included + " customers" : "") + ")";
-              status.style.color = "var(--mc-good, #1d7d3a)";
-            }
-          }
-        } catch (err) {
-          console.error("[manager] economics refresh failed", err);
-          if (status) { status.textContent = "Refresh failed: " + (err.message || "unknown"); status.style.color = "var(--mc-critical, #b00020)"; }
-        } finally {
-          refreshBtn.disabled = false;
-          refreshBtn.textContent = originalLabel;
-        }
+      });
+    }
+
+    // Phase 30 — Refresh Financial Pulse (cash + trends + invoices +
+    // collections + payroll + needs-nick).
+    if (pulseBtn) {
+      pulseBtn.addEventListener("click", function () {
+        postQbo(window.REFRESH_CEO_FINANCIAL_PULSE_URL, pulseBtn, "Refreshing pulse",
+          function (body) {
+            return "Financial Pulse synced (status: " + (body.status || "ok") + ")";
+          });
+      });
+    }
+
+    // Phase 30 — Disconnect. Confirm before posting because this revokes
+    // the refresh token at Intuit and forces a re-authorize to use QB
+    // again. Daily snapshots will write a not_connected state afterwards.
+    if (disconnectBtn) {
+      disconnectBtn.addEventListener("click", function () {
+        const confirmMsg = "Disconnect QuickBooks?\n\n" +
+                           "This revokes the connection at Intuit. Both syncs will write a " +
+                           "\"not connected\" snapshot until you reconnect. The CEO Financial Pulse " +
+                           "and Customer Economics cards will show \"QuickBooks not connected.\"";
+        if (!confirm(confirmMsg)) return;
+        postQbo(window.QUICKBOOKS_OAUTH_DISCONNECT_URL, disconnectBtn, "Disconnecting",
+          function (body) {
+            const r = body && body.intuit_revoke || {};
+            return "Disconnected. " + (r.revoked ? "Revoked at Intuit." : "(" + (r.message || "local only") + ")");
+          });
       });
     }
   }

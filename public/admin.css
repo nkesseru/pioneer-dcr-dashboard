@@ -507,6 +507,57 @@
 }
 .row-actions .row-btn[data-action="archive"] { color: var(--pc-danger-700); border-color: #ffd2d2; background: #fff5f5; }
 
+/* 2026-06-19 — DCR email action variants for the five-state Recent DCRs
+   grid. All variants share .row-btn's height/padding/radius; only color +
+   weight differ. data-variant is set by renderEmailActionButton in
+   admin/tab-recent-dcrs.js. */
+.row-actions .row-btn[data-variant="review"] {
+  color: #fff;
+  background: var(--pc-teal-700);
+  border-color: var(--pc-teal-700);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="review"]:hover {
+  background: var(--pc-teal);
+  border-color: var(--pc-teal);
+}
+.row-actions .row-btn[data-variant="retry"] {
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border-color: var(--pc-danger);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="retry"]:hover {
+  background: #ffe4e4;
+}
+.row-actions .row-btn[data-variant="incomplete"] {
+  color: var(--pc-text-muted);
+  background: var(--pc-silver-100);
+  border-color: var(--pc-silver-300);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="incomplete"]:hover {
+  background: #ececec;
+}
+.row-actions .row-btn[data-variant="resend-overflow"] {
+  color: var(--pc-text-muted);
+  background: transparent;
+  border-color: transparent;
+  font-size: 11px;
+  padding: 0 8px;
+  height: 26px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.row-actions .row-btn[data-variant="resend-overflow"]:hover {
+  background: var(--pc-silver-100);
+  opacity: 1;
+}
+
+/* Email pill emphasis — slightly tighter than other badges so the
+   "Sent · 2h ago" text reads as a status, not a label. */
+.badge.dcr-email-pill { font-weight: 600; letter-spacing: 0.1px; }
+
 /* ==========================================================================
    Status pills (active / archived / dcr-enabled / has-issues / zapier ...)
    ========================================================================== */

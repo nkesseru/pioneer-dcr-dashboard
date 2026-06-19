@@ -1071,6 +1071,225 @@
       color: var(--ceo-charcoal-soft, #6b6b66);
       font-style: italic;
     }
+
+    /* ============================================================
+       Phase 30 — Financial Pulse card.
+       Same outer rhythm as the economics card. Inner grid of tiles
+       maps to the 30-second-read design objective:
+         Row 1: Cash Today + Cash Runway     (Q1 safety)
+         Row 2: 30-day trend + 90-day trend  (Q2 growth)
+         Row 3: Open Invoices + Overdue      (Q3 operations / collections)
+         Row 4: Collections Watch list       (Q3 detail)
+         Row 5: Payroll snapshot             (Q4 payroll safety)
+         Row 6: Needs Nick                   (Q5 attention router)
+       ============================================================ */
+    .ceo-pulse-card {
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-border-soft, #e6e2d6);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 40px 48px 28px;
+      margin-bottom: 56px;
+    }
+    .ceo-pulse-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .ceo-pulse-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 8px;
+    }
+    .ceo-pulse-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+    .ceo-pulse-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .ceo-pulse-period {
+      font-size: 12px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-pulse-refresh {
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: 0.6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--ceo-edge);
+      background: var(--ceo-paper-soft);
+      color: var(--ceo-charcoal-soft);
+      cursor: pointer;
+    }
+    .ceo-pulse-refresh:hover { background: var(--ceo-cream-deep); color: var(--ceo-charcoal); }
+    .ceo-pulse-body { margin-top: 4px; }
+
+    .ceo-pulse-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .ceo-pulse-grid-full { grid-column: 1 / -1; }
+
+    .ceo-pulse-tile {
+      background: var(--ceo-paper-soft);
+      border: 1px solid var(--ceo-edge);
+      border-radius: 14px;
+      padding: 22px 24px;
+    }
+    .ceo-pulse-tile-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 6px;
+    }
+    .ceo-pulse-tile-value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      letter-spacing: -0.4px;
+      margin: 0 0 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ceo-pulse-tile-sub {
+      font-size: 12.5px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+    .ceo-pulse-tile-disclosure {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: var(--ceo-charcoal-faint);
+      font-style: italic;
+    }
+
+    .ceo-pulse-arrow-up   { color: #6b8576; font-weight: 600; }
+    .ceo-pulse-arrow-down { color: #b85a4a; font-weight: 600; }
+    .ceo-pulse-arrow-flat { color: var(--ceo-charcoal-faint); font-weight: 600; }
+
+    .ceo-pulse-tile-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ceo-pulse-tile-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 14px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: var(--ceo-charcoal);
+      border-bottom: 1px dashed var(--ceo-edge);
+    }
+    .ceo-pulse-tile-list li:last-child { border-bottom: 0; }
+    .ceo-pulse-tile-list .ceo-pulse-list-amt {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .ceo-pulse-list-sub {
+      font-size: 11.5px;
+      color: var(--ceo-charcoal-soft);
+    }
+
+    .ceo-pulse-runway-state-burning  { color: #b85a4a; }
+    .ceo-pulse-runway-state-stable   { color: var(--ceo-charcoal-soft); }
+    .ceo-pulse-runway-state-growing  { color: #6b8576; }
+    .ceo-pulse-runway-state-unknown  { color: var(--ceo-charcoal-faint); }
+
+    .ceo-pulse-nick {
+      background: linear-gradient(180deg, #fdfbf6 0%, #f3ede2 100%);
+      border: 1px solid var(--ceo-champagne-soft);
+    }
+    .ceo-pulse-nick-eyebrow { color: var(--ceo-champagne); }
+    .ceo-pulse-nick-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ceo-pulse-nick-list li {
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--ceo-champagne-soft);
+    }
+    .ceo-pulse-nick-list li:last-child { border-bottom: 0; }
+    .ceo-pulse-nick-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0 0 2px;
+    }
+    .ceo-pulse-nick-sev {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-right: 6px;
+      vertical-align: middle;
+      font-weight: 700;
+    }
+    .ceo-pulse-nick-sev-high   { background: #f5d8d2; color: #913020; }
+    .ceo-pulse-nick-sev-medium { background: #efe4cc; color: #836326; }
+    .ceo-pulse-nick-sev-low    { background: var(--ceo-sage-soft); color: var(--ceo-sage-deep); }
+    .ceo-pulse-nick-msg {
+      font-size: 12.5px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+    .ceo-pulse-nick-empty {
+      padding: 20px 0;
+      text-align: center;
+      color: var(--ceo-charcoal-soft);
+      font-style: italic;
+    }
+
+    .ceo-pulse-disclosure {
+      margin: 16px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-style: italic;
+    }
+    .ceo-pulse-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-pulse-cta {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: var(--ceo-sage-deep);
+      color: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .ceo-pulse-card { padding: 28px 20px 20px; }
+      .ceo-pulse-grid { grid-template-columns: 1fr; }
+    }
     .ceo-econ-empty {
       padding: 32px 16px;
       text-align: center;
@@ -1242,6 +1461,32 @@
           <p class="ceo-loading">Loading Customer Economics…</p>
         </div>
         <p class="ceo-economics-disclosure">Not profitability. Overhead allocation not included.</p>
+      </section>
+
+      <!-- Phase 30 — Financial Pulse card.
+           Reads financial_pulse/current. Design objective (Nick's 30-sec
+           read): Are we safe? Growing? Ops healthy? Payroll safe? What
+           needs Nick's attention?
+           - cash_today + cash_runway = safety
+           - trend_30d + trend_90d = growth
+           - operational health lives in the RPLH card above
+           - payroll snapshot = payroll safety
+           - needs_nick = attention router -->
+      <section class="ceo-pulse-card" id="ceo-pulse">
+        <div class="ceo-pulse-head">
+          <div>
+            <p class="ceo-pulse-eyebrow">Financial Pulse</p>
+            <h2 class="ceo-pulse-title">Cash · Trends · Invoices · Payroll</h2>
+          </div>
+          <div class="ceo-pulse-meta">
+            <span class="ceo-pulse-period" id="ceo-pulse-period">—</span>
+            <button type="button" class="ceo-pulse-refresh" id="ceo-pulse-refresh" hidden>↻ Refresh</button>
+          </div>
+        </div>
+        <div class="ceo-pulse-body" id="ceo-pulse-body">
+          <p class="ceo-loading">Loading Financial Pulse…</p>
+        </div>
+        <p class="ceo-pulse-disclosure">QuickBooks ledger balance · not live bank-feed balance. Hours-only, no payroll dollars.</p>
       </section>
 
       <!-- 1B. TODAY'S CEO ACTIONS -->
@@ -1437,6 +1682,6 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="comm-threads.js?v=20260610-phase3b2"></script>
-  <script src="ceo.js?v=20260610-econ-v1"></script>
+  <script src="ceo.js?v=20260618-financial-pulse"></script>
 </body>
 </html>

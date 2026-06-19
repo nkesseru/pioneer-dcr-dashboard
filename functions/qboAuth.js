@@ -215,6 +215,41 @@ async function markDisconnected(reason) {
   await db().doc(STATUS_DOC_PATH).set(patch, { merge: true });
 }
 
+// Calls Intuit's token revocation endpoint. Best-effort: if Intuit returns
+// non-2xx (including the common "Token already invalid" / 400), we log it
+// and continue — the local-side markDisconnected() always runs so the
+// connection doc state is authoritative regardless of remote outcome.
+// Returns { revoked: bool, http_status, message }.
+async function revokeRefreshToken(opts) {
+  const refreshToken = String((opts && opts.refreshToken) || "").trim();
+  if (!refreshToken) return { revoked: false, http_status: 0, message: "No refresh_token to revoke." };
+  const clientId     = String((opts && opts.clientId)     || "").trim();
+  const clientSecret = String((opts && opts.clientSecret) || "").trim();
+  if (!clientId || !clientSecret) {
+    return { revoked: false, http_status: 0, message: "QBO client credentials missing." };
+  }
+  const basic = Buffer.from(clientId + ":" + clientSecret).toString("base64");
+  try {
+    const res = await fetch(INTUIT_REVOKE_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + basic,
+        "Accept":        "application/json",
+        "Content-Type":  "application/json"
+      },
+      body: JSON.stringify({ token: refreshToken })
+    });
+    const txt = await res.text();
+    return {
+      revoked:     res.ok,
+      http_status: res.status,
+      message:     res.ok ? "Revoked at Intuit." : ("Intuit response: " + txt.slice(0, 300))
+    };
+  } catch (err) {
+    return { revoked: false, http_status: 0, message: "Revoke call failed: " + ((err && err.message) || "unknown") };
+  }
+}
+
 /* ----------------------------- Public API ----------------------------- */
 
 // The headline helper future sync functions will call. Returns
@@ -281,6 +316,7 @@ module.exports = {
   saveConnection,
   loadConnection,
   markDisconnected,
+  revokeRefreshToken,
   getValidAccessToken,
   qboApiBase
 };

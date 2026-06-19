@@ -36,6 +36,7 @@
   const {
     escapeHtml,
     formatTimestamp,
+    tsToMs,
     DCR_RECENT_LIMIT
   } = window.__pioneerAdmin.utils;
   const {
@@ -49,6 +50,183 @@
   /* ---------- module state ---------- */
 
   let dcrs = [];
+
+  /* ----------------------------------------------------------------------
+   * 2026-06-19 — Five-state DCR email delivery mapping.
+   *
+   * Source of truth: dcr_submissions.native_email.status (Phase 32+).
+   * Legacy emailStatus is consulted as a fallback for pre-Phase-32 DCRs
+   * so old delivered records don't look "unsent" forever, but no legacy
+   * writes are touched (drift cleanup is deferred).
+   *
+   * States (5):
+   *   delivered           — green pill "✓ Sent · {rel}". No primary button;
+   *                         small overflow "⋯ Resend" link (still routes to
+   *                         the existing review modal, which detects already-
+   *                         sent and switches to resend mode).
+   *   failed              — red pill "Failed · {code}". Primary button:
+   *                         "Retry Send" — routes through the same modal,
+   *                         which re-runs sendNativeDcrEmailForSubmission.
+   *   needs_review        — amber pill "Needs review". Primary button:
+   *                         "Review & Send" (unchanged for this case).
+   *   incomplete          — stone pill "Incomplete · {top blocker}". Primary
+   *                         button: "Open review" so the operator sees the
+   *                         actual blocker list before sending becomes possible.
+   *                         v1 only detects "no customer email" client-side;
+   *                         the modal surfaces the rest.
+   *   skipped             — stone pill, reason-specific copy:
+   *                           customer_dcr_email_disabled    → "Opted out"
+   *                           customer_email_suppressed      → "Suppressed"
+   *                           dcr_waived                     → "Waived"
+   *                           customer_is_test               → "Internal"
+   *                           exclude_from_customer_reporting → "Internal"
+   *                           anything else                  → "Skipped · {reason}"
+   *                         No action button.
+   *
+   * Dispatcher unchanged: every button still emits data-action="review-send"
+   * so the existing modal opens for every state. Different data-variant
+   * values just drive CSS for the visual distinction (red/teal/stone/overflow).
+   */
+
+  const SKIPPED_REASON_LABELS = {
+    customer_dcr_email_disabled:     { label: "Opted out",  tip: "Customer has DCR emails disabled in their config." },
+    customer_email_suppressed:       { label: "Suppressed", tip: "DCR email manually suppressed for this customer." },
+    dcr_waived:                      { label: "Waived",     tip: "DCR was waived by the tech — no email triggered." },
+    customer_is_test:                { label: "Internal",   tip: "Internal/test customer — DCR emails are never sent." },
+    exclude_from_customer_reporting: { label: "Internal",   tip: "Customer excluded from customer-facing reporting." }
+  };
+
+  function fromNow(ms) {
+    if (!ms) return "—";
+    const diff = Date.now() - ms;
+    if (diff < 0)         return "just now";
+    const s = Math.floor(diff / 1000);
+    if (s < 60)           return "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60)           return m + "m ago";
+    const h = Math.floor(m / 60);
+    if (h < 24)           return h + "h ago";
+    const d = Math.floor(h / 24);
+    if (d < 30)           return d + "d ago";
+    return formatTimestamp(ms);
+  }
+
+  function classifyEmailState(d) {
+    const ne = d.native_email || null;
+
+    // Priority 1 — native_email.status (Phase 32+ source of truth).
+    if (ne && typeof ne.status === "string") {
+      if (ne.status === "sent") {
+        const sentMs = tsToMs(ne.sentAt) || tsToMs(d.created_at);
+        return {
+          state:    "delivered",
+          pillCls:  "is-on",
+          pillText: "✓ Sent · " + fromNow(sentMs),
+          pillTip:  ne.recipient ? ("Sent to " + ne.recipient) : "DCR email delivered.",
+          action:   "delivered"
+        };
+      }
+      if (ne.status === "failed") {
+        const code = ne.code || ne.reason || "unknown";
+        return {
+          state:    "failed",
+          pillCls:  "is-err",
+          pillText: "Failed · " + code,
+          pillTip:  ne.reason || "DCR email delivery failed. Click Retry Send to try again.",
+          action:   "retry-send"
+        };
+      }
+      if (ne.status === "skipped") {
+        const reason = ne.reason || "unknown";
+        const meta   = SKIPPED_REASON_LABELS[reason]
+                    || { label: "Skipped · " + reason, tip: "DCR email was not sent for this submission." };
+        return {
+          state:    "skipped",
+          pillCls:  "is-neutral",
+          pillText: meta.label,
+          pillTip:  meta.tip,
+          action:   "none"
+        };
+      }
+    }
+
+    // Priority 2 — legacy emailStatus (pre-Phase-32 DCRs). Read-only fallback.
+    if (typeof d.emailStatus === "string") {
+      if (d.emailStatus === "sent") {
+        return {
+          state:    "delivered",
+          pillCls:  "is-on",
+          pillText: "✓ Sent · " + fromNow(tsToMs(d.created_at)),
+          pillTip:  "Delivered (legacy record — exact sent timestamp unavailable).",
+          action:   "delivered"
+        };
+      }
+      if (d.emailStatus === "failed") {
+        return {
+          state:    "failed",
+          pillCls:  "is-err",
+          pillText: "Failed",
+          pillTip:  "DCR email delivery failed (legacy record). Click Retry Send to try again.",
+          action:   "retry-send"
+        };
+      }
+    }
+
+    // Priority 3 — unsent. Pick incomplete vs needs_review from cheap client signals.
+    // Only one Incomplete signal in v1: customer has no email on file. The modal
+    // surfaces every other readiness blocker.
+    const customerEmail = d.customer_email
+                       || (d.customer && d.customer.email)
+                       || (d.delivery && d.delivery.customer_email)
+                       || null;
+    if (!customerEmail) {
+      return {
+        state:    "incomplete",
+        pillCls:  "is-neutral",
+        pillText: "Incomplete · no email",
+        pillTip:  "Customer has no email on file. Add one in the customer config before sending.",
+        action:   "open-review"
+      };
+    }
+
+    return {
+      state:    "needs_review",
+      pillCls:  "is-warn",
+      pillText: "Needs review",
+      pillTip:  "DCR ready. Open the review modal to verify and send.",
+      action:   "review-send"
+    };
+  }
+
+  function renderEmailActionButton(state) {
+    // All buttons route to data-action="review-send" so the existing dispatcher
+    // is unchanged. data-variant drives the visual treatment.
+    if (state.action === "delivered") {
+      return (
+        '<button class="row-btn row-btn-resend-overflow" type="button" data-action="review-send" data-variant="resend-overflow" ' +
+          'title="Resend this email">⋯ Resend</button>'
+      );
+    }
+    if (state.action === "retry-send") {
+      return (
+        '<button class="row-btn row-btn-retry" type="button" data-action="review-send" data-variant="retry" ' +
+          'title="Retry sending the DCR email">Retry Send</button>'
+      );
+    }
+    if (state.action === "review-send") {
+      return (
+        '<button class="row-btn row-btn-review" type="button" data-action="review-send" data-variant="review" ' +
+          'title="Run the DCR email readiness check and send to the customer">Review &amp; Send</button>'
+      );
+    }
+    if (state.action === "open-review") {
+      return (
+        '<button class="row-btn row-btn-incomplete" type="button" data-action="review-send" data-variant="incomplete" ' +
+          'title="Open the review modal to see what is missing">Open review</button>'
+      );
+    }
+    return ""; // "none" — skipped variants get no button.
+  }
 
   function dcrIssueCount(dcr) {
     const sections = (dcr.form_data && dcr.form_data.checklist) || [];
@@ -70,20 +248,26 @@
                        Array.isArray(d.photos)     ? d.photos.length     : 0;
     const issues     = dcrIssueCount(d);
     const hasProblem = !!(d.form_data && d.form_data.has_problem);
-    const zStatus    = (d.zapier && d.zapier.status) || "—";
 
     let problemBadge = "";
     if (hasProblem)      problemBadge = badge("is-err",  "Problem");
     else if (issues > 0) problemBadge = badge("is-warn", issues + " issue" + (issues === 1 ? "" : "s"));
     else                 problemBadge = badge("is-on",   "Clear");
 
-    let zapBadge;
-    if      (zStatus === "sent")           zapBadge = badge("is-on",   "Zapier: sent");
-    else if (zStatus === "failed")         zapBadge = badge("is-err",  "Zapier: failed");
-    else if (zStatus === "not_configured") zapBadge = badge("is-neutral", "Zapier: off");
-    else                                   zapBadge = badge("is-neutral", "Zapier: —");
-
     const photoBadge = badge("is-photos", photoCount + ' photo' + (photoCount === 1 ? '' : 's'));
+
+    // 2026-06-19 — Email delivery state pill replaces the old Zapier badge.
+    // Zapier was superseded by the native DCR email path in Phase 32; this
+    // row uses native_email.status (Phase 32+) as the source of truth, with
+    // a read-only fallback to legacy emailStatus for older records. See
+    // classifyEmailState above for the full state machine.
+    const emailState = classifyEmailState(d);
+    const emailBadge = '<span class="badge ' + emailState.pillCls +
+                      ' dcr-email-pill" title="' + escapeHtml(emailState.pillTip) +
+                      '" data-state="' + escapeHtml(emailState.state) + '">' +
+                        escapeHtml(emailState.pillText) +
+                      '</span>';
+    const emailActionBtn = renderEmailActionButton(emailState);
 
     return (
       '<div class="admin-row" role="listitem" data-id="' + escapeHtml(id) + '">' +
@@ -101,7 +285,7 @@
         '</div>' +
         '<div class="row-actions">' +
           '<div class="pill-badges">' +
-            photoBadge + problemBadge + zapBadge +
+            photoBadge + problemBadge + emailBadge +
           '</div>' +
           // V20260615b — View photos opens the shared dcr-photos-modal.
           // Always shown so the operator has a one-click path to the
@@ -112,14 +296,13 @@
                 'View ' + photoCount + ' photo' + (photoCount === 1 ? '' : 's') +
               '</button>'
             : '') +
-          // V6 — Review & Send opens the readiness modal for this DCR.
-          // The modal calls getDcrEmailReadinessV1, renders blockers/
-          // warnings, and only enables the actual Send button when
-          // the DCR is ready (or the operator confirms a resend).
-          '<button class="row-btn" type="button" data-action="review-send"' +
-            ' title="Run the DCR email readiness check and send to the customer">' +
-            'Review & Send' +
-          '</button>' +
+          // 2026-06-19 — Action button is now state-driven (see
+          // renderEmailActionButton). Delivered rows get a small overflow
+          // Resend link; failed rows get Retry Send; needs-review gets the
+          // classic Review & Send; incomplete gets Open review; skipped
+          // variants get no button. All variants still route to
+          // data-action="review-send" so the dispatcher below is unchanged.
+          emailActionBtn +
         '</div>' +
       '</div>'
     );

@@ -121,10 +121,84 @@ async function probeConnection(opts) {
   }
 }
 
+/* ----------------------------- Financial Pulse helpers (Phase 30) -----------------------------
+ *
+ * Read-only QBO calls added for the CEO Dashboard Financial Pulse card.
+ * All use the existing `com.intuit.quickbooks.accounting` scope — no new
+ * OAuth scope required.
+ */
+
+// Active bank accounts (AccountType="Bank"). The CEO surface sums their
+// CurrentBalance for the "Cash Today" tile. Returns array of QBO Account
+// rows with Id, Name, FullyQualifiedName, CurrentBalance, AccountType,
+// AccountSubType, Active.
+async function fetchBankAccounts(opts) {
+  return fetchAll(opts, "Account", "Active = true AND AccountType = 'Bank'");
+}
+
+// All open invoices (Balance > 0). Caller filters overdue client-side
+// (DueDate comparison) so we only pay for one query. Returns Invoice rows
+// with Id, DocNumber, TxnDate, DueDate, TotalAmt, Balance, CustomerRef.
+async function fetchOpenInvoices(opts) {
+  return fetchAll(opts, "Invoice", "Balance > '0'");
+}
+
+// Payments received in window. Used for "paid last 30 days" metric. QBO
+// Payment.TotalAmt is the cash applied to invoices on that date.
+async function fetchPaymentsInWindow(opts, startDateYmd, endDateYmd) {
+  const where = "TxnDate >= '" + startDateYmd + "' AND TxnDate <= '" + endDateYmd + "'";
+  return fetchAll(opts, "Payment", where);
+}
+
+// QBO BalanceSheet Report. Hits a DIFFERENT endpoint shape than the entity
+// query API — /reports/BalanceSheet with date params. Returns the full
+// hierarchical report shape; caller (financialPulse.extractCashFromBalanceSheet)
+// walks the tree.
+//
+// dateYmd is the "as of" date. accounting_method=Accrual matches what
+// April sees in QB Online by default. summarize_column_by=Total emits a
+// single column instead of period columns (smaller payload).
+async function fetchBalanceSheetReport(opts, dateYmd) {
+  const token = await qboAuth.getValidAccessToken({
+    clientId:     opts.clientId,
+    clientSecret: opts.clientSecret
+  });
+  const base = qboAuth.qboApiBase(token.environment);
+  const path = "/v3/company/" + encodeURIComponent(token.realm_id) + "/reports/BalanceSheet";
+  const params = new URLSearchParams();
+  params.set("date",                dateYmd);
+  params.set("accounting_method",   "Accrual");
+  params.set("summarize_column_by", "Total");
+  params.set("minorversion",        MINOR_VERSION);
+  const url = base + path + "?" + params.toString();
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Authorization": "Bearer " + token.access_token,
+      "Accept":        "application/json"
+    }
+  });
+  const txt = await res.text();
+  if (!res.ok) {
+    throw new Error("BalanceSheet report HTTP " + res.status + ": " + txt.slice(0, 400));
+  }
+  let parsed;
+  try { parsed = JSON.parse(txt); }
+  catch (_e) {
+    throw new Error("BalanceSheet report returned non-JSON body: " + txt.slice(0, 200));
+  }
+  return parsed;
+}
+
 module.exports = {
   runQuery,
   fetchAll,
   fetchActiveCustomers,
   fetchInvoicesInWindow,
-  probeConnection
+  probeConnection,
+  // Phase 30 — Financial Pulse
+  fetchBankAccounts,
+  fetchOpenInvoices,
+  fetchPaymentsInWindow,
+  fetchBalanceSheetReport
 };
