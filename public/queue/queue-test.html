@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pioneer — Phase 31 Queue Test Harness (PROTOTYPE)</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    body { padding: 24px; font-family: var(--pc-font, -apple-system, sans-serif); }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { color: var(--pc-text-muted, #666); margin-bottom: 20px; font-size: 13px; }
+    .qt-card { background: #fff; border: 1px solid var(--pc-border, #ddd);
+               border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .qt-card h2 { margin: 0 0 10px; font-size: 15px; }
+    .qt-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    button { padding: 8px 12px; font-size: 13px; cursor: pointer;
+             border: 1px solid var(--pc-border, #ccc); background: #fff;
+             border-radius: 6px; font-weight: 600; }
+    button:hover { background: var(--pc-bg-strong, #f4f4f4); }
+    button.primary { background: var(--pc-teal-700, #0a8); color: #fff; border-color: transparent; }
+    button.danger  { color: #b00; border-color: #f5b5b5; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 6px; font-size: 12px;
+          overflow: auto; max-height: 300px; white-space: pre-wrap; word-break: break-word; }
+    label { display: inline-block; margin-right: 12px; font-size: 13px; }
+    .qt-stat { display: inline-block; padding: 4px 10px; background: var(--pc-bg-strong, #f4f4f4);
+               border-radius: 12px; font-size: 12px; margin-right: 6px; }
+    .qt-net-mock { padding: 8px; background: #fff8e1; border: 1px solid #ffd54f;
+                   border-radius: 6px; font-size: 12px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Phase 31 Queue Test Harness</h1>
+  <div class="subtitle">Prototype only. Not for production. Runs end-to-end exercises of queue-db, queue-worker, and draft-migration without touching production storage or submitDcrV1.</div>
+
+  <div class="qt-net-mock">
+    All network calls in this harness are <strong>mocked</strong> via
+    <code>FAKE_STORAGE</code> and <code>FAKE_SUBMIT</code>. Real Firebase Storage
+    and the real <code>submitDcrV1</code> endpoint are <strong>not contacted</strong>.
+    To exercise the watchdog with a real network, use a network throttle in DevTools
+    and a real DCR form (preview channel only).
+  </div>
+
+  <div class="qt-card">
+    <h2>1 — Database lifecycle</h2>
+    <div class="qt-row">
+      <button id="qt-open">Open DB</button>
+      <button id="qt-stats">Stats</button>
+      <button id="qt-clear" class="danger">Clear ALL stores</button>
+    </div>
+    <pre id="qt-out-db">(no output)</pre>
+  </div>
+
+  <div class="qt-card">
+    <h2>2 — Draft store (Phase 31 schema)</h2>
+    <div class="qt-row">
+      <button id="qt-draft-save">Save sample draft</button>
+      <button id="qt-draft-load-all">Load all drafts</button>
+    </div>
+    <pre id="qt-out-draft">(no output)</pre>
+  </div>
+
+  <div class="qt-card">
+    <h2>3 — Legacy draft migration</h2>
+    <div class="qt-row">
+      <button id="qt-mig-seed">Seed legacy localStorage draft</button>
+      <button id="qt-mig-run">Run migration</button>
+      <button id="qt-mig-run-again">Run migration AGAIN (should no-op)</button>
+    </div>
+    <pre id="qt-out-mig">(no output)</pre>
+  </div>
+
+  <div class="qt-card">
+    <h2>4 — Pending queue + drain</h2>
+    <div class="qt-row">
+      <label><input type="checkbox" id="qt-net-offline" /> Force network failure (simulate offline)</label>
+      <label><input type="checkbox" id="qt-net-stall" /> Stall every upload (no progress)</label>
+      <label><input type="number" id="qt-photo-count" min="0" max="6" value="2" style="width:60px"/> photo count</label>
+    </div>
+    <div class="qt-row">
+      <button id="qt-enqueue" class="primary">Enqueue test submission</button>
+      <button id="qt-drain"   class="primary">processQueue() once</button>
+      <button id="qt-list-pending">List pending</button>
+      <button id="qt-stress">Stress: enqueue 5</button>
+    </div>
+    <pre id="qt-out-queue">(no output)</pre>
+  </div>
+
+  <div class="qt-card">
+    <h2>5 — Idempotency check</h2>
+    <div class="subtitle">Enqueue the same submission_id twice. Expectation: second drain returns <code>already_submitted: true</code> and does NOT trigger FAKE_SUBMIT's email/Zapier counters again.</div>
+    <div class="qt-row">
+      <button id="qt-idem" class="primary">Run idempotency probe</button>
+    </div>
+    <pre id="qt-out-idem">(no output)</pre>
+  </div>
+
+  <div class="qt-card">
+    <h2>6 — Diagnostics</h2>
+    <pre id="qt-diag">(load page to see fixtures)</pre>
+  </div>
+
+  <script src="queue-db.js"></script>
+  <script src="queue-worker.js"></script>
+  <script src="draft-migration.js"></script>
+  <script src="queue-test.js"></script>
+</body>
+</html>

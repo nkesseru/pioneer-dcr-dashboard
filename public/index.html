@@ -675,6 +675,11 @@
        any future DCR-form code that needs to scope a customer list to
        "today's workable assignments" uses the same rule as /work. -->
   <script src="assignment-eligibility.js?v=20260607-phase33-shared-eligibility"></script>
+  <!-- Phase 31 prototype — IDB queue modules. Loaded ALWAYS so the path
+       is reachable when window.OFFLINE_QUEUE_ENABLED flips to true.
+       Default behavior unchanged (flag is OFF in firebase-config.js). -->
+  <script src="queue/queue-db.js?v=20260618-phase31"></script>
+  <script src="queue/queue-worker.js?v=20260618-phase31"></script>
   <script src="app.js?v=20260615-office-issues"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>

@@ -2583,6 +2583,58 @@
     }, 700);
   }
 
+  /* ---------- Phase 31 prototype — queue drain helper ----------
+   *
+   * Builds the deps the queue worker needs and invokes processQueue. Safe
+   * to call when:
+   *   • OFFLINE_QUEUE_ENABLED is false (early returns; zero side effects)
+   *   • the queue module didn't load (early returns)
+   *   • firebase isn't initialized yet (early returns)
+   *   • there are zero pending rows (worker resolves with [])
+   *
+   * Errors are logged + swallowed — the drain is best-effort. The user-
+   * facing path that enqueued the row already returned success.
+   */
+  function runQueueDrain(reason) {
+    if (!window.OFFLINE_QUEUE_ENABLED) return;
+    if (!window.PIONEER_QUEUE_WORKER)  return;
+    if (!firebaseCtx || !firebaseCtx.storage) return;
+    try { console.info("[phase31] drain start", { reason: reason }); } catch (_e) {}
+    try {
+      window.PIONEER_QUEUE_WORKER.processQueue(
+        {
+          storage: firebaseCtx.storage,
+          submitFn: async function (finalPayload, idToken) {
+            const res = await fetch(window.SUBMIT_DCR_V1_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type":  "application/json",
+                "Authorization": "Bearer " + idToken
+              },
+              body: JSON.stringify(finalPayload)
+            });
+            const body = await res.json().catch(function () { return {}; });
+            return {
+              ok:     res.ok && body.ok !== false,
+              status: res.status,
+              body:   body
+            };
+          },
+          getIdToken: function () {
+            return window.STAFF_AUTH ? window.STAFF_AUTH.getIdToken() : Promise.resolve(null);
+          }
+        },
+        { maxRows: 5 }
+      ).then(function (results) {
+        try { console.info("[phase31] drain results", results); } catch (_e) {}
+      }).catch(function (err) {
+        try { console.warn("[phase31] drain error", err && err.message); } catch (_e) {}
+      });
+    } catch (err) {
+      try { console.warn("[phase31] drain wrap error", err && err.message); } catch (_e) {}
+    }
+  }
+
   /* ---------- submit ---------- */
 
   async function onSubmit(ev) {
@@ -2631,6 +2683,109 @@
 
     isSubmitting = true;
     els.submitBtn.disabled = true;
+
+    // ------------------------------------------------------------------
+    // Phase 31 prototype — queue branch.
+    //
+    // When OFFLINE_QUEUE_ENABLED, capture photos + signature into IDB
+    // queue and return immediately with a local success. The drain
+    // (background processQueue) handles uploads + submitDcrV1 POST. The
+    // flag-off path below is unchanged.
+    // ------------------------------------------------------------------
+    if (window.OFFLINE_QUEUE_ENABLED && window.PIONEER_QUEUE_WORKER) {
+      try {
+        const signatureBlobQ = await signaturePad.toBlob("image/png");
+
+        const formDataQ = buildFormData(window.DCR_FORM_CONFIG);
+        formDataQ.signature = { storage_path: null, download_url: null };
+
+        const customerNameQ        = customerOpt.dataset.name             || customerOpt.textContent;
+        const customerEmailQ       = customerOpt.dataset.email            || "";
+        const locationNameQ        = customerOpt.dataset.locationName     || customerNameQ;
+        const customerDcrEmailEnabledQ = customerOpt.dataset.dcrEmailEnabled !== "false";
+        const reviewFiveStarQ      = customerOpt.dataset.reviewFiveStar   || "";
+        const reviewIssueQ         = customerOpt.dataset.reviewIssue      || "";
+
+        const payloadQ = window.buildDcrV1Payload({
+          submission_id: submissionId,
+          source: "web_form_queued",
+          customer: {
+            slug: customerSlug,
+            name: customerNameQ,
+            email: customerEmailQ,
+            location_name: locationNameQ,
+            dcr_email_enabled: customerDcrEmailEnabledQ,
+            review_links: { five_star_url: reviewFiveStarQ, issue_url: reviewIssueQ }
+          },
+          tech: {
+            slug: techOpt.value,
+            display_name:     techOpt.dataset.displayName     || techOpt.textContent,
+            experience_level: techOpt.dataset.experienceLevel || "standard"
+          },
+          clean_date: els.cleanDate.value,
+          occupancy:  formDataQ.occupancy_level || "",
+          notes:      els.notes.value || "",
+          photos:     [],
+          affirmation: {
+            affirmed:        true,
+            signature_name:  signatureName,
+            affirmed_text:   AFFIRM_TEXT,
+            signature_url:   null
+          }
+        });
+        payloadQ.form_data = formDataQ;
+
+        if (deputyShiftParams && deputyShiftParams.deputy_shift_id) {
+          payloadQ.deputy_shift_id          = deputyShiftParams.deputy_shift_id;
+          payloadQ.deputy_sync_date         = deputyShiftParams.sync_date         || "";
+          payloadQ.deputy_scheduled_start   = deputyShiftParams.scheduled_start   || "";
+          payloadQ.deputy_scheduled_end     = deputyShiftParams.scheduled_end     || "";
+          payloadQ.deputy_customer_name     = deputyShiftParams.customer_name     || "";
+          payloadQ.deputy_location_name     = deputyShiftParams.location_name     || "";
+          payloadQ.deputy_shift_url         = deputyShiftParams.deputy_shift_url  || "";
+          payloadQ.deputy_actual_start          = null;
+          payloadQ.deputy_actual_end            = null;
+          payloadQ.deputy_timesheet_id          = null;
+          payloadQ.deputy_time_variance_minutes = null;
+          if (deputyShiftParams.pioneer_session_id) {
+            payloadQ.pioneer_session_id = deputyShiftParams.pioneer_session_id;
+          }
+        }
+        if (pioneerAssignmentParams && pioneerAssignmentParams.pioneer_assignment_id) {
+          payloadQ.pioneer_assignment_id = pioneerAssignmentParams.pioneer_assignment_id;
+          if (pioneerAssignmentParams.pioneer_service_session_id) {
+            payloadQ.pioneer_service_session_id = pioneerAssignmentParams.pioneer_service_session_id;
+          }
+        }
+
+        const queuePhotos = pendingFiles.map(function (f) {
+          return {
+            blob:         f,
+            content_type: f.type || "image/jpeg",
+            ext:          extFromFile(f)
+          };
+        });
+
+        await window.PIONEER_QUEUE_WORKER.queueSubmissionFromForm({
+          submission_id:  submissionId,
+          payload:        payloadQ,
+          photos:         queuePhotos,
+          signature_blob: signatureBlobQ
+        });
+
+        try { console.info("[phase31] enqueued", { submission_id: submissionId, photos: queuePhotos.length }); } catch (_e) {}
+        clearDraft();
+        onSuccess(submissionId, { offline_queued: true });
+        setTimeout(function () { runQueueDrain("post-submit"); }, 250);
+        return;
+      } catch (err) {
+        console.error("[phase31] enqueue failed — falling back to inline path", err);
+        isSubmitting = false;
+        els.submitBtn.disabled = false;
+        setStatus("err", "Couldn't save locally — tap Submit again to upload now.");
+        return;
+      }
+    }
 
     try {
       let uploadedPhotos = [];
@@ -3588,6 +3743,19 @@
 
       els.photos.addEventListener("change", onFileInputChange);
       els.form.addEventListener("submit",  onSubmit);
+
+      // ---------- Phase 31 prototype — drain triggers ----------
+      // Online listener + boot-time drain are no-ops when the flag is
+      // off (runQueueDrain early-returns). Registering them
+      // unconditionally keeps the boot path predictable; they cost
+      // nothing in the flag-off case.
+      if (window.OFFLINE_QUEUE_ENABLED) {
+        try { console.info("[phase31] queue flag ON — registering drain triggers"); } catch (_e) {}
+        window.addEventListener("online", function () {
+          runQueueDrain("online-event");
+        });
+        setTimeout(function () { runQueueDrain("boot"); }, 1500);
+      }
 
       // V6 pilot — bind the "Other / leave a note" textarea so its
       // value flows into module state + the draft. Input event keeps
