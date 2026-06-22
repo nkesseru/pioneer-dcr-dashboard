@@ -350,15 +350,59 @@
       healthy.push("Readiness · " + deputyShifts.length + " shift" + (deputyShifts.length === 1 ? "" : "s") + " tonight/tomorrow all bridged");
     }
 
-    /* ---- 2. RED — Missed shifts (yesterday assignment, no session) ---- */
+    /* ---- 2. RED — Missed shifts (yesterday assignment, no session) ----
+     *
+     * 2026-06-22 hardening — also suppress when the tech has an
+     * active_service_sessions row OR a pioneer_service_sessions row that
+     * matches by tech + customer + date even if assignment_id is missing
+     * or mismatched. Fixes Kirby's false-positive for Kiana / Clearwater
+     * (F3 scenario: clock-in exists but stayed in active_service_sessions,
+     * or the pioneer doc's assignment_id is null/wrong).
+     *
+     * Suppression criteria, in order of specificity:
+     *   (a) pioneer_service_sessions linked by assignment_id (original check)
+     *   (b) active_service_sessions linked by assignment_id
+     *   (c) any session (active OR pioneer) for the same tech + customer +
+     *       service_date — covers F1 (null assignment_id) and F2 (mismatch)
+     *
+     * If any of the three matches, the work happened — no missed-shift alert.
+     */
     let missedCount = 0;
+    function sessionMatchesByCustomerAndDate(s, a) {
+      if (s.service_date !== a.service_date) return false;
+      const sameTech = (a.staff_uid && s.staff_uid === a.staff_uid)
+                    || (a.staff_email && s.staff_email
+                        && String(a.staff_email).toLowerCase() === String(s.staff_email).toLowerCase());
+      if (!sameTech) return false;
+      const sameCust = (a.customer_id && s.customer_id === a.customer_id)
+                    || (a.customer_slug && s.customer_slug === a.customer_slug)
+                    || (a.customer_id && s.customer_slug === a.customer_id)
+                    || (a.customer_slug && s.customer_id === a.customer_slug);
+      return !!sameCust;
+    }
     if (snap.assignments) {
       snap.assignments.forEach(a => {
         if (isQaTestAssignment(a)) return;
         if (a.status === "admin_removed" || a.removed_from_ptc === true) return;
         if (a.service_date !== snap.yesterdayPT) return;     // only yesterday counts as "missed"
+
+        // (a) pioneer_service_sessions linked by assignment_id
         const sess = sessionsByAsgn[a._id] || [];
         if (sess.length > 0) return;
+
+        // (b) active_service_sessions linked by assignment_id
+        const activeLinked = (snap.activeSess || []).filter(function (s) {
+          return s.assignment_id === a._id;
+        });
+        if (activeLinked.length > 0) return;
+
+        // (c) tech + customer + date loose match across BOTH collections
+        const allSess = (snap.sessions || []).concat(snap.activeSess || []);
+        const looseMatch = allSess.filter(function (s) {
+          return sessionMatchesByCustomerAndDate(s, a);
+        });
+        if (looseMatch.length > 0) return;
+
         missedCount += 1;
         const techName = a.staff_display_name || a.staff_email || "?";
         const customerName = a.customer_name || a.customer_id || "?";
