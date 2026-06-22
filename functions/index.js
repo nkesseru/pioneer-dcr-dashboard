@@ -32,6 +32,14 @@ const twilioMessaging = require("./twilioMessaging");
 const qboAuth = require("./qboAuth");
 const qboApi  = require("./qboApi");
 const customerEconomics = require("./customerEconomics");
+// Phase 31A — submitDcrV1 idempotency guard.
+// enforceIdempotency reads dcr_submissions/{submission_id} BEFORE any
+// writes/emails. If a prior submission with the same id exists, returns
+// a cached receipt so retries don't fire duplicate customer emails,
+// Zapier hooks, or work-session writebacks. Pure read. Backward-compatible
+// with pre-Phase-31 clients that never retry (the read only matches when
+// the queue worker replays a previously-accepted submission_id).
+const submitDcrIdempotency = require("./submitDcrV1-idempotency");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -3012,6 +3020,38 @@ exports.submitDcrV1 = onRequest({
   }
 
   const submissionId = payload.submission_id;
+
+  // Phase 31A — Idempotency guard. If this submission_id was already
+  // accepted (e.g., the queue worker is retrying a request whose 200
+  // response was lost mid-flight), return the cached receipt without
+  // re-running ANY side effects: no second email, no second Zapier
+  // ping, no second work-session writeback. Pure read against
+  // dcr_submissions/{submission_id}; falls through on miss.
+  //
+  // The cached receipt response shape includes `already_submitted: true`
+  // so the client can distinguish a fresh accept from a replay accept.
+  // The web client treats both as success (calls onSuccess()).
+  try {
+    const cachedReceipt = await submitDcrIdempotency.enforceIdempotency({
+      db:           db,
+      admin:        admin,
+      logger:       logger,
+      collection:   FIRESTORE_COLLECTION,
+      submissionId: submissionId,
+      staff:        staff
+    });
+    if (cachedReceipt) {
+      return res.status(200).json(cachedReceipt);
+    }
+  } catch (err) {
+    // Defensive: idempotency check is best-effort. A failure here must
+    // not block a legitimate first submission. The helper already swallows
+    // Firestore read errors; this catch is the belt-and-suspenders.
+    logger.warn("submitDcrV1: idempotency guard threw (proceeding)", {
+      submission_id: submissionId,
+      error:         err && err.message
+    });
+  }
 
   const doc = {
     ...payload,

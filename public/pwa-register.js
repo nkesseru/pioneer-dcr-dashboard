@@ -53,9 +53,19 @@
   function registerSW() {
     if (!("serviceWorker" in navigator)) return;
     if (!isSecureContext()) return;
-    // Don't fight HMR / dev servers — but in this project there is none,
-    // so just register against the static file at /sw.js.
-    navigator.serviceWorker.register("/sw.js", { scope: "/" })
+
+    // Phase 31D — flag-aware SW selection.
+    //   • OFFLINE_QUEUE_ENABLED === true   → register /sw-v2.js (shell cache +
+    //                                         background sync + cache-first
+    //                                         for the DCR form shell).
+    //   • OFFLINE_QUEUE_ENABLED !== true   → register /sw.js (V1 passthrough,
+    //                                         current production behavior).
+    // Production keeps the flag off, so production users continue to receive
+    // V1 by default. Switching workers is a per-device opt-in until Phase E.
+    const swPath = (window.OFFLINE_QUEUE_ENABLED === true) ? "/sw-v2.js" : "/sw.js";
+    try { console.info("[PWA] registering service worker", { path: swPath, flag: !!window.OFFLINE_QUEUE_ENABLED }); } catch (_e) {}
+
+    navigator.serviceWorker.register(swPath, { scope: "/" })
       .then(function (reg) {
         try { console.info("[PWA] service worker registered", reg && reg.scope); } catch (_e) {}
         if (reg && reg.waiting) {
@@ -79,6 +89,29 @@
       .catch(function (err) {
         try { console.warn("[PWA] service worker registration failed", err); } catch (_e) {}
       });
+
+    // Phase 31D — controllerchange refresh banner.
+    // Fires when a NEW SW takes control of the page (e.g., V1 → V2 transition
+    // after the user opts in to OFFLINE_QUEUE_ENABLED). We do NOT force-reload
+    // because the tech may be mid-DCR. Instead, dispatch a custom event so the
+    // page can show a non-blocking "Update available, refresh when convenient"
+    // banner. Pages that don't listen for the event just continue running on
+    // the prior controller until the next manual nav.
+    let initialControllerChange = true;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      // Skip the very first controllerchange — that's just the page picking
+      // up its first controller, not a true upgrade.
+      if (initialControllerChange) {
+        initialControllerChange = false;
+        return;
+      }
+      try { console.info("[PWA] service worker controller changed — new version active on next nav"); } catch (_e) {}
+      try {
+        window.dispatchEvent(new CustomEvent("pioneerops:sw-updated", {
+          detail: { swPath: swPath }
+        }));
+      } catch (_e) {}
+    });
   }
 
   // Android/Chrome — capture the install event so the page can prompt

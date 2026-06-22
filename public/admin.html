@@ -426,6 +426,13 @@
                   aria-label="Notes needing review"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="pending-uploads" role="tab" aria-selected="false">
+            Pending Uploads
+            <span class="admin-tab-badge" id="pending-uploads-badge"
+                  title="DCRs queued on tech devices waiting to upload"
+                  aria-label="Pending DCR uploads"
+                  hidden>0</span>
+          </button>
           <button class="admin-tab"           data-tab="suggestions" role="tab" aria-selected="false">
             Note Suggestions
             <span class="admin-tab-badge" id="suggestions-pending-badge"
@@ -1184,6 +1191,34 @@
       <div class="admin-status admin-empty"   id="sos-empty" hidden>No SOS events yet — quiet shift, good.</div>
 
       <div class="sos-list" id="sos-list" role="list"></div>
+    </section>
+
+    <!-- ================== Pending DCR Uploads (Phase 31D) ================== -->
+    <!-- Read-only admin view of dcr_pending_uploads — DCRs queued on tech
+         devices waiting to upload. Backed by the IndexedDB queue worker
+         (queue/queue-worker.js). Empty when OFFLINE_QUEUE_ENABLED is off
+         in production (no shadow docs are ever written). -->
+    <section class="card admin-panel" data-panel="pending-uploads" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Pending DCR Uploads</h2>
+          <p class="panel-sub" id="pending-uploads-count">— pending uploads</p>
+        </div>
+        <button class="panel-action" id="pending-uploads-refresh" type="button"
+                title="Re-fetch pending DCR uploads">Refresh</button>
+      </header>
+
+      <div class="status-row">
+        <p class="status-loading" id="pending-uploads-loading" hidden>Loading pending uploads…</p>
+        <p class="status-empty"   id="pending-uploads-empty"   hidden>No pending DCR uploads.</p>
+        <p class="status-error"   id="pending-uploads-error"   hidden></p>
+      </div>
+
+      <div class="admin-list pu-list" id="pending-uploads-list" role="list"></div>
+
+      <p class="panel-footnote" style="margin-top:14px;font-size:12px;color:var(--pc-text-muted);">
+        Source: <code>dcr_pending_uploads</code> Firestore collection. Shadow docs are written by the IndexedDB queue worker on enqueue and deleted when the DCR successfully uploads to <code>dcr_submissions</code>. While <code>OFFLINE_QUEUE_ENABLED</code> is false in production, this list will be empty — the worker's shadow writes never fire.
+      </p>
     </section>
 
     <!-- ================== Service Recoveries ================== -->
@@ -3972,6 +4007,7 @@
   <script src="admin/tab-pilot-readiness.js?v=20260529-refactor-phase9"></script>
   <script src="admin/tab-feed.js?v=20260529-refactor-phase10"></script>
   <script src="admin/tab-recent-dcrs.js?v=20260619-email-states"></script>
+  <script src="admin/tab-pending-uploads.js?v=20260622-phase31d"></script>
   <script src="admin/tab-dcr-issues.js?v=20260615e-shared-modal"></script>
   <script src="admin/tab-tech-health.js?v=20260529-refactor-phase13"></script>
   <script src="admin/tab-yesterdays-work.js?v=20260615e-view-photos"></script>
@@ -3992,6 +4028,6 @@
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
   <script src="admin/tab-office-issues.js?v=20260616b-getcount"></script>
   <script src="admin.js?v=20260615d-strip-logs"></script>
-  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
 </html>

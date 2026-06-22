@@ -304,6 +304,15 @@
         { "fieldPath": "employee_uid", "order": "ASCENDING"  },
         { "fieldPath": "created_at",   "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "dcr_pending_uploads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "queued_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

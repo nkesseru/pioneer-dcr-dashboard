@@ -186,6 +186,77 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // dcr_pending_uploads — Phase 31 offline queue shadow doc (2026-06-22).
+    //
+    // The IndexedDB queue worker on the tech's device writes one row here
+    // when a DCR enters the local queue, mirrors lifecycle updates on each
+    // retry, and DELETES the row on terminal success (after submitDcrV1
+    // returns OK). The shadow exists only while an upload is pending or
+    // stuck, giving admin Mission Control a "queued vs uploaded vs
+    // delivered" view by joining this collection with dcr_submissions on
+    // submission_id (== doc id in both).
+    //
+    // No PII beyond customer_name + tech_email + tech_display_name. No
+    // photo blobs (those stay in IDB on-device until the row drains).
+    //
+    // The collection is purely a beacon — the source of truth for the
+    // queued DCR's payload + photos lives in the device's IndexedDB.
+    // Losing a shadow doc is recoverable (worker re-creates on next
+    // attempt). Losing the IDB row on-device loses the DCR (mitigated by
+    // navigator.storage.persist() in Phase D).
+    //
+    // Status enum: queued | uploading | failed_will_retry | failed_permanent.
+    // No "submitted" state — terminal success deletes the row, so absence
+    // of a shadow doc plus presence in dcr_submissions == delivered.
+    //
+    // Phase B (this rules block) is the schema + access surface. Phase C
+    // wires the client to actually write/update/delete docs here. Until
+    // Phase C ships behind OFFLINE_QUEUE_ENABLED, this collection stays
+    // empty.
+    match /dcr_pending_uploads/{submissionId} {
+      // Read: admins, plus the tech who owns the row (powers a future
+      // "1 DCR waiting to send" chip on /work).
+      allow read: if isPioneerAdmin()
+                  || (isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid);
+
+      // Create: active tech only, own uid stamped, status must start at
+      // "queued", identity fields populated, schema_version pinned at 1.
+      allow create: if isActiveCleaningTech()
+                    && request.resource.data.submission_id == submissionId
+                    && request.resource.data.tech_uid == request.auth.uid
+                    && request.resource.data.tech_email is string
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.status == "queued"
+                    && request.resource.data.schema_version == 1;
+
+      // Update: tech can update only own rows, and only lifecycle fields
+      // (status / attempt counters / error fields / timestamps). Immutable
+      // identity fields pinned via equality checks so a stale or malicious
+      // update can't rewrite the source linkage. Admins can update freely
+      // (manual unstuck / cleanup tools).
+      allow update: if (
+                      isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid
+                      && request.resource.data.submission_id  == resource.data.submission_id
+                      && request.resource.data.tech_uid       == resource.data.tech_uid
+                      && request.resource.data.tech_email     == resource.data.tech_email
+                      && request.resource.data.customer_slug  == resource.data.customer_slug
+                      && request.resource.data.schema_version == resource.data.schema_version
+                      && request.resource.data.queued_at      == resource.data.queued_at
+                      && request.resource.data.status in [
+                           "queued", "uploading", "failed_will_retry", "failed_permanent"
+                         ]
+                    )
+                    || isPioneerAdmin();
+
+      // Delete: the worker calls this on terminal success. Admin can also
+      // delete (cleanup tool for orphaned rows).
+      allow delete: if (isActiveCleaningTech() && request.auth.uid == resource.data.tech_uid)
+                    || isPioneerAdmin();
+    }
+
     // Supply requests are an operational workflow — admins read AND edit
     // them from /admin.html. Auto-creation is also done by submitDcrV1 via
     // the Admin SDK, which bypasses these rules. Deletes are denied

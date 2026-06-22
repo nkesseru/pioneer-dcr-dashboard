@@ -4095,6 +4095,37 @@
         });
         // Boot-time drain catches rows enqueued in a prior tab/session.
         setTimeout(function () { runQueueDrain("boot"); }, 1500);
+
+        // Phase 31D — request persistent storage so IndexedDB queue rows
+        // (including photo Blobs) survive iOS Safari's storage eviction
+        // policy and Android's low-space cleanup. Chrome grants this
+        // automatically for installed PWAs. iOS Safari requires the user
+        // to add to home screen; the request is a no-op when denied.
+        // Best-effort: failure here does not block anything.
+        if (navigator.storage && typeof navigator.storage.persist === "function") {
+          navigator.storage.persist()
+            .then(function (granted) {
+              try { console.info("[phase31] navigator.storage.persist()", { granted: granted }); } catch (_e) {}
+              if (navigator.storage.estimate) {
+                navigator.storage.estimate()
+                  .then(function (est) {
+                    try {
+                      console.info("[phase31] storage estimate", {
+                        usage_mb: est.usage ? Math.round(est.usage / 1024 / 1024 * 10) / 10 : null,
+                        quota_mb: est.quota ? Math.round(est.quota / 1024 / 1024) : null,
+                        pct_used: (est.usage && est.quota) ? Math.round(est.usage / est.quota * 100) : null
+                      });
+                    } catch (_e) {}
+                  })
+                  .catch(function () {});
+              }
+            })
+            .catch(function (err) {
+              try { console.warn("[phase31] navigator.storage.persist() failed", err && err.message); } catch (_e) {}
+            });
+        } else {
+          try { console.warn("[phase31] navigator.storage.persist unavailable on this browser"); } catch (_e) {}
+        }
       }
 
       // V6 pilot — bind the "Other / leave a note" textarea so its

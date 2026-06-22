@@ -40,6 +40,137 @@
   const MAX_ATTEMPTS            = 3;
   const BACKOFF_SCHEDULE_MS     = [30000, 120000, 600000]; // 30s, 2m, 10m
 
+  /* ----------------------------------------------------------------------
+   * Phase 31C — dcr_pending_uploads shadow doc.
+   *
+   * Best-effort beacon to /admin so an operator can see what's queued on
+   * a tech's device. Mirrors lifecycle transitions; deleted on terminal
+   * success. NEVER throws into the upload pipeline — every helper catches
+   * its own errors, logs a [queue-shadow] warning, and returns.
+   *
+   * Gated by shadowEnabled() which checks:
+   *   1. OFFLINE_QUEUE_ENABLED === true (Phase 31 feature flag)
+   *   2. window.firebase + firestore available (catches load-order edge cases)
+   *
+   * Source of truth for the queued DCR's payload + photos remains the
+   * device's IndexedDB. The shadow doc holds NO blobs, NO payload — only
+   * the metadata needed for the admin grid (tech identity, customer,
+   * status, error codes, attempt counters).
+   *
+   * Schema matches firestore.rules /dcr_pending_uploads block (deployed
+   * 2026-06-22): immutable identity fields on update (submission_id,
+   * tech_uid, tech_email, customer_slug, schema_version, queued_at);
+   * status restricted to enum.
+   * --------------------------------------------------------------------- */
+
+  const DEVICE_ID_KEY = "pioneer.device.id";
+
+  function getOrCreateDeviceId() {
+    try {
+      let id = localStorage.getItem(DEVICE_ID_KEY);
+      if (id) return id;
+      id = (self.crypto && self.crypto.randomUUID)
+        ? self.crypto.randomUUID()
+        : (Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10));
+      localStorage.setItem(DEVICE_ID_KEY, id);
+      return id;
+    } catch (_e) {
+      return "unknown-device";
+    }
+  }
+
+  function shadowEnabled() {
+    return !!(self.OFFLINE_QUEUE_ENABLED
+           && self.firebase
+           && typeof self.firebase.firestore === "function");
+  }
+
+  async function createShadowDoc(input) {
+    if (!shadowEnabled()) return;
+    try {
+      const user = self.firebase.auth().currentUser;
+      if (!user) {
+        try { console.warn("[queue-shadow] no signed-in user — skipping shadow create", { submission_id: input.submission_id }); } catch (_e) {}
+        return;
+      }
+      const p   = input.payload || {};
+      const fs  = self.firebase.firestore();
+      const fv  = self.firebase.firestore.FieldValue;
+
+      const customerSlug = p.customer_slug
+                        || (p.customer && p.customer.slug) || "";
+      const customerName = p.customer_name
+                        || (p.customer && p.customer.name) || "";
+      const techSlug     = p.tech_slug
+                        || (p.tech && p.tech.slug) || null;
+      const techDisplay  = p.tech_display_name
+                        || (p.tech && p.tech.display_name) || null;
+
+      await fs.collection("dcr_pending_uploads").doc(input.submission_id).set({
+        submission_id:              input.submission_id,
+        schema_version:             1,
+        device_id:                  getOrCreateDeviceId(),
+        tech_uid:                   user.uid,
+        tech_email:                 (user.email || "").toLowerCase(),
+        tech_slug:                  techSlug,
+        tech_display_name:          techDisplay,
+        customer_slug:              customerSlug,
+        customer_name:              customerName,
+        clean_date:                 p.clean_date || "",
+        pioneer_assignment_id:      p.pioneer_assignment_id || null,
+        pioneer_service_session_id: p.pioneer_service_session_id || null,
+        deputy_shift_id:            p.deputy_shift_id || null,
+        photo_count:                (input.photos || []).length,
+        has_signature:              !!input.signature_blob,
+        status:                     "queued",
+        queued_at:                  fv.serverTimestamp(),
+        last_attempt_at:            null,
+        attempt_count:              0,
+        next_attempt_at:            null,
+        last_error_code:            null,
+        last_error_message:         null,
+        created_at:                 fv.serverTimestamp(),
+        updated_at:                 fv.serverTimestamp()
+      });
+      try { console.info("[queue-shadow] create ok", { submission_id: input.submission_id, customer_slug: customerSlug }); } catch (_e) {}
+    } catch (err) {
+      try { console.warn("[queue-shadow] create failed (non-fatal)", { submission_id: input && input.submission_id, err: err && err.message }); } catch (_e) {}
+    }
+  }
+
+  async function updateShadowStatus(submissionId, patch) {
+    if (!shadowEnabled()) return;
+    try {
+      const fs = self.firebase.firestore();
+      const fv = self.firebase.firestore.FieldValue;
+      const update = Object.assign({}, patch, { updated_at: fv.serverTimestamp() });
+      // next_attempt_at: convert epoch-ms to Firestore Timestamp so the
+      // doc-stored type matches the schema (timestamp, not number).
+      if (typeof update.next_attempt_at === "number") {
+        update.next_attempt_at = self.firebase.firestore.Timestamp.fromMillis(update.next_attempt_at);
+      }
+      // last_attempt_at: server timestamp sentinel — caller can pass "SERVER".
+      if (update.last_attempt_at === "SERVER") {
+        update.last_attempt_at = fv.serverTimestamp();
+      }
+      await fs.collection("dcr_pending_uploads").doc(submissionId).update(update);
+      try { console.info("[queue-shadow] update ok", { submission_id: submissionId, status: patch.status }); } catch (_e) {}
+    } catch (err) {
+      try { console.warn("[queue-shadow] update failed (non-fatal)", { submission_id: submissionId, err: err && err.message }); } catch (_e) {}
+    }
+  }
+
+  async function deleteShadowDoc(submissionId) {
+    if (!shadowEnabled()) return;
+    try {
+      const fs = self.firebase.firestore();
+      await fs.collection("dcr_pending_uploads").doc(submissionId).delete();
+      try { console.info("[queue-shadow] delete ok", { submission_id: submissionId }); } catch (_e) {}
+    } catch (err) {
+      try { console.warn("[queue-shadow] delete failed (non-fatal)", { submission_id: submissionId, err: err && err.message }); } catch (_e) {}
+    }
+  }
+
   function nowMs() { return Date.now(); }
 
   function nextBackoffAt(attemptNumber) {
@@ -203,6 +334,13 @@
     if (!idToken) throw new Error("No ID token — cannot post to submitDcrV1");
 
     await DB.appendAttempt(row.submission_id, { stage: "start" });
+    // Phase 31C — mirror the "now uploading" transition to the shadow doc.
+    // Best-effort; never blocks the upload.
+    await updateShadowStatus(row.submission_id, {
+      status:          "uploading",
+      last_attempt_at: "SERVER",
+      attempt_count:   (row.attempts_count || 0) + 1
+    });
 
     // ---- photos (parallel, bounded) ----
     let uploadedPhotos = [];
@@ -290,6 +428,8 @@
         // had a chance to read the receipt (we keep one tick by deleting
         // synchronously inside this loop iteration).
         await DB.removeSubmission(row.submission_id);
+        // Phase 31C — also remove the admin-visible shadow doc.
+        await deleteShadowDoc(row.submission_id);
         results.push({ submission_id: row.submission_id, ok: true, receipt: receipt });
       } catch (err) {
         const nextAttempts = (row.attempts_count || 0) + 1;
@@ -303,18 +443,34 @@
             code:  err.code || "unknown",
             message: err.message || String(err)
           });
+          // Phase 31C — mirror permanent-failure to the shadow doc so
+          // admin can see this device needs human attention.
+          await updateShadowStatus(row.submission_id, {
+            status:             "failed_permanent",
+            last_error_code:    err.code || "unknown",
+            last_error_message: err.message || String(err)
+          });
           results.push({ submission_id: row.submission_id, ok: false, permanent: true, error: err });
         } else {
+          const nextAt = nextBackoffAt(nextAttempts);
           await DB.markStatus(row.submission_id, DB.STATUS.FAILED_WILL_RETRY, {
             last_error_code:    err.code || "unknown",
             last_error_message: err.message || String(err),
-            next_attempt_at:    nextBackoffAt(nextAttempts)
+            next_attempt_at:    nextAt
           });
           await DB.appendAttempt(row.submission_id, {
             stage: "transient_fail",
             code:  err.code || "unknown",
             message: err.message || String(err),
-            next_attempt_at: nextBackoffAt(nextAttempts)
+            next_attempt_at: nextAt
+          });
+          // Phase 31C — mirror transient-failure with the scheduled retry
+          // time so admin grid can show "next attempt in ~30s" UX.
+          await updateShadowStatus(row.submission_id, {
+            status:             "failed_will_retry",
+            last_error_code:    err.code || "unknown",
+            last_error_message: err.message || String(err),
+            next_attempt_at:    nextAt
           });
           results.push({ submission_id: row.submission_id, ok: false, permanent: false, error: err });
           // Move on — the failed row is no longer drainable until
@@ -357,6 +513,11 @@
       photos:          photos,
       signature_blob:  input.signature_blob
     });
+    // Phase 31C — write the admin-visible shadow doc. Best-effort: a
+    // failure here (Firestore unreachable, etc.) does NOT undo the IDB
+    // enqueue. The DCR remains safely on-device; the worker will create
+    // the shadow on first drain attempt if we add a re-try here later.
+    await createShadowDoc(input);
     return { submission_id: input.submission_id, ok: true, queued: true };
   }
 
@@ -371,6 +532,14 @@
     HARD_MS:                 HARD_MS,
     MAX_PARALLEL_PHOTOS:     MAX_PARALLEL_PHOTOS,
     MAX_ATTEMPTS:            MAX_ATTEMPTS,
-    BACKOFF_SCHEDULE_MS:     BACKOFF_SCHEDULE_MS
+    BACKOFF_SCHEDULE_MS:     BACKOFF_SCHEDULE_MS,
+    // Phase 31C — shadow doc helpers exposed for QA + future Phase D
+    // admin tile. shadowEnabled() returns the boolean used internally to
+    // gate every write. getOrCreateDeviceId() is idempotent.
+    getOrCreateDeviceId:     getOrCreateDeviceId,
+    shadowEnabled:           shadowEnabled,
+    createShadowDoc:         createShadowDoc,
+    updateShadowStatus:      updateShadowStatus,
+    deleteShadowDoc:         deleteShadowDoc
   };
 }());

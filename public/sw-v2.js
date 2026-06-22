@@ -1,8 +1,9 @@
-/* Pioneer DCR Hub — Phase 31 prototype: Service Worker V2 (DRAFT).
+/* Pioneer DCR Hub — Phase 31 Service Worker V2.
  *
- * STATUS: DRAFT. NOT registered by any page. Production sw.js is unchanged.
- * The filename includes ".draft" so a stray <script> or navigator call
- * can't accidentally activate it.
+ * STATUS: deployable, opt-in. Registered by pwa-register.js ONLY when
+ * window.OFFLINE_QUEUE_ENABLED === true. When the flag is false (default
+ * in production), pwa-register.js continues to register the V1 passthrough
+ * sw.js. Per-device opt-in until Phase E flips the flag for Bonnie.
  *
  * What changes vs V1 (current sw.js, passthrough-only):
  *
@@ -37,22 +38,27 @@
  *   self-delete on activate when SHELL_CACHE_VERSION changes.
  */
 
-const SW_VERSION         = "20260618-phase31-draft-v1";
+const SW_VERSION         = "20260622-phase31-v2-d1";
 const SHELL_CACHE_PREFIX = "pioneer-shell-";
 const SHELL_CACHE        = SHELL_CACHE_PREFIX + SW_VERSION;
 
+// Shell assets are cached at install time so the DCR form opens offline.
+// We strip the ?v=... query when matching (see stripQuery below) so a new
+// cache-bust still hits the cache while the SW re-fetches in the background
+// to refresh next time. Cache-bust values here are advisory — they're only
+// used to seed the install-time precache fetch.
 const SHELL_ASSETS = [
   "/",
   "/work.html",
   "/index.html",
-  "/app.js?v=20260618-upload-watchdog",
+  "/app.js?v=20260618-retry-budget",
   "/staff-auth.js",
   "/firebase-config.js",
   "/submit-dcr-v1.js",
   "/dcr-form-config.js",
   "/styles.css",
   "/queue/queue-db.js",
-  "/queue/queue-worker.js",
+  "/queue/queue-worker.js?v=20260622-shadow",
   "/queue/draft-migration.js"
 ];
 
