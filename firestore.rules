@@ -213,6 +213,77 @@ service cloud.firestore {
     // wires the client to actually write/update/delete docs here. Until
     // Phase C ships behind OFFLINE_QUEUE_ENABLED, this collection stays
     // empty.
+    // pending_clock_events — Phase 32B-5 clock event shadow doc (2026-06-23).
+    //
+    // Same pattern as dcr_pending_uploads (Phase 31B) — a per-event
+    // shadow row keyed by the client-generated event_id (also the
+    // primary key in IndexedDB's pioneer-clock-queue and the input
+    // to the future submitClockEventV1 Cloud Function).
+    //
+    // Stakes are higher than Phase 31: clock events drive payroll, so
+    // the shadow doc is what admins see when a tech's clock-in/out
+    // event is stuck in the queue. Worker writes on enqueue, mirrors
+    // status on each retry, deletes on terminal success.
+    //
+    // Schema, status enum, and immutability pins all mirror Phase 31B
+    // for predictability; the only schema differences are:
+    //   * `type` field (clock_in | clock_out)
+    //   * `intent_ts` + `intent_ts_floor` (epoch ms) — preserve user-tap
+    //     moment for accurate payroll; submitClockEventV1 uses these as
+    //     clock_in_at / clock_out_at instead of serverTimestamp
+    //   * `assignment_id` (required on clock_in) and `session_id`
+    //     (required on clock_out) rather than submission_id
+    //
+    // Foundation sprint (2026-06-23): rules live but the queue worker
+    // doesn't write to this collection yet. Will activate when 32B-3
+    // worker + 32B-2 optimistic UI ship.
+    match /pending_clock_events/{eventId} {
+      // Read: admin, or the owning tech (for their own future "1 clock
+      // event waiting" chip on /work, mirrors Phase 31's pattern).
+      allow read: if isPioneerAdmin()
+                  || (isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid);
+
+      // Create: active tech only, own uid, status must start at
+      // "queued", type must be one of the two valid values,
+      // intent_ts must be a number, schema_version pinned at 1.
+      allow create: if isActiveCleaningTech()
+                    && request.resource.data.event_id == eventId
+                    && request.resource.data.tech_uid == request.auth.uid
+                    && request.resource.data.tech_email is string
+                    && request.resource.data.type in ["clock_in", "clock_out"]
+                    && request.resource.data.status == "queued"
+                    && request.resource.data.schema_version == 1
+                    && request.resource.data.intent_ts is number
+                    && request.resource.data.intent_ts_floor is number;
+
+      // Update: tech can update only own rows, only lifecycle fields.
+      // Identity AND type AND intent_ts AND intent_ts_floor AND
+      // queued_at pinned — these define the event's identity for
+      // server-side idempotency and must NEVER mutate. Admin can
+      // update freely for manual unstuck / cleanup.
+      allow update: if (
+                      isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid
+                      && request.resource.data.event_id        == resource.data.event_id
+                      && request.resource.data.tech_uid        == resource.data.tech_uid
+                      && request.resource.data.tech_email      == resource.data.tech_email
+                      && request.resource.data.type            == resource.data.type
+                      && request.resource.data.intent_ts       == resource.data.intent_ts
+                      && request.resource.data.intent_ts_floor == resource.data.intent_ts_floor
+                      && request.resource.data.schema_version  == resource.data.schema_version
+                      && request.resource.data.queued_at       == resource.data.queued_at
+                      && request.resource.data.status in [
+                           "queued", "uploading", "failed_will_retry", "failed_permanent"
+                         ]
+                    )
+                    || isPioneerAdmin();
+
+      // Delete: worker calls on terminal success. Admin can also delete.
+      allow delete: if (isActiveCleaningTech() && request.auth.uid == resource.data.tech_uid)
+                    || isPioneerAdmin();
+    }
+
     match /dcr_pending_uploads/{submissionId} {
       // Read: admins, plus the tech who owns the row (powers a future
       // "1 DCR waiting to send" chip on /work).

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pioneer Phase 32B-1 Clock Queue Harness</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    body { padding: 24px; font-family: -apple-system, system-ui, sans-serif; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { color: #666; margin-bottom: 20px; font-size: 13px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 10px; font-size: 15px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    button { padding: 8px 12px; font-size: 13px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 6px; font-weight: 600; }
+    button:hover { background: #f4f4f4; }
+    button.primary { background: #0a8; color: #fff; border-color: transparent; }
+    button.danger  { color: #b00; border-color: #f5b5b5; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 320px; white-space: pre-wrap; word-break: break-word; }
+    .note { padding: 8px; background: #fff8e1; border: 1px solid #ffd54f; border-radius: 6px; font-size: 12px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Phase 32B-1 Clock Queue Harness</h1>
+  <div class="subtitle">Foundation only. Not loaded by any production page. No Firestore writes. All operations are local IndexedDB.</div>
+
+  <div class="note">
+    Database: <code>pioneer-clock-queue</code> · separate from Phase 31's <code>pioneer-queue</code>.
+    Inspect live state in DevTools &rarr; Application &rarr; IndexedDB &rarr; pioneer-clock-queue &rarr; events.
+  </div>
+
+  <div class="card">
+    <h2>1 &middot; Database lifecycle</h2>
+    <div class="row">
+      <button id="qt-open">Open DB</button>
+      <button id="qt-stats">Stats</button>
+      <button id="qt-clear" class="danger">Clear ALL events</button>
+    </div>
+    <pre id="qt-out-db">(no output)</pre>
+  </div>
+
+  <div class="card">
+    <h2>2 &middot; Enqueue + lifecycle</h2>
+    <div class="row">
+      <button id="qt-enq-in" class="primary">Enqueue clock-in</button>
+      <button id="qt-enq-out" class="primary">Enqueue clock-out</button>
+      <button id="qt-list">List all</button>
+      <button id="qt-next">getNextDrainable</button>
+    </div>
+    <pre id="qt-out-enq">(no output)</pre>
+  </div>
+
+  <div class="card">
+    <h2>3 &middot; Mark + remove</h2>
+    <div class="row">
+      <button id="qt-uploading">Mark uploading</button>
+      <button id="qt-fail-retry">Mark failed_will_retry (+1 attempt)</button>
+      <button id="qt-fail-perm" class="danger">Mark failed_permanent</button>
+      <button id="qt-remove" class="danger">Remove last event</button>
+    </div>
+    <pre id="qt-out-mark">(no output)</pre>
+  </div>
+
+  <div class="card">
+    <h2>4 &middot; Ordering check</h2>
+    <p style="font-size:12px;color:#555;">
+      Enqueue an in then an out for the same tech+assignment. Verify
+      getEventsByTechAndAssignment returns them ordered by intent_ts.
+    </p>
+    <div class="row">
+      <button id="qt-pair">Enqueue in+out pair</button>
+      <button id="qt-by-asgn">Read by tech+asgn</button>
+    </div>
+    <pre id="qt-out-order">(no output)</pre>
+  </div>
+
+  <div class="card">
+    <h2>5 &middot; Validation</h2>
+    <div class="row">
+      <button id="qt-val-bad-type">Enqueue with bad type</button>
+      <button id="qt-val-no-id">Enqueue with no event_id</button>
+      <button id="qt-val-out-no-sid">clock_out without session_id</button>
+      <button id="qt-val-in-no-asgn">clock_in without assignment_id</button>
+    </div>
+    <pre id="qt-out-val">(no output)</pre>
+  </div>
+
+  <div class="card">
+    <h2>6 &middot; Diagnostics</h2>
+    <pre id="qt-diag">(load page to populate)</pre>
+  </div>
+
+  <script src="clock-queue-db.js"></script>
+  <script src="clock-queue-test.js"></script>
+</body>
+</html>

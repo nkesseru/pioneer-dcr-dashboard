@@ -313,6 +313,15 @@
         { "fieldPath": "status",    "order": "ASCENDING"  },
         { "fieldPath": "queued_at", "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "pending_clock_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "queued_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
