@@ -120,7 +120,17 @@
         .catch(() => ({ docs: [] }))),
       safe("suppressions", db.collection("mission_control_alert_suppressions")
         .where("active", "==", true).get()
-        .catch(() => ({ docs: [] })))
+        .catch(() => ({ docs: [] }))),
+      // 2026-06-22 Phase 32C — DCRs in the same window as assignments.
+      // Used by the "DCR Without Session" detector below: a DCR with no
+      // matching pioneer_service_sessions / active_service_sessions row
+      // for the same tech + customer + date is a payroll integrity
+      // signal (work was reported but hours weren't tracked).
+      // Read scoped to the assignment window so we only check recent
+      // DCRs — older orphans are out of scope here.
+      safe("dcrs", db.collection("dcr_submissions")
+        .where("clean_date", ">=", yesterdayPT)
+        .where("clean_date", "<=", tomorrowPT).get())
     ]);
 
     function docs(idx) {
@@ -149,6 +159,7 @@
       deputyTomorrow:  docs(8),
       dismissals:      docs(9)  || [],
       suppressions:    docs(10) || [],
+      dcrs:            docs(11) || [],   // 2026-06-22 Phase 32C
       failedReads:     failures()
     };
   }
@@ -420,6 +431,122 @@
           entityType: "tech",
           entityId:   String(a.staff_uid || a.staff_email || techName),
           entityName: techName
+        });
+      });
+    }
+
+    /* ---- 2b. RED — DCR Without Session (2026-06-22 Phase 32C) ----
+     *
+     * Fires when a tech submitted a DCR but no labor session evidence
+     * exists for the same tech + customer + service_date. This is a
+     * PAYROLL INTEGRITY signal: the work was reported (DCR with photos
+     * landed) but the tech didn't clock in OR the clock-in write didn't
+     * confirm. Without admin intervention, the hours won't be paid.
+     *
+     * Distinct from "Missed Shift" — that fires when an ASSIGNMENT has
+     * no session. This fires when a DCR has no session. The two can
+     * overlap (assignment + DCR + no session) but address different
+     * audiences:
+     *   - Missed Shift -> "did the work happen?"
+     *   - DCR Without Session -> "the work happened but the hours are at risk"
+     *
+     * Match criteria for "session exists" (any one is sufficient):
+     *   (a) pioneer_service_sessions row with matching tech + customer + date
+     *   (b) active_service_sessions row with matching tech + customer
+     *       (active rows don't carry service_date reliably — match on
+     *       customer + tech alone, accepting the small false-suppress
+     *       risk for "tech currently clocked in to same customer")
+     *
+     * If neither matches, fire RED. One alert per DCR. Includes the
+     * tech's preflight ack (if 32D was acknowledged at submit) so admin
+     * knows whether the tech was aware they were submitting without
+     * a clock-in vs whether this is a silent orphan.
+     *
+     * Suppressed automatically when the DCR was waived
+     * (submission_meta.acknowledged_no_session === true is INFORMATIONAL,
+     * not suppression — the alert still fires because payroll still
+     * needs the hours reconciled).
+     */
+    let dcrWithoutSessionCount = 0;
+    function sessionEvidenceForDcr(d) {
+      const dCust = String(d.customer_slug || (d.customer && d.customer.slug) || "").toLowerCase();
+      const dDate = d.clean_date || "";
+      const dTechEmail = String(d.tech_email
+                              || (d.tech && d.tech.email)
+                              || d.submitted_by_email || "").toLowerCase();
+      const dTechSlug  = String(d.tech_slug
+                              || (d.tech && d.tech.slug) || "").toLowerCase();
+      const dTechUid   = d.submitted_by_uid
+                      || (d.tech && d.tech.uid) || "";
+
+      function techMatches(s) {
+        const sEmail = String(s.staff_email || "").toLowerCase();
+        const sUid   = s.staff_uid || "";
+        const sSlug  = String(s.tech_slug || "").toLowerCase();
+        if (dTechUid && sUid && dTechUid === sUid) return true;
+        if (dTechEmail && sEmail && dTechEmail === sEmail) return true;
+        if (dTechSlug && sSlug && dTechSlug === sSlug) return true;
+        return false;
+      }
+      function custMatches(s) {
+        const sCust = String(s.customer_slug || s.customer_id || "").toLowerCase();
+        return !!(dCust && sCust && dCust === sCust);
+      }
+
+      // (a) pioneer_service_sessions by tech + customer + date
+      const pioneerHit = (snap.sessions || []).some(function (s) {
+        if (s.service_date !== dDate) return false;
+        return custMatches(s) && techMatches(s);
+      });
+      if (pioneerHit) return true;
+
+      // (b) active_service_sessions by tech + customer (date may not match
+      // because the active row carries the original clock-in date)
+      const activeHit = (snap.activeSess || []).some(function (s) {
+        return custMatches(s) && techMatches(s);
+      });
+      return activeHit;
+    }
+
+    if (snap.dcrs) {
+      snap.dcrs.forEach(function (d) {
+        if (sessionEvidenceForDcr(d)) return;
+
+        dcrWithoutSessionCount += 1;
+        const techName = d.tech_display_name
+                      || (d.tech && d.tech.display_name)
+                      || d.tech_email
+                      || (d.tech && d.tech.email)
+                      || "?";
+        const customerName = d.customer_name
+                          || (d.customer && d.customer.name)
+                          || d.customer_slug || "?";
+        const cleanDate    = d.clean_date || "?";
+        const acked = !!(d.submission_meta && d.submission_meta.acknowledged_no_session);
+        const ackNote = acked
+          ? "Tech acknowledged at submit (no-clock-in preflight). "
+          : "";
+        const ageNote = (cleanDate === snap.todayPT) ? "Today"
+                      : (cleanDate === snap.yesterdayPT) ? "Yesterday"
+                      : cleanDate;
+
+        items.push({
+          severity: "RED",
+          category: "dcr-without-session",
+          title:   "DCR Without Session",
+          subject: techName,
+          context: customerName + " · " + ageNote,
+          reason:  ackNote + "DCR submitted (photos + signature) but no clock-in record exists. Hours will not appear on payroll unless reconciled.",
+          fix:     "Contact tech to confirm work performed. Then file a time-adjustment request in Labor to add the hours, OR mark the DCR as administrative-only if the tech genuinely never clocked in.",
+          actionLabel: "Open Recent DCRs",
+          actionRoute: "dcrs",
+          alertKey:    "dcr_no_session:" + (d.submission_id || d._id),
+          entityType:  "tech",
+          entityId:    String(d.submitted_by_uid
+                             || d.tech_email
+                             || (d.tech && d.tech.email)
+                             || techName),
+          entityName:  techName
         });
       });
     }
@@ -829,6 +956,7 @@
     "blocked-shift-bridge-skipped": 8,
     "unmapped-customer":            4,
     "missed-shift":                 6,
+    "dcr-without-session":          6,
     "stuck-clock":                  6,
     "missing-dcr":                  8,
     "paused-shift":                 6,
@@ -895,6 +1023,7 @@
       "blocked-shift-tech-archived":  "blocked shift (tech archived)",
       "unmapped-customer":            "unmapped customer shift",
       "missed-shift":                 "missed shift",
+      "dcr-without-session":          "DCR without clock-in (payroll at risk)",
       "stuck-clock":                  "stuck clock-in",
       "missing-dcr":                  "missing DCR",
       "paused-shift":                 "paused shift",
