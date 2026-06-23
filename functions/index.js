@@ -40,6 +40,12 @@ const customerEconomics = require("./customerEconomics");
 // with pre-Phase-31 clients that never retry (the read only matches when
 // the queue worker replays a previously-accepted submission_id).
 const submitDcrIdempotency = require("./submitDcrV1-idempotency");
+// Phase 32B-4A — submitClockEventV1 handler. Deploy-safe-inert via
+// three stacked safety gates: (1) no client wiring yet, (2) dry_run
+// defaults true in the handler, (3) LIVE_WRITE_ENABLED_EMAILS allowlist
+// is empty. See functions/submitClockEventV1.js header for the
+// activation playbook.
+const submitClockEventV1Handler = require("./submitClockEventV1");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -10743,6 +10749,25 @@ exports.refreshCeoFinancialPulseV1 = onRequest(
       logger.error("[ceo-pulse.refresh] crashed", { error: err && err.message });
       res.status(500).json({ ok: false, error: err && err.message });
     }
+  }
+);
+
+// ============================================================================
+// Phase 32B-4A — submitClockEventV1
+// Backend endpoint for the (future) offline clock event queue worker.
+// Deploy-safe-inert via three stacked safety gates documented in
+// functions/submitClockEventV1.js. No client calls this yet; the handler
+// dry-runs by default; the live-write allowlist is empty.
+// ============================================================================
+exports.submitClockEventV1 = onRequest(
+  { cors: false, timeoutSeconds: 30 },
+  async function (req, res) {
+    return submitClockEventV1Handler.handler(req, res, {
+      admin:                admin,
+      db:                   db,
+      logger:               logger,
+      verifyStaffOrReject:  verifyStaffOrReject
+    });
   }
 );
 

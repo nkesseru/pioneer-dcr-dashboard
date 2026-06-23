@@ -1,5 +1,16 @@
 /* Pioneer DCR Hub — Phase 32B-4 design draft.
  *
+ * STATUS UPDATE 2026-06-23: Phase 32B-4A implementation has shipped.
+ * The actual handler lives at functions/submitClockEventV1.js and is
+ * exported from functions/index.js. This file is preserved as the
+ * original design reference — the implementation matches it with
+ * three additions:
+ *   1. dry_run defaults to true (safety gate 1)
+ *   2. LIVE_WRITE_ENABLED_EMAILS allowlist (safety gate 2, currently empty)
+ *   3. dry_run_reason field on responses for diagnostic clarity
+ *
+ * Below is the original design draft (preserved verbatim).
+ *
  * STATUS: DESIGN ONLY. NOT EXPORTED. NOT WIRED. NOT DEPLOYED.
  *
  * This file lives in functions/_drafts/ so the Cloud Functions deploy
