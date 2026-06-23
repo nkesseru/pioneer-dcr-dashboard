@@ -453,6 +453,80 @@ main { max-width: 680px; margin: 0 auto; padding: 8px 14px 120px; }
 .deputy-shift-banner-link:hover { text-decoration: none; }
 
 /* ==========================================================================
+   2026-06-22 Phase 32D — DCR no-clock-in preflight warning banner.
+   Shown when the DCR form was opened without any clock-in linkage.
+   Amber tone — warning but not alarm — so techs read it as a soft nudge
+   to clock in, not a hard error blocking their submission.
+   ========================================================================== */
+.dcr-no-session-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: var(--radius-input);
+}
+.dcr-no-session-banner-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.dcr-no-session-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dcr-no-session-banner-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  color: inherit;
+}
+.dcr-no-session-banner-msg {
+  margin: 0;
+  font-size: 12.5px;
+  color: inherit;
+}
+.dcr-no-session-banner-msg strong { font-weight: 700; }
+.dcr-no-session-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.dcr-no-session-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1;
+}
+.dcr-no-session-banner-btn.primary {
+  background: #f59e0b;
+  color: #fff;
+  border-color: #f59e0b;
+}
+.dcr-no-session-banner-btn.primary:hover { background: #d97706; border-color: #d97706; }
+.dcr-no-session-banner-btn.secondary {
+  background: #fff;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.dcr-no-session-banner-btn.secondary:hover { background: #fef3c7; }
+
+/* ==========================================================================
    Cards — clean glass-on-paper with a barely-perceptible vertical gradient
    ========================================================================== */
 

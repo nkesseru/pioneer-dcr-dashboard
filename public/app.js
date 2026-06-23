@@ -410,6 +410,59 @@
   }
   const pioneerAssignmentParams = parsePioneerAssignmentFromUrl();
 
+  /* ---------- 2026-06-22 Phase 32D — DCR no-clock-in preflight ----------
+   *
+   * Detects DCR submissions that aren't tied to any clock-in evidence
+   * (no pioneer_service_session_id, no pioneer_assignment_id, no
+   * deputy_shift_id in the URL). Renders the amber warning banner,
+   * lets the tech jump to /work OR acknowledge and continue. If they
+   * continue, the ack flag rides on the DCR payload's submission_meta
+   * so admin can audit "orphan DCR — tech acknowledged at submit time"
+   * vs "orphan DCR — silent" downstream.
+   *
+   * The banner does NOT block submission. It is informational + a UX
+   * nudge to clock in first. Stays hidden whenever any handoff is
+   * present in the URL (the normal Start Work flow).
+   *
+   * dcrNoSessionAcknowledged is read once by onSubmit() during payload
+   * construction. Defaults to false; set to true when the tech clicks
+   * "Continue anyway".
+   */
+  let dcrNoSessionAcknowledged = false;
+
+  function hasAnyClockInLinkage() {
+    if (pioneerAssignmentParams && (
+          pioneerAssignmentParams.pioneer_assignment_id ||
+          pioneerAssignmentParams.pioneer_service_session_id)) return true;
+    if (deputyShiftParams && (
+          deputyShiftParams.deputy_shift_id ||
+          deputyShiftParams.pioneer_session_id)) return true;
+    return false;
+  }
+
+  function wireDcrNoSessionBanner() {
+    const banner = $("dcr-no-session-banner");
+    if (!banner) return;
+    if (hasAnyClockInLinkage()) {
+      banner.hidden = true;
+      return;
+    }
+    banner.hidden = false;
+    try { console.info("[phase32d] dcr opened without clock-in linkage — preflight banner shown"); } catch (_e) {}
+    const continueBtn = $("dcr-no-session-continue");
+    if (continueBtn) {
+      continueBtn.addEventListener("click", function () {
+        dcrNoSessionAcknowledged = true;
+        banner.hidden = true;
+        try { console.info("[phase32d] tech acknowledged no-clock-in — continuing without session"); } catch (_e) {}
+      });
+    }
+    // The "/work" link is a plain <a href>; no JS handler needed. The
+    // browser navigates away, and the tech's draft (if any) is preserved
+    // by the existing localStorage draft system so they can come back to
+    // the DCR after clocking in.
+  }
+
   /* ---------- Phase 1e.2: linked Pioneer session over-budget check ----------
    *
    * When the URL carries a pioneer_service_session_id (set by service-clock.js
@@ -3018,6 +3071,14 @@
         });
         payloadQ.form_data = formDataQ;
 
+        // 2026-06-22 Phase 32D — mirror the inline-path ack onto the
+        // queued payload so the eventual drain carries the same audit
+        // signal. See the inline branch below for full rationale.
+        if (dcrNoSessionAcknowledged) {
+          payloadQ.submission_meta = payloadQ.submission_meta || {};
+          payloadQ.submission_meta.acknowledged_no_session = true;
+        }
+
         // Carry deputy / pioneer handoffs through the queue so the
         // server-side writebacks still fire when the row drains.
         if (deputyShiftParams && deputyShiftParams.deputy_shift_id) {
@@ -3160,6 +3221,16 @@
       });
 
       payload.form_data = formData;
+
+      // 2026-06-22 Phase 32D — if the tech acknowledged the
+      // no-clock-in preflight warning, stamp it onto submission_meta so
+      // admin reports can distinguish "deliberate orphan DCR" from
+      // "silent orphan DCR" downstream. Field is undefined (omitted)
+      // when the form had a normal clock-in handoff.
+      if (dcrNoSessionAcknowledged) {
+        payload.submission_meta = payload.submission_meta || {};
+        payload.submission_meta.acknowledged_no_session = true;
+      }
 
       // Deputy-shift handoff — when the form was launched from a
       // Today's Assignments card, the snapshot lives in module state
@@ -4067,6 +4138,10 @@
       loadLinkedPioneerSession();
       wireSegments();
       updateSignatureAttribution();
+      // 2026-06-22 Phase 32D — render the "no clock-in" preflight banner
+      // when this DCR has no session/assignment handoff. No-op when the
+      // form was opened from /work with any handoff. Idempotent.
+      wireDcrNoSessionBanner();
 
       els.photos.addEventListener("change", onFileInputChange);
       els.form.addEventListener("submit",  onSubmit);

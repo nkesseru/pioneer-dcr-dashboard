@@ -265,6 +265,36 @@
            it always shows even if JS is slow / errors out partway. Meta
            lines (location, scheduled time, sync date, shift id) and
            actions (Open in Deputy link) are filled by app.js. -->
+      <!-- 2026-06-22 Phase 32D — DCR-without-clock-in preflight warning.
+           Shown ONLY when the DCR form was opened WITHOUT any clock-in
+           linkage (no pioneer_service_session_id, no pioneer_assignment_id,
+           no deputy_shift_id in the URL). Catches the orphan-DCR case
+           where a tech submits a report without first clocking in,
+           which would let the work record through but leave payroll
+           hours missing. The tech can tap "I forgot — open /work" to
+           go clock in, or "Continue anyway" to submit a DCR without
+           hour tracking (stamped onto submission_meta for audit).
+           When the form is opened from /work (any handoff present),
+           this banner stays hidden. -->
+      <aside id="dcr-no-session-banner" class="dcr-no-session-banner" role="status" aria-live="polite" hidden>
+        <span class="dcr-no-session-banner-icon" aria-hidden="true">⚠</span>
+        <div class="dcr-no-session-banner-body">
+          <strong class="dcr-no-session-banner-title">This DCR isn't tied to a clock-in</strong>
+          <p class="dcr-no-session-banner-msg">
+            Submitting will record the report but <strong>won't add hours to payroll</strong>.
+            If you forgot to clock in, head to your work page first.
+          </p>
+          <div class="dcr-no-session-banner-actions">
+            <a class="dcr-no-session-banner-btn primary" id="dcr-no-session-goto-work" href="/work">
+              I forgot — open /work
+            </a>
+            <button class="dcr-no-session-banner-btn secondary" type="button" id="dcr-no-session-continue">
+              Continue anyway
+            </button>
+          </div>
+        </div>
+      </aside>
+
       <div id="deputy-shift-banner" class="deputy-shift-banner" role="status" aria-live="polite" hidden>
         <span class="deputy-shift-banner-icon" aria-hidden="true">📅</span>
         <div class="deputy-shift-banner-body">
@@ -686,8 +716,8 @@
        Flag-off behavior is identical to the 2026-06-18 hotfix. -->
   <script src="queue/queue-db.js?v=20260618-retry-budget"></script>
   <script src="queue/queue-worker.js?v=20260622-shadow"></script>
-  <script src="app.js?v=20260622-phase31d"></script>
-  <script src="/pwa-register.js?v=20260622-phase31d"></script>
+  <script src="app.js?v=20260622-phase32d"></script>
+  <script src="/pwa-register.js?v=20260622-phase32d"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>
