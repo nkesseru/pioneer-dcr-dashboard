@@ -37,15 +37,11 @@
   // service-clock.js (today-work.js is commented out in work.html).
   // The multi-shift build removes the isAvailableNow() filter so every
   // assigned stop for the day is visible regardless of window state.
-  try {
-    console.log("[PIONEER DEBUG] SERVICE CLOCK MULTI-SHIFT BUILD ACTIVE", {
-      file:           "service-clock.js",
-      build_marker:   "V20260614-multishift — visibility is day-based, not time-window-based",
-      url:            location.href,
-      search:         location.search,
-      debug_param:    new URLSearchParams(location.search || "").get("debug")
-    });
-  } catch (_e) {}
+  //
+  // 2026-06-22 audit cleanup: removed the unconditional "[PIONEER DEBUG]
+  // SERVICE CLOCK MULTI-SHIFT BUILD ACTIVE" console.log that fired on
+  // every /work page load. Build identity is still verifiable from the
+  // cache-bust query string in the script tag; no need to log it.
 
   // Module-load breadcrumb so future debug doesn't have to guess whether
   // the script tag fired. Visible in DevTools console immediately on
