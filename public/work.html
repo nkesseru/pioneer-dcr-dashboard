@@ -158,6 +158,25 @@
         <!-- Phase 1c.1 — the prior section header ("⏱ Pioneer Time Clock"
              eyebrow + subtitle) was removed; the hero card IS the
              section identity now. Centered around MY WORK per spec. -->
+
+        <!-- 2026-06-22 Phase 32A — clock-in breadcrumb recovery banner.
+             Hidden by default. Shown by service-clock.js#checkPendingClockIntent()
+             when localStorage has a "pioneer.clock.intent" breadcrumb AND
+             no matching active_service_sessions / pioneer_service_sessions
+             row was found. Lets the tech re-confirm or dismiss a clock-in
+             that may not have reached Firestore. -->
+        <aside id="ptc-clock-intent-banner" class="ptc-clock-intent-banner" role="alert" aria-live="polite" hidden>
+          <span class="ptc-clock-intent-icon" aria-hidden="true">⚠</span>
+          <div class="ptc-clock-intent-body">
+            <strong class="ptc-clock-intent-title">Your last clock-in may not have saved</strong>
+            <p class="ptc-clock-intent-meta" id="ptc-clock-intent-meta"></p>
+            <div class="ptc-clock-intent-actions">
+              <button type="button" class="ptc-clock-intent-btn primary" id="ptc-clock-intent-retry">Retry clock-in</button>
+              <button type="button" class="ptc-clock-intent-btn secondary" id="ptc-clock-intent-dismiss">Dismiss</button>
+            </div>
+          </div>
+        </aside>
+
         <div class="ptc-hero"  id="ptc-hero"  hidden></div>
         <div class="ptc-stats" id="ptc-stats" hidden></div>
         <div class="ptc-assignments" id="ptc-assignments"></div>
@@ -229,7 +248,7 @@
   <!-- <script src="today-work.js?v=20260601-phase1b3-badge"></script> -->
 
   <script src="assignment-eligibility.js?v=20260607-phase33-shared-eligibility"></script>
-  <script src="service-clock.js?v=20260614b-dcr-pill-states"></script>
+  <script src="service-clock.js?v=20260622-phase32a"></script>
   <script src="work.js?v=20260615-office-issues"></script>
   <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
   <script src="sos.js?v=20260528-sosv1"></script>

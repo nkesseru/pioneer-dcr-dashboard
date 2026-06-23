@@ -410,6 +410,161 @@
   // "Worked: Xh Ym (currently working…)" timer text stays current.
   let timerInterval     = null;
 
+  /* ---------- 2026-06-22 Phase 32A — clock-in breadcrumb ----------
+   *
+   * Goal: capture an "attempted clock-in" record in localStorage BEFORE
+   * the Firestore transaction starts. If the transaction never confirms
+   * (weak signal, page killed mid-flight, tab close), the breadcrumb
+   * survives. On next boot we cross-check against Firestore: if the
+   * tech has no active or pioneer session matching the attempted
+   * assignment, we render the recovery banner asking them to retry.
+   *
+   * NOT a queue. NOT a retry mechanism. The Firestore transaction is
+   * NOT replayed automatically — the tech taps Retry, which re-invokes
+   * the standard clockIn() path with full UI feedback. This is a
+   * diagnostic + nudge, not a background worker.
+   *
+   * Lifecycle:
+   *   1. clockIn() entry: write breadcrumb to localStorage
+   *   2. clockIn() transaction resolves: clear breadcrumb
+   *   3. clockIn() transaction rejects: leave breadcrumb in place
+   *   4. Next page load (after initialLoad): checkPendingClockIntent()
+   *      reads breadcrumb, cross-references active+pioneer sessions,
+   *      shows banner if breadcrumb is fresh AND no session matches.
+   *   5. Banner shown for >24h-old breadcrumbs: silently cleared (stale).
+   *
+   * Privacy: breadcrumb stays in localStorage on the tech's device only.
+   * Phase 32B (deferred) would mirror to Firestore for admin visibility;
+   * 32A is purely a client-side aid.
+   */
+  const CLOCK_INTENT_KEY     = "pioneer.clock.intent";
+  const CLOCK_INTENT_TTL_MS  = 24 * 60 * 60 * 1000;   // 24h
+
+  function setClockIntent(payload) {
+    try {
+      const blob = Object.assign({
+        version:   1,
+        intent_ts: Date.now()
+      }, payload || {});
+      localStorage.setItem(CLOCK_INTENT_KEY, JSON.stringify(blob));
+      try { console.info("[phase32a] clock_intent set", { assignment_id: blob.assignment_id, intent_ts: blob.intent_ts }); } catch (_e) {}
+    } catch (e) {
+      try { console.warn("[phase32a] failed to set clock_intent (non-fatal)", e && e.message); } catch (_e) {}
+    }
+  }
+  function clearClockIntent(reason) {
+    try {
+      localStorage.removeItem(CLOCK_INTENT_KEY);
+      try { console.info("[phase32a] clock_intent cleared", { reason: reason || "" }); } catch (_e) {}
+    } catch (_e) {}
+  }
+  function readClockIntent() {
+    try {
+      const raw = localStorage.getItem(CLOCK_INTENT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed;
+    } catch (_e) { return null; }
+  }
+
+  // Cross-references the breadcrumb against the current loaded state
+  // (activeSession + sessionsByAssignment, both populated by
+  // initialLoad). Three outcomes:
+  //   - No breadcrumb -> hide banner, return.
+  //   - Breadcrumb older than 24h -> silently clear, hide banner.
+  //   - Breadcrumb + Firestore shows matching session -> the SDK retry
+  //     eventually succeeded; silently clear, hide banner.
+  //   - Breadcrumb fresh + no matching session -> show recovery banner.
+  // Idempotent. Safe to call on every initialLoad.
+  function checkPendingClockIntent() {
+    const banner = $("ptc-clock-intent-banner");
+    if (!banner) return;
+
+    function hide() { banner.hidden = true; }
+
+    const intent = readClockIntent();
+    if (!intent) { hide(); return; }
+
+    const age = Date.now() - Number(intent.intent_ts || 0);
+    if (!intent.intent_ts || age > CLOCK_INTENT_TTL_MS) {
+      clearClockIntent("stale (>24h)");
+      hide();
+      return;
+    }
+
+    // Match #1: active_service_sessions has this tech's row already.
+    // If they're currently clocked in to ANY assignment, the breadcrumb
+    // is moot — either the original write landed or they re-clocked-in
+    // elsewhere. Either way, no point pestering them.
+    if (activeSession) {
+      clearClockIntent("active session exists");
+      hide();
+      return;
+    }
+
+    // Match #2: a pioneer_service_sessions row exists for the attempted
+    // assignment_id (any status). This catches the case where the SDK
+    // retry eventually succeeded after the page was already reloaded
+    // OR an admin manually created the session.
+    const linked = (sessionsByAssignment && sessionsByAssignment[intent.assignment_id]) || [];
+    if (linked.length > 0) {
+      clearClockIntent("pioneer session exists for assignment");
+      hide();
+      return;
+    }
+
+    // Otherwise — the breadcrumb is real evidence of an attempt that
+    // didn't land. Render the recovery banner with context.
+    const metaEl = $("ptc-clock-intent-meta");
+    if (metaEl) {
+      const customer = intent.customer_name || intent.customer_id || "your shift";
+      const whenMins = Math.max(1, Math.round(age / 60000));
+      const whenTxt  = whenMins < 60
+        ? whenMins + " minute" + (whenMins === 1 ? "" : "s") + " ago"
+        : Math.round(whenMins / 60) + " hour" + (Math.round(whenMins / 60) === 1 ? "" : "s") + " ago";
+      metaEl.textContent = "Attempted at " + customer + ", " + whenTxt + ". No session record found. Retry or dismiss.";
+    }
+    banner.hidden = false;
+    wireClockIntentBannerButtons(intent);
+    try { console.warn("[phase32a] clock_intent recovery banner shown", { assignment_id: intent.assignment_id, age_min: Math.round(age / 60000) }); } catch (_e) {}
+  }
+
+  // Idempotent — re-attaches handlers each time the banner shows. Safe
+  // even if the buttons already have prior listeners (we use {once: true}
+  // so a stale handler can't double-fire).
+  function wireClockIntentBannerButtons(intent) {
+    const retryBtn   = $("ptc-clock-intent-retry");
+    const dismissBtn = $("ptc-clock-intent-dismiss");
+    const banner     = $("ptc-clock-intent-banner");
+
+    if (retryBtn) {
+      retryBtn.addEventListener("click", async function () {
+        retryBtn.disabled = true;
+        const original = retryBtn.textContent;
+        retryBtn.textContent = "Retrying...";
+        try {
+          await clockIn(intent.assignment_id);
+          // clockIn() calls clearClockIntent on success + initialLoad,
+          // which re-runs checkPendingClockIntent and hides this banner.
+        } catch (err) {
+          warnSC("clock-intent retry failed", err && err.message);
+          alert((err && err.message) || "Clock-in retry failed. Check signal and try again.");
+          retryBtn.disabled = false;
+          retryBtn.textContent = original;
+        }
+      }, { once: true });
+    }
+
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", function () {
+        clearClockIntent("user dismissed banner");
+        if (banner) banner.hidden = true;
+        try { console.info("[phase32a] clock_intent dismissed by user", { assignment_id: intent.assignment_id }); } catch (_e) {}
+      }, { once: true });
+    }
+  }
+
   /* ---------- auth resolution + first load ---------- */
 
   function bootWhenAuthReady() {
@@ -776,6 +931,11 @@
     renderHero();
     renderStats();
     renderAssignments();
+    // 2026-06-22 Phase 32A — after assignments + sessions are loaded,
+    // cross-reference any pending clock-in breadcrumb against live
+    // Firestore state. Renders the recovery banner if the breadcrumb
+    // is fresh and no session matches. No-op when no breadcrumb.
+    try { checkPendingClockIntent(); } catch (e) { warnSC("checkPendingClockIntent threw (non-fatal)", e && e.message); }
     // Phase 1b.3 — keep the "currently working" timer text fresh while
     // a session is active. Cheap re-render every 30s; stops on
     // clock-out / initial-load tear-down.
@@ -1449,6 +1609,22 @@
 
   async function clockIn(assignmentId) {
     const db   = firebase.firestore();
+    // 2026-06-22 Phase 32A — write breadcrumb BEFORE anything else so
+    // we have a record even if captureGeo hangs or the page is killed
+    // before the transaction starts. The assignment doc gives us
+    // customer + service_date context for the eventual retry banner.
+    try {
+      const asgnForIntent = assignments.find(function (x) { return x._id === assignmentId; }) || {};
+      setClockIntent({
+        assignment_id:  assignmentId,
+        staff_uid:      currentStaff && currentStaff.uid,
+        staff_email:    String((currentStaff && currentStaff.email) || "").toLowerCase().trim(),
+        customer_id:    asgnForIntent.customer_id  || null,
+        customer_name:  asgnForIntent.customer_name || null,
+        service_date:   asgnForIntent.service_date || pacificDateString()
+      });
+    } catch (_e) { /* breadcrumb write is best-effort */ }
+
     const geo  = await captureGeo();
     const today = pacificDateString();
     const staffEmail = String((currentStaff && currentStaff.email) || "").toLowerCase().trim();
@@ -1553,6 +1729,10 @@
     });
 
     logSC("clock-in OK", { assignment: assignmentId });
+    // 2026-06-22 Phase 32A — transaction confirmed; breadcrumb served
+    // its purpose. Clear it so the next page load doesn't show a
+    // false-positive retry banner.
+    clearClockIntent("clock-in confirmed");
     await initialLoad();
   }
 

@@ -527,6 +527,82 @@ main { max-width: 680px; margin: 0 auto; padding: 8px 14px 120px; }
 .dcr-no-session-banner-btn.secondary:hover { background: #fef3c7; }
 
 /* ==========================================================================
+   2026-06-22 Phase 32A — Clock-in breadcrumb recovery banner.
+   Shown at the top of /work's Pioneer Time Clock section when a prior
+   clock-in attempt left a localStorage breadcrumb but no matching session
+   exists in Firestore. Higher-urgency tone than the DCR preflight (red-ish
+   rather than amber) because the tech almost certainly believes they
+   already clocked in and hours are at risk.
+   ========================================================================== */
+.ptc-clock-intent-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  border-radius: var(--radius-input);
+}
+.ptc-clock-intent-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.ptc-clock-intent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ptc-clock-intent-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  color: inherit;
+}
+.ptc-clock-intent-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: inherit;
+  opacity: 0.9;
+}
+.ptc-clock-intent-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ptc-clock-intent-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  line-height: 1;
+}
+.ptc-clock-intent-btn.primary {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+.ptc-clock-intent-btn.primary:hover { background: #dc2626; border-color: #dc2626; }
+.ptc-clock-intent-btn.primary:disabled { background: #f87171; border-color: #f87171; cursor: wait; opacity: 0.85; }
+.ptc-clock-intent-btn.secondary {
+  background: #fff;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.ptc-clock-intent-btn.secondary:hover { background: #fee2e2; }
+
+/* ==========================================================================
    Cards — clean glass-on-paper with a barely-perceptible vertical gradient
    ========================================================================== */
 
