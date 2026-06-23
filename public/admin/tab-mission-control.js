@@ -452,15 +452,21 @@
      *
      * Match criteria for "session exists" (any one is sufficient):
      *   (a) pioneer_service_sessions row with matching tech + customer + date
-     *   (b) active_service_sessions row with matching tech + customer
+     *   (b) Phase 32C.1 cross-midnight match — session.service_date is
+     *       DCR.clean_date - 1 day AND clock_in_at is within 4 hours of
+     *       midnight PT (8pm prior day - 4am next day). Catches late-night
+     *       jobs where the tech clocked in before midnight but the DCR's
+     *       clean_date is the calendar day the work was FOR. Surfaced
+     *       2026-06-23 by Hormann Door + Dr. Max false positives.
+     *   (c) active_service_sessions row with matching tech + customer
      *       (active rows don't carry service_date reliably — match on
      *       customer + tech alone, accepting the small false-suppress
      *       risk for "tech currently clocked in to same customer")
      *
-     * If neither matches, fire RED. One alert per DCR. Includes the
-     * tech's preflight ack (if 32D was acknowledged at submit) so admin
-     * knows whether the tech was aware they were submitting without
-     * a clock-in vs whether this is a silent orphan.
+     * If none match, fire RED. One alert per DCR. Includes the tech's
+     * preflight ack (if 32D was acknowledged at submit) so admin knows
+     * whether the tech was aware they were submitting without a
+     * clock-in vs whether this is a silent orphan.
      *
      * Suppressed automatically when the DCR was waived
      * (submission_meta.acknowledged_no_session === true is INFORMATIONAL,
@@ -468,6 +474,54 @@
      * needs the hours reconciled).
      */
     let dcrWithoutSessionCount = 0;
+    // Phase 32C.1 cross-midnight window: clock-in must be within 4 hours
+    // of midnight PT (so 8pm prior day -> 4am next day qualifies).
+    // Bounds out daytime shifts that share a calendar boundary but
+    // weren't actually cross-midnight work.
+    const CROSS_MIDNIGHT_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+    // Returns the UTC epoch ms of midnight Pacific time for a YYYY-MM-DD
+    // string. Handles PDT (UTC-7) and PST (UTC-8) by inspecting the
+    // actual PT offset at noon UTC of the target date via Intl. Returns
+    // null on parse failure.
+    function ptMidnightUtcForDate(dateStr) {
+      if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+      const utcNoon = Date.parse(dateStr + "T12:00:00Z");
+      if (isNaN(utcNoon)) return null;
+      try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Los_Angeles",
+          hour: "2-digit",
+          hour12: false
+        }).formatToParts(new Date(utcNoon));
+        let ptHour = null;
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i].type === "hour") { ptHour = parseInt(parts[i].value, 10); break; }
+        }
+        if (ptHour === null || isNaN(ptHour)) return null;
+        // PT hour for 12:00 UTC: 5 in PDT (offset -7), 4 in PST (offset -8).
+        // Some Intl impls return "24" instead of "00" — clamp.
+        if (ptHour === 24) ptHour = 0;
+        const offsetHours = 12 - ptHour;  // 7 (PDT) or 8 (PST)
+        if (offsetHours < 4 || offsetHours > 12) return null;  // sanity
+        const offsetStr = String(offsetHours).padStart(2, "0");
+        const midnightUtc = Date.parse(dateStr + "T" + offsetStr + ":00:00Z");
+        return isNaN(midnightUtc) ? null : midnightUtc;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    function isWithinCrossMidnightWindow(s, dcrCleanDate) {
+      const inMs = tsToMs(s.clock_in_at);
+      if (!inMs) return false;
+      const dcrMidnightUtc = ptMidnightUtcForDate(dcrCleanDate);
+      if (dcrMidnightUtc === null) return false;
+      // Window: [midnight - 4h, midnight + 4h] = 8pm prior PT day to 4am
+      // next PT day. Inclusive on both ends.
+      return inMs >= (dcrMidnightUtc - CROSS_MIDNIGHT_WINDOW_MS) &&
+             inMs <= (dcrMidnightUtc + CROSS_MIDNIGHT_WINDOW_MS);
+    }
     function sessionEvidenceForDcr(d) {
       const dCust = String(d.customer_slug || (d.customer && d.customer.slug) || "").toLowerCase();
       const dDate = d.clean_date || "";
@@ -493,14 +547,40 @@
         return !!(dCust && sCust && dCust === sCust);
       }
 
-      // (a) pioneer_service_sessions by tech + customer + date
+      // Compute DCR.clean_date - 1 day for the cross-midnight check.
+      // String subtraction via Date parse is fine; clean_date is always
+      // YYYY-MM-DD per submitDcrV1 validation.
+      let dDateMinusOne = null;
+      if (dDate && /^\d{4}-\d{2}-\d{2}$/.test(dDate)) {
+        const dDateMs = Date.parse(dDate + "T12:00:00Z");
+        if (!isNaN(dDateMs)) {
+          const prior = new Date(dDateMs - 86400000);
+          const y = prior.getUTCFullYear();
+          const m = String(prior.getUTCMonth() + 1).padStart(2, "0");
+          const dd = String(prior.getUTCDate()).padStart(2, "0");
+          dDateMinusOne = y + "-" + m + "-" + dd;
+        }
+      }
+
+      // (a) pioneer_service_sessions by tech + customer + exact date
       const pioneerHit = (snap.sessions || []).some(function (s) {
         if (s.service_date !== dDate) return false;
         return custMatches(s) && techMatches(s);
       });
       if (pioneerHit) return true;
 
-      // (b) active_service_sessions by tech + customer (date may not match
+      // (b) Phase 32C.1 cross-midnight: session dated day-before with
+      // clock-in near midnight, same tech + customer.
+      if (dDateMinusOne) {
+        const crossHit = (snap.sessions || []).some(function (s) {
+          if (s.service_date !== dDateMinusOne) return false;
+          if (!custMatches(s) || !techMatches(s)) return false;
+          return isWithinCrossMidnightWindow(s, dDate);
+        });
+        if (crossHit) return true;
+      }
+
+      // (c) active_service_sessions by tech + customer (date may not match
       // because the active row carries the original clock-in date)
       const activeHit = (snap.activeSess || []).some(function (s) {
         return custMatches(s) && techMatches(s);
