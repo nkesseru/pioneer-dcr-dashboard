@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Cleaning Report · Pioneer</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="stylesheet" href="styles/dcr-report.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body class="dcr-report-page">
+
+  <header class="dcr-report-header">
+    <span class="dcr-report-brand">
+      <img class="dcr-report-logo" src="assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning"
+           onerror="this.style.display='none';" />
+      <span class="dcr-report-brand-text">Pioneer Commercial Cleaning</span>
+    </span>
+  </header>
+
+  <main class="dcr-report-main">
+    <section id="dcr-loading" class="dcr-state dcr-state-loading">
+      <p>Loading your cleaning report…</p>
+    </section>
+
+    <section id="dcr-error" class="dcr-state dcr-state-error" hidden>
+      <h1>Report unavailable</h1>
+      <p id="dcr-error-msg">This link is invalid or has expired.</p>
+      <p class="dcr-state-help">Reach out to <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a> and we'll resend the report.</p>
+    </section>
+
+    <article id="dcr-report" class="dcr-report" hidden>
+      <header class="dcr-report-title-block">
+        <h1 class="dcr-report-title">Cleaning Report</h1>
+        <p class="dcr-report-date"  id="dcr-report-date">—</p>
+        <p class="dcr-report-customer" id="dcr-report-customer">—</p>
+      </header>
+
+      <section class="dcr-card dcr-tech-card">
+        <div class="dcr-tech-row">
+          <img id="dcr-tech-photo" class="dcr-tech-photo" src="" alt="" hidden />
+          <div class="dcr-tech-info">
+            <div class="dcr-tech-label">Cleaned by</div>
+            <div class="dcr-tech-name" id="dcr-tech-name">—</div>
+            <div class="dcr-tech-tenure" id="dcr-tech-tenure">—</div>
+          </div>
+        </div>
+        <p class="dcr-tech-summary" id="dcr-tech-summary"></p>
+        <p class="dcr-signed-line"  id="dcr-signed-line" hidden></p>
+      </section>
+
+      <section class="dcr-card dcr-issue-card" id="dcr-issue-card">
+        <div class="dcr-issue-pill" id="dcr-issue-pill">All clear</div>
+        <p class="dcr-issue-message" id="dcr-issue-message">—</p>
+      </section>
+
+      <section class="dcr-card" id="dcr-checklist-card">
+        <h2 class="dcr-card-title">Tonight's visit</h2>
+        <div id="dcr-checklist"></div>
+      </section>
+
+      <section class="dcr-card" id="dcr-photos-card" hidden>
+        <h2 class="dcr-card-title">Photos</h2>
+        <div class="dcr-photo-grid" id="dcr-photos"></div>
+      </section>
+
+      <section class="dcr-card dcr-feedback-card">
+        <h2 class="dcr-card-title">Send feedback</h2>
+        <p class="dcr-feedback-sub">Tell the team something went great, or flag something that needs attention.</p>
+        <div class="dcr-feedback-buttons">
+          <a class="dcr-feedback-btn dcr-feedback-btn-praise" id="dcr-feedback-compliment" href="#">Compliment the team</a>
+          <a class="dcr-feedback-btn dcr-feedback-btn-issue"  id="dcr-feedback-issue"      href="#">Report an issue</a>
+        </div>
+      </section>
+
+      <footer class="dcr-report-footer">
+        <p>Report <code id="dcr-report-id">—</code></p>
+        <p>Pioneer Commercial Cleaning · <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      </footer>
+    </article>
+  </main>
+
+  <script src="firebase-config.js"></script>
+  <script src="dcr-report.js?v=20260527-tokenreport"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

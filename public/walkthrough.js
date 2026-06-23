@@ -88,13 +88,40 @@
   function open() {
     const root = ensureRoot();
     root.hidden = false;
+    document.body.classList.add("modal-scroll-locked");
     document.body.style.overflow = "hidden";
+    try {
+      console.info("[ScrollLock]", {
+        source:        "walkthrough:open",
+        body_overflow: document.body.style.overflow || "(empty)",
+        html_overflow: document.documentElement.style.overflow || "(empty)",
+        modal_state:   "visible"
+      });
+    } catch (_e) {}
   }
   function close() {
-    const root = document.getElementById("pioneer-walkthrough-root");
-    if (root) root.hidden = true;
-    document.body.style.overflow = "";
-    markShown();
+    try {
+      const root = document.getElementById("pioneer-walkthrough-root");
+      if (root) root.hidden = true;
+      markShown();
+    } finally {
+      // Pilot v20260526-mobileunlock — full body/html cleanup so iOS
+      // Safari can't strand the page in a scroll-locked state.
+      document.body.classList.remove("modal-scroll-locked");
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.height   = "";
+      document.documentElement.style.overflow = "";
+      document.documentElement.style.height   = "";
+      try {
+        console.info("[ScrollLock]", {
+          source:        "walkthrough:close",
+          body_overflow: document.body.style.overflow || "(empty)",
+          html_overflow: document.documentElement.style.overflow || "(empty)",
+          modal_state:   "hidden"
+        });
+      } catch (_e) {}
+    }
   }
 
   function showIfFirstTime() {

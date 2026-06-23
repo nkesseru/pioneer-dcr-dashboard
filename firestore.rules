@@ -49,21 +49,79 @@ service cloud.firestore {
     // Adding an admin: write /admins/{email}. Removing: set active:
     // false on the doc (or delete it). Keep this list in sync with
     // ALLOWED_ADMIN_EMAILS in public/admin.js + functions/index.js.
-    function isPioneerAdmin() {
+    // Role hierarchy (Phase: CEO Mission Control discovery).
+    //   owner       — full access incl. future pay-rate + financial data.
+    //   executive   — owner + CEO Mission Control + (future) Financial Pulse.
+    //   admin       — executive + Office Manager Mission Control + admin CRUD.
+    //   tech        — operational surfaces only (own data + assigned customers).
+    //
+    // Higher roles inherit lower-role capabilities — isPioneerAdmin() returns
+    // true for executives and owners too, so existing admin-gated reads/writes
+    // keep working without rule churn when a new executive is added.
+    //
+    // Role rosters are hardcoded here while the role-management UI is deferred.
+    // Promoting/demoting requires a rules deploy (and matching update to the
+    // hardcoded lists in functions/index.js and the client-side staff-auth.js).
+    function isPioneerOwner() {
       return request.auth != null
         && request.auth.token.email is string
-        && (
-          request.auth.token.email.lower() in [
-            "nick@pioneercomclean.com",
-            "april@pioneercomclean.com",
-            "kirby@pioneercomclean.com",
-            "mgies@pioneercomclean.com"
+        && request.auth.token.email.lower() in [
+          "nick@pioneercomclean.com",
+          "april@pioneercomclean.com"
+        ];
+    }
+
+    function isPioneerExecutive() {
+      return isPioneerOwner()
+        || (
+          request.auth != null
+          && request.auth.token.email is string
+          && request.auth.token.email.lower() in [
+            "april@pioneercomclean.com"
           ]
-          || (
-            exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
-            && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.active != false
+        );
+    }
+
+    function isPioneerAdmin() {
+      return isPioneerExecutive()
+        || (
+          request.auth != null
+          && request.auth.token.email is string
+          && (
+            request.auth.token.email.lower() in [
+              "nick@pioneercomclean.com",
+              "april@pioneercomclean.com",
+              "kirby@pioneercomclean.com",
+              "mgies@pioneercomclean.com"
+            ]
+            || (
+              exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+              && get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.active != false
+            )
           )
         );
+    }
+
+    // Active-staff gate for FIELD-TECH writes. The auth token carries
+    // the email; we look up the matching cleaning_techs/{slug} doc by
+    // walking the index doc at active_techs_by_email/{email_lc} which
+    // stores { active: bool, slug: string, email: string }. Pure
+    // existence check — no extra Firestore reads when this gate fires.
+    //
+    // An admin always passes regardless of the index.
+    //
+    // Adding/removing this index is handled automatically by the
+    // archive flow in admin.js: on archive, the index doc gets
+    // `active: false`; on reactivate, `active: true`. The Firestore
+    // rule treats absent doc OR active != true as denied.
+    function isActiveCleaningTech() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/active_techs_by_email/$(request.auth.token.email.lower()))
+        && get(/databases/$(database)/documents/active_techs_by_email/$(request.auth.token.email.lower())).data.active == true;
+    }
+    function isActiveStaff() {
+      return isPioneerAdmin() || isActiveCleaningTech();
     }
 
     // Customers + cleaning techs are read-open (public form dropdowns query them
@@ -128,6 +186,77 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // dcr_pending_uploads — Phase 31 offline queue shadow doc (2026-06-22).
+    //
+    // The IndexedDB queue worker on the tech's device writes one row here
+    // when a DCR enters the local queue, mirrors lifecycle updates on each
+    // retry, and DELETES the row on terminal success (after submitDcrV1
+    // returns OK). The shadow exists only while an upload is pending or
+    // stuck, giving admin Mission Control a "queued vs uploaded vs
+    // delivered" view by joining this collection with dcr_submissions on
+    // submission_id (== doc id in both).
+    //
+    // No PII beyond customer_name + tech_email + tech_display_name. No
+    // photo blobs (those stay in IDB on-device until the row drains).
+    //
+    // The collection is purely a beacon — the source of truth for the
+    // queued DCR's payload + photos lives in the device's IndexedDB.
+    // Losing a shadow doc is recoverable (worker re-creates on next
+    // attempt). Losing the IDB row on-device loses the DCR (mitigated by
+    // navigator.storage.persist() in Phase D).
+    //
+    // Status enum: queued | uploading | failed_will_retry | failed_permanent.
+    // No "submitted" state — terminal success deletes the row, so absence
+    // of a shadow doc plus presence in dcr_submissions == delivered.
+    //
+    // Phase B (this rules block) is the schema + access surface. Phase C
+    // wires the client to actually write/update/delete docs here. Until
+    // Phase C ships behind OFFLINE_QUEUE_ENABLED, this collection stays
+    // empty.
+    match /dcr_pending_uploads/{submissionId} {
+      // Read: admins, plus the tech who owns the row (powers a future
+      // "1 DCR waiting to send" chip on /work).
+      allow read: if isPioneerAdmin()
+                  || (isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid);
+
+      // Create: active tech only, own uid stamped, status must start at
+      // "queued", identity fields populated, schema_version pinned at 1.
+      allow create: if isActiveCleaningTech()
+                    && request.resource.data.submission_id == submissionId
+                    && request.resource.data.tech_uid == request.auth.uid
+                    && request.resource.data.tech_email is string
+                    && request.resource.data.customer_slug is string
+                    && request.resource.data.customer_slug.size() > 0
+                    && request.resource.data.status == "queued"
+                    && request.resource.data.schema_version == 1;
+
+      // Update: tech can update only own rows, and only lifecycle fields
+      // (status / attempt counters / error fields / timestamps). Immutable
+      // identity fields pinned via equality checks so a stale or malicious
+      // update can't rewrite the source linkage. Admins can update freely
+      // (manual unstuck / cleanup tools).
+      allow update: if (
+                      isActiveCleaningTech()
+                      && request.auth.uid == resource.data.tech_uid
+                      && request.resource.data.submission_id  == resource.data.submission_id
+                      && request.resource.data.tech_uid       == resource.data.tech_uid
+                      && request.resource.data.tech_email     == resource.data.tech_email
+                      && request.resource.data.customer_slug  == resource.data.customer_slug
+                      && request.resource.data.schema_version == resource.data.schema_version
+                      && request.resource.data.queued_at      == resource.data.queued_at
+                      && request.resource.data.status in [
+                           "queued", "uploading", "failed_will_retry", "failed_permanent"
+                         ]
+                    )
+                    || isPioneerAdmin();
+
+      // Delete: the worker calls this on terminal success. Admin can also
+      // delete (cleanup tool for orphaned rows).
+      allow delete: if (isActiveCleaningTech() && request.auth.uid == resource.data.tech_uid)
+                    || isPioneerAdmin();
+    }
+
     // Supply requests are an operational workflow — admins read AND edit
     // them from /admin.html. Auto-creation is also done by submitDcrV1 via
     // the Admin SDK, which bypasses these rules. Deletes are denied
@@ -137,6 +266,101 @@ service cloud.firestore {
       allow create: if isPioneerAdmin();
       allow update: if isPioneerAdmin();
       allow delete: if false;
+    }
+
+    // Help Improve Pioneer — operational improvement channel + separate
+    // protected concerns channel.
+    //
+    //   submission_type == "improvement"  — visible to admins; the
+    //     submitter can read their own doc. Identity is required (the
+    //     team's culture is ownership, not anonymous venting).
+    //
+    //   submission_type == "protected"   — harassment / discrimination /
+    //     retaliation / ethics-safety. Visible ONLY to the named admin
+    //     allowlist (Nick + April + Kirby + Mara). Anonymity is at the
+    //     submitter's discretion via the `is_anonymous` flag; uid/email
+    //     are still server-stamped for serious-followup audit, but the
+    //     admin UI hides them when is_anonymous=true.
+    //
+    // Create gate (both types):
+    //   • request.auth must be set
+    //   • submitted_by_uid / email must match the auth token
+    //   • status must be "submitted" on create
+    //   • doc_id must equal submission_id
+    //
+    // Updates: admins only (status workflow + admin_notes).
+    // Deletes: denied — protected concerns must remain auditable; standard
+    //   improvements close via status, not delete.
+    function canReadImprovement() {
+      return request.auth != null
+        && (
+          isPioneerAdmin()
+          || (
+            resource.data.submission_type == "improvement"
+            && resource.data.submitted_by_uid == request.auth.uid
+          )
+        );
+    }
+    match /pioneer_improvements/{id} {
+      allow read:   if canReadImprovement();
+      // Pilot v20260528-archived-revoke — Help Improve Pioneer requires
+      // an active cleaning_techs/admin row.
+      allow create: if isActiveStaff()
+                    && request.auth.token.email is string
+                    && request.resource.data.submission_id == id
+                    && request.resource.data.submitted_by_uid == request.auth.uid
+                    && request.resource.data.submitted_by_email == request.auth.token.email.lower()
+                    && request.resource.data.status == "submitted"
+                    && request.resource.data.submission_type in ["improvement", "protected"]
+                    && (request.resource.data.submission_type == "improvement"
+                          ? request.resource.data.is_protected == false
+                          : request.resource.data.is_protected == true);
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Pioneer SOS — Phase 1 lone-worker protection.
+    //
+    // Create: any signed-in staff can write a new event. We require
+    //   createdByUid + createdByEmail to match the auth token (so a
+    //   spoofed payload can't mis-attribute the alert), status="open",
+    //   and severity in {"help_needed", "critical"}. Initial notified
+    //   map is enforced to zeros — only the Cloud Function (Admin SDK)
+    //   bypasses these rules to stamp the real notification result.
+    //
+    // Read / update: admin-only — SOS events carry geolocation + tech
+    //   identity + free-text details and must NOT be readable by other
+    //   field techs.
+    //
+    // Delete: denied — emergency records must remain auditable.
+    match /emergency_events/{id} {
+      allow read:   if isPioneerAdmin();
+      // Pilot v20260528-archived-revoke — only active staff can fire SOS.
+      // Archived/deleted techs are routed to the access-denied UI before
+      // reaching the SOS surface, but the rule is the source of truth.
+      allow create: if isActiveStaff()
+                    && request.auth.token.email is string
+                    && request.resource.data.createdByUid == request.auth.uid
+                    && request.resource.data.createdByEmail == request.auth.token.email.lower()
+                    && request.resource.data.status == "open"
+                    && request.resource.data.severity in ["help_needed", "critical"]
+                    && request.resource.data.notified.april == false
+                    && request.resource.data.notified.kirby == false
+                    && request.resource.data.notified.nick  == false
+                    && request.resource.data.notificationStatus == "pending";
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Pioneer config — read-only customer-facing values like emergency
+    // contact phone numbers. Admin writes via Firestore console; field
+    // techs never read this directly (the SOS function reads it server
+    // side via Admin SDK).
+    match /pioneer_config/{key} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
     }
 
     // DCR-derived issues — auto-created by submitDcrV1 (Admin SDK) when
@@ -195,10 +419,73 @@ service cloud.firestore {
     // own create/update; deletes are denied because the workflow is
     // "archive" (set archived_at + active=false) rather than "delete".
     match /announcements/{id} {
-      allow read:   if request.auth != null;
+      // V2: targeted announcements. Pre-targeting docs (no audienceType)
+      // are treated as "all" for back-compat — the existing all-team
+      // announcements stay readable to every signed-in user.
+      function canReadAnnouncement() {
+        return request.auth != null && (
+          isPioneerAdmin()
+          || !("audienceType" in resource.data)
+          || resource.data.audienceType == "all"
+          || (resource.data.audienceType == "selected" && (
+                (resource.data.recipientUids is list
+                  && request.auth.uid in resource.data.recipientUids)
+                || (resource.data.recipientEmails is list
+                    && request.auth.token.email is string
+                    && request.auth.token.email.lower() in resource.data.recipientEmails)
+             ))
+        );
+      }
+      allow read:   if canReadAnnouncement();
       allow create: if isPioneerAdmin();
       allow update: if isPioneerAdmin();
       allow delete: if false;
+
+      // Per-user recipient_status subcollection. The doc id is the
+      // user's uid. Each staff user can read + write ONLY their own
+      // doc (with a uid match check on payload); admins can read all
+      // (for the admin recipient-status panel).
+      match /recipient_status/{uid} {
+        allow read:   if isPioneerAdmin()
+                      || (request.auth != null && request.auth.uid == uid);
+        // Acknowledge / viewed / replied requires active-staff status.
+        // Archived techs can't update their own ack timeline.
+        allow create, update:
+                      if isActiveStaff()
+                      && request.auth.uid == uid
+                      && request.resource.data.uid == request.auth.uid;
+        allow delete: if false;
+      }
+
+      // Comments subcollection. Read gated to anyone who can read the
+      // parent announcement; create only when the writer matches the
+      // auth token. Admin can update/delete for moderation if a thread
+      // ever gets out of hand. Field techs can never delete (audit).
+      match /comments/{commentId} {
+        function canReadParent() {
+          return request.auth != null && (
+            isPioneerAdmin()
+            || !("audienceType" in get(/databases/$(database)/documents/announcements/$(id)).data)
+            || get(/databases/$(database)/documents/announcements/$(id)).data.audienceType == "all"
+            || (get(/databases/$(database)/documents/announcements/$(id)).data.audienceType == "selected" && (
+                  (get(/databases/$(database)/documents/announcements/$(id)).data.recipientUids is list
+                    && request.auth.uid in get(/databases/$(database)/documents/announcements/$(id)).data.recipientUids)
+                  || (get(/databases/$(database)/documents/announcements/$(id)).data.recipientEmails is list
+                      && request.auth.token.email is string
+                      && request.auth.token.email.lower() in get(/databases/$(database)/documents/announcements/$(id)).data.recipientEmails)
+               ))
+          );
+        }
+        allow read:   if canReadParent();
+        // Reply requires active-staff status — archived techs can't post.
+        allow create: if isActiveStaff()
+                      && canReadParent()
+                      && request.resource.data.createdByUid == request.auth.uid
+                      && request.auth.token.email is string
+                      && request.resource.data.createdByEmail == request.auth.token.email.lower();
+        allow update: if isPioneerAdmin();
+        allow delete: if isPioneerAdmin();
+      }
     }
 
     // Announcement reads — one doc per (announcement, user) pair so we
@@ -223,6 +510,190 @@ service cloud.firestore {
                   if request.auth != null
                   && request.resource.data.uid == request.auth.uid
                   && readId == request.resource.data.announcement_id + "_" + request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Team Schedule — single-doc (team_schedule/current) holding a
+    // pointer to the latest team-schedule PDF/image in Storage. Admins
+    // upload via the Admin → Schedule panel; every signed-in staff
+    // member (admin + cleaning_tech) can read it on Team Hub.
+    //
+    // The Storage rules block at `team-schedules/**` is the matching
+    // bytes-level gate. Schema (lightweight, pilot-ready):
+    //   fileName, storagePath, downloadUrl, contentType, byteSize,
+    //   uploadedAt, uploadedBy { uid, email, displayName },
+    //   effectiveMonth (optional, "YYYY-MM"), notes (optional),
+    //   active (bool, default true).
+    //
+    // Phase 2 TODO (intentionally out of scope here):
+    //   • native Deputy monthly schedule sync (overwrite this doc from
+    //     a scheduled function)
+    //   • team_schedule history collection (one doc per upload) for
+    //     auditing + a "previous schedules" archive
+    //   • per-tech / per-customer filtered calendar views
+    match /team_schedule/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Attendance — call_outs + time_off_requests
+    // ====================================================================
+    // Two separate collections so the urgent "I can't come in tonight"
+    // path stays distinct from the planned "I want July 4 off" path.
+    // Office manager (Kirby et al.) reviews both via Admin → Attendance.
+    //
+    // Schema lives in the matching public/call-out.js + public/time-off.js
+    // submit handlers. Key field: `techUid` (Firebase Auth uid) — used
+    // by the own-read rule below so techs can see their own status
+    // without leaking other techs' attendance data.
+    //
+    // Phase 2 TODO:
+    //   • Cloud Function trigger on create → email Kirby
+    //   • notification doc on approve/deny → tech sees status update
+    //   • blackout windows (e.g., end-of-quarter freeze)
+    match /call_outs/{id} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.techUid is string
+                        && resource.data.techUid == request.auth.uid);
+      // Techs create their own call-out: must be an ACTIVE cleaning_tech,
+      // uid must match payload, status must start at "new". Admins can
+      // also create (e.g., logging a phoned-in call-out).
+      allow create: if (isActiveCleaningTech()
+                        && request.resource.data.techUid == request.auth.uid
+                        && request.resource.data.status == "new")
+                    || isPioneerAdmin();
+      // Only admins move call-outs through acknowledged → resolved.
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /time_off_requests/{id} {
+      // Read access is intentionally open to any signed-in staff so
+      // techs can see the "Scheduled Time Off" coverage heatmap on
+      // /team-schedule before submitting their own request. Names +
+      // dates are operationally needed for coverage planning; we
+      // treat this as scheduling-sibling visibility, not privacy
+      // data. Call-outs stay admin+own (different sensitivity).
+      allow read:   if request.auth != null;
+      // Techs request their own time off: must be an ACTIVE cleaning_tech,
+      // uid must match payload, status must start at "pending". Admins
+      // can also create (e.g., logging an in-person request).
+      allow create: if (isActiveCleaningTech()
+                        && request.resource.data.techUid == request.auth.uid
+                        && request.resource.data.status == "pending")
+                    || isPioneerAdmin();
+      // Only admins approve/deny + add manager note.
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    // Open shift coverage requests + Rockstar bonus ledger.
+    // ====================================================================
+    // open_shift_requests/{id}
+    //   Admin (or a call-out conversion flow) creates an "open shift"
+    //   doc with status="open". Techs accept by flipping to
+    //   "accepted" + stamping their own uid. The rule below is the
+    //   atomic-claim gate: a second tech's accept request fails
+    //   because the doc's prior status is no longer "open".
+    //
+    //   Admins confirm coverage (status="confirmed") which kicks off
+    //   a Rockstar bonus write — done client-side as a Firestore
+    //   batch in admin.js so the two writes succeed or fail together.
+    //
+    //   Phase 2 TODO:
+    //     • Cloud Function trigger on create → write an
+    //       `announcements/{id}` doc so the Team Hub Announcements
+    //       feed surfaces open shifts natively (currently the Team
+    //       Hub card just shows a badge with open count)
+    //     • Auto-cancel + Kirby alert when an open shift remains
+    //       unclaimed past its shiftDate
+    //     • Per-tech decline / waitlist
+    match /open_shift_requests/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      // Two update paths:
+      //   1. Admin can flip the doc to any state (cancel / confirm /
+      //      edit) and stamp their own identity.
+      //   2. Tech can claim an open shift by flipping
+      //      status:"open" → "accepted" AND stamping their own uid in
+      //      acceptedByTechUid. Rules-enforced atomic claim — the
+      //      second concurrent attempt fails because resource.data
+      //      (the PRE-write state) no longer reads "open".
+      allow update: if isPioneerAdmin()
+                    || (isActiveCleaningTech()
+                        && resource.data.status == "open"
+                        && request.resource.data.status == "accepted"
+                        && request.resource.data.acceptedByTechUid is string
+                        && request.resource.data.acceptedByTechUid == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // rockstar_bonuses/{id}
+    //   Created when an admin confirms an open shift. Read-open so
+    //   the Team Hub "Rockstar Team Players this month" recognition
+    //   can render counts to all signed-in staff. The amount field
+    //   is $25 for everyone — public knowledge per the pilot — so
+    //   we don't gate that behind admin-only reads. Bonus status
+    //   (pending/approved/paid) stays admin-managed.
+    match /rockstar_bonuses/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Simple notification surface — for now just a badge on Admin.
+    // Each doc represents an event the office team should see. Read
+    // is admin-only; create happens client-side at the same time
+    // as the call-out / time-off doc (best-effort; rules just gate it).
+    // Phase 2: replace with a Cloud Function fan-out + email.
+    match /notifications/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.auth != null
+                    && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+
+    // Published Team Schedule (Deputy-powered) — single-doc
+    // (published_team_schedule/current) holding a normalized snapshot of
+    // the next 14 days of Deputy shifts. Admins click "Publish" in the
+    // admin Schedule tab; that builds the snapshot from
+    // deputy_shift_cache and overwrites this doc. Team Hub reads the
+    // doc to render an "Upcoming Team Schedule" grouped-by-day view.
+    //
+    // Deliberate snapshot model: Team Hub does NOT reflect every live
+    // Deputy edit. Admins publish when ready. Each publish overwrites
+    // the doc; there is no per-publish history collection yet.
+    //
+    // Schema (mirrors public/admin.js publishTeamSchedule):
+    //   publishedAt           (serverTimestamp)
+    //   publishedBy           ({uid, email, displayName})
+    //   startDate, endDate    (YYYY-MM-DD Pacific)
+    //   deputySyncVersion     (string|null, future use)
+    //   shiftCount            (number)
+    //   shifts                (array of normalized shift objects:
+    //                          {date, weekday, startTime, endTime,
+    //                          startMs, endMs, techName, techSlug,
+    //                          customerName, customerSlug, status,
+    //                          deputyShiftUrl})
+    //   notes                 (string|null)
+    //   active                (bool, default true)
+    //
+    // Phase 2 TODO (intentionally out of scope here):
+    //   • monthly calendar view + printable export
+    //   • personal "my schedule" filtering for cleaning techs
+    //   • shift swaps + PTO overlays + open-shift coverage flags
+    //   • live vs deferred publish modes (currently always deferred)
+    //   • per-publish history subcollection for audit + rollback
+    //   • server-side publish (Cloud Function) so the snapshot can be
+    //     built even when no admin browser is open
+    match /published_team_schedule/{id} {
+      allow read:   if request.auth != null;
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
       allow delete: if false;
     }
 
@@ -276,6 +747,46 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ====================================================================
+    // Phase Inspection 3 — customer_inspection_state
+    // ====================================================================
+    // One doc per customer slug. Tracks the inspection cadence: last
+    // inspection date + inspector, current assignment (who owns the
+    // next inspection), and the computed due date. Status (unassigned |
+    // assigned | completed | overdue) is derived at read time from
+    // last_inspection_date + assignment fields — not stored — so
+    // "completed" auto-flips back to "unassigned" when the next cycle
+    // comes due without any scheduled job.
+    //
+    // Writes happen in two places:
+    //   - Admin tier from /inspections (assign-to-me, assign-to-other,
+    //     bootstrap when a customer first enters the registry).
+    //   - functions:onInspectionCreatedV1 (Admin SDK, bypasses rules)
+    //     bumps last_inspection_* and clears assignment when an
+    //     inspection submits.
+    //
+    // Schema:
+    //   customer_slug, customer_name
+    //   inspection_cadence_days        (default 60)
+    //   last_inspection_id             (most recent inspections/{id})
+    //   last_inspection_date           (YYYY-MM-DD)
+    //   last_inspector_uid             (for rotation)
+    //   last_inspector_name
+    //   last_inspector_email
+    //   assigned_to_uid                (null = unassigned)
+    //   assigned_to_email
+    //   assigned_to_name
+    //   assigned_at
+    //   assigned_by_email
+    //   due_date                       (last_inspection_date + cadence)
+    //   created_at, updated_at
+    //
+    // No deletes — historical assignment + completion trail is kept.
+    match /customer_inspection_state/{slug} {
+      allow read, create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
     // Quality Wins — durable record of 5-star inspections that the
     // company is celebrating. Auto-created by inspections.js when an
     // admin submits an inspection with overall_score >= 4.8. Stays
@@ -286,15 +797,83 @@ service cloud.firestore {
     // if a win ever needs to be retracted.
     match /quality_wins/{id} {
       allow read: if request.auth != null;
+      // Two creation paths now:
+      //   • Inspection-derived wins (the original) — require
+      //     inspection_id + customer_slug + overall_score >= 4.8.
+      //   • Customer-compliment wins (written server-side by
+      //     submitFeedbackV1 with source == "customer_compliment").
+      //     Admin SDK bypasses these rules at write time, so this
+      //     branch only exists to document the contract — the test
+      //     here also allows admin-tagged compliment shapes to pass
+      //     if anyone ever calls the SDK from a client.
       allow create: if isPioneerAdmin()
-                    && request.resource.data.inspection_id is string
-                    && request.resource.data.inspection_id.size() > 0
-                    && request.resource.data.customer_slug is string
-                    && request.resource.data.customer_slug.size() > 0
-                    && request.resource.data.overall_score is number
-                    && request.resource.data.overall_score >= 4.8;
+                    && (
+                      (
+                        request.resource.data.inspection_id is string
+                        && request.resource.data.inspection_id.size() > 0
+                        && request.resource.data.customer_slug is string
+                        && request.resource.data.customer_slug.size() > 0
+                        && request.resource.data.overall_score is number
+                        && request.resource.data.overall_score >= 4.8
+                      ) || (
+                        request.resource.data.source == "customer_compliment"
+                        && request.resource.data.customer_slug is string
+                        && request.resource.data.overall_score is number
+                        && request.resource.data.overall_score >= 4
+                      )
+                    );
       allow update: if isPioneerAdmin();
       allow delete: if false;
+    }
+
+    // DCR email payloads. Written by generateAndSendDcrEmailV1 (Admin
+    // SDK, bypasses rules). Admin-read enables the Today's Operations
+    // dashboard to query sent/failed counts in the last 24h without
+    // an extra Cloud Function round-trip. Doc ID is the DCR id; one
+    // payload per DCR. Client writes/deletes denied — only the send
+    // function should mutate these.
+    match /dcr_email_payloads/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Customer feedback (universal record — both compliments and
+    // complaints). Written ONLY by submitFeedbackV1 via the Admin SDK,
+    // which bypasses these rules. Client-side reads gated to admins so
+    // the admin dashboard can render the feedback inbox. No client
+    // writes, no client deletes.
+    match /customer_feedback/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Customer complaints — operational follow-up records. Same write
+    // model as customer_feedback (Admin SDK only). Admin reads allowed
+    // for the office triage view. Updates are intentionally denied so
+    // status flips have to go through a dedicated admin function once
+    // it's built — keeps the audit trail clean.
+    match /customer_complaints/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // In-system notifications. Most writes happen via Admin SDK
+    // (submitFeedbackV1, sendDcrEmailCore) which bypasses these
+    // rules. V6 pilot adds one narrowly-gated CLIENT write path:
+    // techs can create `type: "supply_update_request"` notifications
+    // ("Ask Kirby for update") under strict shape validation so the
+    // surface can't be abused for arbitrary office-inbox spam.
+    match /notifications/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.auth != null
+                    && request.auth.token.email is string
+                    && request.resource.data.type == "supply_update_request"
+                    && request.resource.data.requestedBy == request.auth.token.email.lower()
+                    && request.resource.data.status == "update_requested"
+                    && request.resource.data.supplyRequestId is string
+                    && request.resource.data.supplyRequestId.size() > 0
+                    && request.resource.data.supplyRequestId.size() < 200;
+      allow update, delete: if false;
     }
 
     // Service Recoveries — coaching + follow-up tasks tied to a
@@ -390,10 +969,32 @@ service cloud.firestore {
     //     employee_email field vs request.auth.token.email
     // No client-side writes — Deputy is the source of truth.
     match /deputy_shift_cache/{id} {
+      // V6 pilot — three read arms (any one is sufficient):
+      //   1. admin override (isPioneerAdmin)
+      //   2. direct email match: shift's employee_email == auth.email
+      //   3. tech-slug fallback: shift's employee_slug links to a
+      //      cleaning_techs doc whose email matches the auth user.
+      //      Covers the regression where the Deputy sync wrote
+      //      employee_email="" because the matched tech's cleaning_techs
+      //      doc had no email field. Once the office adds the email,
+      //      the tech can read their shifts without waiting for a
+      //      full Deputy resync.
+      function shiftTechSlugLinksToAuth() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.employee_slug is string
+          && resource.data.employee_slug.size() > 0
+          && exists(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug))
+          && get(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug)).data.email is string
+          && get(/databases/$(database)/documents/cleaning_techs/$(resource.data.employee_slug)).data.email.lower() == request.auth.token.email.lower();
+      }
       allow read: if isPioneerAdmin()
                   || (request.auth != null
                       && request.auth.token.email is string
-                      && request.auth.token.email.lower() == resource.data.employee_email);
+                      && resource.data.employee_email is string
+                      && resource.data.employee_email.size() > 0
+                      && request.auth.token.email.lower() == resource.data.employee_email)
+                  || shiftTechSlugLinksToAuth();
       allow create, update, delete: if false;
     }
 
@@ -500,23 +1101,69 @@ service cloud.firestore {
     //            update everything for ops triage.
     //   delete — denied. Sessions are append-only audit trail.
     match /pioneer_work_sessions/{shiftId} {
-      allow read: if isPioneerAdmin()
-                  || (request.auth != null
-                      && request.auth.token.email is string
-                      && request.auth.token.email.lower() == resource.data.tech_email);
-      allow create: if request.auth != null
+      // V7 pilot fix — single ownership source.
+      //
+      // The previous rule referenced `resource.data.tech_email` in the
+      // read gate, which silently denied reads of NON-EXISTENT session
+      // docs (because `resource` is null pre-create). startWork() runs
+      // a transaction that calls `tx.get(ref)` before the set — that
+      // read was being denied, producing a "permission-denied" with
+      // no diagnostic. Pilot blocker: Makaila on Lydig shift 5796.
+      //
+      // The new rule treats `deputy_shift_cache/{shiftId}.employee_email`
+      // as the canonical "who owns this shift" record. Reads + writes
+      // both gate on the same predicate, so existing session docs and
+      // first-time-create flows work identically. The fallback to the
+      // session doc's own tech_email is kept for the rare case where
+      // a session pre-dates a cache rebuild and the deputy cache no
+      // longer holds the original row.
+      function shiftBelongsToCaller() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && exists(/databases/$(database)/documents/deputy_shift_cache/$(shiftId))
+          && get(/databases/$(database)/documents/deputy_shift_cache/$(shiftId)).data.employee_email == request.auth.token.email.lower();
+      }
+      function sessionBelongsToCaller() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource != null
+          && resource.data.tech_email is string
+          && request.auth.token.email.lower() == resource.data.tech_email;
+      }
+      allow read:   if isPioneerAdmin()
+                    || shiftBelongsToCaller()
+                    || sessionBelongsToCaller();
+      // Pilot v20260528-archived-revoke — Start Work / Finish Work both
+      // require the caller's cleaning_techs row to still be active.
+      // Archived techs hit the rule denial and the page surfaces the
+      // friendly access-removed message via STAFF_AUTH's whoAmI cycle.
+      allow create: if isActiveStaff()
                     && request.auth.token.email is string
                     && request.auth.token.email.lower() == request.resource.data.tech_email
                     && request.resource.data.deputy_shift_id == shiftId
-                    && exists(/databases/$(database)/documents/deputy_shift_cache/$(shiftId))
-                    && get(/databases/$(database)/documents/deputy_shift_cache/$(shiftId)).data.employee_email == request.auth.token.email.lower();
+                    && shiftBelongsToCaller();
       allow update: if isPioneerAdmin()
-                    || (request.auth != null
-                        && request.auth.token.email is string
-                        && request.auth.token.email.lower() == resource.data.tech_email
+                    || (isActiveCleaningTech()
+                        && sessionBelongsToCaller()
                         && request.resource.data.tech_email == resource.data.tech_email
                         && request.resource.data.deputy_shift_id == resource.data.deputy_shift_id);
       allow delete: if false;
+    }
+
+    // Active-staff index. Tiny shadow doc per active cleaning tech +
+    // admin, keyed by lowercase email. The isActiveCleaningTech() rule
+    // checks for the doc's existence + active flag, so an archived
+    // tech (active flipped to false) loses every field-write gate
+    // without scanning cleaning_techs.
+    //
+    // Writes happen ONLY through the admin tech archive/reactivate flow
+    // and the createCleaningTechLoginV1 Cloud Function. No client-side
+    // writes are allowed.
+    match /active_techs_by_email/{email} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
     }
 
     // Deputy OAuth state — holds access/refresh tokens and the brief
@@ -563,6 +1210,914 @@ service cloud.firestore {
     match /{path=**}/training_progress/{lessonId} {
       allow read: if isPioneerAdmin();
     }
+
+    // ====================================================================
+    // PioneerOps native time clock — Phase 1a foundation collections.
+    // ====================================================================
+    // service_assignments: what a tech is supposed to do today.
+    // pioneer_service_sessions: one clock-in/clock-out cycle per assignment.
+    // active_service_sessions: doc-id-keyed lookup that enforces "at most
+    //   one active session per staff" via atomic create/delete in the
+    //   same transaction as the session write.
+    // time_punches: append-only audit log of every clock-in/out event.
+    // drive_segments: model only in Phase 1; auto-population in Phase 2.
+    // payroll_periods: semi-monthly cadence (1-15 / 16-EOM). Admin-managed.
+    // sick_leave_ledger: append-only audit ledger; minutes_delta in INTEGER
+    //   minutes (positive = credit, negative = debit). Entry types:
+    //   opening_balance, earned, used, admin_adjustment. (Phase 2 adds
+    //   carryover, carryover_forfeit.)
+    // staff_labor_balances: materialized cache of ledger sums; doc id =
+    //   staff_uid. Writes restricted to admin OR the staff themselves
+    //   (whitelisted current_period_* counters only).
+
+    function isOwnUid(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /service_assignments/{assignmentId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;  // soft-cancel via status field
+    }
+
+    match /pioneer_service_sessions/{sessionId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Tech creates their own active session at clock-in.
+      allow create: if isActiveStaff()
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.status == "active"
+                    && request.resource.data.clock_out_at == null;
+      // Update: admin override, OR own + transitioning active → completed.
+      allow update: if isPioneerAdmin()
+                    || (isOwnUid(resource.data.staff_uid)
+                        && resource.data.status == "active"
+                        && request.resource.data.status == "completed"
+                        && request.resource.data.clock_out_at is timestamp);
+      allow delete: if false;
+    }
+
+    match /active_service_sessions/{staffUid} {
+      allow read:   if isPioneerAdmin() || isOwnUid(staffUid);
+      // Create/delete only — never update. Doc id MUST equal staff_uid.
+      allow create: if isOwnUid(staffUid)
+                    && request.resource.data.staff_uid == staffUid;
+      allow update: if false;
+      allow delete: if isPioneerAdmin() || isOwnUid(staffUid);
+    }
+
+    match /time_punches/{punchId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      allow create: if isActiveStaff()
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.punch_type in ["clock_in", "clock_out"]
+                    && request.resource.data.punch_at is timestamp;
+      // NEVER mutated, NEVER deleted — legal audit record.
+      allow update, delete: if false;
+    }
+
+    match /drive_segments/{segmentId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Phase 1: admin-only writes. Phase 2 Cloud Function uses Admin SDK
+      // and bypasses rules for auto-generation.
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Phase 29E-B — payroll_periods writes routed through Cloud Functions
+    // only (lockPayrollPeriodV1 / unlockPayrollPeriodV1). The Admin SDK
+    // bypasses these rules, so the lock/unlock writers continue to work;
+    // direct client writes are denied so an admin cannot Firestore-console-
+    // edit a period out of locked state without going through the audited
+    // function path. Read access unchanged.
+    match /payroll_periods/{periodId} {
+      allow read:   if isPioneerAdmin() || isActiveStaff();
+      allow create: if false;   // Cloud Function only — lockPayrollPeriodV1
+      allow update: if false;   // Cloud Function only — lock/unlockPayrollPeriodV1
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // office_issues — Message the Office accountability log.
+    // ====================================================================
+    // Employees submit issues for the back-office team to triage. Phase 1
+    // ingest is employee_submission only. Future ingest channels (customer
+    // email forward, external complaint webhook) will set source to
+    // "customer_email" / "external_complaint" and supply customer_* fields
+    // instead of employee_* — those creates will come from Cloud Functions
+    // via Admin SDK, bypassing these rules.
+    //
+    // Schema (employee_submission):
+    //   source              "employee_submission"
+    //   employee_uid        == request.auth.uid on create
+    //   employee_email      string
+    //   employee_name       string
+    //   category            one of: payroll | schedule | supplies |
+    //                       sick_leave | time_adjustment | equipment |
+    //                       customer_concern | other
+    //   description         string, 5+ chars
+    //   status              "new" on create; admin transitions through
+    //                       acknowledged | working | waiting | resolved | closed
+    //   priority            "normal" on create; admin sets low|normal|high|urgent
+    //   owner_uid           null on create; admin assigns
+    //   owner_email         denormalized for admin list rendering
+    //   created_at          serverTimestamp
+    //   updated_at          serverTimestamp
+    //   acknowledged_at / resolved_at / closed_at  null on create
+    //   status_history      [ {status,at,by_uid,by_email} ]
+    //
+    // Reads: admin reads all. Submitter reads their own. Future ingest
+    // channels (customer email) will not have an employee_uid so a tech
+    // can't read those.
+    //
+    // Writes: employee can create (own submission only). Admin owns all
+    // updates (status, priority, owner, notes). Delete denied forever
+    // (audit log).
+    match /office_issues/{issueId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.employee_uid == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.source == "employee_submission"
+                    && request.resource.data.employee_uid == request.auth.uid
+                    && request.resource.data.status == "new"
+                    && request.resource.data.priority == "normal"
+                    && request.resource.data.owner_uid == null
+                    && request.resource.data.category in [
+                         "payroll", "schedule", "supplies", "sick_leave",
+                         "time_adjustment", "equipment", "customer_concern", "other"
+                       ]
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() >= 5
+                    && request.resource.data.description.size() <= 4000;
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+
+      // V20260615b — Internal notes subcollection (admin-only). Append-
+      // only audit log of admin annotations on an issue. Employees can
+      // never read these — the parent doc's read rule grants the
+      // employee access to fields they submitted; this subcollection
+      // is a separate hop the rule layer denies outright.
+      //
+      // Shape: { issue_id, body, author_uid, author_email, author_name,
+      //          created_at }. body required, non-empty, max 4000 chars.
+      // No update / delete — corrections happen as NEW notes.
+      match /internal_notes/{noteId} {
+        allow read:   if isPioneerAdmin();
+        allow create: if isPioneerAdmin()
+                      && request.resource.data.author_uid == request.auth.uid
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() > 0
+                      && request.resource.data.body.size() <= 4000;
+        allow update, delete: if false;
+      }
+    }
+
+    match /sick_leave_ledger/{entryId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+      // Phase 1 entry types only. minutes_delta is a signed integer;
+      // admin_adjustment requires a non-empty reason. Cloud Functions
+      // (Admin SDK) bypass these rules for automated entries (e.g. close).
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.staff_uid is string
+                    && request.resource.data.minutes_delta is number
+                    && request.resource.data.entry_type in [
+                         "opening_balance", "earned", "used",
+                         "admin_adjustment", "admin_edit", "admin_seed"
+                       ]
+                    && request.resource.data.effective_date is string
+                    && (!(request.resource.data.entry_type in ["admin_adjustment", "admin_edit", "admin_seed"])
+                        || (request.resource.data.reason is string
+                            && request.resource.data.reason.size() > 0));
+      // Append-only — corrections happen via NEW admin_adjustment entries.
+      allow update, delete: if false;
+    }
+
+    match /staff_labor_balances/{staffUid} {
+      // Staff can read their own balance doc. Admins can read any.
+      allow read: if isPioneerAdmin() || isOwnUid(staffUid);
+      // Phase 1a: ADMIN-ONLY writes (seed script via Admin SDK bypasses
+      // rules; manual admin tooling goes through this allow-create/update
+      // path). Staff cannot mutate balances directly — clock-in/clock-out
+      // in Phase 1b writes sessions + punches + active-session lookup
+      // ONLY; balance recomputation is deferred to admin tooling or a
+      // Phase 2 Cloud Function trigger.
+      allow create, update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // Phase 28D — payroll_exports: audit log of CSV exports. One doc per
+    // export run. Doc id = deterministic export_id. Sole writer is the
+    // exportPayrollCsvV1 / voidPayrollExportV1 Cloud Functions via Admin
+    // SDK (bypasses these rules). Client reads admin-only; client writes
+    // denied so admins can't accidentally corrupt the audit trail outside
+    // the function flow.
+    match /payroll_exports/{exportId} {
+      allow read:   if isPioneerAdmin();
+      allow create: if false;  // Cloud Function only
+      allow update: if false;  // void goes through voidPayrollExportV1
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // SMS opt-in consent collection (A2P 10DLC compliance).
+    // ====================================================================
+    // The /sms-opt-in page is publicly viewable so A2P reviewers (and
+    // employees) can submit a consent record without first signing in.
+    // Allow anonymous create with strict field validation. Admin-only
+    // read so consent records aren't enumerable by the public. No
+    // updates / no deletes — consents are an append-only audit log.
+    //
+    // Required client payload (validated below):
+    //   first_name              non-empty string ≤ 60 chars
+    //   last_name               non-empty string ≤ 60 chars
+    //   phone                   non-empty string ≤ 20 chars
+    //   email                   non-empty string ≤ 120 chars
+    //   sms_consent             literal true (per A2P affirmative-consent
+    //                           requirement)
+    //   consent_language_version string (versioned snapshot)
+    //   consent_text_snapshot    string (≤ 4000 chars) — full consent
+    //                            text the user agreed to
+    //   source                   "sms-opt-in-page"
+    //   consented_at             serverTimestamp
+    //
+    // Twilio sending logic is NOT changed by this rule — receiving a
+    // consent record here does not trigger any outbound message.
+    match /sms_consents/{consentId} {
+      allow read:   if isPioneerAdmin();
+      allow create: if request.resource.data.sms_consent == true
+                    && request.resource.data.consent_language_version is string
+                    && request.resource.data.consent_language_version.size() > 0
+                    && request.resource.data.consent_text_snapshot is string
+                    && request.resource.data.consent_text_snapshot.size() > 0
+                    && request.resource.data.consent_text_snapshot.size() <= 4000
+                    && request.resource.data.first_name is string
+                    && request.resource.data.first_name.size() > 0
+                    && request.resource.data.first_name.size() <= 60
+                    && request.resource.data.last_name is string
+                    && request.resource.data.last_name.size() > 0
+                    && request.resource.data.last_name.size() <= 60
+                    && request.resource.data.phone is string
+                    && request.resource.data.phone.size() > 0
+                    && request.resource.data.phone.size() <= 20
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() > 0
+                    && request.resource.data.email.size() <= 120
+                    && request.resource.data.source == "sms-opt-in-page";
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 29 — Payroll Exception Engine.
+    // ====================================================================
+    // time_adjustment_requests is the structured replacement for Slack-
+    // based payroll corrections. Employees REQUEST adjustments; admins
+    // approve / deny. The payroll export reads approved effective times
+    // while preserving original clock data on both the request doc and
+    // the session doc.
+    //
+    // Schema (validated where it matters at the boundary — the rest is
+    // shape-only and handled by the Cloud Function that writes it):
+    //   assignment_id           string                  required
+    //   service_session_id      string|null
+    //   employee_uid            string  == request.auth.uid on create
+    //   employee_email          string
+    //   employee_name           string
+    //   customer_name           string
+    //   location_name           string|null
+    //   shift_date              string  YYYY-MM-DD
+    //   status                  "pending" on create; admins flip to
+    //                           "approved" | "denied" | "canceled"
+    //   original_clock_in       Timestamp|null
+    //   original_clock_out      Timestamp|null
+    //   requested_clock_in      Timestamp
+    //   requested_clock_out     Timestamp
+    //   original_minutes        number|null
+    //   requested_minutes       number
+    //   delta_minutes           number
+    //   reason                  one of: forgot_clock_in | forgot_clock_out |
+    //                                   app_issue | phone_issue | no_internet |
+    //                                   emergency | other
+    //   notes                   string (required, non-empty)
+    //   submitted_at            serverTimestamp
+    //   submitted_by_uid        string  == request.auth.uid
+    //   created_at, updated_at  serverTimestamp
+    //
+    // Writes:
+    //   create: the employee for their own shift (employee_uid &
+    //     submitted_by_uid == auth.uid), status "pending", reason in
+    //     the enum, notes non-empty.
+    //   update: admin only — to flip status to approved / denied /
+    //     canceled and stamp reviewed metadata. Plus the writing
+    //     Cloud Function (Admin SDK) bypasses rules entirely.
+    //   delete: never. Audit record.
+    //
+    // Reads:
+    //   admin (any), or the submitter (own doc only).
+    //
+    // Phase 29A — security hardening: ALL writes go through Cloud Functions
+    // (createTimeAdjustmentRequestV1 / approveTimeAdjustmentRequestV1 /
+    // denyTimeAdjustmentRequestV1) which use the Admin SDK and bypass these
+    // rules. Direct client writes are denied across the board so an
+    // employee cannot flip status to "approved" via a raw Firestore SDK
+    // call, and an admin cannot accidentally mutate effective fields
+    // outside the audited approval flow. Reads remain client-visible (own
+    // for employees; any for admins) so the admin tab and employee UI keep
+    // working.
+    match /time_adjustment_requests/{requestId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && resource.data.employee_uid == request.auth.uid);
+      allow create: if false;   // Cloud Function only — createTimeAdjustmentRequestV1
+      allow update: if false;   // Cloud Function only — approveTimeAdjustmentRequestV1 / denyTimeAdjustmentRequestV1
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 29D — Employee Payroll Review Acknowledgment.
+    // ====================================================================
+    // Soft-acknowledgment: tech reviews their hours for the current pay
+    // period and clicks "Looks Good" or "Request Correction." Absence of
+    // a doc = "not reviewed." Auto-finalized status is set only by the
+    // export Cloud Function (Admin SDK bypasses rules) so a client
+    // cannot self-mark a missing acknowledgment.
+    //
+    // Doc id is idempotent: `<period_id>__<staff_uid>` (e.g.
+    // "2026-06-B__abc123"). Owner can re-click to update status (rules
+    // allow looks_good <-> correction_requested). No deletes — corrections
+    // happen as state transitions, never deletion (audit trail).
+    //
+    // Schema (client-writable subset):
+    //   period_id              "2026-06-B"
+    //   period_start_date      "2026-06-16"
+    //   period_end_date        "2026-06-30"
+    //   staff_uid              == request.auth.uid on create/update
+    //   staff_email            string
+    //   staff_name             string
+    //   status                 "looks_good" | "correction_requested"
+    //                          ("auto_finalized" written by Cloud Function only)
+    //   acknowledged_at        serverTimestamp
+    //   hours_snapshot         { total_minutes, session_count,
+    //                            pending_adj_count, approved_adj_count }
+    //   correction_request_ids array<string> | null
+    //   created_at             serverTimestamp (create only)
+    //   updated_at             serverTimestamp
+    match /payroll_review_acknowledgments/{ackId} {
+      allow read:   if isPioneerAdmin()
+                    || (request.auth != null
+                        && resource.data.staff_uid == request.auth.uid);
+
+      // Create: owner-only. Status must be one of the two client-writable
+      // values. staff_uid must match the auth uid. period_id + dates +
+      // staff_email + staff_name + status + hours_snapshot are required.
+      allow create: if request.auth != null
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.status in ["looks_good", "correction_requested"]
+                    && request.resource.data.period_id      is string
+                    && request.resource.data.period_id.size() > 0
+                    && request.resource.data.period_start_date is string
+                    && request.resource.data.period_end_date   is string
+                    && request.resource.data.staff_email   is string
+                    && request.resource.data.staff_name    is string
+                    && request.resource.data.hours_snapshot is map;
+
+      // Update: owner-only state transitions between the two client-writable
+      // statuses. staff_uid + period_id + period dates are immutable. An
+      // auto_finalized doc (written by Cloud Function) cannot be downgraded
+      // back to looks_good or correction_requested by a client.
+      allow update: if request.auth != null
+                    && resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.staff_uid == resource.data.staff_uid
+                    && request.resource.data.period_id == resource.data.period_id
+                    && request.resource.data.period_start_date == resource.data.period_start_date
+                    && request.resource.data.period_end_date   == resource.data.period_end_date
+                    && resource.data.status in ["looks_good", "correction_requested"]
+                    && request.resource.data.status in ["looks_good", "correction_requested"];
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 1A — Office Manager Mission Control.
+    // ====================================================================
+    // Four append-leaning collections that store the Office Manager's
+    // management-side observations + decisions. All admin-only because
+    // these are management records, not operational data:
+    //
+    //   office_manager_reflections   — daily three-question reflection
+    //                                  (what noticed / what concerns /
+    //                                   what improve). One per manager
+    //                                   per day; idempotent doc id =
+    //                                   `<uid>__<YYYY-MM-DD>`.
+    //   office_manager_bottlenecks   — "what decision are you waiting
+    //                                  on?" single-choice poll. Doc id
+    //                                  = `<uid>__<YYYY-MM-DD>`.
+    //   office_manager_weekly_reviews — manual-entry hiring metrics for
+    //                                  the week (Phase 1A) + future
+    //                                  weekly aggregates. Doc id =
+    //                                  ISO week tag e.g. "2026-W23".
+    //   office_manager_improvements  — free-form improvement ideas
+    //                                  (separate channel from the
+    //                                  weekly reflection). Auto-id.
+    //
+    // Updates are admin-only. Deletes denied across the board so the
+    // management record stays auditable. Cloud Functions (Admin SDK)
+    // bypass these rules entirely for future automated aggregation.
+    match /office_manager_reflections/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_bottlenecks/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_weekly_reviews/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_improvements/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 2A.1 — Hiring funnel intelligence foundation.
+    // ====================================================================
+    // Two collections that will hold synced GHL (or manually-imported)
+    // hiring funnel data. Phase 2A.1 ships the schema + admin rules
+    // only — no writer yet. Phase 2A.2 will add syncGhlHiringV1.
+    //
+    //   office_manager_hiring_snapshots — one doc per snapshot date
+    //                                     (typically YYYY-MM-DD). Holds
+    //                                     rollup counts for a period.
+    //                                     The manager dashboard reads
+    //                                     the most recent snapshot for
+    //                                     the current week + last 30 d.
+    //
+    //   office_manager_hiring_events    — append-only candidate-level
+    //                                     event log from GHL webhooks
+    //                                     (Phase 2A.3 if needed). Phase
+    //                                     2A.1 declares the rules so
+    //                                     ingestion can begin later
+    //                                     without a rule deploy.
+    //
+    // Both collections are admin-only CRUD, no deletes — same shape as
+    // every other office_manager_* collection.
+    match /office_manager_hiring_snapshots/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+    match /office_manager_hiring_events/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // CEO Mission Control — ceo_tasks (Action Layer, Phase 1B)
+    // ====================================================================
+    // Executive-tier action queue. April (executive) and Nick (owner) can
+    // create / mark done / dismiss action items surfaced by the CEO
+    // dashboard. Once created a task is never deleted — done/dismissed
+    // states preserve the audit trail. Status is the only mutable field
+    // post-create.
+    //
+    // Schema:
+    //   title         string, required, len 1..200
+    //   description   string, len 0..2000
+    //   category      enum: customer | staffing | hiring | leadership | finance
+    //   sourceType    string, len 0..50  — origin discriminator (e.g.
+    //                 "chronic_customer_issue", "hiring_funnel_stalling")
+    //   sourceId      string, len 0..200 — pointer back to the originating
+    //                 record (customer_slug, snapshot_date, etc.)
+    //   status        enum: open | done | dismissed (create-time must be open)
+    //   assignedTo    string (email) — who is on the hook
+    //   createdBy     string (email) — who created
+    //   createdAt     server timestamp
+    //   dueDate       optional string (YYYY-MM-DD)
+    //   completedAt   optional server timestamp (set when status flips)
+    //
+    // Dedup: client checks for matching (sourceType, sourceId, category)
+    // open tasks before creating. Rules don't enforce uniqueness — two
+    // near-simultaneous clicks can race and produce two docs. Acceptable
+    // for Phase 1B; the UI shows the same card so the duplication is
+    // visually obvious and either can be dismissed.
+    match /ceo_tasks/{taskId} {
+      allow read:   if isPioneerExecutive();
+
+      // Phase 1D — allow create with a terminal status (done | dismissed)
+      // so April can act on a SUGGESTION in one click without first
+      // creating an open task and immediately updating it. The audit
+      // trail still captures createdAt + status + completedAt.
+      allow create: if isPioneerExecutive()
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() >= 1
+                    && request.resource.data.title.size() <= 200
+                    && request.resource.data.category in
+                       ['customer', 'staffing', 'hiring', 'leadership', 'finance']
+                    && request.resource.data.status in ['open', 'done', 'dismissed']
+                    && request.resource.data.createdBy == request.auth.token.email.lower();
+
+      // Status-only updates. completedAt + updated_at may also move with
+      // the status flip. Title/description/category/source* are immutable
+      // after create so audit-trail meaning stays intact.
+      allow update: if isPioneerExecutive()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'completedAt', 'updated_at'])
+                    && request.resource.data.status in ['open', 'done', 'dismissed'];
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 3A — Communication Threads Foundation
+    // ====================================================================
+    // Generic thread/message backbone that future communication features
+    // attach to (Leadership Messages, Call-out conversations, Customer
+    // follow-ups, Scheduling notices, Supplies coordination). NOT used by
+    // any surface in Phase 3A — data architecture only.
+    //
+    // Two collections:
+    //   communication_threads   — one doc per conversation. Carries
+    //                             category, status, participants, denorm
+    //                             last-message fields for sorting/preview.
+    //   communication_messages  — one doc per message. Linked back to a
+    //                             thread by thread_id. Channel = in_app
+    //                             OR sms. Direction = outbound (from
+    //                             leadership) OR inbound (replies — future).
+    //
+    // Categories (enum):  leadership | scheduling | supplies | callout
+    //                     | customer | general
+    // Status     (enum):  open | closed
+    // Channels   (enum):  in_app | sms
+    // Directions (enum):  outbound | inbound
+    //
+    // Read model (Phase 3A — conservative; expand when surfaces ship):
+    //   • Admin tier (incl. executive+owner) reads any thread/message.
+    //   • A non-admin reader sees a thread only if their email is in
+    //     participant_ids. Same for the messages they appear in as
+    //     recipient. Team-broadcast messages (recipient_type='team')
+    //     are readable by any active cleaning tech, mirroring the
+    //     leadership_messages rule so the future migration is direct.
+    //
+    // Write model (Phase 3A):
+    //   • Only admin-tier can CREATE threads and messages. Tech replies
+    //     ("inbound") are deferred — Phase 3A is foundation only.
+    //   • UPDATEs are field-scoped: threads can only mutate denorm/status
+    //     fields; messages can only mutate delivery/read/error fields.
+    //     Body and identity are immutable post-create for audit integrity.
+    //
+    // DELETE is denied on both — dismissed/closed != deleted.
+    match /communication_threads/{threadId} {
+      function isThreadParticipant() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.participant_ids is list
+          && (request.auth.token.email.lower() in resource.data.participant_ids);
+      }
+
+      allow read:   if isPioneerAdmin() || isThreadParticipant();
+
+      // Phase 3B.1 — status enum expanded to a five-state machine:
+      //   open                   — legacy / unspecified active
+      //   waiting_on_employee    — manager spoke last
+      //   waiting_on_management  — employee spoke last
+      //   resolved               — terminal; amicably ended
+      //   closed                 — terminal; canceled / no longer relevant
+      // A freshly-created thread typically starts at waiting_on_employee
+      // (because management is the first sender), but creates with
+      // any of the active states are permitted.
+      allow create: if isPioneerAdmin()
+                    && request.resource.data.category in
+                       ['leadership', 'scheduling', 'supplies', 'callout', 'customer', 'general']
+                    && request.resource.data.status in
+                       ['open', 'waiting_on_employee', 'waiting_on_management', 'resolved', 'closed']
+                    // Phase 3B.2 — priority is required on create; legacy
+                    // threads without it render as 'action_required' at
+                    // read time but every new thread carries an explicit
+                    // value. message_type is optional (back-compat path
+                    // for callers that don't set it yet).
+                    && request.resource.data.priority in ['fyi', 'action_required', 'urgent']
+                    && (
+                      !('message_type' in request.resource.data)
+                      || request.resource.data.message_type in [
+                        'recognition', 'coaching_support', 'announcement',
+                        'logistics', 'supply', 'scheduling', 'callout',
+                        'customer_issue', 'general'
+                      ]
+                    )
+                    && request.resource.data.subject is string
+                    && request.resource.data.subject.size() >= 1
+                    && request.resource.data.subject.size() <= 200
+                    && request.resource.data.participant_ids is list
+                    && request.resource.data.created_by == request.auth.token.email.lower();
+
+      // Two update gates so addMessage() works for both sides of a
+      // conversation. Admin tier can mutate everything (status / closure
+      // + denorm). A participating tech can also bump the parent
+      // thread's status — BUT only to waiting_on_management, the value
+      // that signals "the employee just replied; management's turn."
+      // Any other status mutation (Resolve, Close, set to
+      // waiting_on_employee, etc.) stays admin-only.
+      allow update: if (
+                      isPioneerAdmin()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'closed_at', 'closed_by', 'updated_at',
+                        'last_message_at', 'last_message_preview',
+                        'last_message_direction', 'message_count'
+                      ])
+                      && request.resource.data.status in
+                         ['open', 'waiting_on_employee', 'waiting_on_management', 'resolved', 'closed']
+                    )
+                    || (
+                      isActiveCleaningTech()
+                      && isThreadParticipant()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'updated_at', 'last_message_at', 'last_message_preview',
+                        'last_message_direction', 'message_count'
+                      ])
+                      && (
+                        // status either stays put or becomes waiting_on_management.
+                        request.resource.data.status == resource.data.status
+                        || request.resource.data.status == 'waiting_on_management'
+                      )
+                    );
+
+      allow delete: if false;
+    }
+
+    match /communication_messages/{messageId} {
+      function isMessageRecipient() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.recipient_id is string
+          && resource.data.recipient_id == request.auth.token.email.lower();
+      }
+      function isMessageSender() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && resource.data.sender_id is string
+          && resource.data.sender_id == request.auth.token.email.lower();
+      }
+      function isTeamBroadcastReader() {
+        return resource.data.recipient_type == 'team' && isActiveCleaningTech();
+      }
+      // For tech inbound replies: confirm they are a participant in the
+      // parent thread. Single get() — cost is one document read per
+      // message create.
+      function isParticipantInIncomingThread() {
+        return request.auth != null
+          && request.auth.token.email is string
+          && request.resource.data.thread_id is string
+          && exists(/databases/$(database)/documents/communication_threads/$(request.resource.data.thread_id))
+          && (request.auth.token.email.lower() in
+              get(/databases/$(database)/documents/communication_threads/$(request.resource.data.thread_id))
+              .data.participant_ids);
+      }
+
+      // Sender check lets a tech read their own outgoing replies in the
+      // thread timeline (recipient check only covers what they received).
+      allow read:   if isPioneerAdmin()
+                    || isMessageRecipient()
+                    || isMessageSender()
+                    || isTeamBroadcastReader();
+
+      // Phase 3B — tech inbound replies are now allowed on threads they
+      // participate in. Admin tier retains full create access. Common
+      // schema validation runs first so a bad payload fails the same way
+      // for either role.
+      allow create: if request.resource.data.thread_id is string
+                    && request.resource.data.thread_id.size() >= 1
+                    && request.resource.data.channel in ['in_app', 'sms']
+                    && request.resource.data.direction in ['outbound', 'inbound']
+                    && request.resource.data.status in
+                       ['queued', 'delivered', 'failed', 'dismissed']
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() >= 1
+                    && request.resource.data.body.size() <= 2000
+                    && request.resource.data.sender_id == request.auth.token.email.lower()
+                    && (
+                      isPioneerAdmin()
+                      || (
+                        isActiveCleaningTech()
+                        && request.resource.data.direction == 'inbound'
+                        && request.resource.data.channel == 'in_app'
+                        && request.resource.data.sender_type == 'tech'
+                        && isParticipantInIncomingThread()
+                      )
+                    );
+
+      // Status + delivery tracking only. Identity/body/thread linkage
+      // immutable post-create.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'status', 'delivered_at', 'read_at', 'updated_at',
+                      'sms_sid', 'sms_error'
+                    ])
+                    && request.resource.data.status in
+                       ['queued', 'delivered', 'failed', 'dismissed']
+                    && (
+                      isPioneerAdmin()
+                      || (resource.data.recipient_id is string
+                          && resource.data.recipient_id == request.auth.token.email.lower())
+                      || (resource.data.sender_id is string
+                          && resource.data.sender_id == request.auth.token.email.lower())
+                      || (resource.data.recipient_type == 'team' && isActiveCleaningTech())
+                    );
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Leadership Messages (Phase 1C) — leadership_messages
+    // ====================================================================
+    // One-way leadership communication. CEO (executive+) composes;
+    // employees / team / office managers receive. NOT chat, NOT inbox,
+    // NOT a Slack replacement. No employee-to-employee messaging.
+    //
+    // Schema:
+    //   messageType    enum: recognition | coaching | announcement
+    //   recipientType  enum: employee | team | office_manager
+    //   recipientId    string (email for 'employee', null/empty otherwise)
+    //   recipientName  string (display name, for the sender's audit view)
+    //   messageBody    string, len 1..2000
+    //   createdBy      string (email of executive/owner)
+    //   createdAt      server timestamp
+    //   status         enum: queued | delivered | dismissed
+    //   deliverAfter   timestamp — earliest visible. Client computes
+    //                  using working-hours protection (8 AM–6 PM Pacific).
+    //   deliveredAt    optional timestamp, set when first Ack/Dismiss flip
+    //
+    // Read access:
+    //   - The sender (executive+) can always read what they sent.
+    //   - 'team'           → any active cleaning tech
+    //   - 'employee'       → only the tech whose email matches recipientId
+    //   - 'office_manager' → any admin-tier user
+    //
+    // Update access (Ack/Dismiss only — status + deliveredAt + updated_at):
+    //   - Same recipient-side gate as reads. Sender does NOT mutate after
+    //     create (one-way delivery; no recall).
+    //
+    // Delete: never (audit trail). Dismissed != deleted.
+    match /leadership_messages/{msgId} {
+      allow read:   if isPioneerExecutive()
+                    || (resource.data.recipientType == 'team' && isActiveCleaningTech())
+                    || (resource.data.recipientType == 'employee'
+                        && request.auth != null
+                        && request.auth.token.email is string
+                        && resource.data.recipientId == request.auth.token.email.lower())
+                    || (resource.data.recipientType == 'office_manager' && isPioneerAdmin());
+
+      allow create: if isPioneerExecutive()
+                    && request.resource.data.messageType in
+                       ['recognition', 'coaching', 'announcement']
+                    && request.resource.data.recipientType in
+                       ['employee', 'team', 'office_manager']
+                    && request.resource.data.messageBody is string
+                    && request.resource.data.messageBody.size() >= 1
+                    && request.resource.data.messageBody.size() <= 2000
+                    && request.resource.data.status == 'queued'
+                    && request.resource.data.createdBy == request.auth.token.email.lower();
+
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'deliveredAt', 'updated_at'])
+                    && request.resource.data.status in ['delivered', 'dismissed']
+                    && (
+                      (resource.data.recipientType == 'team' && isActiveCleaningTech())
+                      || (resource.data.recipientType == 'employee'
+                          && request.auth != null
+                          && request.auth.token.email is string
+                          && resource.data.recipientId == request.auth.token.email.lower())
+                      || (resource.data.recipientType == 'office_manager' && isPioneerAdmin())
+                    );
+
+      allow delete: if false;
+    }
+
+    // ====================================================================
+    // Phase 33A — Mission Control alert noise control.
+    // ====================================================================
+    // Two collections that let admins quiet irrelevant Mission Control
+    // alerts without touching underlying business data (deputy_shift_cache
+    // / service_assignments / dcr_submissions stay untouched).
+    //
+    //   mission_control_alert_dismissals   — per-instance hide. Doc id is
+    //                                        the stable alertKey, so
+    //                                        re-dismissing simply
+    //                                        overwrites. expires_at
+    //                                        carries snooze deadlines
+    //                                        (null = permanent).
+    //   mission_control_alert_suppressions — broader rules: "hide all
+    //                                        alerts of type X for entity
+    //                                        Y." Reactivation toggles
+    //                                        active:false.
+    //
+    // Deletes are allowed on both so admins can fully clear a record
+    // (e.g., an obsolete suppression). Reactivation is the soft path
+    // (set active:false); delete is the hard path.
+    match /mission_control_alert_dismissals/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+    match /mission_control_alert_suppressions/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isPioneerAdmin();
+      allow update: if isPioneerAdmin();
+      allow delete: if isPioneerAdmin();
+    }
+
+    // ====================================================================
+    // Employee action events — lightweight client-side click log.
+    // ====================================================================
+    // Phase A of the Deputy clock-in launcher work. Every "Open Deputy"
+    // tap on the staff surfaces (Today's Work assignment card, clock-in
+    // reminder banner, DCR-submit success page) writes one doc here so
+    // ops can troubleshoot "I tapped Open Deputy but didn't get to the
+    // app" reports.
+    //
+    // Schema (validated by rules):
+    //   action      string                — "open_deputy" today; namespaced for future use
+    //   source      string                — surface identifier (today_work_card / clock_in_reminder / dcr_success)
+    //   staff       map { uid, email, displayName? }
+    //   staff.uid   string                — must equal request.auth.uid
+    //   created_at  serverTimestamp       — set client-side via FieldValue
+    //   Optional:   shift_id, sync_date, user_agent, page_url
+    //
+    // Read: admin-only. Update / delete: forbidden — this is an append-only
+    // audit log; mistakes get superseded by new events, never edited.
+    match /employee_action_events/{id} {
+      allow read:   if isPioneerAdmin();
+      allow create: if isActiveStaff()
+                    && request.resource.data.action is string
+                    && request.resource.data.source is string
+                    && request.resource.data.staff is map
+                    && request.resource.data.staff.uid is string
+                    && request.resource.data.staff.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Phase Customer Economics — QuickBooks OAuth state + connection.
+    // Server-only. Tokens NEVER reach the client. Cloud Functions write
+    // via Admin SDK (bypasses rules). Default-deny below would catch
+    // these anyway, but explicit rules are kept here as documentation.
+    match /quickbooks_auth/{docId} {
+      allow read, write: if false;
+    }
+    match /quickbooks_oauth_states/{stateToken} {
+      allow read, write: if false;
+    }
+    // Admin-readable status mirror (NO tokens — populated by qboAuth.js
+    // explicit allowlist). Lets the /manager UI render connection state
+    // without ever exposing the access_token to the browser.
+    match /quickbooks_status/{docId} {
+      allow read:  if isPioneerAdmin();
+      allow write: if false;
+    }
+    // Phase Customer Economics — denormalized snapshots. Admins read
+    // for the /ceo card; nobody writes from the client (Cloud Functions
+    // only). History collection is admin read-only too so audit trail
+    // is auditable from the dashboard.
+    match /customer_economics/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /customer_economics_history/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /financial_pulse/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    match /financial_pulse_history/{docId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+    // Note: pioneer_config/customer_economics.target_rplh uses the
+    // existing pioneer_config rules block above (line ~288). No change
+    // needed — admins already read + write that collection.
 
     // Default-deny everything else.
     match /{document=**} {

@@ -1,0 +1,196 @@
+/* Help Improve Pioneer page — supportive, focused, calm. */
+
+.improve-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px 16px 64px;
+}
+
+.improve-hero {
+  text-align: center;
+  padding: 18px 4px 8px;
+}
+.improve-hero h1 {
+  margin: 0 0 4px;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+}
+.improve-hero .subtitle {
+  margin: 0;
+  color: #475569;
+  font-size: 15px;
+}
+
+/* Mode switch (improvement / protected) */
+.improve-mode-card {
+  padding: 14px 14px 12px;
+}
+.improve-mode-seg {
+  display: flex;
+  gap: 6px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 10px;
+}
+.improve-mode-btn {
+  flex: 1 1 0;
+  background: transparent;
+  color: #475569;
+  border: 0;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.improve-mode-btn.is-active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10);
+}
+.improve-mode-help {
+  margin: 4px 2px 0;
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.55;
+}
+.improve-mode-help strong { color: #0f172a; }
+
+.improve-mode-microcopy {
+  margin: 10px 2px 0;
+  padding: 0;
+  font-size: 12.5px;
+  font-style: italic;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* Form cards */
+.improve-form { padding: 16px 16px 14px; }
+.improve-tip {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  background: rgba(20, 184, 166, 0.07);
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: #134e4a;
+  line-height: 1.5;
+}
+
+.improve-form-protected .improve-protected-callout {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: rgba(180, 83, 9, 0.07);
+  border: 1px solid rgba(180, 83, 9, 0.25);
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+.field-helper {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  color: #1f2937;
+  margin: 8px 0 14px;
+}
+.check-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.improve-photo-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.improve-photo-preview {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+}
+.improve-photo-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.improve-photo-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(15, 23, 42, 0.7);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.improve-form-status {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 13.5px;
+  border-radius: 6px;
+}
+.improve-form-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #991b1b;
+  font-size: 13.5px;
+  border-radius: 6px;
+}
+
+.improve-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.improve-success {
+  text-align: center;
+  padding: 20px 16px 18px;
+}
+.improve-success-icon {
+  font-size: 38px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.improve-success h2 {
+  margin: 4px 0 6px;
+  font-size: 22px;
+}
+.improve-success-body {
+  margin: 0 0 14px;
+  color: #475569;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.improve-success-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}

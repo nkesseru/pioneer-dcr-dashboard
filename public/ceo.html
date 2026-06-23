@@ -1,0 +1,1687 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>Pioneer · Executive Mission Control</title>
+  <link rel="icon" href="/favicon.ico" />
+
+  <style>
+    /* ============================================================
+     * CEO Mission Control — luxury wellness aesthetic
+     *
+     * Color philosophy: warm, organic, breathable. No pure black,
+     * no aggressive reds, no corporate blues. Every surface should
+     * feel earned and calm.
+     *
+     * Audience: April (primary) + Nick (owner). Desktop-first.
+     * ============================================================ */
+
+    :root {
+      /* ---- Palette ---- */
+      --ceo-cream:           #faf6ef;   /* page wash — soft cream */
+      --ceo-cream-deep:      #f3ede2;   /* card lift behind hero */
+      --ceo-paper:           #ffffff;   /* card surface */
+      --ceo-paper-soft:      #fdfbf6;   /* card surface, secondary */
+      --ceo-edge:            rgba(70, 60, 45, 0.08);
+
+      --ceo-charcoal:        #2f2a24;   /* warm charcoal — primary text */
+      --ceo-charcoal-soft:   #5d564b;
+      --ceo-charcoal-faint:  #8a8275;
+
+      --ceo-sage:            #a3b5a3;   /* dusty sage */
+      --ceo-sage-deep:       #6b8576;   /* muted eucalyptus */
+      --ceo-sage-soft:       #e3ebdf;
+      --ceo-sage-tint:       #f2f6ee;
+
+      --ceo-champagne:       #c8a96f;   /* champagne gold — accent */
+      --ceo-champagne-soft:  #f0e4c8;
+
+      --ceo-clay:            #b88a6f;   /* soft clay — warmth */
+      --ceo-clay-soft:       #f3e3d6;
+
+      --ceo-terracotta:      #c4836a;   /* warm amber — caution */
+      --ceo-terracotta-soft: #fbe4d6;
+
+      --ceo-berry:           #a26b76;   /* soft berry — danger */
+      --ceo-berry-soft:      #f0dee0;
+
+      --ceo-good:            #6b8576;   /* gentle green — success */
+      --ceo-good-soft:       #dde7dc;
+
+      /* ---- Type ---- */
+      --ceo-font: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                   "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --ceo-font-serif: "Iowan Old Style", "Apple Garamond", Georgia, serif;
+
+      /* ---- Geometry ---- */
+      --ceo-radius:   18px;
+      --ceo-radius-l: 28px;
+      --ceo-shadow:   0 1px 2px rgba(70, 60, 45, 0.04),
+                       0 6px 24px rgba(70, 60, 45, 0.06);
+      --ceo-shadow-l: 0 1px 3px rgba(70, 60, 45, 0.05),
+                       0 18px 48px rgba(70, 60, 45, 0.10);
+    }
+
+    /* ---- Reset / shell ---- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--ceo-cream);
+      color: var(--ceo-charcoal);
+      font-family: var(--ceo-font);
+      font-size: 15px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    button { font-family: inherit; }
+
+    .ceo-shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 48px 56px 96px;
+    }
+
+    /* ---- Auth states ---- */
+    .ceo-auth-shell {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 96px 32px;
+      text-align: center;
+    }
+    .ceo-auth-shell h1 {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 36px;
+      letter-spacing: -0.5px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-auth-shell p {
+      color: var(--ceo-charcoal-soft);
+      margin: 0 0 24px;
+    }
+    .ceo-auth-btn {
+      background: var(--ceo-charcoal);
+      color: var(--ceo-cream);
+      border: none;
+      padding: 14px 28px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      box-shadow: var(--ceo-shadow);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .ceo-auth-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--ceo-shadow-l);
+    }
+    .ceo-auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ceo-auth-denied {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+      margin-top: 24px;
+    }
+
+    /* ---- Hero ---- */
+    .ceo-hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+    .ceo-hero-greeting {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 44px;
+      letter-spacing: -0.8px;
+      line-height: 1.1;
+      color: var(--ceo-charcoal);
+      margin: 0;
+    }
+    .ceo-hero-greeting em {
+      font-style: normal;
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-hero-meta {
+      text-align: right;
+      font-size: 13px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-hero-meta-date {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 4px;
+    }
+
+    /* ---- Company Health hero ---- */
+    .ceo-health-card {
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-paper-soft) 100%);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 56px 64px;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 56px;
+    }
+    .ceo-health-card::after {
+      content: "";
+      position: absolute;
+      top: -120px; right: -120px;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle, var(--ceo-sage-soft) 0%, transparent 70%);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .ceo-health-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 24px;
+    }
+    .ceo-health-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) minmax(420px, 2fr);
+      gap: 64px;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+    .ceo-health-headline {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .ceo-health-score {
+      font-family: var(--ceo-font);
+      font-size: 128px;
+      font-weight: 200;
+      letter-spacing: -4px;
+      line-height: 1;
+      color: var(--ceo-charcoal);
+    }
+    .ceo-health-score-suffix {
+      font-size: 36px;
+      font-weight: 300;
+      color: var(--ceo-charcoal-soft);
+      letter-spacing: -1px;
+    }
+    .ceo-health-label {
+      font-family: var(--ceo-font-serif);
+      font-size: 24px;
+      color: var(--ceo-charcoal-soft);
+      margin: 12px 0 0;
+      font-weight: 400;
+    }
+    .ceo-health-pillars {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 28px 40px;
+    }
+    .ceo-pillar { }
+    .ceo-pillar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 6px;
+    }
+    .ceo-pillar-value {
+      font-family: var(--ceo-font);
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: -0.8px;
+      color: var(--ceo-charcoal);
+      line-height: 1.1;
+    }
+    .ceo-pillar-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 4px;
+    }
+
+    /* ---- Today's CEO Actions (Phase 1B) ---- */
+    .ceo-actions-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 4px 20px;
+    }
+    .ceo-actions-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+    }
+    .ceo-actions-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 30px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 4px 0 0;
+    }
+    .ceo-actions-aside {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-actions-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 56px;
+    }
+    .ceo-action-card {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 28px 28px 24px;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+      position: relative;
+      overflow: hidden;
+      border-top: 3px solid var(--ceo-sage);
+    }
+    .ceo-action-card[data-category="customer"]   { border-top-color: var(--ceo-clay); }
+    .ceo-action-card[data-category="staffing"]   { border-top-color: var(--ceo-sage-deep); }
+    .ceo-action-card[data-category="hiring"]     { border-top-color: var(--ceo-champagne); }
+    .ceo-action-card[data-category="leadership"] { border-top-color: var(--ceo-berry); }
+    .ceo-action-card[data-category="finance"]    { border-top-color: var(--ceo-charcoal-soft); }
+    .ceo-action-badge {
+      align-self: flex-start;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--ceo-cream-deep);
+      margin-bottom: 16px;
+    }
+    .ceo-action-title {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      line-height: 1.25;
+      color: var(--ceo-charcoal);
+      margin: 0 0 12px;
+      font-weight: 400;
+      letter-spacing: -0.2px;
+    }
+    .ceo-action-why {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--ceo-charcoal-soft);
+      font-style: italic;
+      margin: 0 0 14px;
+    }
+    .ceo-action-next {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--ceo-charcoal);
+      font-weight: 500;
+      margin: 0 0 20px;
+    }
+    .ceo-action-next::before {
+      content: "Next: ";
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .ceo-action-meta {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 14px;
+    }
+    .ceo-action-btns {
+      margin-top: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .ceo-action-btn {
+      font-family: inherit;
+      background: var(--ceo-charcoal);
+      color: var(--ceo-cream);
+      border: none;
+      padding: 9px 16px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+    .ceo-action-btn:hover { transform: translateY(-1px); }
+    .ceo-action-btn:active { transform: translateY(0); }
+    .ceo-action-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      transform: none;
+    }
+    .ceo-action-btn-secondary {
+      background: transparent;
+      color: var(--ceo-charcoal);
+      border: 1px solid var(--ceo-edge);
+    }
+    .ceo-action-btn-ghost {
+      background: transparent;
+      color: var(--ceo-charcoal-soft);
+      border: none;
+      padding: 9px 12px;
+    }
+    .ceo-action-status {
+      font-size: 12px;
+      color: var(--ceo-sage-deep);
+      margin-top: 10px;
+      min-height: 16px;
+    }
+    .ceo-action-status[data-tone="error"] { color: var(--ceo-berry); }
+
+    .ceo-actions-empty {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-sage-tint) 100%);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 48px;
+      text-align: center;
+    }
+    .ceo-actions-empty-icon {
+      font-family: var(--ceo-font-serif);
+      font-size: 36px;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 12px;
+    }
+    .ceo-actions-empty-title {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-actions-empty-sub {
+      font-size: 14px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
+    /* Phase 1D — Today's Progress chip (rendered inside .ceo-actions-aside) */
+    .ceo-streak-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 12px;
+      padding: 4px 10px 4px 8px;
+      border-radius: 999px;
+      background: var(--ceo-champagne-soft);
+      color: var(--ceo-charcoal);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+    .ceo-streak-flame {
+      color: var(--ceo-champagne);
+      font-family: var(--ceo-font-serif);
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    /* Phase 1D — Recent Activity feed */
+    .ceo-activity-list { margin: 0; padding: 0; list-style: none; }
+    .ceo-activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px 0;
+      border-top: 1px solid var(--ceo-edge);
+    }
+    .ceo-activity-item:first-child { border-top: none; padding-top: 0; }
+    .ceo-activity-item:last-child  { padding-bottom: 0; }
+    .ceo-activity-dot {
+      flex: none;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ceo-charcoal-faint);
+      margin-top: 7px;
+    }
+    .ceo-activity-item[data-tone="good"]      .ceo-activity-dot { background: var(--ceo-good); }
+    .ceo-activity-item[data-tone="celebrate"] .ceo-activity-dot { background: var(--ceo-champagne); }
+    .ceo-activity-body { flex: 1; }
+    .ceo-activity-line {
+      font-size: 14px;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      line-height: 1.4;
+    }
+    .ceo-activity-verb {
+      font-weight: 600;
+    }
+    .ceo-activity-subject {
+      color: var(--ceo-charcoal-soft);
+    }
+    .ceo-activity-when {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 4px 0 0;
+    }
+
+    /* ---- Quick Leadership Actions (Phase 1C) ---- */
+    .ceo-quick-actions {
+      display: flex;
+      gap: 16px;
+      margin: 0 4px 56px;
+      flex-wrap: wrap;
+    }
+    .ceo-quick-btn {
+      flex: 1;
+      min-width: 220px;
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-edge);
+      border-radius: var(--ceo-radius);
+      padding: 22px 24px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+      box-shadow: var(--ceo-shadow);
+    }
+    .ceo-quick-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--ceo-shadow-l);
+      border-color: var(--ceo-sage);
+    }
+    .ceo-quick-btn-symbol {
+      font-family: var(--ceo-font-serif);
+      font-size: 28px;
+      color: var(--ceo-sage-deep);
+      line-height: 1;
+      margin: 0 0 12px;
+    }
+    .ceo-quick-btn-label {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      color: var(--ceo-charcoal);
+      font-weight: 400;
+      margin: 0 0 4px;
+    }
+    .ceo-quick-btn-sub {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
+    /* ---- Compose modal ---- */
+    .ceo-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(47, 42, 36, 0.4);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      backdrop-filter: blur(6px);
+    }
+    .ceo-modal {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      width: 100%;
+      max-width: 520px;
+      padding: 40px;
+      position: relative;
+    }
+    .ceo-modal-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+      margin: 0 0 8px;
+    }
+    .ceo-modal-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 28px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 8px;
+    }
+    .ceo-modal-sub {
+      font-size: 14px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0 0 24px;
+      line-height: 1.5;
+    }
+    .ceo-modal-field { margin-bottom: 18px; }
+    .ceo-modal-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft);
+      margin-bottom: 8px;
+    }
+    .ceo-modal-input,
+    .ceo-modal-textarea,
+    .ceo-modal-select {
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--ceo-charcoal);
+      background: var(--ceo-cream);
+      border: 1px solid var(--ceo-edge);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-sizing: border-box;
+    }
+    .ceo-modal-textarea {
+      min-height: 130px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .ceo-modal-input:focus,
+    .ceo-modal-textarea:focus,
+    .ceo-modal-select:focus {
+      outline: none;
+      border-color: var(--ceo-sage-deep);
+      box-shadow: 0 0 0 3px var(--ceo-sage-soft);
+    }
+    .ceo-modal-helper {
+      font-size: 12px;
+      color: var(--ceo-charcoal-faint);
+      margin: 8px 0 0;
+    }
+    .ceo-modal-btns {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .ceo-modal-status {
+      font-size: 13px;
+      color: var(--ceo-sage-deep);
+      margin: 12px 0 0;
+      min-height: 18px;
+    }
+    .ceo-modal-status[data-tone="error"] { color: var(--ceo-berry); }
+
+    /* ---- Section header ---- */
+    .ceo-section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 4px 20px;
+    }
+    .ceo-section-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-section-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 30px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 4px 0 0;
+    }
+    .ceo-section-aside {
+      font-size: 13px;
+      color: var(--ceo-charcoal-faint);
+    }
+
+    /* ---- Two-column row ---- */
+    .ceo-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+
+    /* ---- Cards ---- */
+    .ceo-card {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 32px;
+    }
+    .ceo-card-deep {
+      background: linear-gradient(180deg, var(--ceo-paper) 0%, var(--ceo-paper-soft) 100%);
+    }
+    .ceo-list { margin: 0; padding: 0; list-style: none; }
+    .ceo-list-item {
+      padding: 16px 0;
+      border-top: 1px solid var(--ceo-edge);
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+    }
+    .ceo-list-item:first-child { border-top: none; padding-top: 0; }
+    .ceo-list-item:last-child  { padding-bottom: 0; }
+    .ceo-list-item-icon {
+      flex: none;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .ceo-list-item-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .ceo-list-item-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      line-height: 1.35;
+    }
+    /* Phase 3B.1 — Thread status chip on Open Conversations preview.
+       Tones match /manager + /team-hub vocabulary. */
+    .ceo-comm-status-chip {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--ceo-cream-deep);
+      color: var(--ceo-charcoal-soft);
+      vertical-align: middle;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    .ceo-comm-status-chip.is-open                  { background: var(--ceo-cream-deep); color: var(--ceo-charcoal-soft); }
+    .ceo-comm-status-chip.is-waiting_on_employee   { background: #dbeafe; color: #1e3a8a; }
+    .ceo-comm-status-chip.is-waiting_on_management { background: #fef3c7; color: #92400e; }
+    .ceo-comm-status-chip.is-resolved              { background: var(--ceo-sage-soft); color: var(--ceo-sage-deep); }
+    .ceo-comm-status-chip.is-closed                { background: #cbd5e1; color: #1e293b; }
+    /* Phase 3B.2 — priority chip on Open Conversations rows. Only
+       rendered for action_required + urgent (fyi stays calm). */
+    .ceo-comm-priority-chip {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    .ceo-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
+    .ceo-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+    /* Urgent rows get a soft red rail accent on the list item dot. */
+    .ceo-list-item[data-priority="urgent"] .ceo-list-item-icon {
+      box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, 0.65);
+      color: #b91c1c;
+    }
+    .ceo-list-item-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin: 4px 0 0;
+      line-height: 1.5;
+    }
+    .ceo-list-item-count {
+      font-family: var(--ceo-font);
+      font-size: 22px;
+      font-weight: 300;
+      color: var(--ceo-charcoal);
+      letter-spacing: -0.5px;
+      margin-left: 12px;
+      flex: none;
+    }
+    .ceo-list-item-cta {
+      font-size: 12px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 6px;
+      display: inline-block;
+    }
+    .ceo-list-item-cta:hover { color: var(--ceo-charcoal); }
+
+    /* Tier-flavored icon backgrounds */
+    .ceo-tone-attention .ceo-list-item-icon {
+      background: var(--ceo-terracotta-soft);
+      color: var(--ceo-terracotta);
+    }
+    .ceo-tone-watch .ceo-list-item-icon {
+      background: var(--ceo-champagne-soft);
+      color: var(--ceo-champagne);
+    }
+    .ceo-tone-celebrate .ceo-list-item-icon {
+      background: var(--ceo-sage-soft);
+      color: var(--ceo-sage-deep);
+    }
+    .ceo-tone-pulse .ceo-list-item-icon {
+      background: var(--ceo-clay-soft);
+      color: var(--ceo-clay);
+    }
+
+    /* Empty states — calm, encouraging */
+    .ceo-empty {
+      padding: 32px 12px;
+      text-align: center;
+    }
+    .ceo-empty-icon {
+      font-family: var(--ceo-font-serif);
+      font-size: 28px;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 10px;
+    }
+    .ceo-empty-headline {
+      font-family: var(--ceo-font-serif);
+      font-size: 18px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 4px;
+    }
+    .ceo-empty-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+
+    /* ---- Department Scorecards ---- */
+    .ceo-row-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin-bottom: 56px;
+    }
+    .ceo-scorecard {
+      background: var(--ceo-paper);
+      border-radius: var(--ceo-radius);
+      box-shadow: var(--ceo-shadow);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 220px;
+    }
+    .ceo-scorecard-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0;
+    }
+    .ceo-scorecard-name {
+      font-family: var(--ceo-font-serif);
+      font-size: 22px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 16px;
+      font-weight: 400;
+    }
+    .ceo-scorecard-hero {
+      font-family: var(--ceo-font);
+      font-size: 48px;
+      font-weight: 200;
+      letter-spacing: -1.5px;
+      line-height: 1;
+      color: var(--ceo-charcoal);
+      margin-bottom: 4px;
+    }
+    .ceo-scorecard-hero-suffix {
+      font-size: 18px;
+      font-weight: 300;
+      color: var(--ceo-charcoal-soft);
+    }
+    .ceo-scorecard-hero-label {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft);
+      letter-spacing: 0.4px;
+      margin-bottom: 18px;
+    }
+    .ceo-scorecard-stats {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--ceo-edge);
+      padding-top: 14px;
+    }
+    .ceo-scorecard-stat {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .ceo-scorecard-stat-label { color: var(--ceo-charcoal-soft); }
+    .ceo-scorecard-stat-value {
+      font-weight: 500;
+      color: var(--ceo-charcoal);
+    }
+
+    /* ---- Customer Economics (Phase Customer Economics v1) ----
+       Quiet, focused panel for Revenue Per Labor Hour. Visual rhythm
+       matches the health card above + the pulse card below. Improvement
+       Summary up top is the hero; per-customer columns below.        */
+    .ceo-economics-card {
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-border-soft, #e6e2d6);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 40px 48px 28px;
+      margin-bottom: 56px;
+    }
+    .ceo-economics-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .ceo-economics-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 8px;
+    }
+    .ceo-economics-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+    .ceo-economics-meta {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .ceo-economics-period {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-economics-refresh {
+      appearance: none;
+      background: transparent;
+      border: 1px solid var(--ceo-border-soft, #d4cfbf);
+      color: var(--ceo-charcoal);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .ceo-economics-refresh:hover { background: var(--ceo-sage-tint, #f4f0e4); }
+    .ceo-economics-refresh[disabled] { opacity: 0.5; cursor: not-allowed; }
+    /* Improvement Summary — the primary executive takeaway. */
+    .ceo-econ-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 32px;
+      padding: 28px 32px;
+      background: var(--ceo-sage-tint, #f4f0e4);
+      border-radius: var(--ceo-radius-m, 14px);
+      margin-bottom: 32px;
+    }
+    .ceo-econ-summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ceo-econ-summary-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-summary-value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      line-height: 1;
+    }
+    .ceo-econ-summary-value.is-good { color: var(--ceo-sage-deep, #4d7a3f); }
+    .ceo-econ-summary-value.is-bad  { color: #b91c1c; }
+    .ceo-econ-summary-sub {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    /* "To Reach Target" callout — the two-lever recommendation. */
+    .ceo-econ-levers {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 24px;
+      align-items: center;
+      padding: 20px 28px;
+      background: #fff;
+      border: 1px dashed var(--ceo-border-soft, #d4cfbf);
+      border-radius: var(--ceo-radius-m, 14px);
+      margin-bottom: 36px;
+    }
+    .ceo-econ-lever {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .ceo-econ-lever-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-lever-value {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+    }
+    .ceo-econ-lever-or {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      text-align: center;
+    }
+    /* Top / Bottom / Recommendations row layout */
+    .ceo-econ-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 24px;
+    }
+    .ceo-econ-col-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 12px;
+    }
+    .ceo-econ-list { list-style: none; padding: 0; margin: 0; }
+    .ceo-econ-list-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 14px;
+    }
+    .ceo-econ-list-row:last-child { border-bottom: none; }
+    .ceo-econ-list-name { color: var(--ceo-charcoal); }
+    .ceo-econ-list-rplh { font-weight: 600; }
+    .ceo-econ-list-rplh.is-good { color: var(--ceo-sage-deep, #4d7a3f); }
+    .ceo-econ-list-rplh.is-bad  { color: #b91c1c; }
+    .ceo-econ-recs { margin-top: 8px; }
+    .ceo-econ-rec {
+      padding: 14px 16px;
+      background: #fff8eb;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 10px;
+    }
+    .ceo-econ-rec-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin-bottom: 4px;
+    }
+    .ceo-econ-rec-detail {
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-econ-excluded {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-economics-disclosure {
+      margin: 16px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-style: italic;
+    }
+
+    /* ============================================================
+       Phase 30 — Financial Pulse card.
+       Same outer rhythm as the economics card. Inner grid of tiles
+       maps to the 30-second-read design objective:
+         Row 1: Cash Today + Cash Runway     (Q1 safety)
+         Row 2: 30-day trend + 90-day trend  (Q2 growth)
+         Row 3: Open Invoices + Overdue      (Q3 operations / collections)
+         Row 4: Collections Watch list       (Q3 detail)
+         Row 5: Payroll snapshot             (Q4 payroll safety)
+         Row 6: Needs Nick                   (Q5 attention router)
+       ============================================================ */
+    .ceo-pulse-card {
+      background: var(--ceo-paper);
+      border: 1px solid var(--ceo-border-soft, #e6e2d6);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 40px 48px 28px;
+      margin-bottom: 56px;
+    }
+    .ceo-pulse-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .ceo-pulse-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 8px;
+    }
+    .ceo-pulse-title {
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0;
+      letter-spacing: -0.3px;
+    }
+    .ceo-pulse-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .ceo-pulse-period {
+      font-size: 12px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+    }
+    .ceo-pulse-refresh {
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: 0.6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--ceo-edge);
+      background: var(--ceo-paper-soft);
+      color: var(--ceo-charcoal-soft);
+      cursor: pointer;
+    }
+    .ceo-pulse-refresh:hover { background: var(--ceo-cream-deep); color: var(--ceo-charcoal); }
+    .ceo-pulse-body { margin-top: 4px; }
+
+    .ceo-pulse-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .ceo-pulse-grid-full { grid-column: 1 / -1; }
+
+    .ceo-pulse-tile {
+      background: var(--ceo-paper-soft);
+      border: 1px solid var(--ceo-edge);
+      border-radius: 14px;
+      padding: 22px 24px;
+    }
+    .ceo-pulse-tile-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--ceo-sage-deep);
+      margin: 0 0 6px;
+    }
+    .ceo-pulse-tile-value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      letter-spacing: -0.4px;
+      margin: 0 0 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ceo-pulse-tile-sub {
+      font-size: 12.5px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+    .ceo-pulse-tile-disclosure {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: var(--ceo-charcoal-faint);
+      font-style: italic;
+    }
+
+    .ceo-pulse-arrow-up   { color: #6b8576; font-weight: 600; }
+    .ceo-pulse-arrow-down { color: #b85a4a; font-weight: 600; }
+    .ceo-pulse-arrow-flat { color: var(--ceo-charcoal-faint); font-weight: 600; }
+
+    .ceo-pulse-tile-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ceo-pulse-tile-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 14px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: var(--ceo-charcoal);
+      border-bottom: 1px dashed var(--ceo-edge);
+    }
+    .ceo-pulse-tile-list li:last-child { border-bottom: 0; }
+    .ceo-pulse-tile-list .ceo-pulse-list-amt {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .ceo-pulse-list-sub {
+      font-size: 11.5px;
+      color: var(--ceo-charcoal-soft);
+    }
+
+    .ceo-pulse-runway-state-burning  { color: #b85a4a; }
+    .ceo-pulse-runway-state-stable   { color: var(--ceo-charcoal-soft); }
+    .ceo-pulse-runway-state-growing  { color: #6b8576; }
+    .ceo-pulse-runway-state-unknown  { color: var(--ceo-charcoal-faint); }
+
+    .ceo-pulse-nick {
+      background: linear-gradient(180deg, #fdfbf6 0%, #f3ede2 100%);
+      border: 1px solid var(--ceo-champagne-soft);
+    }
+    .ceo-pulse-nick-eyebrow { color: var(--ceo-champagne); }
+    .ceo-pulse-nick-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .ceo-pulse-nick-list li {
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--ceo-champagne-soft);
+    }
+    .ceo-pulse-nick-list li:last-child { border-bottom: 0; }
+    .ceo-pulse-nick-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ceo-charcoal);
+      margin: 0 0 2px;
+    }
+    .ceo-pulse-nick-sev {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-right: 6px;
+      vertical-align: middle;
+      font-weight: 700;
+    }
+    .ceo-pulse-nick-sev-high   { background: #f5d8d2; color: #913020; }
+    .ceo-pulse-nick-sev-medium { background: #efe4cc; color: #836326; }
+    .ceo-pulse-nick-sev-low    { background: var(--ceo-sage-soft); color: var(--ceo-sage-deep); }
+    .ceo-pulse-nick-msg {
+      font-size: 12.5px;
+      color: var(--ceo-charcoal-soft);
+      margin: 0;
+    }
+    .ceo-pulse-nick-empty {
+      padding: 20px 0;
+      text-align: center;
+      color: var(--ceo-charcoal-soft);
+      font-style: italic;
+    }
+
+    .ceo-pulse-disclosure {
+      margin: 16px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--ceo-border-soft, #ede9dc);
+      font-size: 12px;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-style: italic;
+    }
+    .ceo-pulse-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+    }
+    .ceo-pulse-cta {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: var(--ceo-sage-deep);
+      color: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .ceo-pulse-card { padding: 28px 20px 20px; }
+      .ceo-pulse-grid { grid-template-columns: 1fr; }
+    }
+    .ceo-econ-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--ceo-charcoal-soft, #6b6b66);
+      font-size: 14px;
+    }
+    .ceo-econ-cta {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 18px;
+      background: var(--ceo-sage-deep, #4d7a3f);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    @media (max-width: 720px) {
+      .ceo-economics-card { padding: 28px 20px 20px; }
+      .ceo-econ-summary { grid-template-columns: 1fr; gap: 16px; padding: 20px; }
+      .ceo-econ-levers { grid-template-columns: 1fr; gap: 12px; }
+      .ceo-econ-cols   { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Leadership Pulse ---- */
+    .ceo-pulse-card {
+      background: linear-gradient(135deg, var(--ceo-paper) 0%, var(--ceo-sage-tint) 100%);
+      border-radius: var(--ceo-radius-l);
+      box-shadow: var(--ceo-shadow-l);
+      padding: 44px 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ceo-pulse-card::before {
+      content: "";
+      position: absolute;
+      bottom: -100px; left: -100px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, var(--ceo-champagne-soft) 0%, transparent 70%);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .ceo-pulse-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--ceo-clay);
+      margin: 0 0 8px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-title {
+      font-family: var(--ceo-font-serif);
+      font-weight: 400;
+      font-size: 28px;
+      letter-spacing: -0.4px;
+      color: var(--ceo-charcoal);
+      margin: 0 0 28px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      position: relative; z-index: 1;
+    }
+    .ceo-pulse-item { }
+    .ceo-pulse-item-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--ceo-charcoal-faint);
+      margin: 0 0 8px;
+    }
+    .ceo-pulse-item-value {
+      font-family: var(--ceo-font);
+      font-size: 32px;
+      font-weight: 200;
+      letter-spacing: -0.6px;
+      color: var(--ceo-charcoal);
+      line-height: 1.1;
+    }
+    .ceo-pulse-item-context {
+      font-size: 13px;
+      color: var(--ceo-charcoal-soft);
+      margin-top: 6px;
+    }
+
+    /* ---- Loading + utility ---- */
+    .ceo-loading {
+      color: var(--ceo-charcoal-faint);
+      font-style: italic;
+    }
+    .ceo-hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- Sign-in state -->
+  <div id="ceo-state-signin" class="ceo-auth-shell ceo-hidden">
+    <h1>Pioneer Mission Control</h1>
+    <p>Sign in to continue.</p>
+    <button type="button" id="ceo-signin-btn" class="ceo-auth-btn">Continue with Google</button>
+  </div>
+
+  <!-- Access denied -->
+  <div id="ceo-state-denied" class="ceo-auth-shell ceo-hidden">
+    <h1>Restricted</h1>
+    <p>Executive Mission Control is available to Pioneer executives only.</p>
+    <p class="ceo-auth-denied" id="ceo-denied-email"></p>
+  </div>
+
+  <!-- Loading -->
+  <div id="ceo-state-loading" class="ceo-auth-shell ceo-hidden">
+    <p class="ceo-loading">Loading…</p>
+  </div>
+
+  <!-- Main content -->
+  <div id="ceo-state-content" class="ceo-hidden">
+    <main class="ceo-shell">
+
+      <!-- HERO GREETING -->
+      <header class="ceo-hero">
+        <div>
+          <h1 class="ceo-hero-greeting" id="ceo-greeting">Welcome.</h1>
+        </div>
+        <div class="ceo-hero-meta">
+          <div>Executive Mission Control</div>
+          <div class="ceo-hero-meta-date" id="ceo-date-label">—</div>
+        </div>
+      </header>
+
+      <!-- 1. COMPANY HEALTH -->
+      <section class="ceo-health-card" id="ceo-health">
+        <p class="ceo-health-eyebrow">Company Health</p>
+        <div class="ceo-health-grid">
+          <div>
+            <div class="ceo-health-headline">
+              <span class="ceo-health-score" id="ceo-health-score">—</span>
+              <span class="ceo-health-score-suffix">%</span>
+            </div>
+            <p class="ceo-health-label" id="ceo-health-label">Operational Health</p>
+          </div>
+          <div class="ceo-health-pillars" id="ceo-health-pillars">
+            <!-- pillars injected by ceo.js -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 1A2. CUSTOMER ECONOMICS — Revenue Per Labor Hour (Phase Customer Economics v1).
+           Reads customer_economics/current. The Company Improvement
+           Summary at the top is the primary executive takeaway: where
+           the company sits vs target, and the two levers to close the
+           gap (raise revenue OR cut labor). Top/Bottom/Recommendations
+           below for the per-customer view. -->
+      <section class="ceo-economics-card" id="ceo-economics">
+        <div class="ceo-economics-head">
+          <div>
+            <p class="ceo-economics-eyebrow">Customer Economics</p>
+            <h2 class="ceo-economics-title">Revenue Per Labor Hour</h2>
+          </div>
+          <div class="ceo-economics-meta">
+            <span class="ceo-economics-period" id="ceo-economics-period">—</span>
+            <button type="button" class="ceo-economics-refresh" id="ceo-economics-refresh" hidden>↻ Refresh</button>
+          </div>
+        </div>
+        <div class="ceo-economics-body" id="ceo-economics-body">
+          <p class="ceo-loading">Loading Customer Economics…</p>
+        </div>
+        <p class="ceo-economics-disclosure">Not profitability. Overhead allocation not included.</p>
+      </section>
+
+      <!-- Phase 30 — Financial Pulse card.
+           Reads financial_pulse/current. Design objective (Nick's 30-sec
+           read): Are we safe? Growing? Ops healthy? Payroll safe? What
+           needs Nick's attention?
+           - cash_today + cash_runway = safety
+           - trend_30d + trend_90d = growth
+           - operational health lives in the RPLH card above
+           - payroll snapshot = payroll safety
+           - needs_nick = attention router -->
+      <section class="ceo-pulse-card" id="ceo-pulse">
+        <div class="ceo-pulse-head">
+          <div>
+            <p class="ceo-pulse-eyebrow">Financial Pulse</p>
+            <h2 class="ceo-pulse-title">Cash · Trends · Invoices · Payroll</h2>
+          </div>
+          <div class="ceo-pulse-meta">
+            <span class="ceo-pulse-period" id="ceo-pulse-period">—</span>
+            <button type="button" class="ceo-pulse-refresh" id="ceo-pulse-refresh" hidden>↻ Refresh</button>
+          </div>
+        </div>
+        <div class="ceo-pulse-body" id="ceo-pulse-body">
+          <p class="ceo-loading">Loading Financial Pulse…</p>
+        </div>
+        <p class="ceo-pulse-disclosure">QuickBooks ledger balance · not live bank-feed balance. Hours-only, no payroll dollars.</p>
+      </section>
+
+      <!-- 1B. TODAY'S CEO ACTIONS -->
+      <section>
+        <div class="ceo-actions-head">
+          <div>
+            <div class="ceo-actions-eyebrow">Today's CEO Actions</div>
+            <h2 class="ceo-actions-title">One nudge at a time</h2>
+          </div>
+          <div class="ceo-actions-aside" id="ceo-actions-aside">Up to three things, no more</div>
+        </div>
+        <div class="ceo-actions-row" id="ceo-actions">
+          <p class="ceo-loading" style="grid-column:1/-1;">Reading the field…</p>
+        </div>
+      </section>
+
+      <!-- 1C. QUICK LEADERSHIP ACTIONS -->
+      <section>
+        <div class="ceo-actions-head">
+          <div>
+            <div class="ceo-actions-eyebrow">Quick Leadership Actions</div>
+            <h2 class="ceo-actions-title">Lead with a few words</h2>
+          </div>
+          <div class="ceo-actions-aside">Delivered during working hours</div>
+        </div>
+        <div class="ceo-quick-actions">
+          <button type="button" class="ceo-quick-btn" data-quick="recognize">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Recognize Employee</p>
+            <p class="ceo-quick-btn-sub">Celebrate one person specifically.</p>
+          </button>
+          <button type="button" class="ceo-quick-btn" data-quick="team">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Message Team</p>
+            <p class="ceo-quick-btn-sub">A short note to everyone on the field.</p>
+          </button>
+          <button type="button" class="ceo-quick-btn" data-quick="office_manager">
+            <div class="ceo-quick-btn-symbol">+</div>
+            <p class="ceo-quick-btn-label">Message Office Manager</p>
+            <p class="ceo-quick-btn-sub">Quick coaching or appreciation.</p>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2 + 3. DANGERS + OPPORTUNITIES -->
+      <div class="ceo-row-2">
+        <section>
+          <div class="ceo-section-head">
+            <div>
+              <div class="ceo-section-eyebrow">Attention Needed</div>
+              <h2 class="ceo-section-title">Where to lead this week</h2>
+            </div>
+          </div>
+          <div class="ceo-card ceo-card-deep" id="ceo-dangers">
+            <p class="ceo-loading">Reading the room…</p>
+          </div>
+        </section>
+        <section>
+          <div class="ceo-section-head">
+            <div>
+              <div class="ceo-section-eyebrow">Momentum</div>
+              <h2 class="ceo-section-title">What is working</h2>
+            </div>
+          </div>
+          <div class="ceo-card ceo-card-deep" id="ceo-opportunities">
+            <p class="ceo-loading">Counting the wins…</p>
+          </div>
+        </section>
+      </div>
+
+      <!-- 4. DEPARTMENT SCORECARDS -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Department Scorecards</div>
+            <h2 class="ceo-section-title">How each part of Pioneer is doing</h2>
+          </div>
+          <div class="ceo-section-aside" id="ceo-scorecards-aside">Last 30 days</div>
+        </div>
+        <div class="ceo-row-4" id="ceo-scorecards">
+          <!-- 4 scorecards injected by ceo.js -->
+        </div>
+      </section>
+
+      <!-- 4-pre. INSPECTION PROGRAM (Phase Inspection 3 rollup) -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Inspection Program</div>
+            <h2 class="ceo-section-title">Is every customer being seen?</h2>
+          </div>
+          <div class="ceo-section-aside">
+            <a href="/inspections" style="color:var(--ceo-sage-deep);text-decoration:none;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;font-size:11px;">
+              Open Inspections →
+            </a>
+          </div>
+        </div>
+        <div class="ceo-card ceo-card-deep" id="ceo-inspection-rollup">
+          <p class="ceo-loading">Reading the registry…</p>
+        </div>
+      </section>
+
+      <!-- 4A. OPEN CONVERSATIONS (Phase 3B preview) -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Open Conversations</div>
+            <h2 class="ceo-section-title">What the team is talking about</h2>
+          </div>
+          <div class="ceo-section-aside">
+            <a href="/manager" style="color:var(--ceo-sage-deep);text-decoration:none;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;font-size:11px;">
+              Open in Manager →
+            </a>
+          </div>
+        </div>
+        <div class="ceo-card ceo-card-deep" id="ceo-open-convos">
+          <p class="ceo-loading">Listening in…</p>
+        </div>
+      </section>
+
+      <!-- 4B. RECENT ACTIVITY (Phase 1D) -->
+      <section>
+        <div class="ceo-section-head">
+          <div>
+            <div class="ceo-section-eyebrow">Recent Activity</div>
+            <h2 class="ceo-section-title">What you've done lately</h2>
+          </div>
+          <div class="ceo-section-aside">Last 10 events</div>
+        </div>
+        <div class="ceo-card ceo-card-deep" id="ceo-recent-activity">
+          <p class="ceo-loading">Pulling history…</p>
+        </div>
+      </section>
+
+      <!-- 5. LEADERSHIP PULSE -->
+      <section class="ceo-pulse-card" id="ceo-pulse">
+        <p class="ceo-pulse-eyebrow">Leadership Pulse</p>
+        <h2 class="ceo-pulse-title">How you've been leading</h2>
+        <div class="ceo-pulse-grid" id="ceo-pulse-grid">
+          <!-- pulse items injected by ceo.js -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Compose modal (Phase 1C) — single shared modal swapped by recipient type -->
+  <div id="ceo-compose-overlay" class="ceo-modal-overlay ceo-hidden">
+    <div class="ceo-modal" role="dialog" aria-modal="true" aria-labelledby="ceo-compose-title">
+      <p class="ceo-modal-eyebrow" id="ceo-compose-eyebrow">Leadership Message</p>
+      <h2 class="ceo-modal-title" id="ceo-compose-title">Send a note</h2>
+      <p class="ceo-modal-sub" id="ceo-compose-sub"></p>
+
+      <div class="ceo-modal-field" id="ceo-compose-recipient-field" hidden>
+        <label class="ceo-modal-label" for="ceo-compose-recipient">Employee</label>
+        <select id="ceo-compose-recipient" class="ceo-modal-select">
+          <option value="">Select a teammate…</option>
+        </select>
+      </div>
+
+      <div class="ceo-modal-field">
+        <label class="ceo-modal-label" for="ceo-compose-type">Tone</label>
+        <select id="ceo-compose-type" class="ceo-modal-select">
+          <option value="recognition">Recognition</option>
+          <option value="coaching">Coaching / Support</option>
+          <option value="announcement">Announcement</option>
+        </select>
+      </div>
+
+      <div class="ceo-modal-field">
+        <label class="ceo-modal-label" for="ceo-compose-body">Message</label>
+        <textarea id="ceo-compose-body" class="ceo-modal-textarea"
+                  maxlength="2000"
+                  placeholder="Keep it short, specific, and human."></textarea>
+        <p class="ceo-modal-helper" id="ceo-compose-helper">
+          Delivered next time the recipient signs in during working hours.
+        </p>
+      </div>
+
+      <p class="ceo-modal-status" id="ceo-compose-status" data-status></p>
+
+      <div class="ceo-modal-btns">
+        <button type="button" class="ceo-action-btn ceo-action-btn-ghost" id="ceo-compose-cancel">Cancel</button>
+        <button type="button" class="ceo-action-btn" id="ceo-compose-send">Queue Message</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK + config -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="comm-threads.js?v=20260610-phase3b2"></script>
+  <script src="ceo.js?v=20260618-financial-pulse"></script>
+</body>
+</html>

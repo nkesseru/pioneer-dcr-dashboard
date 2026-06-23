@@ -24,6 +24,7 @@
     { key: "customer-info",  label: "Customer Info Hub",    href: "/tech.html",            roles: ["admin", "cleaning_tech"] },
     { key: "supply-station", label: "Supply Station Order", href: "/supply-station.html",  roles: ["admin", "cleaning_tech"] },
     { key: "team-hub",       label: "Pioneer Team Hub",     href: "/team-hub.html",        roles: ["admin", "cleaning_tech"] },
+    { key: "office-issues",  label: "Message the Office",   href: "/office-issues.html",   roles: ["admin", "cleaning_tech"] },
     { key: "training",       label: "Safety Training",      href: "/training.html",        roles: ["admin", "cleaning_tech"] },
     { key: "inspections",    label: "Inspections",          href: "/inspections.html",     roles: ["admin"] },
     { key: "admin",          label: "Admin",                href: "/admin",                roles: ["admin"] }
@@ -53,6 +54,16 @@
 
   // Pioneer Team Hub unread-announcements badge — KEEP IN SYNC across
   // app.js / tech.js / admin.js / supply-station.js / team-hub.js.
+  //
+  // V20260614c — Audience filter inlined. Previously the badge trusted
+  // the Firestore rule to filter audience-mismatched announcements, but
+  // admins (isPioneerAdmin() rule-bypass) read EVERY active doc — so
+  // admin badges over-counted by the number of audienceType="selected"
+  // announcements that don't include them. The team-hub UI applies
+  // announcementTargetsMe locally for exactly this reason; we mirror
+  // it here so badge count === number of cards the hub would render.
+  // Pass-through helper because each KEEP-IN-SYNC copy lives in its
+  // own IIFE — no shared module yet.
   async function paintTeamHubUnreadBadge(staff) {
     if (!staff || !staff.uid) return;
     if (!window.firebase || typeof firebase.firestore !== "function") return;
@@ -75,6 +86,19 @@
         if (typeof ts.seconds === "number") return ts.seconds * 1000;
         return null;
       }
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMe(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;  // unknown — fail open
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
       const now = Date.now();
       let unread = 0;
       annsSnap.docs.forEach(function (d) {
@@ -82,6 +106,7 @@
         if (a.archived_at) return;
         const s = toMs(a.starts_at);   if (s != null && s > now) return;
         const e = toMs(a.expires_at);  if (e != null && e <= now) return;
+        if (!targetsMe(a)) return;                                     // V20260614c
         if (!readIds.has(d.id)) unread += 1;
       });
       const pills = document.querySelectorAll(".role-nav-link");
@@ -96,6 +121,7 @@
         const dot = document.createElement("span");
         dot.className = "role-nav-badge";
         dot.textContent = unread > 9 ? "9+" : String(unread);
+        dot.setAttribute("aria-label", unread + " unread announcement" + (unread === 1 ? "" : "s"));
         target.appendChild(dot);
       }
     } catch (err) {
@@ -320,16 +346,41 @@
     const prLabel  = PRIORITY_LABELS[priority] || priority;
     const pills    = [];
     pills.push('<span class="ann-pill ' + prCls + '">' + escapeHtml(prLabel) + '</span>');
-    if (a.mandatory) pills.push('<span class="ann-pill is-mandatory">Mandatory</span>');
-    if (!isRead)     pills.push('<span class="ann-pill is-unread">Unread</span>');
+    if (a.mandatory)              pills.push('<span class="ann-pill is-mandatory">Mandatory</span>');
+    if (a.requireAcknowledgement) pills.push('<span class="ann-pill is-ackneeded">Acknowledge</span>');
+    if (a.requireReply)           pills.push('<span class="ann-pill is-replyneeded">Reply required</span>');
+    if (!isRead)                  pills.push('<span class="ann-pill is-unread">Unread</span>');
 
     // Compact (past) cards never render the big image preview — keeps
     // the collapsed section short even on image-heavy histories.
     const previewHtml    = compact ? "" : attachmentPreviewHtml(a);
     const attachmentHtml = attachmentLinkHtml(a);
 
+    // V2 — acknowledge + reply controls. Hidden on compact (read) view.
+    const stateBtns = compact ? "" : (
+      '<div class="ann-card-state-btns">' +
+        (a.requireAcknowledgement
+          ? '<button class="ann-ack-btn" type="button" data-action="ack">Acknowledge</button>'
+          : '') +
+        '<button class="ann-reply-btn" type="button" data-action="toggle-reply">Reply</button>' +
+      '</div>'
+    );
+    // Comments thread + reply textarea. Hidden by default; the toggle
+    // button opens it. For requireReply we'd ideally auto-open, but
+    // even then we want the user-initiated action to enter the textarea.
+    const threadHtml = compact ? "" : (
+      '<div class="ann-thread" data-thread-for="' + escapeHtml(a.id) + '" hidden>' +
+        '<div class="ann-thread-comments" data-comments-for="' + escapeHtml(a.id) + '">Loading…</div>' +
+        '<div class="ann-thread-replyform">' +
+          '<textarea class="ann-thread-replybox" rows="2" maxlength="800" placeholder="Type your reply…"></textarea>' +
+          '<button type="button" class="ann-thread-replybtn" data-action="submit-reply">Send reply</button>' +
+        '</div>' +
+      '</div>'
+    );
+
     return (
       '<article class="ann-card' + (compact ? ' is-compact' : '') +
+            (a.requireReply ? ' ann-replyrequired' : '') +
             '" data-id="' + escapeHtml(a.id) + '">' +
         '<div class="ann-card-head">' +
           '<span class="ann-card-title">' + escapeHtml(a.title || "(untitled)") + '</span>' +
@@ -345,6 +396,8 @@
                 : '') +
             '</div>'
           : '') +
+        stateBtns +
+        threadHtml +
       '</article>'
     );
   }
@@ -355,17 +408,87 @@
   let mandatoryQueue      = [];           // unread mandatory announcements yet to acknowledge
   let mandatoryCurrent    = null;         // the one currently displayed in the modal
 
+  // ---- Tech directory + avatar helpers --------------------------------
+  // Lazily-loaded /cleaning_techs cache used to put a face on announcement
+  // comments. Loaded once after auth; refreshed on demand. Pure read.
+  let thTechDirByEmail = new Map();
+  let thTechDirBySlug  = new Map();
+  async function thLoadTechDir() {
+    if (thTechDirByEmail.size > 0) return;
+    try {
+      const snap = await firebase.firestore().collection("cleaning_techs").get();
+      snap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        const slug = data.tech_slug || d.id;
+        const email = String(data.email || "").toLowerCase().trim();
+        thTechDirByEmail.set(email, Object.assign({ id: d.id, slug: slug }, data));
+        thTechDirBySlug.set(slug, Object.assign({ id: d.id, slug: slug }, data));
+      });
+    } catch (err) {
+      console.warn("[team-hub] tech-dir read failed", err);
+    }
+  }
+  function thGetAvatarUrl(t) {
+    if (!t) return "";
+    return String(t.photoUrl || t.photo_url || t.avatarUrl || t.avatar_url || t.profilePhotoUrl || "").trim();
+  }
+  function thSlugToTitle(slug) {
+    if (!slug) return "";
+    return String(slug).split("-").map(function (p) {
+      return p ? p.charAt(0).toUpperCase() + p.slice(1) : p;
+    }).join(" ");
+  }
+  function thResolveCommenter(c) {
+    const email = String((c.createdByEmail || "")).toLowerCase().trim();
+    const isAdminish = ["admin", "manager", "office_manager"].indexOf(String(c.createdByRole || "")) >= 0;
+    let t = null;
+    if (email && thTechDirByEmail.has(email)) t = thTechDirByEmail.get(email);
+    const fallbackName = c.createdByName || c.createdByEmail || (isAdminish ? "Admin" : "(team)");
+    const name = (t && (t.display_name || t.name)) || fallbackName;
+    const avatarUrl = thGetAvatarUrl(t);
+    const initial = (name.charAt(0) || "P").toUpperCase();
+    return { name: name, avatarUrl: avatarUrl, initial: initial, role: c.createdByRole || "", isAdmin: isAdminish };
+  }
+  function thRenderAvatar(resolved) {
+    if (resolved.avatarUrl) {
+      return '<span class="ann-thread-avatar"><img src="' + escapeHtml(resolved.avatarUrl) +
+             '" alt="" loading="lazy" /></span>';
+    }
+    return '<span class="ann-thread-avatar ann-thread-avatar-fallback">' + escapeHtml(resolved.initial) + '</span>';
+  }
+
+  // V2 audience-match check. Defaults to "all" for pre-V2 docs so legacy
+  // all-team announcements stay visible to every signed-in user.
+  function announcementTargetsMe(a, staff) {
+    if (!a) return false;
+    const type = String(a.audienceType || "all");
+    if (type === "all") return true;
+    if (type !== "selected") return true; // unknown type — fail open
+    const myUid   = staff && staff.uid;
+    const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+    const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+    if (Array.isArray(a.recipientUids) && myUid && a.recipientUids.indexOf(myUid) >= 0) return true;
+    if (Array.isArray(a.recipientEmails) && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+    if (Array.isArray(a.recipientTechSlugs) && mySlug && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+    return false;
+  }
+
   async function fetchActiveAnnouncements() {
     const db = firebase.firestore();
-    // Pull active=true server-side; further filter (starts_at, expires_at,
-    // archived_at) in memory. Keeps the index requirement to a single
-    // field — no composite index needed.
+    // The Firestore rule rejects a tech reading announcements that don't
+    // target them, so the `where("active","==",true)` query returns only
+    // docs we're entitled to. We re-apply audience match locally because
+    // pre-V2 docs (no audienceType field) are treated as "all" by both
+    // the rule and this filter — keeps the semantics in sync.
+    const staff = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff)
+      ? window.STAFF_AUTH.getCachedStaff() : null;
     const snap = await db.collection("announcements")
       .where("active", "==", true)
       .get();
     return snap.docs
       .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
       .filter(isAnnouncementActiveNow)
+      .filter(function (a) { return announcementTargetsMe(a, staff); })
       .sort(function (a, b) {
         // Mandatory urgent first, then by created_at desc.
         const am = a.mandatory ? 0 : 1;
@@ -393,17 +516,44 @@
     return ids;
   }
 
-  async function markAnnouncementRead(announcementId, uid, email) {
+  async function markAnnouncementRead(announcementId, uid, email, version) {
     const db    = firebase.firestore();
     const docId = announcementId + "_" + uid;
     const ref   = db.collection("announcement_reads").doc(docId);
+    const v     = Number(version) || 1;
+    // V6 — also mirror to localStorage so a Firestore write failure
+    // (rules glitch, offline) doesn't cause the announcement to
+    // re-display on the next page load. Mirrors the cache mandatory-modal.js
+    // writes; both use the key `pioneer.annRead.<uid>` JSON map.
+    try {
+      const key = "pioneer.annRead." + uid;
+      const raw = localStorage.getItem(key);
+      const map = raw ? (JSON.parse(raw) || {}) : {};
+      map[announcementId] = { v: v, t: new Date().toISOString() };
+      localStorage.setItem(key, JSON.stringify(map));
+    } catch (_e) { /* private mode / quota — soft-fail */ }
     await ref.set({
       announcement_id: announcementId,
       uid:             uid,
       email:           email || "",
+      version:         v,
       read_at:         firebase.firestore.FieldValue.serverTimestamp()
     });
     readIds.add(announcementId);
+    try {
+      console.info("[PioneerOps Announcement] team-hub markRead ok", {
+        announcementId: announcementId, version: v, uid: uid
+      });
+    } catch (_e) {}
+    // V20260614c — repaint the nav badge so the user sees the count
+    // drop immediately. Without this the badge in role-nav stayed
+    // at its page-load value until the next full navigation, which
+    // looked like "I marked it read but the red dot is still there".
+    try {
+      const cached = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff)
+        ? window.STAFF_AUTH.getCachedStaff() : null;
+      paintTeamHubUnreadBadge(cached || { uid: uid, email: email });
+    } catch (_e) { /* non-fatal */ }
   }
 
   // Cap on the read-but-active "past" section so the collapsed list
@@ -526,20 +676,149 @@
     const list = $("team-hub-announcement-list");
     if (!list) return;
     list.addEventListener("click", async function (ev) {
-      const btn = ev.target.closest('[data-action="mark-read"]');
-      if (!btn) return;
-      const card = btn.closest(".ann-card");
+      const actionEl = ev.target.closest("[data-action]");
+      if (!actionEl) return;
+      const card = actionEl.closest(".ann-card");
       if (!card) return;
       const annId = card.dataset.id;
-      btn.disabled = true;
-      try {
-        await markAnnouncementRead(annId, staff.uid, staff.email);
-        renderAnnouncements();
-      } catch (err) {
-        console.error("inline mark-as-read failed", err);
-        btn.disabled = false;
+      const action = actionEl.getAttribute("data-action");
+      if (action === "mark-read") {
+        actionEl.disabled = true;
+        try {
+          await markAnnouncementRead(annId, staff.uid, staff.email);
+          renderAnnouncements();
+        } catch (err) {
+          console.error("inline mark-as-read failed", err);
+          actionEl.disabled = false;
+        }
+        return;
+      }
+      if (action === "ack") {
+        actionEl.disabled = true;
+        actionEl.textContent = "Saving…";
+        try {
+          await writeRecipientStatus(annId, staff, "acknowledged");
+          actionEl.textContent = "Acknowledged ✓";
+        } catch (err) {
+          console.error("acknowledge failed", err);
+          actionEl.disabled = false;
+          actionEl.textContent = "Acknowledge";
+        }
+        return;
+      }
+      if (action === "toggle-reply") {
+        const thread = card.querySelector(".ann-thread");
+        if (!thread) return;
+        if (thread.hidden) {
+          thread.hidden = false;
+          // Lazy-load comments + write a "viewed" status the first time.
+          // Also warm the tech directory so avatars resolve.
+          thLoadTechDir();
+          mountAnnouncementComments(annId, card, staff);
+          writeRecipientStatus(annId, staff, "viewed").catch(function () {});
+        } else {
+          thread.hidden = true;
+        }
+        return;
+      }
+      if (action === "submit-reply") {
+        const thread = card.querySelector(".ann-thread");
+        const ta  = thread && thread.querySelector(".ann-thread-replybox");
+        const body = String((ta && ta.value) || "").trim();
+        if (!body) { if (ta) ta.focus(); return; }
+        actionEl.disabled = true;
+        actionEl.textContent = "Sending…";
+        try {
+          await firebase.firestore().collection("announcements").doc(annId)
+            .collection("comments").add({
+              body:           body,
+              createdAt:      firebase.firestore.FieldValue.serverTimestamp(),
+              createdByUid:   staff.uid,
+              createdByEmail: String(staff.email || "").toLowerCase(),
+              createdByName:  staff.display_name || (staff.tech && staff.tech.display_name) || staff.email || "(tech)",
+              createdByRole:  staff.role || "cleaning_tech",
+              visibility:     "announcement_recipients",
+              source:         "team_hub"
+            });
+          if (ta) ta.value = "";
+          await writeRecipientStatus(annId, staff, "replied");
+          // Re-render so the require-reply card sheds its "open" state.
+          renderAnnouncements();
+        } catch (err) {
+          console.error("submit reply failed", err);
+          alert("Couldn't send reply: " + (err && err.message));
+          actionEl.disabled = false;
+          actionEl.textContent = "Send reply";
+        }
       }
     });
+  }
+
+  async function writeRecipientStatus(annId, staff, newStatus) {
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const update = {
+      uid:         staff.uid,
+      techSlug:    String((staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || ""),
+      displayName: String((staff.display_name || (staff.tech && staff.tech.display_name) || staff.email) || ""),
+      status:      newStatus,
+      deliveredAt: sts
+    };
+    if (newStatus === "viewed")       update.viewedAt       = sts;
+    if (newStatus === "acknowledged") update.acknowledgedAt = sts;
+    if (newStatus === "replied")      update.repliedAt      = sts;
+    await firebase.firestore().collection("announcements").doc(annId)
+      .collection("recipient_status").doc(staff.uid)
+      .set(update, { merge: true });
+  }
+
+  // Subscribe a card's comments thread to live updates. Idempotent —
+  // a re-mount unsubs the prior listener for the same announcement.
+  const _annCommentUnsubs = Object.create(null);
+  function mountAnnouncementComments(annId, card, staff) {
+    if (_annCommentUnsubs[annId]) return;
+    const root = card.querySelector('.ann-thread-comments[data-comments-for="' + annId + '"]');
+    if (!root) return;
+    _annCommentUnsubs[annId] = firebase.firestore()
+      .collection("announcements").doc(annId)
+      .collection("comments")
+      .orderBy("createdAt", "asc")
+      .onSnapshot(function (snap) {
+        renderTeamHubAnnouncementComments(root, snap.docs.map(function (d) {
+          return Object.assign({ _id: d.id }, d.data());
+        }));
+      }, function (err) {
+        root.innerHTML = '<div class="ann-thread-error">Couldn\'t load replies: ' + escapeHtml(err.message || "") + '</div>';
+      });
+  }
+  function renderTeamHubAnnouncementComments(root, comments) {
+    if (comments.length === 0) {
+      root.innerHTML = '<div class="ann-thread-empty">No replies yet.</div>';
+      return;
+    }
+    root.innerHTML = comments.map(function (c) {
+      const resolved = thResolveCommenter(c);
+      const when = c.createdAt && c.createdAt.toDate
+        ? c.createdAt.toDate().toLocaleString("en-US", {
+            month: "short", day: "numeric",
+            hour: "numeric", minute: "2-digit", hour12: true
+          })
+        : "";
+      const roleChip = resolved.isAdmin
+        ? '<span class="ann-thread-role">' + escapeHtml(resolved.role || "admin") + '</span>'
+        : '';
+      const avatarHtml = thRenderAvatar(resolved);
+      return '<div class="ann-thread-comment ' + (resolved.isAdmin ? "is-admin" : "") + '">' +
+               avatarHtml +
+               '<div class="ann-thread-comment-text">' +
+                 '<div class="ann-thread-comment-head">' +
+                   '<strong>' + escapeHtml(resolved.name) + '</strong> ' +
+                   roleChip +
+                   '<span class="ann-thread-comment-when">' + escapeHtml(when) + '</span>' +
+                 '</div>' +
+                 '<p class="ann-thread-comment-body">' + escapeHtml(c.body || "").replace(/\n/g, "<br>") + '</p>' +
+               '</div>' +
+             '</div>';
+    }).join("");
   }
 
   // Past announcements toggle — flips the list visibility + the button
@@ -601,6 +880,252 @@
     try { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(iso)); }
     catch (e) { return ""; }
   }
+
+  /* ---------- Upcoming Team Schedule (Deputy-powered snapshot) ----------
+     Reads `published_team_schedule/current` AND `team_schedule/current`
+     (PDF backup, now folded into this same card). Renders a compact
+     teaser of the next few shifts grouped by day; the full filterable
+     view lives at /team-schedule.html (the "View Full Schedule" button
+     below opens it).
+
+     Deferred-publish model: this is NOT a live view of Deputy. Admins
+     publish via Admin → Schedule when ready.
+
+     Phase 2 TODO (mirror admin.js + firestore.rules):
+       • monthly calendar view + printable export
+       • personal "my schedule" filtering for cleaning techs
+       • shift swaps / PTO overlays / open-shift coverage
+       • live vs deferred publish modes (currently always deferred)
+       • "Open Deputy" deep-link per shift */
+  function thEscapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function thFormatDateLabel(yyyymmdd) {
+    if (!yyyymmdd) return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "short", day: "numeric"
+      }).format(new Date(yyyymmdd + "T12:00:00Z"));
+    } catch (_e) {
+      return yyyymmdd;
+    }
+  }
+
+  function thFormatPublishedAt(ts) {
+    if (!ts) return "Unknown";
+    let ms = null;
+    if (typeof ts.toMillis === "function") ms = ts.toMillis();
+    else if (typeof ts.seconds === "number") ms = ts.seconds * 1000;
+    else if (typeof ts === "number") ms = ts;
+    else if (typeof ts === "string") { const t = Date.parse(ts); ms = isNaN(t) ? null : t; }
+    if (ms == null) return "Unknown";
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "medium", timeStyle: "short"
+      }).format(new Date(ms));
+    } catch (_e) {
+      return new Date(ms).toLocaleString();
+    }
+  }
+
+  function renderPublishedSnapshotDays(shifts) {
+    const container = $("th-published-days");
+    if (!container) return;
+    if (!Array.isArray(shifts) || shifts.length === 0) {
+      container.innerHTML = "";
+      container.hidden = true;
+      return;
+    }
+    // Group by date in insertion order — admin.js already sorted by
+    // (date asc, startMs asc, techName asc).
+    const byDay = new Map();
+    shifts.forEach(function (s) {
+      const key = s.date || "";
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(s);
+    });
+    const blocks = [];
+    byDay.forEach(function (rows, date) {
+      const dayLabel = thFormatDateLabel(date);
+      const rowsHtml = rows.map(function (s) {
+        const techName    = thEscapeHtml(s.techName || "");
+        const customer    = thEscapeHtml(thResolveDisplayName(s) || "Unassigned");
+        const timeRange   = s.endTime
+          ? (thEscapeHtml(s.startTime) + "–" + thEscapeHtml(s.endTime))
+          :  thEscapeHtml(s.startTime);
+        return (
+          '<li class="th-published-row">' +
+            '<span class="th-published-tech">'     + techName  + '</span>' +
+            '<span class="th-published-sep" aria-hidden="true">·</span>' +
+            '<span class="th-published-customer">' + customer  + '</span>' +
+            '<span class="th-published-sep th-published-sep--time" aria-hidden="true">·</span>' +
+            '<span class="th-published-time">'     + timeRange + '</span>' +
+          '</li>'
+        );
+      }).join("");
+      blocks.push(
+        '<section class="th-published-day">' +
+          '<h3 class="th-published-day-head">' + thEscapeHtml(dayLabel) + '</h3>' +
+          '<ul class="th-published-rows">' + rowsHtml + '</ul>' +
+        '</section>'
+      );
+    });
+    container.innerHTML = blocks.join("");
+    container.hidden = false;
+  }
+
+  // Compact teaser — render at most N upcoming shifts so Team Hub
+  // stays scannable. The full schedule view (filters + week toggle)
+  // lives on /team-schedule.html.
+  const TEAM_HUB_TEASER_LIMIT = 5;
+
+  // Customer-by-slug directory, used as a render-time fallback when the
+  // snapshot was published before an admin edited /customers/{slug}.
+  // Lets the helper override the snapshot's stale customerName without
+  // requiring an admin to re-sync. Empty Map = pure snapshot rendering.
+  let thCustomerDirectory = new Map();
+  async function thLoadCustomerDirectory() {
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore().collection("customers").get();
+      thCustomerDirectory = new Map();
+      snap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.active === false) return;
+        const slug = data.customer_slug || d.id;
+        if (!slug) return;
+        thCustomerDirectory.set(String(slug).trim(), Object.assign({ id: d.id }, data));
+      });
+    } catch (err) {
+      console.warn("[team-hub] customer directory read failed", err);
+      thCustomerDirectory = new Map();
+    }
+  }
+  function thResolveDisplayName(s) {
+    if (!s) return "";
+    const slug = String(s.customerSlug || s.customer_slug || "").trim();
+    if (slug && thCustomerDirectory.has(slug) && window.PioneerCustomerDisplay) {
+      const helperName = window.PioneerCustomerDisplay.getCustomerDisplayName(thCustomerDirectory.get(slug));
+      if (helperName) return helperName;
+    }
+    return String(s.customerName || s.customer_name || "").trim();
+  }
+
+  async function bootPublishedScheduleForStaff(staff) {
+    const section = $("team-hub-published-schedule-section");
+    if (!section || !staff || !staff.uid) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    let pubSnap, pdfSnap;
+    try {
+      // Pull all three in parallel — pubSnap is the snapshot, pdfSnap is
+      // the legacy PDF backup, and the customer directory powers the
+      // render-time display-name fallback.
+      const results = await Promise.all([
+        firebase.firestore().collection("published_team_schedule").doc("current").get(),
+        firebase.firestore().collection("team_schedule").doc("current").get(),
+        thLoadCustomerDirectory()
+      ]);
+      pubSnap = results[0];
+      pdfSnap = results[1];
+    } catch (err) {
+      console.warn("[team-hub] schedule read failed", err);
+      return; // stay hidden — never show error on the morale surface
+    }
+
+    const data = (pubSnap && pubSnap.exists && pubSnap.data()) || null;
+    const pdf  = (pdfSnap && pdfSnap.exists && pdfSnap.data()) || null;
+    const hasPdf = !!(pdf && pdf.downloadUrl && pdf.active !== false);
+
+    const metaEl     = $("th-published-meta");
+    const rangeEl    = $("th-published-range");
+    const whenEl     = $("th-published-when");
+    const notesEl    = $("th-published-notes");
+    const daysEl     = $("th-published-days");
+    const emptyEl    = $("th-published-empty");
+    const adminEmpty = $("th-published-admin-empty");
+    const subEl      = $("th-published-sub");
+    const actionsEl  = $("th-published-actions");
+    const pdfViewEl  = $("th-published-pdf-link");
+    const pdfDlEl    = $("th-published-pdf-download");
+    const overflowEl = $("th-published-overflow");
+    const overflowN  = $("th-published-overflow-count");
+
+    // No snapshot AND no PDF — admins see a hint, techs see nothing.
+    if (!data || data.active === false || !Array.isArray(data.shifts)) {
+      if (staff.role === "admin" && adminEmpty) {
+        adminEmpty.hidden = false;
+        section.hidden    = false;
+      }
+      return;
+    }
+
+    if (rangeEl) {
+      rangeEl.textContent =
+        (data.startDate || "—") + " → " + (data.endDate || "—") +
+        (data.viewRangeDays ? "  (" + data.viewRangeDays + " days)" : "");
+    }
+    if (whenEl)  whenEl.textContent  = "Published " + thFormatPublishedAt(data.publishedAt);
+    if (metaEl)  metaEl.hidden = false;
+
+    if (notesEl) {
+      if (data.notes) { notesEl.textContent = data.notes; notesEl.hidden = false; }
+      else            { notesEl.hidden = true; notesEl.textContent = ""; }
+    }
+    if (subEl) {
+      subEl.textContent = data.shiftCount
+        ? "Next " + Math.min(data.shiftCount, TEAM_HUB_TEASER_LIMIT) +
+          " of " + data.shiftCount + " upcoming shifts. Open the full view below for filters."
+        : "The published team schedule. Updated by an admin when ready.";
+    }
+
+    const allShifts = data.shifts || [];
+    if (allShifts.length === 0) {
+      if (daysEl)  { daysEl.innerHTML = ""; daysEl.hidden = true; }
+      if (emptyEl) emptyEl.hidden = false;
+      if (overflowEl) overflowEl.hidden = true;
+    } else {
+      const teaser = allShifts.slice(0, TEAM_HUB_TEASER_LIMIT);
+      renderPublishedSnapshotDays(teaser);
+      if (emptyEl) emptyEl.hidden = true;
+      const overflow = allShifts.length - teaser.length;
+      if (overflowEl) {
+        if (overflow > 0) {
+          if (overflowN) overflowN.textContent = String(overflow);
+          overflowEl.hidden = false;
+        } else {
+          overflowEl.hidden = true;
+        }
+      }
+    }
+
+    // Actions row — "View Full Schedule" is always shown when a
+    // snapshot exists. PDF buttons appear only when a PDF backup is
+    // uploaded; this is how the separate Printable Schedule card got
+    // folded into this one.
+    if (pdfViewEl && pdfDlEl) {
+      if (hasPdf) {
+        pdfViewEl.href = pdf.downloadUrl;
+        pdfDlEl.href   = pdf.downloadUrl;
+        pdfDlEl.setAttribute("download", pdf.fileName || "team-schedule.pdf");
+        pdfViewEl.hidden = false;
+        pdfDlEl.hidden   = false;
+      } else {
+        pdfViewEl.hidden = true;
+        pdfDlEl.hidden   = true;
+      }
+    }
+    if (actionsEl) actionsEl.hidden = false;
+
+    if (adminEmpty) adminEmpty.hidden = true;
+    section.hidden = false;
+  }
+
   async function bootQualityForStaff(staff) {
     const section = $("team-hub-quality-section");
     if (!section || !staff || !staff.uid) return;
@@ -728,6 +1253,2162 @@
     }
   }
 
+  /* ---------- Open Shifts badge ----------
+     Count open_shift_requests with status="open" and surface the
+     number on the Pick Up Open Shift card. Soft-fails silently;
+     the card itself still works as a static link. */
+  async function bootOpenShiftsBadge() {
+    const badge = $("th-open-shifts-badge");
+    if (!badge) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+    try {
+      const snap = await firebase.firestore()
+        .collection("open_shift_requests")
+        .where("status", "==", "open")
+        .limit(20).get();
+      const n = snap.size;
+      if (n > 0) {
+        badge.textContent = n + " open · pick one up";
+        badge.hidden = false;
+      } else {
+        badge.hidden = true;
+      }
+    } catch (err) {
+      console.warn("[team-hub] open shifts badge read failed", err);
+    }
+  }
+
+  /* ---------- Rockstar Team Players this month ----------
+     Reads rockstar_bonuses where monthKey = current Pacific YYYY-MM.
+     Groups by techId; renders names + counts only (no dollar amounts
+     in tech-facing view). Hidden when zero entries this month. */
+  async function bootRockstarRecognition() {
+    const section = $("team-hub-rockstar-section");
+    const listEl  = $("th-rockstar-list");
+    if (!section || !listEl) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const monthKey = (function () {
+      try {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit"
+        }).format(new Date());
+        return parts.slice(0, 7); // YYYY-MM
+      } catch (_e) {
+        return new Date().toISOString().slice(0, 7);
+      }
+    })();
+
+    try {
+      const snap = await firebase.firestore()
+        .collection("rockstar_bonuses")
+        .where("monthKey", "==", monthKey)
+        .limit(200).get();
+      if (snap.empty) { section.hidden = true; return; }
+
+      // Group by techId (fallback to techName when slug missing).
+      const byTech = new Map();
+      snap.docs.forEach(function (d) {
+        const x = d.data() || {};
+        const key  = x.techId || x.techName || "tech";
+        const name = x.techName || x.techId || "Tech";
+        if (!byTech.has(key)) byTech.set(key, { name: name, count: 0 });
+        byTech.get(key).count += 1;
+      });
+      const ranked = Array.from(byTech.values())
+        .sort(function (a, b) { return b.count - a.count; });
+
+      listEl.innerHTML = ranked.map(function (r) {
+        return (
+          '<li class="team-hub-rockstar-row">' +
+            '<span class="team-hub-rockstar-name">' +
+              String(r.name).replace(/[<>&]/g, function (c) {
+                return c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;";
+              }) +
+            '</span>' +
+            '<span class="team-hub-rockstar-count">' +
+              r.count + (r.count === 1 ? " covered shift" : " covered shifts") +
+            '</span>' +
+          '</li>'
+        );
+      }).join("");
+      section.hidden = false;
+    } catch (err) {
+      // Index error on first run is fine; the section just stays hidden.
+      console.warn("[team-hub] rockstar recognition read failed", err);
+    }
+  }
+
+  /* ---------- Phase 1C — Leadership Messages ----------
+     One-way leadership notes from executives (April/Nick). Two queries
+     in parallel: team broadcasts + this tech's personal messages. Show
+     queued messages whose deliverAfter has passed; Acknowledge or
+     Dismiss flips status to delivered/dismissed so they don't return.
+     NOT chat, NOT inbox — there are no replies. */
+  async function bootLeadershipMessagesForStaff(staff) {
+    if (!staff) return;
+    const section = $("team-hub-leadership-section");
+    const list    = $("team-hub-leadership-list");
+    if (!section || !list) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const myEmail = String((staff.email || "")).toLowerCase().trim();
+    const db      = firebase.firestore();
+    const nowMs   = Date.now();
+
+    try {
+      const queries = [
+        db.collection("leadership_messages")
+          .where("recipientType", "==", "team")
+          .where("status", "==", "queued")
+          .limit(20).get()
+      ];
+      if (myEmail) {
+        queries.push(
+          db.collection("leadership_messages")
+            .where("recipientType", "==", "employee")
+            .where("recipientId",   "==", myEmail)
+            .where("status",        "==", "queued")
+            .limit(20).get()
+        );
+      }
+      const snaps = await Promise.all(queries);
+      const docsAll = [];
+      snaps.forEach(function (snap) {
+        snap.docs.forEach(function (d) {
+          docsAll.push(Object.assign({ _id: d.id }, d.data() || {}));
+        });
+      });
+
+      // Filter by deliverAfter (working-hours protection) + sort newest first.
+      const ready = docsAll.filter(function (m) {
+        const ms = leadershipTsToMs(m.deliverAfter);
+        return !ms || ms <= nowMs;
+      }).sort(function (a, b) {
+        return leadershipTsToMs(b.createdAt) - leadershipTsToMs(a.createdAt);
+      });
+
+      if (!ready.length) { section.hidden = true; return; }
+
+      list.innerHTML = ready.map(renderLeadershipCardHtml).join("");
+      section.hidden = false;
+      wireLeadershipButtons(staff);
+    } catch (err) {
+      console.warn("[team-hub] leadership messages read failed", err);
+    }
+  }
+
+  function leadershipTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number")    return ts.seconds * 1000;
+    if (typeof ts === "string")            { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    return 0;
+  }
+
+  function leadershipEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function renderLeadershipCardHtml(m) {
+    const typeLabel = m.messageType === "recognition" ? "Recognition"
+                    : m.messageType === "coaching"    ? "A note for you"
+                    : "From Leadership";
+    const fromWho = m.createdBy ? "From " + m.createdBy.split("@")[0] : "From Leadership";
+    return (
+      '<article class="team-hub-leadership-card" data-msg-id="' + leadershipEscape(m._id) + '">' +
+        '<header class="team-hub-leadership-head">' +
+          '<span class="team-hub-leadership-type">' + leadershipEscape(typeLabel) + '</span>' +
+          '<span class="team-hub-leadership-from">' + leadershipEscape(fromWho) + '</span>' +
+        '</header>' +
+        '<p class="team-hub-leadership-body">' + leadershipEscape(m.messageBody || "") + '</p>' +
+        '<div class="team-hub-leadership-btns">' +
+          '<button type="button" class="team-hub-leadership-ack" data-msg-action="ack">Acknowledge</button>' +
+          '<button type="button" class="team-hub-leadership-dismiss" data-msg-action="dismiss">Dismiss</button>' +
+        '</div>' +
+        '<p class="team-hub-leadership-status" data-msg-status></p>' +
+      '</article>'
+    );
+  }
+
+  function wireLeadershipButtons(staff) {
+    document.querySelectorAll(".team-hub-leadership-card").forEach(function (card) {
+      card.querySelectorAll("[data-msg-action]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          handleLeadershipClick(card, btn, staff);
+        });
+      });
+    });
+  }
+
+  async function handleLeadershipClick(card, btn, staff) {
+    const msgId  = card.getAttribute("data-msg-id");
+    const action = btn.getAttribute("data-msg-action");
+    const status = card.querySelector("[data-msg-status]");
+    if (!msgId) return;
+    const nextStatus = action === "ack" ? "delivered" : "dismissed";
+    btn.disabled = true;
+    if (status) status.textContent = action === "ack" ? "Thank you." : "";
+    try {
+      await firebase.firestore().collection("leadership_messages").doc(msgId).update({
+        status:       nextStatus,
+        deliveredAt:  firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at:   firebase.firestore.FieldValue.serverTimestamp()
+      });
+      // Remove the card with a soft fade
+      card.style.transition = "opacity 0.3s ease";
+      card.style.opacity = "0";
+      setTimeout(function () {
+        card.remove();
+        const list = $("team-hub-leadership-list");
+        if (list && !list.children.length) {
+          const section = $("team-hub-leadership-section");
+          if (section) section.hidden = true;
+        }
+      }, 320);
+    } catch (err) {
+      console.error("[team-hub] leadership message update failed", err);
+      if (status) {
+        status.textContent = "Couldn't save — try again.";
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
+  /* ---------- Phase 3B — Messages from Pioneer (thread-based) ----------
+     Reads communication_messages addressed to the tech (via recipient_id)
+     OR team broadcasts. For each unique thread the tech is touched by,
+     show the latest outbound message + a reply box. Reply writes an
+     inbound message on the same thread via window.CommThreads.addMessage. */
+  async function bootCommMessagesForStaff(staff) {
+    if (!staff) return;
+    if (!window.CommThreads) return;
+    const section = $("team-hub-comm-section");
+    const list    = $("team-hub-comm-list");
+    if (!section || !list) return;
+    if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+    const myEmail = String((staff.email || "")).toLowerCase().trim();
+    if (!myEmail) return;
+    const db = firebase.firestore();
+
+    try {
+      // Two parallel reads, mirroring the leadership-messages pattern.
+      // We could query by thread participation directly, but going via
+      // messages keeps the surface tied to "what was addressed to me"
+      // rather than "every thread I'm in" — clearer for the tech.
+      // Use the (recipient_type, recipient_id, status, deliver_after)
+      // composite index without an explicit DESC orderBy so we don't
+      // need a separate DESC variant. Sort client-side after fetch —
+      // the per-tech result set is bounded enough that the limit is
+      // unlikely to truncate meaningful unread traffic.
+      const [personal, broadcast] = await Promise.all([
+        db.collection("communication_messages")
+          .where("recipient_type", "==", "employee")
+          .where("recipient_id",   "==", myEmail)
+          .where("status",         "==", "delivered")
+          .limit(50).get()
+          .catch(function () { return { docs: [] }; }),
+        db.collection("communication_messages")
+          .where("recipient_type", "==", "team")
+          .where("status",         "==", "delivered")
+          .limit(50).get()
+          .catch(function () { return { docs: [] }; })
+      ]);
+      const docsAll = [];
+      [personal, broadcast].forEach(function (snap) {
+        snap.docs.forEach(function (d) {
+          docsAll.push(Object.assign({ _id: d.id }, d.data() || {}));
+        });
+      });
+      // Group by thread_id, keep latest message per thread that the tech
+      // hasn't already read. Filter to outbound (admin → tech) so a
+      // tech's own reply doesn't echo back as something to acknowledge.
+      const byThread = new Map();
+      docsAll.forEach(function (m) {
+        if (m.direction !== "outbound") return;
+        if (!m.thread_id) return;
+        const existing = byThread.get(m.thread_id);
+        if (!existing) { byThread.set(m.thread_id, m); return; }
+        if (commTsToMs(m.created_at) > commTsToMs(existing.created_at)) {
+          byThread.set(m.thread_id, m);
+        }
+      });
+      const latestByThread = Array.from(byThread.values()).sort(function (a, b) {
+        return commTsToMs(b.created_at) - commTsToMs(a.created_at);
+      });
+
+      if (!latestByThread.length) { section.hidden = true; return; }
+
+      // For each thread, fetch the thread doc so we know the subject /
+      // category / category-rail / participants. Done in parallel.
+      const threadDocs = await Promise.all(latestByThread.map(function (m) {
+        return window.CommThreads.findThreadById(m.thread_id).catch(function () { return null; });
+      }));
+
+      // Phase 3B.1 — only show threads where management is waiting on
+      // the employee (or legacy 'open' status). After the tech replies,
+      // addMessage flips the thread to waiting_on_management and the
+      // card disappears from this inbox on the next reload. Resolved /
+      // closed threads also drop off automatically.
+      const VISIBLE_TO_TECH = ["waiting_on_employee", "open"];
+      const cards = latestByThread.map(function (msg, i) {
+        const thread = threadDocs[i];
+        if (!thread) return "";
+        const status = String(thread.status || "open");
+        if (VISIBLE_TO_TECH.indexOf(status) < 0) return "";
+        return renderCommCardHtml(thread, msg);
+      }).filter(Boolean);
+
+      if (!cards.length) { section.hidden = true; return; }
+
+      list.innerHTML = cards.join("");
+      section.hidden = false;
+      wireCommCardButtons(staff);
+    } catch (err) {
+      console.warn("[team-hub] comm messages read failed", err);
+    }
+  }
+
+  function renderCommCardHtml(thread, msg) {
+    const cat = thread.category || "general";
+    const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+    const senderName = msg.sender_name || msg.sender_id || "Pioneer";
+    // Phase 3B.1 — status badge. For techs viewing the card, the
+    // status is always one of waiting_on_employee / open (we filtered
+    // upstream), so this is informational rather than action-driving.
+    const statusValue = String(thread.status || "open");
+    const statusLabel = (window.CommThreads && window.CommThreads.STATUS_LABEL &&
+                        window.CommThreads.STATUS_LABEL[statusValue]) || statusValue;
+    // Phase 3B.2 — priority badge. Defaults to action_required for
+    // legacy threads without the field set.
+    const priorityValue = String(thread.priority || "action_required");
+    const priorityLabel = (window.CommThreads && window.CommThreads.PRIORITY_LABEL &&
+                           window.CommThreads.PRIORITY_LABEL[priorityValue]) || priorityValue;
+    return (
+      '<article class="team-hub-comm-card" data-thread-id="' + commEscape(thread._id) +
+        '" data-msg-id="' + commEscape(msg._id) +
+        '" data-category="' + commEscape(cat) + '"' +
+        ' data-priority="' + commEscape(priorityValue) + '">' +
+        '<header class="team-hub-comm-card-head">' +
+          '<span class="team-hub-comm-card-subject">' + commEscape(thread.subject || "(no subject)") + '</span>' +
+          '<span class="th-comm-priority-chip is-' + commEscape(priorityValue) + '">' +
+            commEscape(priorityLabel) + '</span>' +
+          '<span class="th-comm-status-chip is-' + commEscape(statusValue) + '">' +
+            commEscape(statusLabel) + '</span>' +
+          '<span class="team-hub-comm-card-meta">' + commEscape(catLabel) + '</span>' +
+        '</header>' +
+        '<p class="team-hub-comm-card-from">From ' + commEscape(senderName) + ' · ' +
+          commEscape(commFmtAgoTH(commTsToMs(msg.created_at))) + '</p>' +
+        '<p class="team-hub-comm-card-body">' + commEscape(msg.body || "") + '</p>' +
+        '<div class="team-hub-comm-card-reply" hidden>' +
+          '<textarea class="team-hub-comm-card-reply-input" maxlength="2000" placeholder="Type a reply…"></textarea>' +
+        '</div>' +
+        '<div class="team-hub-comm-card-btns">' +
+          '<button type="button" class="team-hub-comm-btn team-hub-comm-btn-secondary" data-comm-action="reply-open">Reply</button>' +
+          '<button type="button" class="team-hub-comm-btn team-hub-comm-btn-primary" data-comm-action="ack">Acknowledge</button>' +
+        '</div>' +
+        '<p class="team-hub-comm-card-status" data-comm-status></p>' +
+      '</article>'
+    );
+  }
+
+  function wireCommCardButtons(staff) {
+    document.querySelectorAll(".team-hub-comm-card").forEach(function (card) {
+      card.querySelectorAll("[data-comm-action]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          handleCommCardClick(card, btn, staff);
+        });
+      });
+    });
+  }
+
+  async function handleCommCardClick(card, btn, staff) {
+    const action = btn.getAttribute("data-comm-action");
+    const status = card.querySelector("[data-comm-status]");
+
+    if (action === "reply-open") {
+      const replyBox = card.querySelector(".team-hub-comm-card-reply");
+      const isHidden = replyBox.hidden;
+      replyBox.hidden = !isHidden;
+      if (isHidden) {
+        // First open — swap button to "Send" + add a Cancel
+        btn.setAttribute("data-comm-action", "reply-send");
+        btn.textContent = "Send Reply";
+        // Inject a Cancel button next to it if not already there
+        if (!card.querySelector("[data-comm-action='reply-cancel']")) {
+          const cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.className = "team-hub-comm-btn team-hub-comm-btn-secondary";
+          cancel.setAttribute("data-comm-action", "reply-cancel");
+          cancel.textContent = "Cancel";
+          cancel.addEventListener("click", function () { handleCommCardClick(card, cancel, staff); });
+          btn.parentElement.insertBefore(cancel, btn);
+        }
+        setTimeout(function () {
+          card.querySelector(".team-hub-comm-card-reply-input").focus();
+        }, 30);
+      }
+      return;
+    }
+
+    if (action === "reply-cancel") {
+      card.querySelector(".team-hub-comm-card-reply").hidden = true;
+      const sendBtn = card.querySelector("[data-comm-action='reply-send']");
+      if (sendBtn) {
+        sendBtn.setAttribute("data-comm-action", "reply-open");
+        sendBtn.textContent = "Reply";
+      }
+      btn.remove();
+      if (status) status.textContent = "";
+      return;
+    }
+
+    if (action === "reply-send") {
+      await sendCommReply(card, btn, staff, status);
+      return;
+    }
+
+    if (action === "ack") {
+      await ackCommCard(card, btn, status);
+      return;
+    }
+  }
+
+  async function sendCommReply(card, btn, staff, status) {
+    const threadId = card.getAttribute("data-thread-id");
+    const ta = card.querySelector(".team-hub-comm-card-reply-input");
+    const body = (ta.value || "").trim();
+    if (!body) {
+      if (status) { status.textContent = "Type a reply before sending."; status.setAttribute("data-tone", "error"); }
+      return;
+    }
+    const myEmail = String((staff.email || "")).toLowerCase();
+    const myName  = (staff.tech && (staff.tech.display_name || staff.tech.tech_display_name)) || myEmail.split("@")[0];
+    btn.disabled = true;
+    if (status) { status.textContent = "Sending…"; status.removeAttribute("data-tone"); }
+    try {
+      const thread = await window.CommThreads.findThreadById(threadId);
+      if (!thread) throw new Error("Thread not found");
+      // Recipient = first participant whose id isn't me. Usually the
+      // admin who started the thread.
+      const other = (thread.participants || []).find(function (p) {
+        return String(p.id || "").toLowerCase() !== myEmail;
+      });
+      const recipient_type = (other && other.type === "tech") ? "employee"
+                           : (other && other.type === "team") ? "team"
+                           : "admin";
+      const recipient_id   = other ? String(other.id || "").toLowerCase() : "";
+      const recipient_name = (other && other.name) || "";
+
+      await window.CommThreads.addMessage(threadId, {
+        channel:        window.CommThreads.CHANNELS.IN_APP,
+        direction:      window.CommThreads.DIRECTIONS.INBOUND,
+        status:         window.CommThreads.MESSAGE_STATUS.DELIVERED,
+        sender_type:    "tech",
+        sender_id:      myEmail,
+        sender_name:    myName,
+        recipient_type: recipient_type,
+        recipient_id:   recipient_id,
+        recipient_name: recipient_name,
+        body:           body
+      });
+      if (status) { status.textContent = "Sent. Thank you."; status.setAttribute("data-tone", "ok"); }
+      ta.value = "";
+      // Remove the card from view — they replied, the loop is closed.
+      setTimeout(function () { fadeAndRemoveCommCard(card); }, 700);
+    } catch (err) {
+      console.error("[team-hub] reply send failed", err);
+      if (status) {
+        status.textContent = "Send failed: " + (err.message || "unknown");
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
+  async function ackCommCard(card, btn, status) {
+    const msgId = card.getAttribute("data-msg-id");
+    btn.disabled = true;
+    if (status) { status.textContent = "Got it."; status.removeAttribute("data-tone"); }
+    try {
+      await firebase.firestore().collection("communication_messages").doc(msgId).update({
+        read_at:    firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setTimeout(function () { fadeAndRemoveCommCard(card); }, 400);
+    } catch (err) {
+      console.error("[team-hub] ack failed", err);
+      if (status) {
+        status.textContent = "Couldn't save — try again.";
+        status.setAttribute("data-tone", "error");
+      }
+      btn.disabled = false;
+    }
+  }
+
+  function fadeAndRemoveCommCard(card) {
+    card.style.transition = "opacity 0.3s ease";
+    card.style.opacity = "0";
+    setTimeout(function () {
+      card.remove();
+      const list = $("team-hub-comm-list");
+      if (list && !list.children.length) {
+        const section = $("team-hub-comm-section");
+        if (section) section.hidden = true;
+      }
+    }, 320);
+  }
+
+  function commEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function commTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    if (typeof ts === "string") { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    return 0;
+  }
+  function commFmtAgoTH(ms) {
+    if (!ms) return "";
+    const diff = Date.now() - ms;
+    if (diff < 60000)    return "just now";
+    if (diff < 3600000)  return Math.round(diff / 60000)   + " min ago";
+    if (diff < 86400000) return Math.round(diff / 3600000) + " hr ago";
+    const days = Math.round(diff / 86400000);
+    if (days < 7)        return days + " d ago";
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(ms));
+  }
+
+  /* ============================================================
+   * Phase Employee Trust Layer — My Hours
+   *
+   * For the signed-in tech, surface the paid sessions inside the
+   * current semi-monthly pay period (matches the function-side
+   * derivation in functions/index.js Phase 29). Each row exposes an
+   * "Adjust" button that opens the shared modal; the global Request
+   * Adjustment button at the bottom opens the same modal with the
+   * shift picker visible.
+   *
+   * Submission goes to window.CREATE_TIME_ADJUSTMENT_REQUEST_URL —
+   * the existing Phase 29 Cloud Function that admin uses today via
+   * the Payroll Exceptions tab. No new approval workflow.
+   * ============================================================ */
+
+  let myHoursStaff = null;
+  let myHoursSessions = [];          // current-period sessions (status === 'completed' usable for requests)
+  let myHoursPendingByKey = {};      // session_id → request doc
+  let myHoursApprovedCount = 0;
+  let myHoursModalShiftId = null;
+  let myHoursExpanded = false;       // false = show only first 5 shifts
+  const MY_HOURS_PREVIEW_LIMIT = 5;
+  // Phase 29D — payroll review acknowledgment doc for the current period.
+  // null = not loaded yet OR no doc exists (no ack = "not reviewed").
+  // Shape mirrors firestore.rules /payroll_review_acknowledgments block.
+  let myHoursAck = null;
+  // Phase 29G — period history support. Current period is the default.
+  // Last 6 semi-monthly periods drive the picker. Sick + period doc are
+  // loaded per selection.
+  let myHoursSelectedPeriod = null;     // { period_id, start_date, end_date, label }
+  let myHoursPeriodOptions  = [];       // [{ period_id, label, start_date, end_date }, ...]
+  let myHoursSickEntries    = [];       // sick_leave_ledger entries for selected period
+  let myHoursPeriodDoc      = null;     // payroll_periods/{period_id} data or null
+  // Phase 29G v2 — retain ALL adjustment requests in the picked period
+  // (the pre-v2 code only kept the pending count + map). Each entry is
+  // a time_adjustment_requests doc; sorted by reviewed_at desc when set,
+  // submitted_at desc otherwise.
+  let myHoursAllRequests    = [];
+
+  const MY_HOURS_REASON_LABEL = {
+    forgot_clock_in:  'Forgot to clock in',
+    forgot_clock_out: 'Forgot to clock out',
+    phone_issue:      'Phone issue',
+    other:            'Other'
+  };
+
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function todayPTDateString() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+  }
+  function myHoursCurrentPeriod() {
+    // Mirrors getSemiMonthlyPeriod in functions/index.js — 1-15 = half A,
+    // 16-EOM = half B. All math in Pacific date space.
+    const today = todayPTDateString();
+    const parts = today.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    if (day <= 15) {
+      return {
+        start_date: year + '-' + pad2(month) + '-01',
+        end_date:   year + '-' + pad2(month) + '-15',
+        label:      monthNames[month - 1] + ' 1–15, ' + year,
+        period_id:  year + '-' + pad2(month) + '-A'
+      };
+    }
+    // Last day of the month
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      start_date: year + '-' + pad2(month) + '-16',
+      end_date:   year + '-' + pad2(month) + '-' + pad2(lastDay),
+      label:      monthNames[month - 1] + ' 16–' + lastDay + ', ' + year,
+      period_id:  year + '-' + pad2(month) + '-B'
+    };
+  }
+  // Phase 29G — generalized semi-monthly resolver. Returns the period
+  // (A or B) that contains any given Pacific YYYY-MM-DD. Mirrors the
+  // admin _utils.js getSemiMonthlyPeriod logic and Cloud Function
+  // payrollSemiMonthlyPeriodFor — kept independent here to avoid a
+  // shared-module dependency from /team-hub.
+  function myHoursPeriodForDate(yyyymmdd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ''))) return null;
+    const parts = yyyymmdd.split('-');
+    const year  = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day   = parseInt(parts[2], 10);
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const mm = pad2(month);
+    if (day <= 15) {
+      return {
+        start_date: year + '-' + mm + '-01',
+        end_date:   year + '-' + mm + '-15',
+        label:      monthNames[month - 1] + ' 1–15, ' + year,
+        period_id:  year + '-' + mm + '-A'
+      };
+    }
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return {
+      start_date: year + '-' + mm + '-16',
+      end_date:   year + '-' + mm + '-' + pad2(lastDay),
+      label:      monthNames[month - 1] + ' 16–' + lastDay + ', ' + year,
+      period_id:  year + '-' + mm + '-B'
+    };
+  }
+  // Phase 29G — backward step from any period to its predecessor.
+  // For a Period B → prior is Period A of the same month.
+  // For a Period A → prior is Period B of the previous month.
+  function myHoursPriorPeriod(period) {
+    if (!period || !period.period_id) return null;
+    if (period.period_id.endsWith('-B')) {
+      const ym = period.period_id.slice(0, 7);
+      return myHoursPeriodForDate(ym + '-01');
+    }
+    const parts = period.start_date.split('-').map(Number);
+    let y = parts[0], m = parts[1] - 1;
+    if (m === 0) { y -= 1; m = 12; }
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return myHoursPeriodForDate(y + '-' + pad2(m) + '-' + pad2(lastDay));
+  }
+  // Phase 29G — six most recent semi-monthly periods (current + 5 prior).
+  function myHoursBuildPeriodOptions() {
+    let cur = myHoursCurrentPeriod();
+    const out = [cur];
+    for (let i = 0; i < 5; i++) {
+      cur = myHoursPriorPeriod(cur);
+      if (!cur) break;
+      out.push(cur);
+    }
+    return out;
+  }
+
+  function myHoursEscape(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function myHoursTsToMs(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.seconds === 'number')    return ts.seconds * 1000;
+    if (typeof ts === 'string') { const n = Date.parse(ts); return Number.isFinite(n) ? n : 0; }
+    if (ts instanceof Date) return ts.getTime();
+    return 0;
+  }
+  function myHoursFormatTime(ts) {
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '—';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    }).format(new Date(ms));
+  }
+  function myHoursFormatDate(ymd) {
+    if (!ymd) return '—';
+    const parts = ymd.split('-');
+    if (parts.length !== 3) return ymd;
+    const d = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      weekday: 'short', month: 'short', day: 'numeric'
+    }).format(d);
+  }
+  function myHoursFormatDuration(min) {
+    const m = Math.max(0, Math.floor(min || 0));
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    if (hh === 0) return mm + 'm';
+    if (mm === 0) return hh + 'h';
+    return hh + 'h ' + pad2(mm) + 'm';
+  }
+  function myHoursToLocalDatetimeValue(ts) {
+    // Convert a Firestore Timestamp to the local time string a
+    // <input type="datetime-local"> expects (YYYY-MM-DDTHH:MM).
+    // Pacific time so the value matches what the tech actually saw.
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date(ms));
+    const map = {};
+    parts.forEach(function (p) { if (p.type !== 'literal') map[p.type] = p.value; });
+    const hh = map.hour === '24' ? '00' : map.hour;
+    return map.year + '-' + map.month + '-' + map.day + 'T' + hh + ':' + map.minute;
+  }
+  function myHoursDatetimeLocalToIso(dtLocal) {
+    // The input gives us "YYYY-MM-DDTHH:MM" interpreted as the user's
+    // local time. We want an ISO timestamp that matches Pacific
+    // wallclock time. Append the right PT offset for that date.
+    if (!dtLocal) return null;
+    // Parse the date portion to pick the offset (PDT -07 or PST -08).
+    const dateOnly = dtLocal.slice(0, 10);
+    // Probe noon Pacific to find the offset for that date.
+    const probe = new Date(dateOnly + 'T12:00:00Z');
+    const tzShort = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', timeZoneName: 'short'
+    }).formatToParts(probe).find(function (p) { return p.type === 'timeZoneName'; });
+    const isPDT = (tzShort && tzShort.value === 'PDT');
+    const offset = isPDT ? '-07:00' : '-08:00';
+    return dtLocal + ':00' + offset;
+  }
+  function myHoursLaborChip(s) {
+    const lt = s.labor_type || 'cleaning';
+    const label = (lt === 'cleaning')      ? 'Cleaning'
+                : (lt === 'inspection')    ? 'Inspection'
+                : (lt === 'supply_station')? 'Supply Pickup'
+                : lt.charAt(0).toUpperCase() + lt.slice(1);
+    return '<span class="my-hours-chip my-hours-chip-' + myHoursEscape(lt) + '">' +
+             myHoursEscape(label) +
+           '</span>';
+  }
+
+  async function bootMyHoursForStaff(staff) {
+    if (!staff || !staff.uid) return;
+    const section = $('team-hub-my-hours-section');
+    if (!section) return;
+    if (!window.firebase || typeof firebase.firestore !== 'function') return;
+    myHoursStaff = staff;
+    section.hidden = false;
+    wireMyHoursButtons();
+    await reloadMyHours();
+  }
+
+  async function reloadMyHours(periodArg) {
+    if (!myHoursStaff) return;
+    // Phase 29G — period is now a parameter; defaults to current. The
+    // picker passes the selected period; the initial boot omits the arg.
+    const period = periodArg || myHoursCurrentPeriod();
+    myHoursSelectedPeriod = period;
+    const db = firebase.firestore();
+    try {
+      // Sessions are owner-readable via the staff_uid match in the
+      // pioneer_service_sessions rule. The (staff_uid, service_date)
+      // composite index ships in firestore.indexes.json.
+      const sessionSnap = await db.collection('pioneer_service_sessions')
+        .where('staff_uid', '==', myHoursStaff.uid)
+        .where('service_date', '>=', period.start_date)
+        .where('service_date', '<=', period.end_date)
+        .orderBy('service_date', 'desc')
+        .limit(80).get();
+      myHoursSessions = sessionSnap.docs.map(function (d) {
+        return Object.assign({ _id: d.id }, d.data() || {});
+      });
+
+      // Phase 29G — sick leave for this period. Owner-readable per rule.
+      // Phase 29G fix (2026-06-17) — original query combined staff_uid
+      // equality with effective_date range, which requires a composite
+      // index. Rewritten to single-field equality on staff_uid (uses
+      // auto-built index) + client-side date + entry_type filter. Mirrors
+      // the time_adjustment_requests read pattern in this same file.
+      // Sick rows per tech per cycle are very low (typically 0–3) so the
+      // O(N) client filter is negligible.
+      myHoursSickEntries = [];
+      try {
+        const sickSnap = await db.collection('sick_leave_ledger')
+          .where('staff_uid', '==', myHoursStaff.uid)
+          .limit(120).get();
+        myHoursSickEntries = sickSnap.docs
+          .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+          .filter(function (e) {
+            const ed = String(e.effective_date || '');
+            if (!ed || ed < period.start_date || ed > period.end_date) return false;
+            return e.entry_type === 'used';
+          });
+      } catch (sickErr) {
+        console.warn('[team-hub] my-hours sick read failed (non-fatal)', sickErr);
+      }
+
+      // Phase 29G — period doc carries lock_status + payday. Staff-readable
+      // per existing payroll_periods rule. Soft-fail when absent.
+      myHoursPeriodDoc = null;
+      try {
+        const pSnap = await db.collection('payroll_periods').doc(period.period_id).get();
+        myHoursPeriodDoc = pSnap.exists ? (pSnap.data() || {}) : null;
+      } catch (pErr) {
+        console.warn('[team-hub] my-hours period doc read failed (non-fatal)', pErr);
+      }
+
+      // Pending + approved adjustment requests for THIS employee.
+      // Equality on employee_uid uses the auto-built single-field index;
+      // shift-date filtering happens client-side so this works without
+      // a new composite index deploy. Soft-fails — the requests UI
+      // still works, you just won't see existing pending badges.
+      myHoursPendingByKey = {};
+      myHoursApprovedCount = 0;
+      myHoursAllRequests = [];
+      try {
+        const reqSnap = await db.collection('time_adjustment_requests')
+          .where('employee_uid', '==', myHoursStaff.uid)
+          .limit(120).get();
+        reqSnap.docs.forEach(function (d) {
+          const r = Object.assign({ _id: d.id }, d.data() || {});
+          const sd = String(r.shift_date || '');
+          if (sd < period.start_date || sd > period.end_date) return;
+          // Phase 29G v2 — retain every request in the period for the
+          // detailed Adjustments list.
+          myHoursAllRequests.push(r);
+          const st = String(r.status || '').toLowerCase();
+          if (st === 'pending' && r.service_session_id) {
+            myHoursPendingByKey[r.service_session_id] = r;
+          } else if (st === 'approved') {
+            myHoursApprovedCount++;
+          }
+        });
+        // Sort: latest activity first (reviewed_at when set, else submitted_at)
+        myHoursAllRequests.sort(function (a, b) {
+          const ams = myHoursTsToMs(a.reviewed_at || a.submitted_at);
+          const bms = myHoursTsToMs(b.reviewed_at || b.submitted_at);
+          return bms - ams;
+        });
+      } catch (reqErr) {
+        console.warn('[team-hub] my-hours adjustments read failed (non-fatal)', reqErr);
+      }
+
+      // Phase 29D — load the existing acknowledgment doc for this period
+      // (idempotent doc id = `<period_id>__<staff_uid>`). Single doc-id
+      // read; soft-fails so a transient permission error doesn't kill
+      // the whole tab. Absence is meaningful — "no doc" = not reviewed.
+      myHoursAck = null;
+      try {
+        const ackId = period.period_id + '__' + myHoursStaff.uid;
+        const ackSnap = await db.collection('payroll_review_acknowledgments').doc(ackId).get();
+        myHoursAck = ackSnap.exists ? Object.assign({ _id: ackSnap.id }, ackSnap.data() || {}) : null;
+      } catch (ackErr) {
+        console.warn('[team-hub] my-hours ack read failed (non-fatal)', ackErr);
+      }
+
+      renderMyHoursSectionTitle(period);
+      renderMyHoursPeriodPicker(period);
+      renderMyHoursSummary(period);
+      renderMyHoursReview(period);
+      renderMyHoursShifts(period);
+      // Phase 29G v2 — past-period detail sections. The four renderers
+      // self-hide their containers when the picker is on the current
+      // period, so current-period UX is untouched.
+      renderMyHoursPeriodTotals(period);
+      renderMyHoursAdjustmentsListSection(period);
+      renderMyHoursSickListSection(period);
+      renderMyHoursStatusTimeline(period);
+    } catch (err) {
+      console.error('[team-hub] my-hours load failed', err);
+      $('my-hours-summary').innerHTML =
+        '<div class="my-hours-summary-empty">' +
+          'Couldn\'t load your hours right now. Try refreshing.' +
+        '</div>';
+    }
+  }
+
+  /* ============================================================
+     Phase 29G — Pay Period History renderers + helpers.
+     ============================================================ */
+
+  function myHoursIsCurrentPeriod(period) {
+    if (!period || !period.period_id) return false;
+    return period.period_id === myHoursCurrentPeriod().period_id;
+  }
+
+  // Swaps the section heading + sub between "My Hours" (current period)
+  // and "Pay Period Summary" (any past period). Per scope: do not use
+  // "paystub" or any wage-statement language.
+  function renderMyHoursSectionTitle(period) {
+    const titleEl = $('my-hours-section-title');
+    const subEl   = $('my-hours-section-sub');
+    if (!titleEl || !subEl) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      titleEl.textContent = '⏱ My Hours';
+      subEl.textContent =
+        'Your current payroll hours. Something look wrong? Request an adjustment before payroll.';
+    } else {
+      titleEl.textContent = '📜 Pay Period Summary';
+      subEl.textContent =
+        'Your hours for a past pay period. Counts shown here are the same data the office uses for payroll.';
+    }
+  }
+
+  function renderMyHoursPeriodPicker(activePeriod) {
+    const sel = $('my-hours-period-select');
+    if (!sel) return;
+    if (!myHoursPeriodOptions.length) {
+      myHoursPeriodOptions = myHoursBuildPeriodOptions();
+    }
+    const opts = myHoursPeriodOptions.map(function (p, i) {
+      const labelPrefix = (i === 0) ? 'Current · ' : '';
+      const selected = (activePeriod && p.period_id === activePeriod.period_id) ? ' selected' : '';
+      return '<option value="' + myHoursEscape(p.period_id) + '"' + selected + '>' +
+             myHoursEscape(labelPrefix + p.label) + '</option>';
+    }).join('');
+    sel.innerHTML = opts;
+    // Phase 29G v2 — discovery hint that adapts to current vs past
+    // period so the affordance is obvious. Avoids the "where did the
+    // picker go" failure mode we hit on the first preview.
+    const hint = $('my-hours-period-picker-hint');
+    if (hint) {
+      hint.textContent = myHoursIsCurrentPeriod(activePeriod)
+        ? 'Pick a previous period to see its Pay Period Summary.'
+        : 'Viewing a past period. Pick Current to return to My Hours.';
+    }
+  }
+
+  // Derives the tech-facing period status from session.payroll_state +
+  // payroll_periods.lock_status. Read-only — no rules change. Falls back
+  // to "Open" when no signal can be derived (rare).
+  function derivePeriodStatusForTech(period) {
+    if (!period) return null;
+    const isCurrent = myHoursIsCurrentPeriod(period);
+    const lockStatus = myHoursPeriodDoc && myHoursPeriodDoc.lock_status;
+    const sessionStates = (myHoursSessions || [])
+      .map(function (s) { return s.payroll_state || null; })
+      .filter(Boolean);
+    const total = sessionStates.length;
+    const exported = sessionStates.filter(function (st) { return st === 'exported'; }).length;
+    const approved = sessionStates.filter(function (st) { return st === 'approved_for_payroll'; }).length;
+
+    if (lockStatus === 'locked' && exported > 0 && exported === total) {
+      return { label: 'Exported', tone: 'ok' };
+    }
+    if (lockStatus === 'locked' && approved > 0) {
+      return { label: 'Locked, pending export', tone: 'info' };
+    }
+    if (exported > 0 && lockStatus !== 'locked') {
+      return { label: 'Reopened', tone: 'warn' };
+    }
+    if (isCurrent) {
+      return { label: 'Open · current period', tone: 'info' };
+    }
+    if (total === 0) {
+      return { label: 'No sessions on file', tone: 'muted' };
+    }
+    return { label: 'Open', tone: 'info' };
+  }
+
+  function renderMyHoursSummary(period) {
+    const root = $('my-hours-summary');
+    if (!root) return;
+    const isCurrent = myHoursIsCurrentPeriod(period);
+
+    // Total hours = sum of (effective_minutes || paid_minutes || work_minutes)
+    let totalMin = 0;
+    myHoursSessions.forEach(function (s) {
+      const m = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+              : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+              : (typeof s.work_minutes === 'number')      ? s.work_minutes
+              : 0;
+      totalMin += Math.max(0, m);
+    });
+    // Phase 29G — sick hours sum, |minutes_delta| of used entries
+    let sickMin = 0;
+    (myHoursSickEntries || []).forEach(function (e) {
+      sickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    // Phase 29G — count adjusted sessions actually applied in this period
+    let adjustedCount = 0;
+    myHoursSessions.forEach(function (s) {
+      if (s.has_approved_time_adjustment === true) adjustedCount += 1;
+    });
+
+    const pendingCount  = Object.keys(myHoursPendingByKey).length;
+    const approvedCount = myHoursApprovedCount;
+
+    // Phase 29G — derived period status pill (Open / Locked / Exported / Reopened)
+    const status = derivePeriodStatusForTech(period);
+    const statusPill = status
+      ? '<span class="my-hours-period-status is-' + status.tone + '">' +
+          myHoursEscape(status.label) +
+        '</span>'
+      : '';
+
+    // Confidence chip — only meaningful for the CURRENT period. For past
+    // periods, replace with the period status pill (above) so the head
+    // line still reads cleanly.
+    const confidenceChip = isCurrent
+      ? ((pendingCount > 0)
+          ? '<span class="my-hours-confidence my-hours-confidence-warn">' +
+              '<span class="my-hours-confidence-icon" aria-hidden="true">⚠</span>' +
+              'Pending correction' +
+            '</span>'
+          : '<span class="my-hours-confidence my-hours-confidence-ok">' +
+              '<span class="my-hours-confidence-icon" aria-hidden="true">✓</span>' +
+              'Hours look good' +
+            '</span>')
+      : statusPill;
+
+    const eyebrow = isCurrent
+      ? 'Your current payroll period'
+      : 'Pay Period Summary';
+
+    const closesLine = isCurrent
+      ? '<p class="my-hours-summary-closes">Payroll closes: <strong>' +
+          myHoursEscape(myHoursFormatDate(period.end_date)) + '</strong></p>'
+      : (statusPill
+          ? '<p class="my-hours-summary-closes">Status: ' + statusPill + '</p>'
+          : '');
+
+    // Tiles. Total / Sick / Pending corrections / Approved corrections /
+    // Adjustments applied — sick and adjustments only render when > 0
+    // so the tile row stays uncluttered on a typical week.
+    // Phase 29H — payroll-facing summary tiles render in decimal hours
+    // (X.XX hrs) to match the Pay Period Summary detail sections in the
+    // same surface and the Payroll tab + CSV. Tile label provides the
+    // "hours" context so the value cell stays concise.
+    let tilesHtml =
+      '<div class="my-hours-tile">' +
+        '<span class="my-hours-tile-label">Total hours</span>' +
+        '<span class="my-hours-tile-value">' + myHoursEscape(myHoursDecimalHours(totalMin)) + '</span>' +
+        '<span class="my-hours-tile-value-small">' + myHoursSessions.length + ' shift' +
+          (myHoursSessions.length === 1 ? '' : 's') + '</span>' +
+      '</div>';
+    if (sickMin > 0) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-sick">' +
+          '<span class="my-hours-tile-label">Sick hours</span>' +
+          '<span class="my-hours-tile-value">' + myHoursEscape(myHoursDecimalHours(sickMin)) + '</span>' +
+          '<span class="my-hours-tile-value-small">' + myHoursSickEntries.length + ' entr' +
+            (myHoursSickEntries.length === 1 ? 'y' : 'ies') + '</span>' +
+        '</div>';
+    }
+    // Pending corrections tile only makes sense for the current period
+    // (past periods can no longer accept new adjustments via this UI).
+    if (isCurrent) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-pending">' +
+          '<span class="my-hours-tile-label">Pending corrections</span>' +
+          '<span class="my-hours-tile-value">' + pendingCount + '</span>' +
+          '<span class="my-hours-tile-value-small">awaiting Kirby</span>' +
+        '</div>';
+    }
+    if (adjustedCount > 0) {
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-approved">' +
+          '<span class="my-hours-tile-label">Adjustments included</span>' +
+          '<span class="my-hours-tile-value">' + adjustedCount + '</span>' +
+          '<span class="my-hours-tile-value-small">applied to your hours</span>' +
+        '</div>';
+    } else if (isCurrent && approvedCount > 0) {
+      // Back-compat with the prior "Approved corrections" tile shown on
+      // current period when adjustments have been approved but the
+      // session-level flag hasn't refreshed yet.
+      tilesHtml +=
+        '<div class="my-hours-tile my-hours-tile-approved">' +
+          '<span class="my-hours-tile-label">Approved corrections</span>' +
+          '<span class="my-hours-tile-value">' + approvedCount + '</span>' +
+          '<span class="my-hours-tile-value-small">applied to your hours</span>' +
+        '</div>';
+    }
+
+    root.innerHTML =
+      '<div>' +
+        confidenceChip +
+        '<p class="my-hours-summary-eyebrow">' + myHoursEscape(eyebrow) + '</p>' +
+        '<h3 class="my-hours-summary-period">' + myHoursEscape(period.label) + '</h3>' +
+        closesLine +
+        '<div class="my-hours-summary-tiles">' +
+          tilesHtml +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderMyHoursShifts(period) {
+    const root = $('my-hours-shifts');
+    if (!root) return;
+    if (!myHoursSessions.length) {
+      root.innerHTML =
+        '<div class="my-hours-shifts-empty">' +
+          (myHoursIsCurrentPeriod(period)
+            ? 'No shifts logged for this payroll period yet. They\'ll appear here after you clock out.'
+            : 'No shifts on file for this pay period.') +
+        '</div>';
+      return;
+    }
+    // Default to the most recent 5 shifts. "View All" expands to show
+    // every shift in the period. The expanded state is per-render —
+    // a reload (e.g. after submitting a correction) resets to preview
+    // mode, which is the right default UX.
+    const total = myHoursSessions.length;
+    const showAll = myHoursExpanded || total <= MY_HOURS_PREVIEW_LIMIT;
+    const visible = showAll ? myHoursSessions : myHoursSessions.slice(0, MY_HOURS_PREVIEW_LIMIT);
+    // Phase 29G v2 — past periods get the richer detail card (clock-in/
+    // out, original-vs-adjusted hours when divergent, DCR status, OT
+    // line, payroll-state pill). Current period keeps the existing
+    // compact row so the Adjust button + on-the-clock chip stay in
+    // their familiar place.
+    const renderRow = myHoursIsCurrentPeriod(period)
+      ? renderMyHoursShiftRow
+      : renderMyHoursSessionCardDetail;
+    let html = visible.map(renderRow).join('');
+    if (total > MY_HOURS_PREVIEW_LIMIT) {
+      const hidden = total - MY_HOURS_PREVIEW_LIMIT;
+      html += '<button type="button" class="my-hours-toggle-all" id="my-hours-toggle-all">' +
+                (myHoursExpanded
+                  ? 'Show Recent 5 ▲'
+                  : 'View All Shifts (' + total + ') ▼') +
+              '</button>';
+      if (!myHoursExpanded) {
+        // Hint just under the toggle in muted text so the user knows
+        // what they'd be revealing.
+        html += '<p class="my-hours-toggle-hint">' +
+                  hidden + ' more shift' + (hidden === 1 ? '' : 's') +
+                  ' in this payroll period.' +
+                '</p>';
+      }
+    }
+    root.innerHTML = html;
+    document.querySelectorAll('[data-my-hours-shift-action="adjust"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openMyHoursModal(btn.getAttribute('data-shift-id'));
+      });
+    });
+    const toggle = $('my-hours-toggle-all');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        myHoursExpanded = !myHoursExpanded;
+        renderMyHoursShifts(period);
+      });
+    }
+  }
+
+  function renderMyHoursShiftRow(s) {
+    const isActive = s.status === 'active' || s.status === 'paused';
+    const pending = myHoursPendingByKey[s._id];
+    const hasApprovedCorrection = s.has_approved_time_adjustment === true;
+    const labor = s.labor_type || 'cleaning';
+    const effectiveMin = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                      : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+                      : (typeof s.work_minutes === 'number')      ? s.work_minutes
+                      : 0;
+    const ci = s.effective_clock_in || s.clock_in_at;
+    const co = s.effective_clock_out || s.clock_out_at;
+    const customer = (labor === 'inspection' && s.customer_name) ? s.customer_name
+                   : (labor === 'inspection' && s.customer_id)   ? s.customer_id
+                   : (labor === 'supply_station')                ? 'Supply Station'
+                   : (s.customer_name || s.customer_id || '');
+    const driveChip = (typeof s.paid_drive_minutes === 'number' && s.paid_drive_minutes > 0)
+      ? '<span class="my-hours-chip my-hours-chip-drive">+ ' +
+          myHoursEscape(myHoursFormatDuration(s.paid_drive_minutes)) + ' drive</span>'
+      : '';
+    const statusChip = isActive
+      ? '<span class="my-hours-chip my-hours-chip-active">On the clock</span>'
+      : '';
+    const pendingChip = pending
+      ? '<span class="my-hours-chip my-hours-chip-pending">Correction pending</span>'
+      : (hasApprovedCorrection
+          ? '<span class="my-hours-chip my-hours-chip-approved">Correction applied</span>'
+          : '');
+    // Disable Adjust when active OR a pending request already exists OR
+    // the session has no clock_out (can't request a clock-out time we
+    // don't have yet; admin can still fix manually).
+    const canAdjust = !isActive && !pending && !!s.clock_out_at;
+    const btn = '<button type="button" class="my-hours-shift-btn"' +
+                  ' data-my-hours-shift-action="adjust"' +
+                  ' data-shift-id="' + myHoursEscape(s._id) + '"' +
+                  (canAdjust ? '' : ' disabled') +
+                  ' title="' + (canAdjust ? 'Request a correction' :
+                                pending ? 'You already have a pending correction for this shift' :
+                                isActive ? 'Clock out first before requesting' :
+                                'Missing clock-out — Kirby will follow up') + '">Adjust</button>';
+    return (
+      '<div class="my-hours-shift-row"' +
+        ' data-labor="' + myHoursEscape(labor) + '"' +
+        ' data-status="' + myHoursEscape(s.status || 'completed') + '"' +
+        ' data-pending="' + (!!pending) + '">' +
+        '<div class="my-hours-shift-main">' +
+          '<div class="my-hours-shift-top">' +
+            '<span class="my-hours-shift-date">' + myHoursEscape(myHoursFormatDate(s.service_date)) + '</span>' +
+            myHoursLaborChip(s) +
+            driveChip +
+            statusChip +
+            pendingChip +
+          '</div>' +
+          '<div class="my-hours-shift-detail">' +
+            (customer ? '<strong>' + myHoursEscape(customer) + '</strong> · ' : '') +
+            myHoursEscape(myHoursFormatTime(ci)) + ' → ' +
+            myHoursEscape(myHoursFormatTime(co)) + ' · ' +
+            '<strong>' + myHoursEscape(myHoursFormatDuration(effectiveMin)) + '</strong>' +
+          '</div>' +
+        '</div>' +
+        '<div class="my-hours-shift-actions">' + btn + '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ============================================================
+     Phase 29G v2 — Past-period detail renderers.
+     ============================================================
+     All five are read-only — no Firestore writes, no new collections,
+     no new reads beyond what reloadMyHours() already loaded. Each
+     renderer self-hides its container when the picker is on the current
+     period so the current-period UX is byte-for-byte unchanged.
+     ============================================================ */
+
+  // Decimal helper: convert minutes to "X.XX" (Kirby's decimal-hours
+  // standard from the earlier payroll-display work). Returns "0.00" on
+  // null / non-numeric input.
+  function myHoursDecimalHours(m) {
+    if (m == null || !Number.isFinite(m)) return '0.00';
+    return (m / 60).toFixed(2);
+  }
+
+  // 1. Richer per-session card for past periods. Mirrors the layout of
+  //    the current-period row but adds: customer/location, clock-in →
+  //    clock-out times, original-vs-adjusted hours when divergent,
+  //    DCR status, overtime line, and a payroll-state pill.
+  function renderMyHoursSessionCardDetail(s) {
+    const labor = s.labor_type || 'cleaning';
+    const customer = (labor === 'inspection' && s.customer_name) ? s.customer_name
+                   : (labor === 'inspection' && s.customer_id)   ? s.customer_id
+                   : (labor === 'supply_station')                ? 'Supply Station'
+                   : (s.customer_name || s.customer_id || '');
+    const location = s.location_name || s.location_address || '';
+    const adjusted = s.has_approved_time_adjustment === true;
+    const origMin  = (typeof s.work_minutes === 'number') ? s.work_minutes : null;
+    const effMin   = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                   : (typeof s.paid_minutes === 'number')     ? s.paid_minutes
+                   : (typeof s.work_minutes === 'number')     ? s.work_minutes
+                   : 0;
+    const ci = s.effective_clock_in || s.clock_in_at;
+    const co = s.effective_clock_out || s.clock_out_at;
+
+    // Payroll-state pill — what was the office's decision for this row?
+    const ps = s.payroll_state || 'pending_review';
+    let pillLabel = 'Open';
+    let pillTone = 'info';
+    if      (ps === 'exported')              { pillLabel = 'Included in payroll export'; pillTone = 'ok'; }
+    else if (ps === 'approved_for_payroll')  { pillLabel = 'Approved for payroll';       pillTone = 'ok'; }
+    else if (ps === 'reviewed')              { pillLabel = 'Reviewed';                   pillTone = 'info'; }
+    else if (ps === 'pending_review')        { pillLabel = 'Pending review';             pillTone = 'muted'; }
+
+    // Hours row — single line when un-adjusted, two-part when adjusted.
+    let hoursLine;
+    if (adjusted && origMin != null && origMin !== effMin) {
+      const delta = effMin - origMin;
+      const sign  = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
+      const deltaAbs = Math.abs(delta);
+      hoursLine =
+        '<span class="my-hours-card-hours-orig">Original ' + myHoursEscape(myHoursDecimalHours(origMin)) + ' hrs</span>' +
+        ' <span class="my-hours-card-hours-arrow">→</span> ' +
+        '<span class="my-hours-card-hours-adj">Adjusted ' + myHoursEscape(myHoursDecimalHours(effMin)) + ' hrs</span>' +
+        ' <span class="my-hours-card-hours-delta">(' + sign + myHoursEscape(myHoursDecimalHours(deltaAbs)) + ' adj)</span>';
+    } else {
+      hoursLine =
+        '<strong>' + myHoursEscape(myHoursDecimalHours(effMin)) + ' hrs</strong> worked';
+    }
+
+    // DCR row — derived solely from session.dcr_status / session.status.
+    let dcrLine = '';
+    if (s.dcr_status === 'submitted' || s.dcr_id || s.dcr_submission_id) {
+      dcrLine = '<span class="my-hours-card-dcr is-submitted">DCR submitted</span>';
+    } else if (s.dcr_status === 'waived') {
+      const reason = s.dcr_waived_reason ? (' · ' + (MY_HOURS_REASON_LABEL[s.dcr_waived_reason] || s.dcr_waived_reason)) : '';
+      dcrLine = '<span class="my-hours-card-dcr is-waived">DCR waived' + myHoursEscape(reason) + '</span>';
+    } else if (s.status === 'dcr_pending') {
+      dcrLine = '<span class="my-hours-card-dcr is-pending">DCR pending</span>';
+    } else if (!s.labor_type || s.labor_type === 'cleaning') {
+      dcrLine = '<span class="my-hours-card-dcr is-missing">No DCR on file</span>';
+    } else {
+      dcrLine = '<span class="my-hours-card-dcr is-muted">DCR not required</span>';
+    }
+
+    // Overtime line — only visible when OT was allocated for this row.
+    const otLine = (typeof s.overtime_minutes === 'number' && s.overtime_minutes > 0)
+      ? '<div class="my-hours-card-ot">' +
+          myHoursEscape(myHoursDecimalHours(s.overtime_minutes)) + ' hrs OT included in total' +
+        '</div>'
+      : '';
+
+    return (
+      '<div class="my-hours-card" data-labor="' + myHoursEscape(labor) + '">' +
+        '<div class="my-hours-card-head">' +
+          '<div class="my-hours-card-head-main">' +
+            '<div class="my-hours-card-customer">' +
+              (customer ? '<strong>' + myHoursEscape(customer) + '</strong>' : '<em>(unmapped customer)</em>') +
+              (location ? ' · <span class="my-hours-card-location">' + myHoursEscape(location) + '</span>' : '') +
+            '</div>' +
+            '<div class="my-hours-card-date">' + myHoursEscape(myHoursFormatDate(s.service_date)) + '</div>' +
+          '</div>' +
+          '<span class="my-hours-card-pill is-' + pillTone + '">' + myHoursEscape(pillLabel) + '</span>' +
+        '</div>' +
+        '<div class="my-hours-card-body">' +
+          '<div class="my-hours-card-times">' +
+            '<span class="my-hours-card-time-label">Clock in</span> ' +
+            '<strong>' + myHoursEscape(myHoursFormatTime(ci)) + '</strong>' +
+            ' · <span class="my-hours-card-time-label">Clock out</span> ' +
+            '<strong>' + myHoursEscape(myHoursFormatTime(co)) + '</strong>' +
+          '</div>' +
+          '<div class="my-hours-card-hours">' + hoursLine + '</div>' +
+          otLine +
+          '<div class="my-hours-card-dcr-row">' + dcrLine + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  // 2. Period totals subtable. Regular / Overtime / Sick / Total in
+  //    decimal hours. Derived in JS from the loaded session + sick rows.
+  function renderMyHoursPeriodTotals(period) {
+    const root = $('my-hours-period-totals');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    let regularMin = 0, otMin = 0, totalMin = 0;
+    (myHoursSessions || []).forEach(function (s) {
+      const eff = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+                : (typeof s.paid_minutes === 'number')     ? s.paid_minutes
+                : (typeof s.work_minutes === 'number')     ? s.work_minutes
+                : 0;
+      totalMin += Math.max(0, eff);
+      // OT is allocated by the Phase 28B engine; un-allocated rows
+      // contribute zero. Regular = max(0, eff - ot) keeps the math
+      // honest even if regular_minutes wasn't written.
+      const o = (typeof s.overtime_minutes === 'number' && s.overtime_minutes > 0) ? s.overtime_minutes : 0;
+      otMin += o;
+      regularMin += Math.max(0, eff - o);
+    });
+    let sickMin = 0;
+    (myHoursSickEntries || []).forEach(function (e) {
+      sickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    const grandTotal = regularMin + otMin + sickMin;
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Period totals</h4>' +
+      '<table class="my-hours-totals-table">' +
+        '<tbody>' +
+          '<tr><th scope="row">Regular</th><td>' + myHoursEscape(myHoursDecimalHours(regularMin)) + ' hrs</td></tr>' +
+          '<tr><th scope="row">Overtime</th><td>' + myHoursEscape(myHoursDecimalHours(otMin))     + ' hrs</td></tr>' +
+          '<tr><th scope="row">Sick</th><td>'    + myHoursEscape(myHoursDecimalHours(sickMin))   + ' hrs</td></tr>' +
+          '<tr class="my-hours-totals-grand"><th scope="row">Total payable</th><td>' +
+            myHoursEscape(myHoursDecimalHours(grandTotal)) + ' hrs</td></tr>' +
+        '</tbody>' +
+      '</table>' +
+      '<p class="my-hours-totals-foot">Hours only · informational.</p>';
+  }
+
+  // 3. Adjustments section — list every TAR owned by this tech in the
+  //    picked period (pending + approved + denied). Sorted latest-first
+  //    by reviewed_at when set, otherwise submitted_at.
+  function renderMyHoursAdjustmentsListSection(period) {
+    const root = $('my-hours-adjustments-list');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    if (!(myHoursAllRequests || []).length) {
+      root.hidden = false;
+      root.innerHTML =
+        '<h4 class="my-hours-subhead">Adjustments in this period</h4>' +
+        '<p class="my-hours-empty-row">No correction requests on file for this period.</p>';
+      return;
+    }
+    const rows = myHoursAllRequests.map(function (r) {
+      const st = String(r.status || 'pending').toLowerCase();
+      const stoneCls = (st === 'approved') ? 'is-ok'
+                    : (st === 'denied')   ? 'is-warn'
+                    : 'is-info';
+      const stLabel = (st === 'approved') ? 'Approved'
+                    : (st === 'denied')   ? 'Denied'
+                    : 'Pending';
+      // Effective range: approved → effective_*; otherwise → requested_*
+      const showIn  = (st === 'approved') ? r.effective_clock_in  : r.requested_clock_in;
+      const showOut = (st === 'approved') ? r.effective_clock_out : r.requested_clock_out;
+      const showMin = (st === 'approved') ? r.effective_minutes : r.requested_minutes;
+      const reviewerLine = (st === 'approved' || st === 'denied')
+        ? '<span class="my-hours-adj-meta">' +
+            stLabel +
+            (r.reviewed_by_name ? ' by ' + myHoursEscape(r.reviewed_by_name) : '') +
+            (r.reviewed_at ? ' · ' + myHoursEscape(myHoursFormatDate(myHoursTsToYmdPt(r.reviewed_at))) : '') +
+          '</span>'
+        : '<span class="my-hours-adj-meta">' + stLabel + ' · awaiting review</span>';
+      const reasonLine = r.reason
+        ? '<span class="my-hours-adj-reason">' +
+            myHoursEscape(MY_HOURS_REASON_LABEL[r.reason] || r.reason) +
+            (r.notes ? ' · ' + myHoursEscape(r.notes) : '') +
+          '</span>'
+        : '';
+      return (
+        '<div class="my-hours-adj-row">' +
+          '<div class="my-hours-adj-head">' +
+            '<span class="my-hours-adj-date">' +
+              myHoursEscape(myHoursFormatDate(r.shift_date || '')) +
+            '</span>' +
+            '<span class="my-hours-adj-status ' + stoneCls + '">' + stLabel + '</span>' +
+          '</div>' +
+          '<div class="my-hours-adj-detail">' +
+            'Requested: <strong>' + myHoursEscape(myHoursFormatTime(showIn)) +
+            ' → ' + myHoursEscape(myHoursFormatTime(showOut)) + '</strong>' +
+            (typeof showMin === 'number'
+              ? ' · ' + myHoursEscape(myHoursDecimalHours(showMin)) + ' hrs'
+              : '') +
+          '</div>' +
+          (reasonLine ? '<div class="my-hours-adj-foot">' + reasonLine + '</div>' : '') +
+          '<div class="my-hours-adj-foot">' + reviewerLine + '</div>' +
+        '</div>'
+      );
+    }).join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Adjustments in this period</h4>' +
+      rows;
+  }
+
+  // Helper: convert a Firestore Timestamp to a Pacific YYYY-MM-DD string.
+  // Used by the adjustments section's reviewed-at display so we render
+  // dates in the same format as service_date elsewhere.
+  function myHoursTsToYmdPt(ts) {
+    const ms = myHoursTsToMs(ts);
+    if (!ms) return '';
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date(ms));
+      const m = {};
+      parts.forEach(function (p) { if (p.type !== 'literal') m[p.type] = p.value; });
+      return m.year + '-' + m.month + '-' + m.day;
+    } catch (_e) { return ''; }
+  }
+
+  // 4. Sick leave section — list "used" entries in the period.
+  function renderMyHoursSickListSection(period) {
+    const root = $('my-hours-sick-list');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    if (!(myHoursSickEntries || []).length) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    const rows = myHoursSickEntries
+      .slice()
+      .sort(function (a, b) {
+        return String(b.effective_date || '').localeCompare(String(a.effective_date || ''));
+      })
+      .map(function (e) {
+        const min = Math.abs(Number(e.minutes_delta) || 0);
+        const reasonOk = e && e.visible_to_employee !== false && e.reason;
+        return (
+          '<div class="my-hours-sick-row">' +
+            '<div class="my-hours-sick-head">' +
+              '<span class="my-hours-sick-date">' + myHoursEscape(myHoursFormatDate(e.effective_date || '')) + '</span>' +
+              '<span class="my-hours-sick-hours">' + myHoursEscape(myHoursDecimalHours(min)) + ' hrs</span>' +
+            '</div>' +
+            (reasonOk
+              ? '<div class="my-hours-sick-reason">' + myHoursEscape(e.reason) + '</div>'
+              : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Sick leave in this period</h4>' +
+      rows;
+  }
+
+  // 5. Status timeline — compact 1-line-per-event display of period
+  //    lock + export milestones. Derived from payroll_periods doc +
+  //    max(session.exported_at) for the tech's own sessions.
+  function renderMyHoursStatusTimeline(period) {
+    const root = $('my-hours-status-timeline');
+    if (!root) return;
+    if (myHoursIsCurrentPeriod(period)) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    const events = [];
+    const lockedAt = myHoursPeriodDoc && myHoursPeriodDoc.locked_at;
+    const lockStatus = myHoursPeriodDoc && myHoursPeriodDoc.lock_status;
+    if (lockedAt && lockStatus === 'locked') {
+      events.push({
+        when: lockedAt,
+        label: 'Locked',
+        sub: 'Period closed for changes.'
+      });
+    }
+    // Latest exported_at across this tech's own sessions in the period.
+    let latestExportedAt = null;
+    (myHoursSessions || []).forEach(function (s) {
+      if (!s.exported_at) return;
+      if (!latestExportedAt || myHoursTsToMs(s.exported_at) > myHoursTsToMs(latestExportedAt)) {
+        latestExportedAt = s.exported_at;
+      }
+    });
+    if (latestExportedAt) {
+      events.push({
+        when: latestExportedAt,
+        label: 'Exported',
+        sub: 'Your hours were sent to payroll.'
+      });
+    }
+    if (!events.length) {
+      root.hidden = true; root.innerHTML = '';
+      return;
+    }
+    events.sort(function (a, b) { return myHoursTsToMs(a.when) - myHoursTsToMs(b.when); });
+    const rows = events.map(function (ev) {
+      const ms = myHoursTsToMs(ev.when);
+      const when = ms
+        ? new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Los_Angeles',
+            month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit'
+          }).format(new Date(ms)) + ' PT'
+        : '';
+      return (
+        '<li class="my-hours-timeline-row">' +
+          '<span class="my-hours-timeline-dot" aria-hidden="true"></span>' +
+          '<div class="my-hours-timeline-body">' +
+            '<span class="my-hours-timeline-label">' + myHoursEscape(ev.label) + '</span>' +
+            (when ? ' <span class="my-hours-timeline-when">' + myHoursEscape(when) + '</span>' : '') +
+            '<div class="my-hours-timeline-sub">' + myHoursEscape(ev.sub) + '</div>' +
+          '</div>' +
+        '</li>'
+      );
+    }).join('');
+    root.hidden = false;
+    root.innerHTML =
+      '<h4 class="my-hours-subhead">Status timeline</h4>' +
+      '<ul class="my-hours-timeline">' + rows + '</ul>';
+  }
+
+  /* ---- Phase 29D — Payroll Review Acknowledgment ----
+   *
+   * Render the chip + buttons under the My Hours summary. Tech can:
+   *   • Click "Looks Good" → writes ack doc with status "looks_good".
+   *   • Click "Request Correction" → opens the existing Time Adjustment
+   *     modal. On successful adjustment submit, the ack is upserted to
+   *     "correction_requested" with the new request_id appended.
+   *
+   * Absence of a doc = "Not reviewed." Auto-finalized state ships in
+   * Step 4 (not in this preview).
+   *
+   * Section auto-hides when the tech has zero sessions in the period —
+   * there's nothing to review yet.
+   */
+  function renderMyHoursReview(period) {
+    const section = $('my-hours-review');
+    const statusEl = $('my-hours-review-status');
+    const goodBtn = $('my-hours-review-good');
+    const corrBtn = $('my-hours-review-correction');
+    if (!section || !statusEl || !goodBtn || !corrBtn) return;
+
+    // Nothing to review yet → hide entirely. Re-shows automatically the
+    // moment a session lands in the period.
+    if (!myHoursSessions.length) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+
+    const status = myHoursAck && myHoursAck.status;
+    if (status === 'looks_good') {
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-good">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">✓</span>' +
+          'You reviewed these hours and confirmed they look good.' +
+        '</span>';
+      goodBtn.textContent = 'Re-confirm hours';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Request Correction';
+      corrBtn.disabled = false;
+    } else if (status === 'correction_requested') {
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-warn">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">⚠</span>' +
+          'You requested a correction. Kirby will review it before payroll runs.' +
+        '</span>';
+      goodBtn.textContent = 'Looks Good (resolves correction)';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Add another correction';
+      corrBtn.disabled = false;
+    } else if (status === 'auto_finalized') {
+      // Pre-Step 4 this shouldn't appear, but render defensively in case
+      // a future Cloud Function writes it before the UI is updated.
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-info">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">🔒</span>' +
+          'Auto-finalized at payroll cutoff — no acknowledgment was captured.' +
+        '</span>';
+      goodBtn.disabled = true;
+      corrBtn.disabled = true;
+    } else {
+      // No ack doc yet.
+      statusEl.innerHTML =
+        '<span class="my-hours-review-chip is-pending">' +
+          '<span class="my-hours-review-chip-icon" aria-hidden="true">◌</span>' +
+          'Take a look at your hours and let Kirby know they\'re right.' +
+        '</span>';
+      goodBtn.textContent = 'Looks Good';
+      goodBtn.disabled = false;
+      corrBtn.textContent = 'Request Correction';
+      corrBtn.disabled = false;
+    }
+  }
+
+  // Build the hours_snapshot map the rules require. Mirrors what the
+  // summary tiles show so the admin's "hours changed since review" check
+  // (Phase 2 enhancement) has a clean baseline.
+  function buildMyHoursSnapshot() {
+    let totalMin = 0;
+    (myHoursSessions || []).forEach(function (s) {
+      const m = (typeof s.effective_minutes === 'number') ? s.effective_minutes
+              : (typeof s.paid_minutes === 'number')      ? s.paid_minutes
+              : (typeof s.work_minutes === 'number')      ? s.work_minutes
+              : 0;
+      totalMin += Math.max(0, m);
+    });
+    return {
+      total_minutes:     totalMin,
+      session_count:     myHoursSessions.length,
+      pending_adj_count: Object.keys(myHoursPendingByKey || {}).length,
+      approved_adj_count: myHoursApprovedCount || 0
+    };
+  }
+
+  // Upsert pattern. set({}, merge:true) creates if missing, updates if
+  // present. Rules already gate the allowed status transitions, so a
+  // client cannot downgrade an auto_finalized doc.
+  async function writeMyHoursAck(newStatus, extraFields) {
+    if (!myHoursStaff || !myHoursStaff.uid) return;
+    const period = myHoursCurrentPeriod();
+    const ackId = period.period_id + '__' + myHoursStaff.uid;
+    const ref = firebase.firestore()
+      .collection('payroll_review_acknowledgments').doc(ackId);
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const base = {
+      period_id:          period.period_id,
+      period_start_date:  period.start_date,
+      period_end_date:    period.end_date,
+      staff_uid:          myHoursStaff.uid,
+      staff_email:        myHoursStaff.email || '',
+      staff_name:         (myHoursStaff.display_name || myHoursStaff.first_name ||
+                           myHoursStaff.email || ''),
+      status:             newStatus,
+      acknowledged_at:    sts,
+      hours_snapshot:     buildMyHoursSnapshot(),
+      updated_at:         sts
+    };
+    // created_at only on first write — but with merge:true, including it
+    // every time would overwrite. Use serverTimestamp via merge-ignore by
+    // checking the existing doc first.
+    if (!myHoursAck) {
+      base.created_at = sts;
+    }
+    Object.assign(base, extraFields || {});
+    await ref.set(base, { merge: true });
+  }
+
+  async function submitMyHoursLooksGood() {
+    const goodBtn = $('my-hours-review-good');
+    if (goodBtn) goodBtn.disabled = true;
+    try {
+      await writeMyHoursAck('looks_good');
+      await reloadMyHours();
+    } catch (err) {
+      console.error('[team-hub] looks-good write failed', err);
+      alert('Couldn\'t save your acknowledgment: ' + ((err && err.message) || 'try again'));
+      if (goodBtn) goodBtn.disabled = false;
+    }
+  }
+
+  // Request Correction = open the existing Time Adjustment modal. The
+  // ack flip to "correction_requested" happens after a SUCCESSFUL
+  // adjustment submit (see submitMyHoursAdjustment below), so a tech who
+  // opens the modal and cancels doesn't change their ack state.
+  function submitMyHoursRequestCorrection() {
+    openMyHoursModal(null);
+  }
+
+  /* ---- Modal wiring ---- */
+
+  function wireMyHoursButtons() {
+    const requestBtn = $('my-hours-request-btn');
+    if (requestBtn && !requestBtn.dataset.wired) {
+      requestBtn.dataset.wired = '1';
+      requestBtn.addEventListener('click', function () { openMyHoursModal(null); });
+    }
+    // Phase 29G — pay period picker change.
+    const periodSel = $('my-hours-period-select');
+    if (periodSel && !periodSel.dataset.wired) {
+      periodSel.dataset.wired = '1';
+      periodSel.addEventListener('change', function () {
+        const pid = periodSel.value || '';
+        const found = (myHoursPeriodOptions || []).find(function (p) { return p.period_id === pid; });
+        if (found) reloadMyHours(found);
+      });
+    }
+    // Phase 29D — review buttons.
+    const goodBtn = $('my-hours-review-good');
+    if (goodBtn && !goodBtn.dataset.wired) {
+      goodBtn.dataset.wired = '1';
+      goodBtn.addEventListener('click', submitMyHoursLooksGood);
+    }
+    const corrBtn = $('my-hours-review-correction');
+    if (corrBtn && !corrBtn.dataset.wired) {
+      corrBtn.dataset.wired = '1';
+      corrBtn.addEventListener('click', submitMyHoursRequestCorrection);
+    }
+    const closeBtn = $('my-hours-modal-close');
+    if (closeBtn && !closeBtn.dataset.wired) {
+      closeBtn.dataset.wired = '1';
+      closeBtn.addEventListener('click', closeMyHoursModal);
+    }
+    const cancelBtn = $('my-hours-modal-cancel');
+    if (cancelBtn && !cancelBtn.dataset.wired) {
+      cancelBtn.dataset.wired = '1';
+      cancelBtn.addEventListener('click', closeMyHoursModal);
+    }
+    const submitBtn = $('my-hours-modal-submit');
+    if (submitBtn && !submitBtn.dataset.wired) {
+      submitBtn.dataset.wired = '1';
+      submitBtn.addEventListener('click', submitMyHoursAdjustment);
+    }
+    const shiftSel = $('my-hours-modal-shift');
+    if (shiftSel && !shiftSel.dataset.wired) {
+      shiftSel.dataset.wired = '1';
+      shiftSel.addEventListener('change', function () {
+        myHoursModalShiftId = shiftSel.value || null;
+        applyMyHoursModalShift();
+      });
+    }
+    const overlay = $('my-hours-modal-overlay');
+    if (overlay && !overlay.dataset.wired) {
+      overlay.dataset.wired = '1';
+      overlay.addEventListener('click', function (ev) {
+        if (ev.target === overlay) closeMyHoursModal();
+      });
+    }
+  }
+
+  function eligibleSessionsForAdjustment() {
+    return myHoursSessions.filter(function (s) {
+      if (s.status !== 'completed') return false;
+      if (!s.clock_out_at) return false;
+      if (myHoursPendingByKey[s._id]) return false;
+      // The function refuses if the session is in a locked payroll
+      // state. Hide those so the tech doesn't get a confusing rejection.
+      const lockedStates = ['approved_for_payroll', 'exported', 'workweek_locked_by_export'];
+      if (lockedStates.indexOf(s.payroll_state) >= 0) return false;
+      // The function also refuses if there's no assignment_id (non-
+      // cleaning sessions today don't carry one). Surface only the
+      // sessions that can actually be adjusted in V1.
+      if (!s.assignment_id) return false;
+      return true;
+    });
+  }
+
+  function openMyHoursModal(prefillShiftId) {
+    const overlay = $('my-hours-modal-overlay');
+    if (!overlay) return;
+    const eligible = eligibleSessionsForAdjustment();
+    if (!eligible.length) {
+      // No adjustable sessions this period — explain inline rather than
+      // open an empty modal.
+      const status = $('my-hours-modal-status');
+      if (status) {
+        status.textContent = 'No adjustable shifts in this payroll period.';
+        status.setAttribute('data-tone', 'error');
+      }
+      return;
+    }
+    const sel = $('my-hours-modal-shift');
+    sel.innerHTML = eligible.map(function (s) {
+      const label = myHoursFormatDate(s.service_date) + ' · ' +
+                    myHoursFormatTime(s.clock_in_at) + ' → ' +
+                    myHoursFormatTime(s.clock_out_at);
+      return '<option value="' + myHoursEscape(s._id) + '">' + myHoursEscape(label) + '</option>';
+    }).join('');
+    const chosen = (prefillShiftId && eligible.some(function (s) { return s._id === prefillShiftId; }))
+      ? prefillShiftId : eligible[0]._id;
+    sel.value = chosen;
+    myHoursModalShiftId = chosen;
+    sel.disabled = !!prefillShiftId;
+
+    $('my-hours-modal-reason').selectedIndex = 0;
+    $('my-hours-modal-notes').value = '';
+    setMyHoursModalStatus('', null);
+    applyMyHoursModalShift();
+
+    overlay.hidden = false;
+    setTimeout(function () { $('my-hours-modal-in').focus(); }, 50);
+  }
+
+  function applyMyHoursModalShift() {
+    if (!myHoursModalShiftId) return;
+    const s = myHoursSessions.find(function (x) { return x._id === myHoursModalShiftId; });
+    if (!s) return;
+    const inEl = $('my-hours-modal-in');
+    const outEl = $('my-hours-modal-out');
+    const inHint = $('my-hours-modal-in-hint');
+    const outHint = $('my-hours-modal-out-hint');
+    inEl.value = myHoursToLocalDatetimeValue(s.clock_in_at);
+    outEl.value = myHoursToLocalDatetimeValue(s.clock_out_at);
+    if (inHint)  inHint.textContent  = 'Logged: ' + myHoursFormatTime(s.clock_in_at);
+    if (outHint) outHint.textContent = 'Logged: ' + myHoursFormatTime(s.clock_out_at);
+  }
+
+  function closeMyHoursModal() {
+    const overlay = $('my-hours-modal-overlay');
+    if (overlay) overlay.hidden = true;
+    myHoursModalShiftId = null;
+  }
+
+  function setMyHoursModalStatus(msg, tone) {
+    const el = $('my-hours-modal-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    if (tone) el.setAttribute('data-tone', tone);
+    else el.removeAttribute('data-tone');
+  }
+
+  async function submitMyHoursAdjustment() {
+    if (!myHoursStaff || !myHoursModalShiftId) return;
+    const s = myHoursSessions.find(function (x) { return x._id === myHoursModalShiftId; });
+    if (!s) return;
+
+    const inLocal = $('my-hours-modal-in').value;
+    const outLocal = $('my-hours-modal-out').value;
+    const reasonSel = $('my-hours-modal-reason');
+    const notesValue = ($('my-hours-modal-notes').value || '').trim();
+    const reasonValue = reasonSel.value;
+    const reasonDetail = reasonSel.options[reasonSel.selectedIndex].getAttribute('data-detail') || '';
+
+    if (!inLocal || !outLocal) {
+      setMyHoursModalStatus('Set both the requested clock-in and clock-out.', 'error');
+      return;
+    }
+    if (!notesValue) {
+      setMyHoursModalStatus('Add a quick note so Kirby can verify what happened.', 'error');
+      return;
+    }
+
+    const inIso = myHoursDatetimeLocalToIso(inLocal);
+    const outIso = myHoursDatetimeLocalToIso(outLocal);
+    if (!inIso || !outIso) {
+      setMyHoursModalStatus('Couldn\'t parse those times — please re-enter.', 'error');
+      return;
+    }
+    if (new Date(outIso).getTime() <= new Date(inIso).getTime()) {
+      setMyHoursModalStatus('Clock-out has to be after clock-in.', 'error');
+      return;
+    }
+
+    // Notes carry the requested-detail (wrong time / wrong location) so
+    // Kirby can see why "other" was chosen.
+    const fullNotes = reasonDetail
+      ? '[' + reasonDetail.replace(/_/g, ' ') + '] ' + notesValue
+      : notesValue;
+
+    const url = window.CREATE_TIME_ADJUSTMENT_REQUEST_URL;
+    if (!url) {
+      setMyHoursModalStatus('Adjustment endpoint not configured. Tell Nick.', 'error');
+      return;
+    }
+    const submitBtn = $('my-hours-modal-submit');
+    submitBtn.disabled = true;
+    setMyHoursModalStatus('Submitting…', null);
+
+    try {
+      const idToken = await firebase.auth().currentUser.getIdToken();
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + idToken,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify({
+          assignment_id:      s.assignment_id,
+          service_session_id: s._id,
+          requested_clock_in:  inIso,
+          requested_clock_out: outIso,
+          reason: reasonValue,
+          notes:  fullNotes
+        })
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body || body.ok === false) {
+        const msg = (body && (body.error || body.message)) ||
+                    ('Server returned ' + res.status);
+        throw new Error(msg);
+      }
+      setMyHoursModalStatus('Submitted — Kirby will review shortly.', 'ok');
+      // Phase 29D — flip the period ack to "correction_requested" and
+      // record the new request id. Best-effort: failure here doesn't
+      // undo the adjustment submit (which already succeeded). Tech can
+      // still click "Looks Good" manually if this write fails.
+      try {
+        const newRequestId = (body && (body.request_id || body.id)) || null;
+        const extra = newRequestId
+          ? { correction_request_ids: firebase.firestore.FieldValue.arrayUnion(newRequestId) }
+          : {};
+        await writeMyHoursAck('correction_requested', extra);
+      } catch (ackErr) {
+        console.warn('[team-hub] correction ack flip failed (non-fatal)', ackErr);
+      }
+      setTimeout(closeMyHoursModal, 1100);
+      await reloadMyHours();
+    } catch (err) {
+      console.error('[team-hub] adjustment submit failed', err);
+      setMyHoursModalStatus('Couldn\'t submit: ' + (err.message || 'try again'), 'error');
+      submitBtn.disabled = false;
+    }
+  }
+
+  /* ---------- debug panel (V20260614c) ---------------------------------
+   * Activates when the URL has ?debug=announcements. Renders a fixed-
+   * position panel with per-announcement diagnosis so we can spot WHY
+   * the badge says N and the hub UI shows M cards.
+   *
+   * Read-only: same queries the badge already runs. No new write
+   * surface. Self-contained — remove the maybeRunAnnouncementDebug
+   * function + its single call site to retire.
+   * --------------------------------------------------------------------- */
+  function _annDebugToMs(ts) {
+    if (!ts) return null;
+    if (typeof ts === "number") return ts;
+    if (typeof ts === "string") { const t = Date.parse(ts); return isNaN(t) ? null : t; }
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    return null;
+  }
+  function _annDebugFmtTs(ts) {
+    const ms = _annDebugToMs(ts);
+    if (ms == null) return "—";
+    try {
+      return new Date(ms).toISOString().replace("T", " ").slice(0, 19) + "Z";
+    } catch (_e) { return String(ms); }
+  }
+  function _annDebugEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  async function maybeRunAnnouncementDebug(staff) {
+    try {
+      const qs = new URLSearchParams(window.location.search || "");
+      if (qs.get("debug") !== "announcements") return;
+      if (!staff || !staff.uid) return;
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+
+      const db = firebase.firestore();
+      const [annsSnap, readsSnap] = await Promise.all([
+        db.collection("announcements").where("active", "==", true).get(),
+        db.collection("announcement_reads").where("uid", "==", staff.uid).get()
+      ]);
+      const readIds = new Set();
+      const readMap = {};
+      readsSnap.docs.forEach(function (d) {
+        const data = d.data() || {};
+        if (data.announcement_id) {
+          readIds.add(data.announcement_id);
+          readMap[data.announcement_id] = data;
+        }
+      });
+
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMeDbg(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
+
+      const now = Date.now();
+      const rows = annsSnap.docs.map(function (d) {
+        const a = d.data() || {};
+        const archived = !!a.archived_at;
+        const s = _annDebugToMs(a.starts_at);
+        const e = _annDebugToMs(a.expires_at);
+        const beforeStart = (s != null && s > now);
+        const afterEnd    = (e != null && e <= now);
+        const isActiveWindow = !archived && !beforeStart && !afterEnd;
+        const inReads        = readIds.has(d.id);
+        const targets        = targetsMeDbg(a);
+        // Old badge logic = activeWindow && !inReads (no audience filter)
+        const countedByOldBadge = isActiveWindow && !inReads;
+        // New badge logic (this preview) = activeWindow && targetsMe && !inReads
+        const countedByNewBadge = isActiveWindow && targets && !inReads;
+        // Hub UI shows the card if: targetsMe && isActiveWindow && !inReads
+        const renderedByHub     = isActiveWindow && targets && !inReads;
+        return {
+          id: d.id,
+          title:        a.title || "(untitled)",
+          audienceType: a.audienceType || "(undefined→all)",
+          mandatory:    !!a.mandatory,
+          archived:     archived,
+          starts_at:    _annDebugFmtTs(a.starts_at),
+          expires_at:   _annDebugFmtTs(a.expires_at),
+          beforeStart:  beforeStart,
+          afterEnd:     afterEnd,
+          recipUids:    Array.isArray(a.recipientUids)      ? a.recipientUids.length      : 0,
+          recipEmails:  Array.isArray(a.recipientEmails)    ? a.recipientEmails.length    : 0,
+          recipSlugs:   Array.isArray(a.recipientTechSlugs) ? a.recipientTechSlugs.length : 0,
+          inReads:      inReads,
+          targets:      targets,
+          countedOld:   countedByOldBadge,
+          countedNew:   countedByNewBadge,
+          renderedHub:  renderedByHub
+        };
+      });
+
+      const oldBadge = rows.reduce(function (n, r) { return n + (r.countedOld  ? 1 : 0); }, 0);
+      const newBadge = rows.reduce(function (n, r) { return n + (r.countedNew  ? 1 : 0); }, 0);
+      const hubCount = rows.reduce(function (n, r) { return n + (r.renderedHub ? 1 : 0); }, 0);
+
+      const summaryHtml =
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;">' +
+          '<div><strong>Old badge (pre-fix)</strong>: ' + oldBadge + '</div>' +
+          '<div><strong>New badge (this preview)</strong>: ' + newBadge + '</div>' +
+          '<div><strong>Hub UI cards</strong>: ' + hubCount + '</div>' +
+          '<div><strong>Reads on file</strong>: ' + readIds.size + '</div>' +
+        '</div>';
+
+      const authHtml =
+        '<div style="font-family:monospace;font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;margin-bottom:12px;">' +
+          'uid: ' + _annDebugEsc(myUid || "(none)") +
+          ' · email: ' + _annDebugEsc(myEmail || "(none)") +
+          ' · tech_slug: ' + _annDebugEsc(mySlug || "(none)") +
+        '</div>';
+
+      const headerHtml =
+        '<tr style="background:#1e293b;color:#fff;">' +
+          ['Title','aud','Mand','Active','In reads','Targets me','Old badge','New badge','Hub card','starts_at','expires_at','recipUids/Emails/Slugs','Action']
+            .map(function (h) { return '<th style="padding:6px 8px;text-align:left;font-weight:600;">' + h + '</th>'; })
+            .join("") +
+        '</tr>';
+
+      function bool(v, goodTrue) {
+        const yes = '<span style="color:#16a34a;font-weight:700;">YES</span>';
+        const no  = '<span style="color:#dc2626;font-weight:700;">no</span>';
+        return v ? yes : no;
+      }
+      function neutralBool(v) {
+        return v
+          ? '<span style="color:#0369a1;font-weight:700;">YES</span>'
+          : '<span style="color:#64748b;">no</span>';
+      }
+      const bodyHtml = rows.map(function (r) {
+        const activeWindow = !r.archived && !r.beforeStart && !r.afterEnd;
+        const recipSummary = r.recipUids + ' / ' + r.recipEmails + ' / ' + r.recipSlugs;
+        const action = r.countedNew
+          ? '<button data-debug-mark-read="' + _annDebugEsc(r.id) + '" style="padding:4px 8px;background:#dc2626;color:#fff;border:0;border-radius:4px;cursor:pointer;">Force mark read</button>'
+          : '<span style="color:#64748b;font-size:11px;">—</span>';
+        return '<tr style="border-bottom:1px solid #e2e8f0;">' +
+          '<td style="padding:6px 8px;max-width:240px;"><div style="font-weight:600;">' + _annDebugEsc(r.title) + '</div>' +
+            '<div style="font-family:monospace;font-size:11px;color:#64748b;">' + _annDebugEsc(r.id) + '</div></td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.audienceType) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.mandatory) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(activeWindow) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.inReads) + '</td>' +
+          '<td style="padding:6px 8px;">' + neutralBool(r.targets) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.countedOld) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.countedNew) + '</td>' +
+          '<td style="padding:6px 8px;">' + bool(r.renderedHub) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.starts_at) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(r.expires_at) + '</td>' +
+          '<td style="padding:6px 8px;font-family:monospace;font-size:11px;">' + _annDebugEsc(recipSummary) + '</td>' +
+          '<td style="padding:6px 8px;">' + action + '</td>' +
+        '</tr>';
+      }).join("");
+
+      const panel = document.createElement("section");
+      panel.id = "team-hub-debug-panel";
+      panel.style.cssText = "margin:16px;padding:16px;background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;font-family:-apple-system,sans-serif;";
+      panel.innerHTML =
+        '<h2 style="margin:0 0 12px;font-size:16px;color:#92400e;">🐛 Announcement Badge Debug (?debug=announcements)</h2>' +
+        authHtml +
+        summaryHtml +
+        '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead>' + headerHtml + '</thead>' +
+          '<tbody>' + bodyHtml + '</tbody>' +
+        '</table></div>' +
+        '<p style="margin:12px 0 0;font-size:11px;color:#92400e;">' +
+          'Old badge = pre-fix count (no audience filter). New badge = this preview (audience-filtered).<br>' +
+          'Hub UI cards = what /team-hub.html actually renders in the unread section.<br>' +
+          'Force mark read writes announcement_reads/{annId}_{uid} for the current user.' +
+        '</p>';
+
+      const main = document.querySelector("main") || document.body;
+      if (main) main.insertBefore(panel, main.firstChild);
+
+      // Wire Force-mark-read buttons → call markAnnouncementRead → reload.
+      panel.addEventListener("click", function (ev) {
+        const btn = ev.target.closest && ev.target.closest("[data-debug-mark-read]");
+        if (!btn) return;
+        const annId = btn.getAttribute("data-debug-mark-read");
+        if (!annId) return;
+        btn.disabled = true; btn.textContent = "writing…";
+        markAnnouncementRead(annId, staff.uid, staff.email || "", 1)
+          .then(function () { window.location.reload(); })
+          .catch(function (err) {
+            console.error("[debug] force mark read failed", err);
+            btn.disabled = false; btn.textContent = "FAILED — retry?";
+          });
+      });
+
+      try { console.info("[announcement-debug]", { oldBadge: oldBadge, newBadge: newBadge, hubCount: hubCount, rows: rows }); } catch (_e) {}
+    } catch (err) {
+      console.error("[announcement-debug] failed", err);
+    }
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     wireSignInButton();
@@ -757,11 +3438,38 @@
           // Also paints the nav-pill badge after the data lands.
           bootAnnouncementsForStaff(staff).then(function () {
             paintTeamHubUnreadBadge(staff);
+            // V20260614c — show debug panel if ?debug=announcements.
+            // Runs AFTER the regular boot so the panel reflects the
+            // same data + reads the user sees in the hub.
+            maybeRunAnnouncementDebug(staff);
           });
           // Pioneer Quality (public-safe morale surface). Soft-fails;
           // doesn't block the rest of the page.
           bootQualityForStaff(staff);
-          // Today's Work now lives on /work.html — no longer mounted here.
+          // Upcoming Team Schedule — Deputy-powered snapshot + folded
+          // PDF backup links. Reads published_team_schedule/current
+          // AND team_schedule/current in parallel. Soft-fails;
+          // non-blocking.
+          bootPublishedScheduleForStaff(staff);
+          // Open-shifts badge on the Pick Up Open Shift card +
+          // Rockstar Team Players recognition. Both soft-fail
+          // independently. Today's Work lives on /work.html.
+          bootOpenShiftsBadge();
+          bootRockstarRecognition();
+          // Phase 1C — Leadership Messages. Reads queued messages
+          // targeting this tech (employee) or the team broadcast.
+          // Soft-fails; non-blocking.
+          bootLeadershipMessagesForStaff(staff);
+          // Phase 3B — Messages from Pioneer (thread-based). Reads
+          // communication_messages addressed to this tech, lets them
+          // acknowledge or reply inline. Soft-fails; non-blocking.
+          bootCommMessagesForStaff(staff);
+          // Phase Employee Trust Layer — My Hours. Surfaces this
+          // employee's paid time for the current payroll period and
+          // lets them request a correction. Routes to the existing
+          // createTimeAdjustmentRequestV1 Cloud Function so admin
+          // review is unchanged.
+          bootMyHoursForStaff(staff);
         }
       });
     } catch (err) {

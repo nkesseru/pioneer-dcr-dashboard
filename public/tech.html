@@ -15,6 +15,14 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="tech.css" />
   <link rel="stylesheet" href="styles/tech-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
 <body class="tech-body">
 
@@ -190,6 +198,92 @@
          skeleton + empty state. -->
     <div id="tech-content" hidden>
 
+      <!-- ============================================================
+           OPERATIONAL HIERARCHY — top of customer detail.
+           Order matches the tech mental model in the field:
+             1. Security / access (how do I get in?)
+             2. Important cleaning notes (standing instructions)
+             3. Customer SOP (cleaning playbook)
+           Dashboard-style metrics (snapshot, quality, health, etc.)
+           sit BELOW these because they're reference, not action.
+           See the design note in the CSS file on .tech-security-launcher
+           for the accent-bump rationale.
+           ============================================================ -->
+
+      <!-- 1. Security Info launcher (tech-approved).
+           Hidden by default; shown when techHubViewV1 returns a
+           securityInfo.hasInfo=true. Sits at the very top so techs
+           never have to dig through cleaning instructions while an
+           alarm panel is beeping. Codes themselves are NEVER inlined
+           on the page — they only render inside the modal when the
+           tech taps the button. -->
+      <section class="card tech-section tech-security-launcher" id="tech-security-launcher" hidden>
+        <button type="button" class="tech-security-btn" id="tech-security-btn"
+                aria-haspopup="dialog" aria-controls="tech-security-modal">
+          <span class="tech-security-btn-icon" aria-hidden="true">🔐</span>
+          <span class="tech-security-btn-label">
+            <span class="tech-security-btn-title">Security Info</span>
+            <span class="tech-security-btn-sub">Alarm, door, gate codes &amp; key info for this site</span>
+          </span>
+          <span class="tech-security-btn-arrow" aria-hidden="true">›</span>
+        </button>
+      </section>
+
+      <!-- 2. Important Cleaning Notes.
+           Pinned operational knowledge for this customer/location.
+           Populated by tech.js from techHubViewV1's customer_notes
+           array (server gates the read by the tech's assigned
+           customers). Each card shows category, title, body, who
+           last updated, and when. Techs can submit a suggestion via
+           the per-card or per-section "Suggest update" button — that
+           writes to /customer_note_suggestions for admin review. -->
+      <section class="card tech-section tech-notes-card">
+        <header class="tech-section-head">
+          <div class="tech-section-head-row">
+            <h2 class="tech-section-title">📌 Important Cleaning Notes</h2>
+            <button type="button" class="tech-suggest-btn"
+                    id="tech-notes-suggest-new"
+                    data-action="suggest-new"
+                    title="Suggest a brand-new note for this customer">
+              Suggest update
+            </button>
+          </div>
+          <p class="tech-section-sub">
+            Standing instructions for this location — security, access,
+            cleaning preferences. Office-maintained.
+          </p>
+        </header>
+        <!-- Phase 1e.3 — small label shown above the notes list when one
+             or more standing notes exist. Hidden when the empty state
+             takes over. Toggled by tech.js renderCustomerNotes(). -->
+        <p id="tech-notes-list-label" class="tech-notes-list-label" hidden>
+          Standing notes for this location
+        </p>
+        <div id="tech-notes-list" class="tech-notes-list" role="list"></div>
+        <p id="tech-notes-empty" class="tech-empty" hidden>
+          No standing notes yet. Tap <strong>Suggest update</strong> if there's something the office should add for future cleanings.
+        </p>
+      </section>
+
+      <!-- 3. Customer SOP block (tech view v1).
+           Single collapsible block rendered by
+           CustomerSop.renderPublicSimple(). Source priority is
+           sopRawPublicText > sopPublicNotes > sopSections; codes and
+           emergency contacts are never present here (the seed
+           redacts them and keeps them in customer_secure/{slug},
+           which firestore.rules denies tech reads of). -->
+      <section class="card tech-section tech-sop-card" id="tech-sop-card" hidden>
+        <header class="tech-section-head">
+          <div class="tech-section-head-row">
+            <h2 class="tech-section-title">🗂 Customer SOP</h2>
+          </div>
+          <p class="tech-section-sub">
+            Cleaning instructions for this location. For codes or emergency contacts, ping the office.
+          </p>
+        </header>
+        <div id="tech-sop-body"></div>
+      </section>
+
       <!-- ===== Snapshot card ===== -->
       <section class="card tech-snapshot">
         <header class="tech-snapshot-head">
@@ -292,74 +386,6 @@
         </div>
       </section>
 
-      <!-- ===== Important Cleaning Notes ===== -->
-      <!-- Pinned operational knowledge for this customer/location.
-           Populated by tech.js from techHubViewV1's customer_notes
-           array (server gates the read by the tech's assigned
-           customers). Each card shows category, title, body, who
-           last updated, and when. Techs can submit a suggestion via
-           the per-card or per-section "Suggest update" button — that
-           writes to /customer_note_suggestions for admin review. -->
-      <!-- Security Info launcher (tech-approved).
-           Hidden by default; shown when techHubViewV1 returns a
-           securityInfo.hasInfo=true. Sits above the SOP block so techs
-           never have to dig through cleaning instructions while an
-           alarm panel is beeping. Codes themselves are NEVER inlined
-           on the page — they only render inside the modal when the
-           tech taps the button. -->
-      <section class="card tech-section tech-security-launcher" id="tech-security-launcher" hidden>
-        <button type="button" class="tech-security-btn" id="tech-security-btn"
-                aria-haspopup="dialog" aria-controls="tech-security-modal">
-          <span class="tech-security-btn-icon" aria-hidden="true">🔐</span>
-          <span class="tech-security-btn-label">
-            <span class="tech-security-btn-title">Security Info</span>
-            <span class="tech-security-btn-sub">Alarm, door, gate codes &amp; key info for this site</span>
-          </span>
-          <span class="tech-security-btn-arrow" aria-hidden="true">›</span>
-        </button>
-      </section>
-
-      <!-- Customer SOP block (tech view v1).
-           Single collapsible block rendered by
-           CustomerSop.renderPublicSimple(). Source priority is
-           sopRawPublicText > sopPublicNotes > sopSections; codes and
-           emergency contacts are never present here (the seed
-           redacts them and keeps them in customer_secure/{slug},
-           which firestore.rules denies tech reads of). -->
-      <section class="card tech-section tech-sop-card" id="tech-sop-card" hidden>
-        <header class="tech-section-head">
-          <div class="tech-section-head-row">
-            <h2 class="tech-section-title">🗂 Customer SOP</h2>
-          </div>
-          <p class="tech-section-sub">
-            Cleaning instructions for this location. For codes or emergency contacts, ping the office.
-          </p>
-        </header>
-        <div id="tech-sop-body"></div>
-      </section>
-
-      <section class="card tech-section tech-notes-card">
-        <header class="tech-section-head">
-          <div class="tech-section-head-row">
-            <h2 class="tech-section-title">📌 Important Cleaning Notes</h2>
-            <button type="button" class="tech-suggest-btn"
-                    id="tech-notes-suggest-new"
-                    data-action="suggest-new"
-                    title="Suggest a brand-new note for this customer">
-              Suggest update
-            </button>
-          </div>
-          <p class="tech-section-sub">
-            Standing instructions for this location — security, access,
-            cleaning preferences. Office-maintained.
-          </p>
-        </header>
-        <div id="tech-notes-list" class="tech-notes-list" role="list"></div>
-        <p id="tech-notes-empty" class="tech-empty" hidden>
-          No standing notes for this customer yet. Tap "Suggest update" if you have something the office should add.
-        </p>
-      </section>
-
       <!-- ===== Open supply requests ===== -->
       <section class="card tech-section">
         <header class="tech-section-head">
@@ -402,7 +428,11 @@
       </section>
 
       <!-- ===== Recent positive feedback ===== -->
-      <section class="card tech-section">
+      <!-- V6 pilot — hidden by default; tech.js unhides only when
+           there are real compliments in the last 30 days. Empty-state
+           text below is retained for the case where we DO want to
+           show it explicitly (currently never on the tech side). -->
+      <section class="card tech-section" id="tech-feedback-section" hidden>
         <header class="tech-section-head">
           <h2 class="tech-section-title">Recent Positive Feedback</h2>
           <p class="tech-section-sub">Compliments and thank-yous from this customer.</p>
@@ -413,8 +443,13 @@
         </p>
       </section>
 
-      <!-- ===== Recent wins / recognition ===== -->
-      <section class="card tech-section tech-wins-card">
+      <!-- ===== Recent wins / recognition =====
+           V6 pilot — hidden. The real wins data feed (streaks, badges,
+           team recognition) hasn't shipped yet, and a "More recognition
+           features coming soon 👊" placeholder reads as noise during
+           pilot. Re-enable by removing `hidden` once renderWinsList()
+           gets a real data source. -->
+      <section class="card tech-section tech-wins-card" id="tech-wins-section" hidden>
         <header class="tech-section-head">
           <h2 class="tech-section-title">Wins &amp; Recognition</h2>
           <p class="tech-section-sub">Small things worth noticing.</p>
@@ -424,8 +459,11 @@
         </div>
       </section>
 
-      <!-- ===== Ask for update (placeholder) ===== -->
-      <section class="card tech-ask-card">
+      <!-- ===== Ask for update (placeholder) =====
+           V6 pilot — hidden. The "tap to ask the office for a status
+           update" feature is a v1 placeholder that doesn't route the
+           ask anywhere yet. Hidden until the full request flow ships. -->
+      <section class="card tech-ask-card" id="tech-ask-section" hidden>
         <h2 class="tech-section-title">Need a status update on a request?</h2>
         <p class="tech-section-sub">
           Tap the button and we'll route your ask to the office. This is a
@@ -533,6 +571,9 @@
   <script src="info-tip.js"></script>
   <script src="walkthrough.js"></script>
   <script src="customer-sop.js"></script>
-  <script src="tech.js"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <script src="tech.js?v=20260615-office-issues"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

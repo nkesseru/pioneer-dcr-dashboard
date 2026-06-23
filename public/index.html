@@ -23,6 +23,14 @@
        If unavailable (offline / ad blocker / CDN miss), the success card
        falls back to an animated SVG check via the `:not(:defined)` CSS rule. -->
   <script async src="https://unpkg.com/@lottiefiles/lottie-player@2.0.8/dist/lottie-player.js"></script>
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
 <body>
 
@@ -190,20 +198,59 @@
     <!-- ============ Authorized content wrapper ============ -->
     <div id="staff-auth-content" hidden>
 
-    <!-- Draft-restored toast slot -->
+    <!-- Draft-restored toast slot — calmer Phase 3 copy. -->
     <div id="draft-toast" class="draft-toast" hidden>
-      <span id="draft-toast-text">Draft restored.</span>
+      <span class="draft-toast-icon" aria-hidden="true">💾</span>
+      <span id="draft-toast-text">Welcome back — your draft is here.</span>
       <button type="button" id="draft-toast-clear" class="draft-toast-clear">Clear draft</button>
+    </div>
+
+    <!-- ============ Sticky visit context bar (Phase 3) ============
+         Appears once customer + tech + clean_date are all filled.
+         Stays glued to the top of the viewport so the tech always
+         knows who/what/when the open DCR is for as they scroll
+         through long checklists. Includes a slim completion-progress
+         bar driven by app.js refreshDcrCompletion(). Hidden when the
+         page is on the success card. -->
+    <div id="dcr-sticky-context" class="dcr-sticky-context" hidden role="region" aria-label="DCR context">
+      <div class="dcr-sticky-context-row">
+        <div class="dcr-sticky-context-text">
+          <span class="dcr-sticky-context-eyebrow">Open DCR</span>
+          <span class="dcr-sticky-context-customer" id="dcr-sticky-customer">—</span>
+          <span class="dcr-sticky-context-meta">
+            <span id="dcr-sticky-tech">—</span><span class="dcr-sticky-context-sep" aria-hidden="true"> · </span><span id="dcr-sticky-date">—</span>
+          </span>
+        </div>
+        <div class="dcr-sticky-context-progress" aria-label="Form completion">
+          <span class="dcr-sticky-context-progress-pct" id="dcr-sticky-progress-pct">0%</span>
+          <div class="dcr-sticky-context-progress-bar" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               id="dcr-sticky-progress-bar">
+            <div class="dcr-sticky-context-progress-fill" id="dcr-sticky-progress-fill"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <form id="dcr-form" class="dcr-form" novalidate>
 
-      <!-- Validation summary — shown after a failed submit attempt. Lists
-           exactly what still needs attention so the cleaner doesn't have to
-           hunt for the missing piece. Hidden again once submit succeeds. -->
+      <!-- Validation guidance — shown after a failed submit attempt.
+           Phase 4 refactor: single-focus operational guidance instead
+           of a bullet-wall. We surface the NEXT highest-priority
+           missing item with a clear CTA that scrolls to the target,
+           expands the section if it's collapsed, and briefly glows
+           the destination so the tech sees where they landed. The
+           submit gate logic itself is unchanged — this is purely a
+           UX layer over collectValidationErrors(). -->
       <div id="validation-summary" class="validation-summary" role="status" aria-live="polite" hidden>
-        <div class="validation-head" id="validation-head">Almost there — please finish these:</div>
-        <ul id="validation-list" class="validation-list"></ul>
+        <div class="validation-icon" aria-hidden="true">→</div>
+        <div class="validation-body">
+          <span class="validation-eyebrow" id="validation-head">Almost there</span>
+          <p class="validation-message" id="validation-message">—</p>
+        </div>
+        <button type="button" class="validation-cta" id="validation-cta">
+          Take me there <span aria-hidden="true">↓</span>
+        </button>
       </div>
 
       <!-- Deputy-shift banner — visible only when the page was opened
@@ -218,6 +265,36 @@
            it always shows even if JS is slow / errors out partway. Meta
            lines (location, scheduled time, sync date, shift id) and
            actions (Open in Deputy link) are filled by app.js. -->
+      <!-- 2026-06-22 Phase 32D — DCR-without-clock-in preflight warning.
+           Shown ONLY when the DCR form was opened WITHOUT any clock-in
+           linkage (no pioneer_service_session_id, no pioneer_assignment_id,
+           no deputy_shift_id in the URL). Catches the orphan-DCR case
+           where a tech submits a report without first clocking in,
+           which would let the work record through but leave payroll
+           hours missing. The tech can tap "I forgot — open /work" to
+           go clock in, or "Continue anyway" to submit a DCR without
+           hour tracking (stamped onto submission_meta for audit).
+           When the form is opened from /work (any handoff present),
+           this banner stays hidden. -->
+      <aside id="dcr-no-session-banner" class="dcr-no-session-banner" role="status" aria-live="polite" hidden>
+        <span class="dcr-no-session-banner-icon" aria-hidden="true">⚠</span>
+        <div class="dcr-no-session-banner-body">
+          <strong class="dcr-no-session-banner-title">This DCR isn't tied to a clock-in</strong>
+          <p class="dcr-no-session-banner-msg">
+            Submitting will record the report but <strong>won't add hours to payroll</strong>.
+            If you forgot to clock in, head to your work page first.
+          </p>
+          <div class="dcr-no-session-banner-actions">
+            <a class="dcr-no-session-banner-btn primary" id="dcr-no-session-goto-work" href="/work">
+              I forgot — open /work
+            </a>
+            <button class="dcr-no-session-banner-btn secondary" type="button" id="dcr-no-session-continue">
+              Continue anyway
+            </button>
+          </div>
+        </div>
+      </aside>
+
       <div id="deputy-shift-banner" class="deputy-shift-banner" role="status" aria-live="polite" hidden>
         <span class="deputy-shift-banner-icon" aria-hidden="true">📅</span>
         <div class="deputy-shift-banner-body">
@@ -228,8 +305,40 @@
       </div>
 
 
-      <!-- 1. Visit details -->
-      <section class="card">
+      <!-- 1a. Assigned shift summary — compact card shown when the DCR
+           was opened from Today's Work (Start Work click). app.js fills
+           the four lines (customer · tech · date · time) from the URL
+           params + the signed-in staff record, then hides the manual
+           Visit Details section below. Admins get a small "Change shift
+           / Advanced" toggle to fall back to manual entry. -->
+      <section class="card assigned-shift-card" id="assigned-shift-summary" hidden>
+        <div class="assigned-shift-row assigned-shift-customer">
+          <span class="assigned-shift-icon" aria-hidden="true">📍</span>
+          <strong class="assigned-shift-value" id="assigned-shift-customer-name">—</strong>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">👤</span>
+          <span class="assigned-shift-value" id="assigned-shift-tech-name">—</span>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">📅</span>
+          <span class="assigned-shift-value" id="assigned-shift-date">—</span>
+        </div>
+        <div class="assigned-shift-row">
+          <span class="assigned-shift-icon" aria-hidden="true">🕘</span>
+          <span class="assigned-shift-value" id="assigned-shift-time">—</span>
+        </div>
+        <button type="button" class="assigned-shift-advanced-toggle"
+                id="assigned-shift-advanced-toggle"
+                aria-expanded="false" hidden>
+          Change shift / Advanced
+        </button>
+      </section>
+
+      <!-- 1. Visit details
+           Hidden by app.js when the assigned-shift summary takes over.
+           Visible for: manual DCRs, admin overrides, unmatched shifts. -->
+      <section class="card" id="visit-details-section">
         <h2 class="card-title">Visit details</h2>
         <p class="card-sub">Who, where, and when.</p>
 
@@ -326,6 +435,13 @@
         <h2 class="card-title">Photos</h2>
         <p class="card-sub">Up to <span id="max-photos-label">12</span> photos.</p>
 
+        <!-- V6 pilot — the <input type="file"> used to live INSIDE the
+             <label>, which on some mobile browsers fires a duplicate
+             click event that can bubble out of the photos card. Moved
+             OUT to be a sibling so the label only forwards via its
+             `for` attribute (no nested-event-fire path). The defensive
+             click `stopPropagation` in app.js is the belt to this
+             suspenders. -->
         <label class="file-drop" for="photos">
           <svg class="file-drop-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 7l3 -3h12l3 3v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-12z" />
@@ -333,12 +449,13 @@
           </svg>
           <span class="file-drop-cta">Add photos</span>
           <span class="file-drop-sub">JPG, PNG, HEIC, WebP &middot; up to 10&nbsp;MB each</span>
-          <input type="file" id="photos" accept="image/*" multiple hidden />
         </label>
+        <input type="file" id="photos" accept="image/*" multiple hidden />
+
         <div id="photo-preview" class="photo-grid" aria-live="polite"></div>
         <div class="photo-counter"><span id="photo-counter-text">0 of 12</span></div>
 
-        <p class="video-note"><strong>Note:</strong> videos go in Slack — this form is for photos only.</p>
+        <p class="video-note"><strong>Note:</strong> this form is for photos only — share any videos directly with the office team.</p>
       </section>
 
       <!-- 11. Occupancy -->
@@ -360,18 +477,29 @@
         </div>
       </section>
 
-      <!-- 12. Time budget -->
-      <section class="card">
+      <!-- 12. Time (Phase 1e.2) — conditional scope-change tracker.
+           Hidden by default. app.js reveals this card when the linked
+           Pioneer Time Clock session (id from ?pioneer_service_session_id
+           in the URL) shows work_minutes > budget_minutes + 15.
+           Spirit: collaborative scope-change tracking, not a budget
+           gotcha. Nothing here is required; submission never gates on
+           this section. The picker is rendered from
+           DCR_FORM_CONFIG.over_budget_context_options. -->
+      <section class="card" id="time-budget-card" hidden>
         <h2 class="card-title">Time</h2>
-        <p class="question">Were you able to stick to your time budget?</p>
-        <div class="seg" data-name="on_time_budget" role="radiogroup" aria-label="On time budget?">
-          <button type="button" class="seg-btn" data-value="yes">Yes</button>
-          <button type="button" class="seg-btn" data-value="no">No</button>
-        </div>
+        <p class="question">Quick check — this stop needed a little extra time tonight. Did anything change with the building or scope?</p>
+        <p class="hint" style="margin-top: 6px; line-height: 1.5;">
+          We're tracking scope and building changes here, not budget overages —
+          this helps us explain extras to the customer clearly.
+        </p>
+        <div id="time-budget-reasons" style="margin-top: 10px;"></div>
 
-        <div class="conditional" data-show-when="on_time_budget=no">
-          <p class="hint" style="margin-top: 14px;">What threw the timing off? (Tap all that apply.)</p>
-          <div id="time-budget-reasons"></div>
+        <div class="field" style="margin-top: 14px;">
+          <label for="over-budget-other-note" class="hint" style="display:block;margin-bottom:6px;font-weight:700;color:var(--pc-text);">
+            Anything else that would help us explain the extra time?
+          </label>
+          <textarea id="over-budget-other-note" rows="3"
+            placeholder="Optional. e.g. moved furniture for a renovation, customer asked for a back room deep-clean, etc."></textarea>
         </div>
       </section>
 
@@ -416,7 +544,10 @@
         </div>
       </section>
 
-      <!-- Upload progress (visible during photo + signature uploads) -->
+      <!-- Upload progress (visible during photo + signature uploads).
+           2026-06-18 hotfix — Cancel button lets the tech bail out of a
+           stalled upload without waiting for the watchdog/hard cap. Hidden
+           by default; showUploadProgress() reveals it alongside the bar. -->
       <div id="upload-progress" class="upload-progress" hidden>
         <div class="upload-progress-row">
           <span class="upload-progress-label" id="upload-progress-label">Uploading…</span>
@@ -425,10 +556,23 @@
         <div class="upload-progress-bar">
           <div class="upload-progress-bar-fill" id="upload-progress-bar-fill"></div>
         </div>
+        <button type="button" id="upload-progress-cancel" class="upload-progress-cancel" hidden>
+          Cancel upload
+        </button>
       </div>
 
-      <!-- Submit bar (sticky on mobile, inline on desktop) -->
+      <!-- Submit bar (sticky on mobile, inline on desktop).
+           Phase 3 polish: completion-count chip surfaces alongside
+           the button so the tech can see "5 of 9 sections" without
+           scrolling back to the top. Driven by app.js
+           refreshDcrCompletion(). -->
       <div class="submit-bar">
+        <div class="submit-bar-left">
+          <span class="submit-bar-progress" id="submit-bar-progress" aria-live="polite">
+            <span class="submit-bar-progress-dot" aria-hidden="true"></span>
+            <span class="submit-bar-progress-text" id="submit-bar-progress-text">0 of 0 sections complete</span>
+          </span>
+        </div>
         <button type="submit" class="submit-btn" id="submit-btn">Submit DCR</button>
         <div id="status" role="status" aria-live="polite"></div>
       </div>
@@ -481,16 +625,62 @@
           <path class="success-check-path" fill="none" d="M14 27 l8 8 l16 -16" />
         </svg>
       </div>
-      <h2>DCR submitted</h2>
-      <p class="success-lede">Thanks for helping keep Pioneer excellent.</p>
-      <p class="success-sub">Photos and signature saved.</p>
+      <h2>DCR submitted. Great work.</h2>
+      <p class="success-lede">Photos and signature saved.</p>
+
+      <!-- Golden-path next steps. Visible whenever the DCR was opened
+           from Today's Work (i.e. ?pioneer_session_id=… in the URL).
+           app.js wires the Finish Work button to /work.html?finishSession=
+           which today-work.js auto-closes on boot. Open Deputy is a real
+           anchor — never JS-driven, never popup-blocked. -->
+      <div class="success-final-step" id="success-final-step" hidden>
+        <p class="success-final-step-title">Final step</p>
+        <p class="success-final-step-body">
+          Finish Work in PioneerOps so we know this clean is complete.
+          Then clock out in Deputy.
+        </p>
+        <div class="success-actions">
+          <button type="button" class="success-btn success-btn-primary" id="success-finish-work">
+            Finish Work in PioneerOps
+          </button>
+          <a class="success-btn success-btn-secondary" id="success-open-deputy"
+             href="https://once.deputy.com/my" target="_blank" rel="noopener noreferrer">
+            Open Deputy App
+          </a>
+        </div>
+        <p class="success-helper">
+          Use the Deputy mobile app — sign in once and future taps should open the app automatically.
+          Don’t have it? Install the Deputy app first, then return here.
+        </p>
+        <a class="success-link" id="success-back-to-work" href="/work.html">
+          ← Back to Today's Work
+        </a>
+      </div>
+
+      <!-- Fallback when no work session is linked (manual DCR / admin
+           use). Keeps Start Another DCR available without it being the
+           primary action for a tech finishing a shift. -->
+      <div class="success-no-session" id="success-no-session" hidden>
+        <a class="success-btn success-btn-secondary" id="success-back-to-work-manual" href="/work.html">
+          Back to Today's Work
+        </a>
+        <button type="button" class="success-link" id="new-dcr-btn">Start another DCR</button>
+      </div>
+
       <div class="submission-id-row">
         <span class="submission-id-label">Submission ID</span>
         <code id="success-submission-id"></code>
       </div>
       <!-- Populated by app.js when the function returns a zapier status. -->
       <div id="success-zapier" class="success-zapier" hidden></div>
-      <button type="button" class="new-dcr-btn" id="new-dcr-btn">Start another DCR</button>
+
+      <!-- V20260614d — Per-device mute toggle for the optional submit
+           celebration sound. Default is sound on. Label flips to match
+           current state; click toggles + persists in localStorage
+           (pioneer.dcr.successSound.muted). Doesn't replay sound. -->
+      <button type="button" id="dcr-sound-toggle" class="success-link" aria-pressed="false">
+        🔊 Submit sound on · Tap to mute
+      </button>
     </section>
 
     </div><!-- /#staff-auth-content -->
@@ -516,6 +706,18 @@
   <script src="dcr-form-config.js"></script>
   <script src="submit-dcr-v1.js"></script>
   <script src="mandatory-modal.js"></script>
-  <script src="app.js"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <!-- Phase 33 — shared assignment-eligibility helper. Loaded here so
+       any future DCR-form code that needs to scope a customer list to
+       "today's workable assignments" uses the same rule as /work. -->
+  <script src="assignment-eligibility.js?v=20260607-phase33-shared-eligibility"></script>
+  <!-- Phase 31 prototype — IDB queue modules. Loaded ALWAYS so the path
+       is reachable when window.OFFLINE_QUEUE_ENABLED flips to true.
+       Flag-off behavior is identical to the 2026-06-18 hotfix. -->
+  <script src="queue/queue-db.js?v=20260618-retry-budget"></script>
+  <script src="queue/queue-worker.js?v=20260622-shadow"></script>
+  <script src="app.js?v=20260622-phase32d"></script>
+  <script src="/pwa-register.js?v=20260622-phase32d"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

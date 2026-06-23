@@ -1,0 +1,936 @@
+/* Pioneer DCR Hub — /team-schedule.html
+ *
+ * Standalone full-schedule page. Reads `published_team_schedule/current`
+ * and renders weeks → days → shift rows. Mobile-first. Filters live in a
+ * sticky-ish card above the week blocks. Tech accent color comes from a
+ * deterministic seed (see team-schedule.js colorForSeed) and rides on
+ * the CSS custom property `--tech-accent` for per-row left-stripe.
+ */
+
+.ts-meta-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.ts-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-muted, #475569);
+  min-width: 0;
+}
+.ts-meta-range  { font-weight: 700; color: var(--ink, #0f172a); }
+.ts-meta-when   { color: var(--ink-muted, #6b7280); }
+
+/* Snapshot freshness — pilot blocker fix. Operators glancing at the
+   page should never confuse last week's snapshot for tonight's
+   coverage. The meta card sets data-freshness so we can tint the
+   "Published X" line.
+     • fresh   (0-2 days) — default muted gray
+     • aging   (3-6 days) — amber chip styling
+     • stale   (7+ days)  — red chip styling
+     • unknown (no ts)    — small inline warning */
+.ts-meta-card[data-freshness="aging"] .ts-meta-when {
+  color: #92400e;
+  background: #fff8e1;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-weight: 700;
+}
+.ts-meta-card[data-freshness="stale"] .ts-meta-when {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-weight: 700;
+}
+.ts-meta-card[data-freshness="unknown"] .ts-meta-when {
+  color: var(--ink-muted, #6b7280);
+  font-style: italic;
+}
+.ts-meta-shifts { color: var(--ink-muted, #6b7280); }
+.ts-meta-dot    { color: var(--ink-muted, #94a3b8); }
+.ts-meta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   Compact sticky toolbar
+   ==========================================================================
+   Two short rows. Stays visible while scrolling deep into Week 3. The
+   sticky position requires no `overflow: hidden` ancestor — page main
+   keeps the default visible/auto so this just works.
+*/
+.ts-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 0 0 14px;
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(13, 18, 24, 0.06);
+}
+.ts-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ts-toolbar-row--secondary { gap: 6px; }
+.ts-pill-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 999px;
+  padding: 2px;
+  background: #f8fafc;
+}
+.ts-pill {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-muted, #475569);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  line-height: 1;
+}
+.ts-pill:hover { color: var(--ink, #0f172a); }
+.ts-pill.is-active {
+  background: var(--ink, #0f172a);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+}
+.ts-select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink, #0f172a);
+  min-width: 0;
+}
+.ts-filter-summary {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-muted, #94a3b8);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .ts-toolbar { padding: 8px 10px; gap: 6px; }
+  .ts-pill { padding: 6px 10px; font-size: 12px; }
+  .ts-toolbar-row--secondary { gap: 6px; }
+  .ts-select { flex: 1 1 0; min-width: 0; }
+  .ts-filter-summary { display: none; }
+}
+
+/* ==========================================================================
+   Scheduled Time Off — tech-facing visibility heatmap
+   ==========================================================================
+   Compact-by-default panel — the schedule is the primary thing on
+   this page, time-off is supporting context. <details>/<summary>
+   handles the collapse. ?timeOff=open in the URL pre-opens it.
+   Same color rules as the admin Attendance calendar. */
+.ts-tto-card {
+  padding: 0;            /* summary + body own their own padding */
+  margin-bottom: 14px;
+}
+.ts-tto-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ts-tto-summary::-webkit-details-marker { display: none; }
+.ts-tto-summary-main { flex: 1 1 auto; min-width: 0; }
+.ts-tto-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  line-height: 1.2;
+}
+.ts-tto-summary-line {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted, #475569);
+  line-height: 1.35;
+}
+.ts-tto-summary-line.is-critical {
+  color: #7f1d1d;
+  font-weight: 600;
+}
+.ts-tto-summary-cta {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  white-space: nowrap;
+}
+.ts-tto-summary-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  transition: transform 140ms ease;
+}
+.ts-tto-card[open] > .ts-tto-summary .ts-tto-summary-chevron {
+  transform: rotate(90deg);
+}
+.ts-tto-card[open] > .ts-tto-summary {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-tto-body { padding: 12px 16px 14px; }
+.ts-tto-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11.5px;
+  color: var(--ink-muted, #6b7280);
+}
+.ts-tto-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.ts-tto-sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border-soft, #cbd5e1);
+}
+.ts-tto-sw--yellow { background: #fff8e1; border-color: #fde68a; }
+.ts-tto-sw--orange { background: #fff1d4; border-color: #fed7aa; }
+.ts-tto-sw--red    { background: #fee2e2; border-color: #fecaca; }
+
+.ts-tto-empty {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--ink-muted, #6b7280);
+  background: #f8fafc;
+  border: 1px dashed var(--border-soft, #cbd5e1);
+  border-radius: 10px;
+}
+
+.ts-tto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+}
+.ts-tto-cell {
+  padding: 7px 9px;
+  min-height: 56px;
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ts-tto-cell--yellow { background: #fff8e1; border-color: #fde68a; }
+.ts-tto-cell--orange { background: #fff1d4; border-color: #fed7aa; }
+.ts-tto-cell--red {
+  background: #fee2e2;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset;
+}
+.ts-tto-cell.is-today {
+  outline: 2px solid var(--pc-teal, #14b8a6);
+  outline-offset: -2px;
+}
+.ts-tto-head { /* override the outer .ts-tto-head — same name, different scope */
+  /* override moved into a more specific selector below */
+}
+.ts-tto-cell .ts-tto-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 0;
+}
+.ts-tto-wkday {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-muted, #64748b);
+}
+.ts-tto-date {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  flex: 1 1 auto;
+}
+.ts-tto-count {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #7f1d1d;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.ts-tto-cell--yellow .ts-tto-count { color: #92400e; border-color: #fde68a; }
+.ts-tto-cell--orange .ts-tto-count { color: #9a3412; border-color: #fed7aa; }
+.ts-tto-names {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11.5px;
+  color: var(--ink, #0f172a);
+}
+.ts-tto-name { line-height: 1.3; }
+.ts-tto-name--pending { color: var(--ink-muted, #6b7280); }
+.ts-tto-name--pending em { font-style: italic; font-size: 10.5px; }
+
+@media (max-width: 640px) {
+  .ts-tto-grid { grid-template-columns: 1fr; }
+  .ts-tto-cell { min-height: 0; }
+}
+
+/* ==========================================================================
+   Assignment View — Pioneer-native dispatch board
+   ==========================================================================
+   Grouped by day → tech → customer. Customer/building name is the
+   primary signal; tech identity is the secondary grouping; time is
+   de-emphasized. Designed for rapid operational scanning on phones
+   in the field.
+*/
+.ts-assignment {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ts-assn-day {
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 14px;
+  padding: 12px 14px 14px;
+  box-shadow: var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+  /* Sticky-toolbar safety net — make sure scrollIntoView /
+     hash-anchor landings don't tuck the day header under the
+     sticky toolbar at the top. */
+  scroll-margin-top: 96px;
+}
+.ts-assn-day.is-tonight {
+  border-color: var(--pc-teal, #14b8a6);
+  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.18) inset,
+              var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+}
+.ts-assn-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-assn-tonight {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--pc-teal-700, #0f766e);
+  background: var(--pc-teal-50, #ecfeff);
+  border: 1px solid var(--pc-teal-100, #99f6e4);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.ts-assn-day.is-tonight .ts-assn-day-title {
+  color: var(--pc-teal-700, #0f766e);
+}
+.ts-assn-day-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  line-height: 1.2;
+}
+.ts-assn-day-count {
+  font-size: 11.5px;
+  color: var(--ink-muted, #64748b);
+  white-space: nowrap;
+}
+.ts-assn-tech {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--tech-accent, #cbd5e1);
+  padding-left: 10px;
+}
+.ts-assn-tech:last-child { margin-bottom: 0; }
+.ts-assn-tech-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+}
+.ts-assn-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid var(--tech-accent, #cbd5e1);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+.ts-assn-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ts-assn-tech-name {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ts-assn-tech-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-muted, #475569);
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+/* Ownership rows — single-line dispatch-board format. No card chrome,
+   no action buttons. Tap the whole row to open the Customer Info Hub
+   (which already exposes Info + Security + SOP). */
+.ts-assn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.ts-assn-row {
+  display: block;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+}
+.ts-assn-row:last-child { border-bottom: none; }
+.ts-assn-link,
+.ts-assn-row.is-unlinked {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 8px;
+  text-decoration: none;
+  color: inherit;
+  min-height: 34px;       /* tap target floor on mobile */
+}
+.ts-assn-link:hover {
+  background: rgba(15, 23, 42, 0.03);
+  border-radius: 6px;
+}
+.ts-assn-link:focus-visible {
+  outline: 2px solid var(--ink, #0f172a);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+.ts-assn-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tech-accent, #94a3b8);
+}
+.ts-assn-customer {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+.ts-assn-note { font-size: 12px; cursor: help; }
+.ts-assn-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted, #64748b);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ts-assn-row.is-unlinked .ts-assn-customer {
+  color: var(--ink-muted, #475569);
+  font-style: italic;
+}
+@media (max-width: 600px) {
+  .ts-assn-day { padding: 10px 12px 12px; }
+  .ts-assn-link,
+  .ts-assn-row.is-unlinked { padding: 8px 8px 8px 6px; }
+  .ts-assn-customer { font-size: 14.5px; }   /* phone scan target */
+}
+
+.ts-weeks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Collapsible week section — uses native <details>/<summary> so
+   keyboard / screen-reader semantics come for free. */
+.ts-week {
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+  overflow: hidden;
+  scroll-margin-top: 96px;   /* sticky-toolbar safety net */
+}
+.ts-week-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;          /* hide native marker */
+  user-select: none;
+}
+.ts-week-head::-webkit-details-marker { display: none; }
+.ts-week[open] > .ts-week-head {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-week-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  transition: transform 140ms ease;
+}
+.ts-week[open] > .ts-week-head .ts-week-chevron { transform: rotate(90deg); }
+.ts-week-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink, #0f172a);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ts-week-count {
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  white-space: nowrap;
+}
+.ts-week > .ts-day:first-of-type { padding-top: 12px; }
+.ts-week > .ts-day { padding-left: 14px; padding-right: 14px; padding-bottom: 12px; }
+.ts-week > .ts-day:not(:first-of-type) {
+  border-top: 1px solid rgba(15, 23, 42, 0.04);
+  padding-top: 10px;
+}
+.ts-day {
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-day:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+.ts-day-head {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+.ts-day-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ts-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-left: 4px solid var(--tech-accent, #cbd5e1);
+  border-radius: 10px;
+}
+.ts-row-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--border-soft, #cbd5e1);
+  background: #ffffff;
+}
+.ts-row-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ts-row-avatar--initial {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+.ts-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ts-row-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink, #0f172a);
+}
+.ts-row-line--secondary {
+  font-size: 12.5px;
+  color: var(--ink-muted, #475569);
+  margin-top: 2px;
+}
+/* Customer-first list row. Building name is the primary scan target
+   (bold, ink color); tech name + time live on the secondary line in
+   muted tone. */
+.ts-row-customer {
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  font-size: 14px;
+}
+.ts-row-tech    { font-weight: 600; color: var(--ink-muted, #475569); }
+.ts-row-sep     { color: var(--ink-muted, #94a3b8); }
+.ts-row-time    { font-variant-numeric: tabular-nums; color: var(--ink-muted, #475569); }
+.ts-row-status {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: var(--danger-soft, #fff1f1);
+  color: var(--danger-700, #7f1d1d);
+}
+.ts-row-notes {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink, #0f172a);
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 8px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.ts-empty {
+  background: #f8fafc;
+  border: 1px dashed var(--border-soft, #cbd5e1);
+  border-radius: 12px;
+  padding: 18px 16px;
+  text-align: center;
+}
+.ts-empty p { margin: 0; color: var(--ink-muted, #475569); font-size: 14px; }
+
+@media (max-width: 600px) {
+  .ts-meta-card { padding: 12px 14px; }
+  .ts-filters-card { padding: 12px 14px; }
+  .ts-filter select { min-width: 0; width: 100%; }
+  .ts-filter { width: 100%; }
+  .ts-meta-dot--hide-mobile { display: none; }
+  .ts-week { padding: 12px 12px 14px; }
+  .ts-row { padding: 9px 10px; gap: 10px; }
+  .ts-row-avatar { width: 32px; height: 32px; }
+}
+
+/* ==========================================================================
+   Calendar view — 7-column grid per week
+   ==========================================================================
+   Same data + same color seed as the list view; just a different layout.
+   Active mode is chosen via the View pills in the filter card. Below
+   ~700px the grid would be too cramped at 7 columns, so we either default
+   to list mode (handled in JS — applyDefaultViewMode) or we allow the
+   user to opt into Calendar with horizontal scroll (handled here in
+   CSS — see the .ts-calendar overflow-x rule for narrow viewports).
+   ========================================================================== */
+.ts-filter-toprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+}
+.ts-filter-view {
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 999px;
+  padding: 4px;
+  background: #f8fafc;
+  width: max-content;
+}
+
+.ts-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+/* Collapsible week — same native <details>/<summary> pattern as
+   the list view. The grid below renders only when open. */
+.ts-cal-week-block {
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft, 0 1px 2px rgba(13, 18, 24, 0.04));
+  overflow: hidden;
+  scroll-margin-top: 96px;
+}
+.ts-cal-week-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ts-cal-week-head::-webkit-details-marker { display: none; }
+.ts-cal-week-block[open] > .ts-cal-week-head {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-cal-week-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  transition: transform 140ms ease;
+}
+.ts-cal-week-block[open] > .ts-cal-week-head .ts-cal-week-chevron { transform: rotate(90deg); }
+.ts-cal-week-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink, #0f172a);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ts-cal-week-count {
+  font-size: 11px;
+  color: var(--ink-muted, #64748b);
+  white-space: nowrap;
+}
+.ts-cal-week-block > .ts-cal-week { padding: 12px 14px 14px; }
+/* Pioneer workweek grid — 5 columns (Sun, Mon, Tue, Wed, Thu).
+   Friday and Saturday are intentionally hidden in calendar view
+   (still visible in List view). 5 wider columns mean customer
+   names and times stay readable at typical desktop widths. */
+.ts-cal-week {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.ts-cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 140px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border-soft, #e2e8f0);
+  border-radius: 10px;
+  min-width: 0;
+}
+.ts-cal-day.is-empty {
+  background: #f8fafc;
+}
+.ts-cal-day.is-today {
+  border-color: var(--pc-teal, #14b8a6);
+  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.18) inset;
+}
+.ts-cal-day-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.ts-cal-day-head.is-today {
+  color: var(--pc-teal-700, #0f766e);
+}
+.ts-cal-weekday {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-muted, #64748b);
+}
+.ts-cal-day-head.is-today .ts-cal-weekday { color: var(--pc-teal-700, #0f766e); }
+.ts-cal-monthday {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+}
+/* Google-Calendar-style compact event pill. Single row, ~26px tall,
+   tinted by tech color. Customer name is the primary signal —
+   tech identity is conveyed by avatar color/photo only (no text
+   subtitle). Click → openShiftDetail drawer. */
+.ts-cal-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+}
+.ts-cal-event {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 6px 3px 5px;
+  background: var(--tech-tint, #f1f5f9);
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  border-left: 3px solid var(--tech-accent, #94a3b8);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ts-cal-event-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+}
+.ts-cal-event-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ts-cal-event-customer {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  line-height: 1.2;
+}
+.ts-cal-event-note {
+  font-size: 10px;
+  line-height: 1;
+}
+.ts-cal-empty {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--ink-muted, #94a3b8);
+  text-align: center;
+}
+
+/* Mid-width: tighten day-cell padding so 7 columns still read
+   cleanly. The pill itself is already compact; this is mostly
+   about cell spacing. */
+@media (max-width: 900px) {
+  .ts-cal-day { min-height: 120px; padding: 6px; }
+  .ts-cal-event { min-height: 24px; padding: 1px 5px 1px 4px; }
+  .ts-cal-event-customer { font-size: 11.5px; }
+}
+
+/* Narrow viewports: enable horizontal scroll so a 7-column grid
+   stays usable. The cells get a minimum width to prevent
+   over-compression. Users on phones can swipe through the week.
+   First-visit default is still List mode (see applyDefaultViewMode)
+   so phone users aren't forced into this until they opt in. */
+/* Mobile Coverage — vertical day stack instead of a 5-col squeeze.
+   At narrow widths, a 5-column horizontal-scroll grid is unreadable
+   for nightly dispatch. Stack each day full-width with a tight
+   header row + pills underneath. Empty days collapse to a single
+   muted "— no shifts" line so they don't pad the scroll. */
+@media (max-width: 700px) {
+  .ts-cal-week-block > .ts-cal-week { padding: 10px 10px 12px; }
+  .ts-cal-week {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    overflow-x: visible;
+  }
+  .ts-cal-day {
+    min-height: 0;
+    padding: 8px 10px;
+  }
+  .ts-cal-day-head {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 6px;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .ts-cal-day-head .ts-cal-weekday {
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  .ts-cal-day-head .ts-cal-monthday { font-size: 13px; }
+  .ts-cal-day.is-empty {
+    /* Tighten empty days so weeks with sparse coverage don't
+       balloon the page on phones. */
+    padding: 6px 10px;
+    min-height: 0;
+  }
+  .ts-cal-day.is-empty .ts-cal-empty {
+    text-align: left;
+    margin: 0 0 0 4px;
+    font-size: 11.5px;
+  }
+}
+
+/* Shift detail drawer styles removed — modal is disabled for pilot
+   (see team-schedule.js Shift detail drawer note). The full ruleset
+   was deleted to keep the surface area clean; restore from git when
+   we re-enable. */

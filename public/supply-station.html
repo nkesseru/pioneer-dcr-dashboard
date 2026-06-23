@@ -13,6 +13,14 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/supply-station.css?v=20260610-clock-prominent" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
 </head>
 <body>
 
@@ -139,8 +147,112 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" hidden>
 
+      <!-- ===== Supply Station Access (internal-only) =====
+           Sits above the order form so techs can pull up the gate +
+           lock codes the moment they arrive at the storage unit.
+           Sign-in is the gate (staff-auth.js); this card never renders
+           pre-auth. Tap-to-copy on the code pills + address. -->
+      <!-- Phase Timeclock Add-On — Supply Pickup clock (prominent).
+           Tops the page so techs land on "START HERE" first. A pickup
+           is a single visit, not a shift — copy reflects that. -->
+      <section class="ss-pickup-hero" id="ss-clock-card" data-state="idle" hidden>
+        <div class="ss-pickup-hero-left">
+          <span class="ss-pickup-hero-eyebrow" id="ss-clock-state-label">Not Clocked In</span>
+          <span class="ss-pickup-hero-timer" id="ss-clock-status">Tap Start to log time at the storage unit.</span>
+        </div>
+        <button type="button" class="ss-pickup-hero-btn" id="ss-clock-toggle">
+          <span aria-hidden="true">📦</span>&nbsp;Start Supply Pickup
+        </button>
+        <p class="ss-pickup-hero-err" id="ss-clock-err" hidden role="alert"></p>
+      </section>
+
+      <section class="card ss-access-card">
+        <header class="ss-access-head">
+          <h2 class="ss-access-title">🔐 Supply Station Access</h2>
+          <p class="ss-access-sub">Internal use only. Lock the unit before leaving.</p>
+        </header>
+
+        <div class="ss-access-grid">
+          <div class="ss-access-row ss-access-row--address">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Max Storage</span>
+              <button type="button"
+                      class="ss-copy-target ss-access-address"
+                      data-copy="214 S Eastern Rd, Spokane Valley, WA 99212"
+                      data-copy-label="Address"
+                      title="Tap to copy address">
+                214 S Eastern Rd, Spokane Valley, WA 99212
+              </button>
+            </div>
+            <a class="ss-access-maps-btn"
+               href="https://maps.apple.com/?q=214+S+Eastern+Rd,+Spokane+Valley,+WA+99212"
+               target="_blank" rel="noopener noreferrer"
+               title="Open in Maps">Open in Maps ↗</a>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Gate Code</span>
+              <button type="button"
+                      class="ss-copy-target ss-code-pill ss-code-pill--gate"
+                      data-copy="32151959"
+                      data-copy-label="Gate code"
+                      title="Tap to copy gate code">
+                32151959
+              </button>
+            </div>
+            <p class="ss-access-row-help">Enter your code number, then press <strong>*</strong></p>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Storage Unit</span>
+              <span class="ss-access-unit">3215</span>
+            </div>
+          </div>
+
+          <div class="ss-access-row">
+            <div class="ss-access-row-main">
+              <span class="ss-access-row-label">Storage Lock Code</span>
+              <button type="button"
+                      class="ss-copy-target ss-code-pill ss-code-pill--lock"
+                      data-copy="5823"
+                      data-copy-label="Lock code"
+                      title="Tap to copy lock code">
+                5823
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p class="ss-access-warning" role="note">
+          <span class="ss-access-warning-icon" aria-hidden="true">⚠️</span>
+          <span>Lock before leaving — alarm may trigger if the unit is not fully closed.</span>
+        </p>
+
+        <div class="ss-access-toast" id="ss-access-toast" hidden aria-live="polite"></div>
+      </section>
+
+      <!-- Phase Timeclock Add-On — Supply Pickup card moved to the
+           top of the page; see ss-pickup-hero above. -->
+
       <section class="card supply-station-card">
         <form id="supply-station-form" novalidate>
+          <!-- V6 pilot fix — the supply request now attaches to a
+               specific customer/location so the office can route the
+               order back to the right site. Optional first option
+               keeps the original "no specific customer" behavior for
+               office-wide restock (e.g. Pioneer HQ general supplies). -->
+          <div class="field-row">
+            <label for="ss-customer">Customer / location</label>
+            <select id="ss-customer" name="customer">
+              <option value="">— No specific customer (general / office restock) —</option>
+            </select>
+            <p class="field-hint" style="margin: 6px 0 0; font-size: 12px; color: var(--pc-text-muted);">
+              Tagging the right customer lets Kirby triage and route the order back to that site.
+            </p>
+          </div>
+
           <div class="field-row">
             <label for="ss-requested-items">Requested items <span class="req" style="color:#b91c1c;font-weight:700;">*</span></label>
             <textarea id="ss-requested-items" name="requested_items" rows="4"
@@ -231,6 +343,8 @@
   <script src="staff-auth.js"></script>
   <script src="mandatory-modal.js"></script>
   <script src="walkthrough.js"></script>
-  <script src="supply-station.js"></script>
+  <script src="non-service-clock.js?v=20260610-clock-prominent"></script>
+  <script src="supply-station.js?v=20260615-office-issues"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

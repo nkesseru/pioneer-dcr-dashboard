@@ -82,6 +82,123 @@
   max-width: 42ch;
 }
 
+.empty-state-current-login {
+  margin: 0;
+  margin-top: 0.5rem;
+  font-size: var(--text-xs, 0.8125rem);
+  color: var(--text-muted);
+  line-height: var(--leading-base);
+}
+.empty-state-current-login code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: rgba(15, 23, 42, 0.06);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  color: var(--text-strong);
+}
+
+/* Clock reminder — bottom-anchored card surfaced after Start Work / Finish
+   Work. Non-blocking, no body scroll lock, real <a href> for Deputy. */
+.pioneer-clock-reminder {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(420px, calc(100vw - 1.5rem));
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.25);
+  padding: 14px 16px 12px;
+  z-index: 1000;
+  animation: pioneerClockReminderIn 240ms ease-out;
+}
+.pioneer-clock-reminder.is-leaving {
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+}
+.pioneer-clock-reminder-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.pioneer-clock-reminder-title {
+  flex: 1 1 auto;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+.pioneer-clock-reminder-close {
+  flex: 0 0 auto;
+  background: transparent;
+  color: #64748b;
+  border: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  cursor: pointer;
+}
+.pioneer-clock-reminder-body {
+  margin: 0 0 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #334155;
+}
+.pioneer-clock-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pioneer-clock-reminder-btn {
+  display: inline-block;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.pioneer-clock-reminder-btn-primary {
+  background: #14b8a6;
+  color: #052e2b;
+}
+.pioneer-clock-reminder-btn-primary:active { background: #0d9488; }
+.pioneer-clock-reminder-btn-secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+.pioneer-clock-reminder-btn-secondary:active { background: #e2e8f0; }
+@keyframes pioneerClockReminderIn {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Pilot v20260526-mobileunlock — persistent inline Deputy link on every
+   work card. Real <a href target="_blank"> so iPhone Safari never blocks
+   the tap as a popup. */
+.assign-card-deputy-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 6px;
+  text-decoration: none;
+  border: 1px solid #cbd5e1;
+}
+.assign-card-deputy-link:active {
+  background: #e2e8f0;
+}
+
 .empty-state-actions {
   display: flex;
   gap: var(--space-2);
@@ -152,4 +269,33 @@
 @media (max-width: 600px) {
   .empty-state    { padding: var(--space-5) var(--space-4); }
   .empty-state-title { font-size: var(--text-base); }
+}
+
+/* Shift-complete toast — momentary "Shift complete. Nice work tonight."
+   confirmation surfaced when Finish Work succeeds. Top-anchored so it
+   doesn't overlap the bottom-anchored clock-out reminder card. */
+.pioneer-shift-complete-toast {
+  position: fixed;
+  top: max(0.8rem, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0d9488;
+  color: #ffffff;
+  padding: 0.65rem 1rem;
+  border-radius: 0.625rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  box-shadow: 0 10px 28px rgba(13, 148, 136, 0.35);
+  z-index: 1100;
+  animation: pioneerShiftToastIn 280ms ease-out;
+  max-width: calc(100vw - 1.5rem);
+}
+.pioneer-shift-complete-toast.is-leaving {
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+.pioneer-shift-complete-toast strong { font-weight: 800; }
+@keyframes pioneerShiftToastIn {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }

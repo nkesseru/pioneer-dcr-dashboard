@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer · Request Time Off</title>
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/attendance.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img" src="assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Request Time Off</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name" id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+    <nav class="role-nav" id="role-nav" data-current-page="team-hub" aria-label="Primary" hidden></nav>
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Request Time Off</h1>
+      <p class="subtitle">Planned days off — submit for office team review.</p>
+    </section>
+
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Sign in to request time off.</p>
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field"><span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" autocomplete="username" required /></label>
+        <label class="staff-field"><span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" autocomplete="current-password" required /></label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+      </form>
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span>Continue with Google</span>
+      </button>
+    </section>
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">Your account is not enabled.</p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <div id="staff-auth-content" hidden>
+      <section class="card attendance-card">
+        <p class="attendance-helper">
+          Requests are reviewed by the office team. Some days may already have multiple people off, so approval is not guaranteed.
+        </p>
+
+        <form id="timeoff-form" class="attendance-form" novalidate>
+          <div class="attendance-readonly">
+            <span class="attendance-readonly-label">Submitting as</span>
+            <span class="attendance-readonly-value" id="timeoff-tech-display">—</span>
+          </div>
+
+          <p class="attendance-helper attendance-helper--info">
+            Before requesting, you can <a href="/team-schedule.html?timeOff=open#ts-time-off">check scheduled time off</a> to see if a day already has multiple people out.
+          </p>
+
+          <div class="attendance-row attendance-row--dates">
+            <label class="attendance-field">
+              <span class="attendance-field-label">Start date</span>
+              <input type="date" id="timeoff-start-date" required />
+            </label>
+            <label class="attendance-field">
+              <span class="attendance-field-label">End date</span>
+              <input type="date" id="timeoff-end-date" required />
+            </label>
+          </div>
+
+          <!-- Soft warning surfaces when the selected dates already
+               have 3+ people off (red on the Scheduled Time Off
+               heatmap). Operational visibility only — never blocks
+               submission, never auto-denies. -->
+          <div class="attendance-warning" id="timeoff-pressure-warning" role="alert" hidden>
+            This date already has multiple people requested off. Approval may be difficult unless it's urgent.
+          </div>
+
+          <fieldset class="attendance-field attendance-fieldset">
+            <legend>Request type</legend>
+            <label class="attendance-radio"><input type="radio" name="timeoff-type" value="vacation" required /><span>Vacation</span></label>
+            <label class="attendance-radio"><input type="radio" name="timeoff-type" value="personal_day" /><span>Personal day</span></label>
+            <label class="attendance-radio"><input type="radio" name="timeoff-type" value="appointment" /><span>Appointment</span></label>
+            <label class="attendance-radio"><input type="radio" name="timeoff-type" value="family_event" /><span>Family event</span></label>
+            <label class="attendance-radio"><input type="radio" name="timeoff-type" value="other" /><span>Other</span></label>
+          </fieldset>
+
+          <label class="attendance-field">
+            <span class="attendance-field-label">Note (optional)</span>
+            <textarea id="timeoff-note" rows="3" maxlength="500"
+                      placeholder="Anything the office team should know about this request"></textarea>
+          </label>
+
+          <div class="attendance-status" id="timeoff-status" aria-live="polite"></div>
+          <div class="attendance-error"  id="timeoff-error" role="alert" hidden></div>
+
+          <div class="attendance-actions">
+            <a class="attendance-cancel" href="/team-hub.html">Cancel</a>
+            <button type="submit" class="attendance-submit" id="timeoff-submit">
+              Submit request
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card attendance-history" id="timeoff-history-section" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">Your recent requests</h2>
+          <p class="team-hub-section-sub">Last 5 submitted from this account.</p>
+        </header>
+        <ul class="attendance-history-list" id="timeoff-history-list"></ul>
+      </section>
+    </div>
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code></p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="time-off.js"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

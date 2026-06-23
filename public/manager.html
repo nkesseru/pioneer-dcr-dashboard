@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1024" />
+  <title>Office Manager Mission Control · Pioneer</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/admin.css" />
+  <style>
+    /* ============================================================
+       Phase 1A.1 — Office Manager Mission Control · cockpit theme
+       Desktop-first. Inline so the page ships without touching the
+       shared admin.css.
+       ============================================================ */
+
+    :root {
+      --mc-bg:            #eef2f7;
+      --mc-ink:           #0b1220;
+      --mc-ink-muted:     #475569;
+      --mc-ink-soft:      #64748b;
+      --mc-surface:       #ffffff;
+      --mc-surface-soft:  #f8fafc;
+      --mc-border:        #e2e8f0;
+      --mc-border-soft:   #eef2f7;
+      --mc-night:         #0b1220;
+      --mc-night-2:       #131d35;
+      --mc-night-3:       #1d2942;
+      --mc-night-text:    #e2e8f0;
+      --mc-night-muted:   #94a3b8;
+      --mc-night-dim:     #64748b;
+      --mc-critical:      #dc2626;
+      --mc-critical-soft: #fef2f2;
+      --mc-attention:     #d97706;
+      --mc-attention-soft:#fffbeb;
+      --mc-healthy:       #047857;
+      --mc-healthy-soft:  #ecfdf5;
+      --mc-accent:        #2563eb;
+      --mc-accent-2:      #1d4ed8;
+      --mc-radius-lg:     16px;
+      --mc-radius-md:     12px;
+      --mc-radius-sm:     8px;
+    }
+
+    body.manager-page {
+      background: var(--mc-bg);
+      color: var(--mc-ink);
+      font-feature-settings: "ss01" 1, "tnum" 1;
+    }
+    .manager-main {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 20px 24px 80px;
+    }
+
+    /* ---------- HERO ---------- */
+    .mc-hero {
+      background:
+        radial-gradient(120% 180% at 100% 0%, rgba(37,99,235,0.30) 0%, rgba(37,99,235,0) 60%),
+        linear-gradient(180deg, var(--mc-night-2) 0%, var(--mc-night) 100%);
+      color: var(--mc-night-text);
+      padding: 22px 28px;
+      border-radius: var(--mc-radius-lg);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .mc-hero-eyebrow {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 6px;
+    }
+    .mc-hero h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #fff;
+    }
+    .mc-hero-sub {
+      margin: 4px 0 0;
+      font-size: 13.5px;
+      color: var(--mc-night-muted);
+    }
+    .mc-hero-right {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .mc-hero-right strong { color: #fff; font-weight: 700; }
+    .mc-hero-date {
+      font-size: 13px;
+      color: var(--mc-night-muted);
+    }
+    .mc-hero-link {
+      appearance: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 7px 14px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .mc-hero-link:hover { background: rgba(255,255,255,0.16); }
+
+    /* ---------- ACTION REQUIRED (the cockpit centerpiece) ---------- */
+    .mc-action-required {
+      background:
+        radial-gradient(120% 200% at 0% 0%, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0) 50%),
+        linear-gradient(180deg, var(--mc-night-3) 0%, var(--mc-night-2) 100%);
+      color: var(--mc-night-text);
+      border-radius: var(--mc-radius-lg);
+      padding: 26px 28px;
+      margin-bottom: 16px;
+      box-shadow: 0 16px 32px -16px rgba(11,18,32,0.5);
+    }
+    .mc-section-eyebrow {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #93c5fd;
+      margin-bottom: 4px;
+    }
+    .mc-action-required h2 {
+      margin: 0 0 18px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.2px;
+    }
+
+    .mc-counters {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .mc-counter {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-left-width: 4px;
+      border-radius: var(--mc-radius-md);
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mc-counter[data-tier="critical"]  { border-left-color: var(--mc-critical);  background:
+      linear-gradient(180deg, rgba(220,38,38,0.18) 0%, rgba(220,38,38,0.04) 100%); }
+    .mc-counter[data-tier="attention"] { border-left-color: var(--mc-attention); background:
+      linear-gradient(180deg, rgba(217,119,6,0.18) 0%, rgba(217,119,6,0.04) 100%); }
+    .mc-counter[data-tier="healthy"]   { border-left-color: var(--mc-healthy);   background:
+      linear-gradient(180deg, rgba(4,120,87,0.18) 0%, rgba(4,120,87,0.04) 100%); }
+
+    .mc-counter-number {
+      display: block;
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1.0;
+      letter-spacing: -1px;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-counter-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .mc-counter[data-tier="critical"]  .mc-counter-label { color: #fecaca; }
+    .mc-counter[data-tier="attention"] .mc-counter-label { color: #fde68a; }
+    .mc-counter[data-tier="healthy"]   .mc-counter-label { color: #a7f3d0; }
+    .mc-counter[data-tier="critical"][data-zero="true"]  .mc-counter-number { color: rgba(255,255,255,0.45); }
+    .mc-counter[data-tier="attention"][data-zero="true"] .mc-counter-number { color: rgba(255,255,255,0.45); }
+
+    .mc-priorities-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      margin: 4px 0 10px;
+    }
+    .mc-priority-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      margin-bottom: 6px;
+      font-size: 13.5px;
+      color: var(--mc-night-text);
+    }
+    .mc-priority-item:last-child { margin-bottom: 0; }
+    .mc-priority-item[data-tier="critical"]  { border-left: 3px solid var(--mc-critical); }
+    .mc-priority-item[data-tier="attention"] { border-left: 3px solid var(--mc-attention); }
+    .mc-priority-item[data-tier="healthy"]   { border-left: 3px solid var(--mc-healthy); }
+    .mc-priority-item .mc-priority-count {
+      font-weight: 800;
+      color: #fff;
+      margin-right: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-priority-item a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .mc-priority-item a:hover { color: #bfdbfe; text-decoration: underline; }
+    .mc-priorities-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-night-muted);
+      font-size: 13px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+    }
+
+    /* ---------- TODAY'S MISSION + WINS row ---------- */
+    .mc-row-2 {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .mc-section {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-lg);
+      padding: 20px 22px;
+      box-shadow: 0 1px 2px rgba(11,18,32,0.04);
+    }
+    .mc-section-head {
+      margin-bottom: 14px;
+    }
+    .mc-section-head h2 {
+      margin: 4px 0 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.1px;
+      color: var(--mc-ink);
+    }
+    .mc-section-head p {
+      margin: 4px 0 0;
+      font-size: 12.5px;
+      color: var(--mc-ink-soft);
+    }
+
+    .mc-mission-list {
+      counter-reset: mission;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .mc-mission-list li {
+      counter-increment: mission;
+      position: relative;
+      padding: 12px 14px 12px 48px;
+      margin-bottom: 8px;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-left: 3px solid var(--mc-accent);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--mc-ink);
+      font-weight: 600;
+    }
+    .mc-mission-list li:last-child { margin-bottom: 0; }
+    .mc-mission-list li::before {
+      content: counter(mission);
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--mc-accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mc-mission-list li.is-done {
+      background: var(--mc-healthy-soft);
+      border-left-color: var(--mc-healthy);
+      color: var(--mc-healthy);
+      text-decoration: line-through;
+    }
+    .mc-mission-list li.is-done::before {
+      background: var(--mc-healthy);
+      content: "✓";
+    }
+    .mc-mission-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+      background: var(--mc-surface-soft);
+      border-radius: 10px;
+    }
+
+    .mc-wins-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .mc-wins-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      margin-bottom: 6px;
+      background: var(--mc-healthy-soft);
+      border: 1px solid rgba(4,120,87,0.18);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--mc-healthy);
+      font-weight: 600;
+    }
+    .mc-wins-list li:last-child { margin-bottom: 0; }
+    .mc-wins-list li::before {
+      content: "✓";
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--mc-healthy);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mc-wins-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+      background: var(--mc-surface-soft);
+      border-radius: 10px;
+    }
+
+    /* ---------- HEALTH ROW ---------- */
+    .mc-row-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-row-4 { grid-template-columns: repeat(2, 1fr); } }
+    .mc-health-card {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .mc-health-card-eyebrow {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-health-verdict {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      width: fit-content;
+    }
+    .mc-health-verdict[data-tier="healthy"]   { background: var(--mc-healthy-soft);   color: var(--mc-healthy);   border: 1px solid rgba(4,120,87,0.18); }
+    .mc-health-verdict[data-tier="attention"] { background: var(--mc-attention-soft); color: var(--mc-attention); border: 1px solid rgba(217,119,6,0.22); }
+    .mc-health-verdict[data-tier="critical"]  { background: var(--mc-critical-soft);  color: var(--mc-critical);  border: 1px solid rgba(220,38,38,0.22); }
+    .mc-health-verdict .mc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .mc-health-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .mc-health-stat {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+    }
+    .mc-health-stat strong {
+      color: var(--mc-ink);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .mc-health-stat[data-tier="critical"]  strong { color: var(--mc-critical); }
+    .mc-health-stat[data-tier="attention"] strong { color: var(--mc-attention); }
+
+    /* ---------- BOTTLENECK + REFLECTION + IMPROVEMENTS ---------- */
+    .mc-row-2-eq {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-row-2-eq { grid-template-columns: 1fr; } }
+
+    .mc-field-group {
+      margin-bottom: 14px;
+    }
+    .mc-field-eyebrow {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-bottom: 2px;
+    }
+    .mc-field-question {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mc-ink);
+      margin-bottom: 6px;
+    }
+    .mc-field-group textarea,
+    .mc-field-group input,
+    .mc-field-group select {
+      font: inherit;
+      font-size: 14px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-sm);
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+    }
+    .mc-field-group textarea {
+      min-height: 70px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    .mc-field-group textarea:focus,
+    .mc-field-group input:focus {
+      outline: 2px solid rgba(37,99,235,0.2);
+      border-color: var(--mc-accent);
+    }
+
+    .mc-btn {
+      appearance: none;
+      background: var(--mc-accent);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mc-btn:hover { background: var(--mc-accent-2); }
+    .mc-btn[disabled] { background: #94a3b8; cursor: not-allowed; }
+
+    /* Phase 3C UI — Send SMS button. Amber accent matches the warning copy
+       so users recognize SMS as a distinct, costlier path than in-app. */
+    .mc-btn-sms {
+      appearance: none;
+      background: #fff;
+      color: #92400e;
+      border: 1.5px solid #f59e0b;
+      padding: 9px 14px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mc-btn-sms:hover { background: #fef3c7; border-color: #d97706; }
+    .mc-btn-sms[disabled] { opacity: 0.45; cursor: not-allowed; border-color: #cbd5e1; color: #94a3b8; }
+    .mc-btn-icon { font-size: 14px; line-height: 1; }
+
+    .mc-radio-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .mc-radio {
+      appearance: none;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      color: var(--mc-ink);
+      padding: 9px 14px;
+      border-radius: var(--mc-radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mc-radio.is-active { background: var(--mc-night); color: #fff; border-color: var(--mc-night); }
+    .mc-radio:hover:not(.is-active) { background: #eef2f7; }
+
+    .mc-form-err {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: var(--mc-critical-soft);
+      color: var(--mc-critical);
+      border: 1px solid rgba(220,38,38,0.22);
+      border-radius: var(--mc-radius-sm);
+      font-size: 13px;
+    }
+    .mc-form-ok {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      background: var(--mc-healthy-soft);
+      color: var(--mc-healthy);
+      border: 1px solid rgba(4,120,87,0.22);
+      border-radius: var(--mc-radius-sm);
+      font-size: 13px;
+    }
+
+    .mc-history {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--mc-border-soft);
+    }
+    .mc-history-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin: 0 0 8px;
+    }
+    .mc-history-item {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--mc-border-soft);
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+    }
+    .mc-history-item:last-child { border-bottom: none; }
+    .mc-history-when {
+      font-size: 11.5px;
+      color: var(--mc-ink-soft);
+      margin-bottom: 2px;
+    }
+    .mc-history-item strong { color: var(--mc-ink); }
+
+    .mc-empty {
+      padding: 14px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+      background: var(--mc-surface-soft);
+      border-radius: 10px;
+    }
+    .mc-loading {
+      padding: 20px;
+      text-align: center;
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+    }
+
+    /* Your Improvements metrics */
+    .mc-improvement-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .mc-im-metric {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .mc-im-metric-value {
+      display: block;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.0;
+    }
+    .mc-im-metric-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-top: 6px;
+    }
+    .mc-im-metric.is-placeholder .mc-im-metric-value {
+      color: var(--mc-ink-soft);
+    }
+    .mc-im-metric.is-placeholder .mc-im-metric-label::after {
+      content: " · soon";
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: #94a3b8;
+      text-transform: none;
+    }
+
+    .mc-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+
+    /* ---------- Phase 1B — Scorecard strip ---------- */
+    .mc-scorecard {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) { .mc-scorecard { grid-template-columns: repeat(5, 1fr); gap: 8px; } }
+    .mc-scorecard-pill {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-left-width: 3px;
+      border-radius: var(--mc-radius-md);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .mc-scorecard-pill[data-tier="healthy"]   { border-left-color: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="attention"] { border-left-color: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="critical"]  { border-left-color: var(--mc-critical); }
+    .mc-scorecard-eyebrow {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-scorecard-status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .mc-scorecard-status .mc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .mc-scorecard-pill[data-tier="healthy"]   .mc-scorecard-status { color: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="healthy"]   .mc-dot { background: var(--mc-healthy); }
+    .mc-scorecard-pill[data-tier="attention"] .mc-scorecard-status { color: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="attention"] .mc-dot { background: var(--mc-attention); }
+    .mc-scorecard-pill[data-tier="critical"]  .mc-scorecard-status { color: var(--mc-critical); }
+    .mc-scorecard-pill[data-tier="critical"]  .mc-dot { background: var(--mc-critical); }
+
+    /* ---------- Phase 1B — Improvement Pipeline ---------- */
+    .mc-pipeline-counts {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .mc-pipeline-count {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: var(--mc-radius-md);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .mc-pipeline-count[data-status="submitted"]   { border-top: 3px solid #94a3b8; }
+    .mc-pipeline-count[data-status="approved"]    { border-top: 3px solid #2563eb; }
+    .mc-pipeline-count[data-status="in_progress"] { border-top: 3px solid #d97706; }
+    .mc-pipeline-count[data-status="implemented"] { border-top: 3px solid var(--mc-healthy); }
+    .mc-pipeline-count[data-status="rejected"]    { border-top: 3px solid var(--mc-critical); }
+    .mc-pipeline-count-value {
+      display: block;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.0;
+    }
+    .mc-pipeline-count-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-top: 6px;
+    }
+    .mc-pipeline-group {
+      margin-bottom: 14px;
+    }
+    .mc-pipeline-group:last-child { margin-bottom: 0; }
+    .mc-pipeline-group summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink);
+    }
+    .mc-pipeline-group summary::-webkit-details-marker { display: none; }
+    .mc-pipeline-group summary::before {
+      content: "▸ ";
+      color: var(--mc-ink-soft);
+      margin-right: 8px;
+      display: inline-block;
+      transition: transform 120ms;
+    }
+    .mc-pipeline-group[open] summary::before { transform: rotate(90deg); }
+    .mc-pipeline-group[data-status="submitted"]   summary { border-left: 3px solid #94a3b8; }
+    .mc-pipeline-group[data-status="approved"]    summary { border-left: 3px solid #2563eb; }
+    .mc-pipeline-group[data-status="in_progress"] summary { border-left: 3px solid #d97706; }
+    .mc-pipeline-group[data-status="implemented"] summary { border-left: 3px solid var(--mc-healthy); }
+    .mc-pipeline-group[data-status="rejected"]    summary { border-left: 3px solid var(--mc-critical); }
+    .mc-pipeline-cards {
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mc-card {
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mc-card-title {
+      margin: 0;
+      font-size: 14.5px;
+      font-weight: 800;
+      color: var(--mc-ink);
+      line-height: 1.3;
+    }
+    .mc-card-desc {
+      margin: 0;
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+      line-height: 1.4;
+    }
+    .mc-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 11.5px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-card-meta-label {
+      font-weight: 700;
+      color: var(--mc-ink-muted);
+      margin-right: 3px;
+      text-transform: uppercase;
+      font-size: 10.5px;
+      letter-spacing: 0.6px;
+    }
+    .mc-card-impact {
+      margin: 4px 0 0;
+      padding: 8px 10px;
+      background: var(--mc-healthy-soft);
+      border-left: 3px solid var(--mc-healthy);
+      border-radius: 6px;
+      font-size: 12.5px;
+      color: var(--mc-ink-muted);
+      line-height: 1.45;
+    }
+    .mc-card-impact strong { color: var(--mc-healthy); display: block; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.5px; }
+    .mc-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .mc-card-action {
+      appearance: none;
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border);
+      color: var(--mc-ink-muted);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+    }
+    .mc-card-action:hover { background: #eef2f7; color: var(--mc-ink); }
+    .mc-card-action.is-primary {
+      background: var(--mc-accent);
+      color: #fff;
+      border-color: var(--mc-accent);
+    }
+    .mc-card-action.is-primary:hover { background: var(--mc-accent-2); color: #fff; }
+    .mc-card-action.is-success {
+      background: var(--mc-healthy);
+      color: #fff;
+      border-color: var(--mc-healthy);
+    }
+    .mc-card-action.is-success:hover { background: #065f46; }
+    .mc-card-action.is-danger {
+      background: var(--mc-critical-soft);
+      color: var(--mc-critical);
+      border-color: rgba(220,38,38,0.22);
+    }
+    .mc-card-action.is-danger:hover { background: var(--mc-critical); color: #fff; border-color: var(--mc-critical); }
+
+    /* ---------- Phase 2A.1 — Hiring Health additions ---------- */
+    .mc-source-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 999px;
+      width: fit-content;
+    }
+    .mc-source-pill[data-source="live_ghl"] {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid rgba(4,120,87,0.22);
+    }
+    .mc-source-pill[data-source="manual"] {
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+    .mc-source-pill[data-source="none"] {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid rgba(220,38,38,0.22);
+    }
+    .mc-source-pill .mc-source-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .mc-source-pill .mc-source-asof {
+      font-weight: 600;
+      opacity: 0.7;
+      letter-spacing: 0.2px;
+      text-transform: none;
+    }
+    .mc-conversions {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--mc-border);
+    }
+    .mc-conversions-title {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.0px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+      margin-bottom: 4px;
+    }
+
+    /* ---------- Phase 1B — Weekly Review ---------- */
+    .mc-week-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(37,99,235,0.10);
+      border: 1px solid rgba(37,99,235,0.25);
+      color: var(--mc-accent-2);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .mc-week-banner::before {
+      content: "📅";
+      font-size: 16px;
+    }
+
+    /* ============== Phase 3B — Communication Center ============== */
+    .mc-comm-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 8px 0 16px;
+      flex-wrap: wrap;
+    }
+    .mc-comm-toolbar-aside {
+      color: var(--mc-ink-soft);
+      font-size: 13px;
+    }
+    .mc-comm-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .mc-comm-group {
+      background: var(--mc-surface-soft);
+      border: 1px solid var(--mc-border-soft);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .mc-comm-group-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .mc-comm-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--mc-ink-muted);
+    }
+    .mc-comm-group-count {
+      font-size: 12px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-comm-thread {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--mc-border-soft);
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .mc-comm-thread:first-child { border-top: none; padding-top: 4px; }
+    .mc-comm-thread:hover { background: var(--mc-surface); }
+    .mc-comm-thread-rail {
+      flex: none;
+      width: 4px;
+      border-radius: 2px;
+      background: var(--mc-ink-muted);
+      align-self: stretch;
+    }
+    .mc-comm-thread[data-category="leadership"] .mc-comm-thread-rail { background: #d4af37; }
+    .mc-comm-thread[data-category="scheduling"] .mc-comm-thread-rail { background: #4a90e2; }
+    .mc-comm-thread[data-category="supplies"]   .mc-comm-thread-rail { background: #7b9d6c; }
+    .mc-comm-thread[data-category="callout"]    .mc-comm-thread-rail { background: #c4836a; }
+    .mc-comm-thread[data-category="customer"]   .mc-comm-thread-rail { background: #a26b76; }
+    .mc-comm-thread[data-category="general"]    .mc-comm-thread-rail { background: var(--mc-ink-muted); }
+    .mc-comm-thread-main { flex: 1; min-width: 0; }
+    .mc-comm-thread-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 2px;
+    }
+    .mc-comm-thread-subject {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mc-ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mc-comm-thread-time {
+      flex: none;
+      font-size: 12px;
+      color: var(--mc-ink-soft);
+    }
+    .mc-comm-thread-participants {
+      font-size: 12px;
+      color: var(--mc-ink-muted);
+      margin-bottom: 4px;
+    }
+    .mc-comm-thread-preview {
+      font-size: 13px;
+      color: var(--mc-ink-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    /* Phase 3B.1 — thread status badge. Used in the thread-row head
+       and in the detail modal eyebrow. Five tones: neutral (open),
+       blue (waiting on employee), amber (waiting on management),
+       green (resolved), dark gray (closed). */
+    .mc-comm-status-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #475569;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .mc-comm-status-chip.is-open                   { background: #e2e8f0; color: #475569; }
+    .mc-comm-status-chip.is-waiting_on_employee    { background: #dbeafe; color: #1e3a8a; }
+    .mc-comm-status-chip.is-waiting_on_management  { background: #fef3c7; color: #92400e; }
+    .mc-comm-status-chip.is-resolved               { background: #dcfce7; color: #166534; }
+    .mc-comm-status-chip.is-closed                 { background: #cbd5e1; color: #1e293b; }
+    /* Phase 3B.2 — pair category + priority in a row in the compose
+       modal. Stacks on narrow viewports. */
+    .mc-field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 540px) {
+      .mc-field-row { grid-template-columns: 1fr; }
+    }
+    /* Phase 3B.2 — priority chip. Sits alongside the status chip on
+       thread rows and in the modal eyebrow. */
+    .mc-comm-priority-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .mc-comm-priority-chip.is-fyi             { background: #f1f5f9; color: #475569; }
+    .mc-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
+    .mc-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+    /* Phase 3C UI — transport chip. Shows which channels a thread has
+       used. On thread rows: small chip next to priority. In the detail
+       modal eyebrow: same chip style. On individual message bubbles:
+       same shape, smaller weight. SMS is amber (matches the warning
+       copy), in-app is a calm slate. */
+    .mc-comm-transport-chip {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      vertical-align: middle;
+      white-space: nowrap;
+      margin-left: 4px;
+    }
+    .mc-comm-transport-chip.is-in_app { background: #e0e7ff; color: #3730a3; }
+    .mc-comm-transport-chip.is-sms    { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    /* Per-message bubble channel chip — sits next to sender/time meta. */
+    .mc-thread-msg-channel {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 6px;
+    }
+    .mc-thread-msg-channel.is-in_app { background: #e0e7ff; color: #3730a3; }
+    .mc-thread-msg-channel.is-sms    { background: #fef3c7; color: #92400e; }
+    /* Urgent rows get an extra red ring on the rail so the eye catches
+       them across the full registry. */
+    .mc-comm-thread[data-priority="urgent"] .mc-comm-thread-rail {
+      box-shadow: inset 0 0 0 1.5px rgba(220, 38, 38, 0.85);
+    }
+    /* Phase 3B.2 — category palette adjustments per spec:
+       callout was clay → now amber (high-attention)
+       customer was berry → now clay (warmer, distinct from callout). */
+    .mc-comm-thread[data-category="callout"] .mc-comm-thread-rail  { background: #f59e0b; }
+    .mc-comm-thread[data-category="customer"] .mc-comm-thread-rail { background: #c4836a; }
+    .mc-comm-thread-head {
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ============== Generic modal (Phase 3B) ============== */
+    .mc-modal-overlay[hidden] { display: none !important; }
+    .mc-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(11, 18, 32, 0.55);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .mc-modal {
+      background: var(--mc-surface);
+      border-radius: 14px;
+      box-shadow: 0 18px 48px rgba(11, 18, 32, 0.25);
+      width: 100%;
+      max-width: 640px;
+      max-height: 84vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .mc-modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 22px 24px 16px;
+      border-bottom: 1px solid var(--mc-border-soft);
+    }
+    .mc-modal-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--mc-ink-soft);
+    }
+    .mc-modal-head h2 {
+      margin: 4px 0 0;
+      font-size: 20px;
+      color: var(--mc-ink);
+    }
+    .mc-modal-sub {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--mc-ink-soft);
+      line-height: 1.5;
+    }
+    .mc-modal-close {
+      flex: none;
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      line-height: 1;
+      color: var(--mc-ink-soft);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .mc-modal-close:hover { color: var(--mc-ink); }
+    .mc-modal-fields {
+      padding: 18px 24px 20px;
+      overflow-y: auto;
+    }
+    .mc-modal-status {
+      font-size: 13px;
+      color: var(--mc-ink-soft);
+      margin: 8px 0 4px;
+      min-height: 16px;
+    }
+    .mc-modal-status[data-tone="error"] { color: #b00020; }
+    .mc-modal-status[data-tone="ok"]    { color: #1d7d3a; }
+    .mc-modal-btns {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .mc-btn-ghost {
+      background: transparent;
+      color: var(--mc-ink-muted);
+      border: 1px solid var(--mc-border);
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mc-btn-ghost:hover { color: var(--mc-ink); }
+    .mc-btn-ghost:disabled { opacity: 0.5; cursor: default; }
+
+    /* Modal field reuses .mc-field-question + select/input styles already present */
+    #manager-comm-new-overlay input,
+    #manager-comm-new-overlay select,
+    #manager-comm-new-overlay textarea,
+    #manager-thread-overlay textarea {
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--mc-border);
+      border-radius: 10px;
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+      box-sizing: border-box;
+    }
+    #manager-comm-new-overlay textarea,
+    #manager-thread-overlay textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    /* ============== Thread history ============== */
+    .mc-thread-history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 24px;
+      background: var(--mc-surface-soft);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mc-thread-msg {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      box-shadow: 0 1px 2px rgba(11, 18, 32, 0.04);
+    }
+    .mc-thread-msg[data-direction="outbound"] {
+      align-self: flex-end;
+      background: var(--mc-ink);
+      color: var(--mc-surface);
+    }
+    .mc-thread-msg[data-direction="inbound"] {
+      align-self: flex-start;
+      background: var(--mc-surface);
+      color: var(--mc-ink);
+      border: 1px solid var(--mc-border-soft);
+    }
+    .mc-thread-msg-meta {
+      font-size: 11px;
+      letter-spacing: 0.4px;
+      margin-top: 4px;
+      opacity: 0.75;
+    }
+    .mc-thread-reply {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--mc-border-soft);
+      background: var(--mc-surface);
+    }
+    /* Phase 3C — A2P warning copy under the reply textarea. Quiet by
+       default; turns to a soft amber so admins notice but it doesn't
+       outshout the conversation. */
+    .mc-thread-sms-warning {
+      margin: 8px 0 0;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #92400e;
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: 6px;
+    }
+    /* Phase 3C UI — split the thread-detail button row into management
+       actions (Close/Resolve, ghost) on the left and send actions on
+       the right (Send SMS amber, Send Reply primary). This gives Send
+       SMS the same visual weight tier as Send Reply rather than being
+       lost alongside the ghost buttons. */
+    .mc-thread-action-row {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .mc-thread-action-mgmt {
+      display: flex;
+      gap: 8px;
+    }
+    .mc-thread-action-send {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    /* Phase 3C UI — compose-modal delivery hint. Subdued so it reads as
+       help text, not a warning. Body color shifts amber when SMS or Both
+       is selected (set via data-attr from manager.js). */
+    .mc-field-hint {
+      margin: 4px 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--mc-ink-muted, #64748b);
+    }
+    .mc-field-hint[data-transport="sms"],
+    .mc-field-hint[data-transport="both"] {
+      color: #92400e;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="manager-page">
+  <main class="manager-main">
+
+    <!-- ============== Auth screens ============== -->
+    <section class="card auth-screen" id="auth-checking">
+      <div class="auth-icon"><div class="auth-spinner" aria-hidden="true"></div></div>
+      <p class="auth-title">Checking access…</p>
+      <p class="auth-sub">One sec.</p>
+    </section>
+
+    <section class="card auth-screen" id="auth-signin" hidden>
+      <p class="auth-title">Manager Dashboard sign-in</p>
+      <p class="auth-sub">Sign in with your <strong>@pioneercomclean.com</strong> Google account.</p>
+      <button class="auth-google-btn" id="signin-btn" type="button">
+        <span>Sign in with Google</span>
+      </button>
+    </section>
+
+    <section class="card auth-screen" id="auth-denied" hidden>
+      <p class="auth-title">Access not authorized</p>
+      <p class="auth-sub">
+        <code id="auth-denied-email" class="auth-denied-email">—</code> isn't on
+        the Pioneer admin allowlist.
+      </p>
+      <button class="auth-google-btn auth-google-btn--secondary" type="button" data-signout>Sign out</button>
+    </section>
+
+    <!-- ============== Authorized content ============== -->
+    <div id="auth-content" hidden>
+
+      <!-- ====== Hero ====== -->
+      <header class="mc-hero">
+        <div>
+          <span class="mc-hero-eyebrow">Mission Control</span>
+          <h1 id="manager-greeting">Welcome.</h1>
+          <p class="mc-hero-sub">Here's how to win today.</p>
+        </div>
+        <div class="mc-hero-right">
+          <span class="mc-hero-date" id="manager-today-label">—</span>
+          <a class="mc-hero-link" href="/admin">/admin (operational)</a>
+        </div>
+      </header>
+
+      <!-- Phase 1C — Leadership Messages for office_manager.
+           CEO (executive) sends; any admin tier sees here. Self-sent
+           messages are filtered client-side so April doesn't see her
+           own notes back. Reuses team-hub-leadership-* CSS. -->
+      <section class="mc-leadership-wrap" id="manager-leadership-section" hidden>
+        <div class="team-hub-leadership-list" id="manager-leadership-list">
+          <!-- cards rendered by manager.js -->
+        </div>
+      </section>
+
+      <!-- ====== Action Required (cockpit centerpiece) ====== -->
+      <section class="mc-action-required" id="manager-action-required">
+        <span class="mc-section-eyebrow">Action Required</span>
+        <h2 id="manager-action-sub">Loading…</h2>
+        <div class="mc-counters" id="manager-action-counts">
+          <div class="mc-counter" data-tier="critical" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-critical">—</span>
+            <span class="mc-counter-label">Critical</span>
+          </div>
+          <div class="mc-counter" data-tier="attention" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-attention">—</span>
+            <span class="mc-counter-label">Attention Needed</span>
+          </div>
+          <div class="mc-counter" data-tier="healthy" data-zero="true">
+            <span class="mc-counter-number" id="mc-counter-healthy">—</span>
+            <span class="mc-counter-label">Healthy</span>
+          </div>
+        </div>
+        <p class="mc-priorities-title">Top Priorities</p>
+        <div id="manager-action-list"><p class="mc-priorities-empty">Loading…</p></div>
+      </section>
+
+      <!-- ====== Office Manager Scorecard (Phase 1B) ====== -->
+      <section class="mc-scorecard" id="manager-scorecard" aria-label="Office Manager Scorecard">
+        <div class="mc-scorecard-pill" data-scorecard="hiring"   data-tier="attention">
+          <span class="mc-scorecard-eyebrow">Hiring</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="staffing" data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Staffing</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="customer" data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Customer</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="admin"    data-tier="healthy">
+          <span class="mc-scorecard-eyebrow">Admin</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+        <div class="mc-scorecard-pill" data-scorecard="improvement" data-tier="attention">
+          <span class="mc-scorecard-eyebrow">Improvement</span>
+          <span class="mc-scorecard-status"><span class="mc-dot"></span><span class="mc-scorecard-label">—</span></span>
+        </div>
+      </section>
+
+      <!-- ====== Today's Mission + This Week's Wins ====== -->
+      <div class="mc-row-2">
+        <section class="mc-section" id="manager-mission">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Today's Mission</span>
+            <h2>What success looks like today</h2>
+            <p>A short list — generated from what's open right now.</p>
+          </div>
+          <ol class="mc-mission-list" id="manager-mission-list"></ol>
+          <p class="mc-mission-empty" id="manager-mission-empty" hidden>Nothing on the board — take the win.</p>
+        </section>
+
+        <section class="mc-section" id="manager-wins">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow" style="color:var(--mc-healthy);">This Week's Wins</span>
+            <h2>What's working</h2>
+            <p>Evidence of good operations.</p>
+          </div>
+          <ul class="mc-wins-list" id="manager-wins-list"></ul>
+          <p class="mc-wins-empty" id="manager-wins-empty" hidden>No wins to call out yet — the day is young.</p>
+        </section>
+      </div>
+
+      <!-- ====== Health row (4 status cards) ====== -->
+      <div class="mc-row-4">
+        <section class="mc-health-card" id="manager-staffing-health">
+          <span class="mc-health-card-eyebrow">Staffing Health</span>
+          <div id="manager-staffing-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-customer-health">
+          <span class="mc-health-card-eyebrow">Customer Health</span>
+          <div id="manager-customer-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-admin-health">
+          <span class="mc-health-card-eyebrow">Admin Health</span>
+          <div id="manager-admin-display" class="mc-loading">Loading…</div>
+        </section>
+        <section class="mc-health-card" id="manager-hiring-health">
+          <span class="mc-health-card-eyebrow">Hiring Health</span>
+          <div id="manager-hiring-display" class="mc-loading">Loading…</div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button type="button" id="manager-hiring-refresh" class="mc-btn" style="padding:6px 12px;font-size:12px;">Refresh GHL</button>
+            <span id="manager-hiring-refresh-status" style="font-size:12px;color:var(--mc-ink-soft);" hidden></span>
+          </div>
+          <details style="margin-top:4px;">
+            <summary style="cursor:pointer;font-size:11px;font-weight:800;letter-spacing:1.0px;text-transform:uppercase;color:var(--mc-ink-soft);">Update this week's numbers</summary>
+            <form id="manager-hiring-form" style="margin-top:10px;">
+              <div class="mc-form-grid">
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-applicants-7d">Applicants (7d)</label>
+                  <input type="number" id="hiring-applicants-7d" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-applicants-30d">Applicants (30d)</label>
+                  <input type="number" id="hiring-applicants-30d" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-interviews-sched">Interviews sched.</label>
+                  <input type="number" id="hiring-interviews-sched" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-interviews-done">Completed</label>
+                  <input type="number" id="hiring-interviews-done" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-working-interviews">Working int.</label>
+                  <input type="number" id="hiring-working-interviews" min="0" />
+                </div>
+                <div class="mc-field-group">
+                  <label class="mc-field-question" for="hiring-hires">Hires</label>
+                  <input type="number" id="hiring-hires" min="0" />
+                </div>
+              </div>
+              <p class="mc-form-err" id="manager-hiring-err" hidden></p>
+              <p class="mc-form-ok"  id="manager-hiring-ok"  hidden></p>
+              <button type="submit" class="mc-btn" id="manager-hiring-submit" style="margin-top:8px;">Save week</button>
+            </form>
+          </details>
+        </section>
+
+        <!-- QuickBooks Connection — admin-only configuration surface.
+             Financial reporting itself lives on /ceo; this card only handles
+             connection state, sync timestamps, and manual triggers.
+             Anchor id "qbo-connect" so the /ceo card's CTA link lands here.
+             Phase 30 — Added CEO Financial Pulse refresh + Disconnect button. -->
+        <section class="mc-health-card" id="manager-qbo-admin" style="anchor-name:--qbo-connect;">
+          <span class="mc-health-card-eyebrow">QuickBooks Connection</span>
+          <a id="qbo-connect" style="position:absolute;visibility:hidden;"></a>
+
+          <!-- Connection status line. Populated by manager.js loadStatus()
+               from quickbooks_status/current (admin-safe mirror). -->
+          <div id="manager-qbo-display" class="mc-loading">Checking connection…</div>
+
+          <!-- Last sync timestamps. Two independent rows so admin can see
+               whether either pipeline is stale. Populated by
+               manager.js loadSyncStatus(). -->
+          <div id="manager-qbo-syncs" style="margin-top:8px;font-size:11.5px;color:var(--mc-ink-soft);line-height:1.6;">
+            <div id="manager-sync-pulse">Financial Pulse: <span data-empty>checking…</span></div>
+            <div id="manager-sync-economics">Customer Economics: <span data-empty>checking…</span></div>
+          </div>
+
+          <!-- Button row: Connect / Refresh (x2) / Disconnect.
+               Visibility controlled by manager.js based on connection
+               state — Connect shows when not connected; Refreshes +
+               Disconnect show when connected. -->
+          <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button type="button" id="manager-qbo-connect" class="mc-btn" style="padding:6px 12px;font-size:12px;">Connect QuickBooks</button>
+            <button type="button" id="manager-pulse-refresh" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:var(--mc-ink);border:1px solid var(--mc-border-soft);" hidden>Refresh Financial Pulse</button>
+            <button type="button" id="manager-economics-refresh" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:var(--mc-ink);border:1px solid var(--mc-border-soft);" hidden>Refresh Customer Economics</button>
+            <button type="button" id="manager-qbo-disconnect" class="mc-btn" style="padding:6px 12px;font-size:12px;background:#fff;color:#b00020;border:1px solid #b00020;" hidden>Disconnect</button>
+            <span id="manager-qbo-status" style="font-size:12px;color:var(--mc-ink-soft);" hidden></span>
+          </div>
+
+          <p style="margin-top:10px;font-size:11px;color:var(--mc-ink-soft);line-height:1.5;">
+            Admin only. Connection powers the Financial Pulse + Customer Economics cards on
+            <a href="/ceo">/ceo</a>. Daily sync: Customer Economics at 7:00 AM PT, Financial
+            Pulse at 7:05 AM PT. Connect once; refresh anytime; disconnect to revoke at Intuit.
+          </p>
+        </section>
+      </div>
+
+      <!-- ====== Phase 3B — Communication Center ====== -->
+      <section class="mc-section" id="manager-communication">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow">Communication Center</span>
+          <h2>Open conversations</h2>
+          <p>Threads grouped by category. Click any conversation to read history, reply, or close it.</p>
+        </div>
+        <div class="mc-comm-toolbar">
+          <button type="button" class="mc-btn" id="manager-comm-new">+ New Conversation</button>
+          <span class="mc-comm-toolbar-aside" id="manager-comm-counts">Reading…</span>
+        </div>
+        <div class="mc-comm-groups" id="manager-comm-groups">
+          <p class="mc-empty">Loading conversations…</p>
+        </div>
+      </section>
+
+      <!-- ====== Bottlenecks + Daily Reflection ====== -->
+      <div class="mc-row-2-eq">
+
+        <section class="mc-section" id="manager-bottlenecks">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow">Bottlenecks</span>
+            <h2>What decision are you waiting on?</h2>
+            <p>One tap. Captures where the bottleneck lives so it can be fixed.</p>
+          </div>
+          <form id="manager-bottleneck-form">
+            <div class="mc-radio-row" id="manager-bottleneck-choices">
+              <button type="button" class="mc-radio" data-bottleneck="april">Waiting on April</button>
+              <button type="button" class="mc-radio" data-bottleneck="customer">Waiting on Customer</button>
+              <button type="button" class="mc-radio" data-bottleneck="vendor">Waiting on Vendor</button>
+              <button type="button" class="mc-radio" data-bottleneck="nobody">Waiting on Nobody</button>
+            </div>
+            <div class="mc-field-group">
+              <label class="mc-field-question" for="manager-bottleneck-note">Optional context</label>
+              <textarea id="manager-bottleneck-note" placeholder="What decision is stuck? (optional)"></textarea>
+            </div>
+            <p class="mc-form-err" id="manager-bottleneck-err" hidden></p>
+            <p class="mc-form-ok"  id="manager-bottleneck-ok"  hidden></p>
+            <button type="submit" class="mc-btn" id="manager-bottleneck-submit">Record today's bottleneck</button>
+          </form>
+          <div class="mc-history" id="manager-bottleneck-history"></div>
+        </section>
+
+        <section class="mc-section" id="manager-reflection">
+          <div class="mc-section-head">
+            <span class="mc-section-eyebrow">Daily Reflection</span>
+            <h2 id="manager-reflection-sub">Leadership thinking. Three minutes.</h2>
+            <p>What you noticed, what worries you, where Pioneer can be sharper.</p>
+          </div>
+          <form id="manager-reflection-form">
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Observation</span>
+              <label class="mc-field-question" for="reflection-noticed">What surprised you today?</label>
+              <textarea id="reflection-noticed" required></textarea>
+            </div>
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Concern</span>
+              <label class="mc-field-question" for="reflection-concerns">What could become a problem?</label>
+              <textarea id="reflection-concerns" required></textarea>
+            </div>
+            <div class="mc-field-group">
+              <span class="mc-field-eyebrow">Opportunity</span>
+              <label class="mc-field-question" for="reflection-improve">What could make Pioneer better?</label>
+              <textarea id="reflection-improve" required></textarea>
+            </div>
+            <p class="mc-form-err" id="manager-reflection-err" hidden></p>
+            <p class="mc-form-ok"  id="manager-reflection-ok"  hidden></p>
+            <button type="submit" class="mc-btn" id="manager-reflection-submit">Submit today's reflection</button>
+          </form>
+          <div class="mc-history" id="manager-reflection-history"></div>
+        </section>
+      </div>
+
+      <!-- ====== Improvement Pipeline (Phase 1B) ====== -->
+      <section class="mc-section" id="manager-improvements">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Improvement Pipeline</span>
+          <h2>Observe → Think → Improve → Implement → Measure</h2>
+          <p>Every idea has a status, an owner, and an outcome. Nothing disappears.</p>
+        </div>
+
+        <!-- Metrics: Submitted · Approved · Implemented · Rate -->
+        <div class="mc-improvement-metrics" id="manager-improvement-metrics">
+          <div class="mc-im-metric" data-metric="submitted">
+            <span class="mc-im-metric-value" id="mc-im-submitted">—</span>
+            <span class="mc-im-metric-label">Submitted</span>
+          </div>
+          <div class="mc-im-metric" data-metric="approved">
+            <span class="mc-im-metric-value" id="mc-im-approved">—</span>
+            <span class="mc-im-metric-label">Approved</span>
+          </div>
+          <div class="mc-im-metric" data-metric="implemented">
+            <span class="mc-im-metric-value" id="mc-im-implemented">—</span>
+            <span class="mc-im-metric-label">Implemented</span>
+          </div>
+          <div class="mc-im-metric" data-metric="rate">
+            <span class="mc-im-metric-value" id="mc-im-rate">—</span>
+            <span class="mc-im-metric-label">Implementation Rate</span>
+          </div>
+        </div>
+
+        <!-- Quick capture -->
+        <form id="manager-improvement-form" style="margin-bottom:18px;">
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Quick capture</span>
+            <label class="mc-field-question" for="improvement-title">Title</label>
+            <input type="text" id="improvement-title" placeholder="One-line summary" required />
+          </div>
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="improvement-idea">Description</label>
+            <textarea id="improvement-idea" placeholder="What's the idea? Why does it matter? Who benefits?" required></textarea>
+          </div>
+          <p class="mc-form-err" id="manager-improvement-err" hidden></p>
+          <p class="mc-form-ok"  id="manager-improvement-ok"  hidden></p>
+          <button type="submit" class="mc-btn" id="manager-improvement-submit">Submit idea</button>
+        </form>
+
+        <!-- Status-count strip -->
+        <div class="mc-pipeline-counts" id="manager-pipeline-counts">
+          <div class="mc-pipeline-count" data-status="submitted">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-submitted">—</span>
+            <span class="mc-pipeline-count-label">Submitted</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="approved">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-approved">—</span>
+            <span class="mc-pipeline-count-label">Approved</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="in_progress">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-in_progress">—</span>
+            <span class="mc-pipeline-count-label">In Progress</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="implemented">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-implemented">—</span>
+            <span class="mc-pipeline-count-label">Implemented</span>
+          </div>
+          <div class="mc-pipeline-count" data-status="rejected">
+            <span class="mc-pipeline-count-value" id="mc-pipe-count-rejected">—</span>
+            <span class="mc-pipeline-count-label">Rejected</span>
+          </div>
+        </div>
+
+        <!-- Collapsible status groups holding cards -->
+        <div id="manager-pipeline-groups">
+          <details class="mc-pipeline-group" data-status="submitted" open>
+            <summary><span>Submitted · review needed</span><span id="mc-pipe-h-submitted">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-submitted"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="approved" open>
+            <summary><span>Approved · awaiting work</span><span id="mc-pipe-h-approved">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-approved"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="in_progress" open>
+            <summary><span>In Progress · active work</span><span id="mc-pipe-h-in_progress">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-in_progress"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="implemented">
+            <summary><span>Implemented · evidence of impact</span><span id="mc-pipe-h-implemented">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-implemented"></div>
+          </details>
+          <details class="mc-pipeline-group" data-status="rejected">
+            <summary><span>Rejected · with reason</span><span id="mc-pipe-h-rejected">0</span></summary>
+            <div class="mc-pipeline-cards" id="mc-pipe-cards-rejected"></div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ====== Weekly Office Manager Review (Phase 1B) ====== -->
+      <section class="mc-section" id="manager-weekly-review">
+        <div class="mc-section-head">
+          <span class="mc-section-eyebrow" style="color:var(--mc-accent);">Weekly Review</span>
+          <h2>Management thinking, captured and searchable</h2>
+          <p>Five prompts. Prompted Fridays. Permanent record. Newest first below.</p>
+        </div>
+        <div class="mc-week-banner" id="manager-weekly-banner" hidden>
+          It's Friday — record this week's review.
+        </div>
+        <form id="manager-weekly-form">
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Biggest Win</span>
+            <label class="mc-field-question" for="weekly-biggest-win">What went well this week?</label>
+            <textarea id="weekly-biggest-win" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Biggest Risk</span>
+            <label class="mc-field-question" for="weekly-biggest-risk">What concerns you most?</label>
+            <textarea id="weekly-biggest-risk" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Trend Observed</span>
+            <label class="mc-field-question" for="weekly-trend">What pattern are you noticing?</label>
+            <textarea id="weekly-trend" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Improvement Proposal</span>
+            <label class="mc-field-question" for="weekly-proposal">What should Pioneer improve next?</label>
+            <textarea id="weekly-proposal" required></textarea>
+          </div>
+          <div class="mc-field-group">
+            <span class="mc-field-eyebrow">Where Are You Stuck?</span>
+            <label class="mc-field-question" for="weekly-stuck">What decision, approval, or resource are you waiting on?</label>
+            <textarea id="weekly-stuck" required></textarea>
+          </div>
+          <p class="mc-form-err" id="manager-weekly-err" hidden></p>
+          <p class="mc-form-ok"  id="manager-weekly-ok"  hidden></p>
+          <button type="submit" class="mc-btn" id="manager-weekly-submit">Save this week's review</button>
+        </form>
+        <div class="mc-history" id="manager-weekly-history"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Phase 3B — Thread detail modal (history + reply + close). Single
+       shared overlay; manager.js swaps content per-thread on open. -->
+  <div id="manager-thread-overlay" class="mc-modal-overlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true" aria-labelledby="manager-thread-title">
+      <header class="mc-modal-head">
+        <div>
+          <span class="mc-modal-eyebrow" id="manager-thread-eyebrow">Conversation</span>
+          <h2 id="manager-thread-title">Thread</h2>
+          <p class="mc-modal-sub" id="manager-thread-meta"></p>
+        </div>
+        <button type="button" class="mc-modal-close" id="manager-thread-close-btn" aria-label="Close">×</button>
+      </header>
+      <div class="mc-thread-history" id="manager-thread-history">
+        <p class="mc-empty">Loading messages…</p>
+      </div>
+      <div class="mc-thread-reply">
+        <label class="mc-field-question" for="manager-thread-reply-body">Reply</label>
+        <textarea id="manager-thread-reply-body" maxlength="2000" placeholder="Type a reply to this conversation…"></textarea>
+        <p class="mc-modal-status" id="manager-thread-reply-status"></p>
+        <!-- Phase 3C — Twilio Transport Foundation. Send SMS is a manual,
+             admin-only secondary path. In-app Reply remains the default.
+             The warning copy is intentionally cautious — campaign approval
+             may still be pending on Twilio's A2P 10DLC side. -->
+        <p class="mc-thread-sms-warning" id="manager-thread-sms-warning">
+          SMS transport is configured but A2P campaign approval may still be pending. Use sparingly.
+        </p>
+        <!-- Two button groups: thread management on the left (ghost,
+             low visual weight) and send actions on the right (Reply
+             primary, SMS as a distinct amber accent so it doesn't get
+             lost amongst the ghost buttons). -->
+        <div class="mc-thread-action-row">
+          <div class="mc-thread-action-mgmt">
+            <button type="button" class="mc-btn-ghost" id="manager-thread-action-close">Close Thread</button>
+            <button type="button" class="mc-btn-ghost" id="manager-thread-action-resolve">Mark Resolved</button>
+          </div>
+          <div class="mc-thread-action-send">
+            <button type="button" class="mc-btn-sms" id="manager-thread-send-sms">
+              <span class="mc-btn-icon" aria-hidden="true">📱</span>
+              <span>Send SMS</span>
+            </button>
+            <button type="button" class="mc-btn" id="manager-thread-send">Send Reply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 3B — New conversation modal. Admin-tier compose. -->
+  <div id="manager-comm-new-overlay" class="mc-modal-overlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true">
+      <header class="mc-modal-head">
+        <div>
+          <span class="mc-modal-eyebrow">New Conversation</span>
+          <h2>Start a conversation</h2>
+          <p class="mc-modal-sub">Pick a category, a participant, give it a subject, and write the first message.</p>
+        </div>
+        <button type="button" class="mc-modal-close" id="manager-comm-new-close" aria-label="Close">×</button>
+      </header>
+      <div class="mc-modal-fields">
+        <!-- Phase 3B.2 — Kind drives the (category, priority) defaults
+             via MESSAGE_TYPE_DEFAULTS. Either dropdown below can still
+             be overridden after Kind selection. -->
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-kind">Kind</label>
+          <select id="manager-comm-new-kind">
+            <option value="recognition">Recognition</option>
+            <option value="coaching_support">Coaching / Support</option>
+            <option value="announcement">Announcement</option>
+            <option value="logistics">Logistics</option>
+            <option value="supply">Supply</option>
+            <option value="scheduling">Scheduling</option>
+            <option value="callout">Call-out</option>
+            <option value="customer_issue">Customer Issue</option>
+            <option value="general" selected>General</option>
+          </select>
+        </div>
+        <div class="mc-field-row">
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="manager-comm-new-category">Category</label>
+            <select id="manager-comm-new-category">
+              <option value="leadership">Leadership</option>
+              <option value="scheduling">Scheduling</option>
+              <option value="supplies">Supplies</option>
+              <option value="callout">Call-out</option>
+              <option value="customer">Customer</option>
+              <option value="general" selected>General</option>
+            </select>
+          </div>
+          <div class="mc-field-group">
+            <label class="mc-field-question" for="manager-comm-new-priority">Priority</label>
+            <select id="manager-comm-new-priority">
+              <option value="fyi" selected>FYI</option>
+              <option value="action_required">Action Required</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-recipient">Send to</label>
+          <select id="manager-comm-new-recipient">
+            <option value="">Choose a teammate…</option>
+          </select>
+        </div>
+        <!-- Phase 3C UI — Delivery method picker. Default In-App only.
+             SMS only / Both route the first message through the manual
+             Twilio path. Choosing SMS or Both requires the recipient to
+             have a phone on file (server-side check). -->
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-delivery">Delivery method</label>
+          <select id="manager-comm-new-delivery">
+            <option value="in_app" selected>In-App message only (default)</option>
+            <option value="sms">SMS only</option>
+            <option value="both">Both In-App and SMS</option>
+          </select>
+          <p class="mc-field-hint" id="manager-comm-new-delivery-hint">
+            Recipient sees this in their team hub inbox. No phone notification.
+          </p>
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-subject">Subject</label>
+          <input type="text" id="manager-comm-new-subject" maxlength="200" placeholder="What's this about?" />
+        </div>
+        <div class="mc-field-group">
+          <label class="mc-field-question" for="manager-comm-new-body">First message</label>
+          <textarea id="manager-comm-new-body" maxlength="2000" placeholder="Keep it short and specific."></textarea>
+        </div>
+        <p class="mc-modal-status" id="manager-comm-new-status"></p>
+        <div class="mc-modal-btns">
+          <button type="button" class="mc-btn-ghost" id="manager-comm-new-cancel">Cancel</button>
+          <button type="button" class="mc-btn" id="manager-comm-new-send">Start &amp; Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="comm-threads.js?v=20260610-phase3b2"></script>
+  <script src="manager.js?v=20260618-qbo-admin"></script>
+</body>
+</html>

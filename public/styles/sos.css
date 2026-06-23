@@ -1,0 +1,242 @@
+/* Pioneer SOS — calm/serious styling.
+   Red where it must be red, amber for help-needed, never panicked. */
+
+/* Floating SOS pill — top-right, below the sticky brand header so it
+   never overlays the nav. Moved off the bottom-left thumb zone where
+   it was easy to tap accidentally during scroll. */
+.sos-fab {
+  position: fixed;
+  top: max(78px, calc(env(safe-area-inset-top, 0px) + 78px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  border: 0;
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.32),
+              0 0 0 2px rgba(255, 255, 255, 0.18) inset;
+  cursor: pointer;
+  z-index: 1400;
+}
+.sos-fab:hover  { background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%); }
+.sos-fab:active { transform: translateY(1px); }
+.sos-fab-icon   { font-size: 15px; line-height: 1; }
+.sos-fab-text   { letter-spacing: 0.06em; }
+
+/* Equal-prominence grid for 911 + April call buttons. Stacks on very
+   narrow phones, side-by-side everywhere else. */
+.sos-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+@media (max-width: 360px) {
+  .sos-actions-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Modal ---- */
+.sos-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sos-overlay[hidden] { display: none; }
+.sos-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.62);
+  cursor: pointer;
+}
+.sos-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  padding: 22px 22px 24px;
+  box-shadow: 0 -20px 60px rgba(15, 23, 42, 0.35);
+  animation: sosSheetIn 220ms ease-out;
+  max-height: 92vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.sos-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  font-size: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.sos-step { display: block; }
+.sos-step[hidden] { display: none; }
+
+.sos-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #b91c1c;
+}
+.sos-eyebrow-amber { color: #b45309; }
+.sos-eyebrow-red   { color: #b91c1c; }
+
+.sos-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: #0f172a;
+  line-height: 1.3;
+}
+.sos-helper {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.55;
+}
+
+.sos-textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14.5px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  resize: vertical;
+  min-height: 84px;
+  margin-bottom: 10px;
+  background: #fafafa;
+}
+.sos-textarea:focus {
+  outline: none;
+  border-color: #f59e0b;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+.sos-ctx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.sos-ctx-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.sos-ctx-empty {
+  font-size: 12.5px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.sos-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sos-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  min-height: 52px;
+  line-height: 1.25;
+}
+.sos-btn strong { font-weight: 800; }
+.sos-btn-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.sos-btn-warning {
+  background: #f59e0b;
+  color: #1f1300;
+  box-shadow: 0 6px 14px rgba(245, 158, 11, 0.30);
+}
+.sos-btn-warning:active { background: #d97706; }
+
+.sos-btn-emergency {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.30);
+}
+.sos-btn-emergency:active { background: #991b1b; }
+
+.sos-btn-emergency-outline {
+  background: #ffffff;
+  color: #b91c1c;
+  border: 2px solid #dc2626;
+}
+.sos-btn-emergency-outline:active { background: #fee2e2; }
+
+.sos-btn-cancel {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.sos-btn-cancel:active { background: #e2e8f0; }
+
+.sos-btn-cancel-light {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+.sos-btn-cancel-light:active { background: #f1f5f9; }
+
+.sos-btn-go {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.sos-event-id {
+  margin: 14px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: #64748b;
+  text-align: center;
+}
+
+@keyframes sosSheetIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@media (min-width: 600px) {
+  .sos-overlay { align-items: center; }
+  .sos-sheet {
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.40);
+  }
+}

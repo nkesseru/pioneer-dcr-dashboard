@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer · Sign In</title>
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img" src="assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">PioneerOps</div>
+      </div>
+    </div>
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Sign in to PioneerOps</h1>
+      <p class="subtitle">Use the same email you use in Deputy.</p>
+    </section>
+
+    <!-- Status surfaces. Shown in three mutually-exclusive states:
+         checking  → "Checking your session…"
+         signin    → the sign-in card (default)
+         denied    → email signed in but not on the active staff list
+         redirect  → "Signed in. Sending you to Team Hub…" (brief flash) -->
+    <section id="login-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking your session…</p>
+      <p class="staff-auth-sub">If you're already signed in we'll send you straight to the app.</p>
+    </section>
+
+    <section id="login-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">
+        The easiest way to get in is Google. <strong>Use the same email you use in Deputy.</strong>
+      </p>
+
+      <button class="staff-google-btn" id="login-google-btn" type="button">
+        <span class="g-logo" aria-hidden="true">
+          <svg viewBox="0 0 18 18" width="18" height="18">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+          </svg>
+        </span>
+        <span>Sign in with Google</span>
+      </button>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or use email + password</span></div>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+
+      <p class="staff-auth-help">
+        Having trouble? Text <strong>Kirby</strong> or <strong>Nick</strong> for help — we'll get you sorted.
+      </p>
+    </section>
+
+    <section id="login-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">We found your login, but…</p>
+      <p class="staff-auth-sub" id="login-denied-msg">
+        it's not connected to an active PioneerOps team account yet. Please text <strong>Kirby</strong> or <strong>Nick</strong> and we'll get you set up.
+      </p>
+      <p class="staff-auth-help">
+        Signed in as <code id="login-denied-email" class="auth-denied-email">—</code>
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Use a different account</button>
+    </section>
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? Text Kirby or Nick — or email <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code></p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="login.js"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

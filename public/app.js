@@ -30,6 +30,40 @@
   const DRAFT_KEY    = "pioneer.dcr.draft.v1";
   const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+  // ----- Optional DCR submit-success delight: tiny flush sound effect -----
+  // Decorative only. Plays at low volume after a confirmed submit. Never
+  // fires on validation errors, never fires on draft restore, never plays
+  // twice for the same submission, and silently no-ops when the browser
+  // blocks autoplay or the audio file is missing. Set to `false` to kill
+  // the feature entirely without removing the wiring.
+  const ENABLE_DCR_SUCCESS_SOUND   = true;
+  const DCR_SUCCESS_SOUND_SRC      = "/assets/sounds/dcr-success.mp3";
+  const DCR_SUCCESS_SOUND_VOLUME   = 0.30;
+  // V20260614d — Cap total submit-celebration audio at 4 seconds. Any
+  // asset longer than this plays back at a proportionally higher rate
+  // (e.g. a 6s file plays at 1.5x → ~4s). Caller-tunable so future
+  // assets can shorten without a code change.
+  const DCR_SUCCESS_SOUND_MAX_SEC  = 4;
+  // V20260614d — Per-device mute preference. Stored in localStorage so
+  // each device remembers independently (a tech can mute their phone
+  // without affecting their office laptop). "1" → muted; anything else
+  // (or unset) → sound on. Default is sound on for the fun moment.
+  const DCR_SUCCESS_SOUND_MUTE_KEY = "pioneer.dcr.successSound.muted";
+  // Tracks the most-recent submissionId we played the sound for. Same
+  // id arriving twice (e.g. success-card rerender) → no replay.
+  let _dcrSuccessSoundLastPlayedId = null;
+
+  function isDcrSuccessSoundMuted() {
+    try { return localStorage.getItem(DCR_SUCCESS_SOUND_MUTE_KEY) === "1"; }
+    catch (_e) { return false; }
+  }
+  function setDcrSuccessSoundMuted(muted) {
+    try {
+      if (muted) localStorage.setItem(DCR_SUCCESS_SOUND_MUTE_KEY, "1");
+      else       localStorage.removeItem(DCR_SUCCESS_SOUND_MUTE_KEY);
+    } catch (_e) { /* private mode / quota — non-fatal */ }
+  }
+
   // Inline content for each checklist pill — done/issue are icon-only SVGs
   // (currentColor picks up the active state's color), N/A is short text.
   // `M10 16v.01` + `stroke-linecap="round"` renders as a single dot for the
@@ -57,11 +91,28 @@
   let checklistNotes     = {};     // { [section_id]: { [item_id]: "free-text note for an issue" } }
   let sectionCollapsed   = {};     // { [section_id]: true when section is collapsed }
   let timeBudgetReasons  = new Set();
+  // V6 pilot — freeform note that pairs with the "other" reason on the
+  // time-budget section. Optional; survives draft save/restore; flows
+  // into the submitted DCR as both snake_case (form_data.time_budget_other_note)
+  // and camelCase (overBudgetNote, overBudgetReason) mirrors so any
+  // downstream reader picks it up.
+  let overBudgetOtherNote = "";
+  // Phase 1e.2 — populated by loadLinkedPioneerSession() when the URL
+  // carries a pioneer_service_session_id AND that session shows
+  // work_minutes > budget_minutes + 15. Null otherwise. Drives both
+  // the Time card's visibility and the time_over_budget_context block
+  // on the submitted DCR payload.
+  let timeOverBudgetSnapshot = null;
   let signaturePad       = null;
   let firebaseCtx        = null;
   let isSubmitting       = false;
   let isRestoringDraft   = false;
   let draftSaveTimer     = null;
+  // 2026-06-18 hotfix — references the in-flight Firebase Storage UploadTask
+  // so the "Cancel upload" button (and the offline pre-check, on the off
+  // chance a tech loses signal mid-upload) can abort it. Null when no upload
+  // is in flight.
+  let activeUploadTask   = null;
 
   /* ---------- DOM helpers ---------- */
 
@@ -97,7 +148,16 @@
   function initFirebase() {
     if (!window.firebase) throw new Error("Firebase SDK script tags failed to load.");
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
-    return { storage: firebase.storage() };
+    const storage = firebase.storage();
+    // 2026-06-18 hotfix v3 — raise SDK retry budget so it outlasts our
+    // 75s inter-progress watchdog. Previously 60s upload / 20s op, which
+    // meant the SDK could throw storage/retry-limit-exceeded BEFORE our
+    // friendly "DCR saved" watchdog message fired. 120s gives marginal
+    // signals real recovery runway; the watchdog stays authoritative for
+    // user-facing UX. See production incident 2026-06-18 (Bonnie).
+    try { storage.setMaxUploadRetryTime(120000); }   catch (_e) {}
+    try { storage.setMaxOperationRetryTime(45000); } catch (_e) {}
+    return { storage: storage };
   }
 
   /* ---------- render: dropdowns + date default ---------- */
@@ -154,9 +214,17 @@
   function getCustomerDcrEmailEnabled(c) { return c.dcr_email_enabled !== false; }
   function getCustomerReviewLinks(c) { return (c.review_links && typeof c.review_links === "object") ? c.review_links : {}; }
   function getCustomerDisplayLabel(c){
-    // Spec: location_name if present, otherwise customer_name. Falls back
-    // gracefully so a bare doc still shows *something* selectable.
-    return getCustomerLocation(c) || getCustomerName(c) || getCustomerSlug(c) || "(unnamed customer)";
+    // Canonical display name — routes through the shared helper so
+    // `displayNameMode + customDisplayName` are honored consistently
+    // with every other surface (Team Hub schedule, Today's Work cards,
+    // Customer Info, Yesterday's Work, DCR email, customer report).
+    // The "(unnamed customer)" last-resort string is kept for the
+    // dropdown's still-selectable affordance.
+    if (window.PioneerCustomerDisplay) {
+      const label = window.PioneerCustomerDisplay.getCustomerDisplayName(c);
+      if (label) return label;
+    }
+    return getCustomerName(c) || getCustomerLocation(c) || getCustomerSlug(c) || "(unnamed customer)";
   }
 
   function getTechName(t)        { return t.display_name || t.tech_display_name || t.name || ""; }
@@ -320,6 +388,130 @@
   // Deputy params (manual DCR — the existing flow).
   const deputyShiftParams = parseDeputyShiftFromUrl();
 
+  // Phase 1b.4 — Pioneer Time Clock entry point. Separate namespace
+  // from Deputy params so the two flows never collide in submitDcrV1's
+  // back-write logic. Tech arrives at /index.html from service-clock.js
+  // with these query params; we forward them in the submit payload so
+  // the Cloud Function can back-stamp the linked
+  // pioneer_service_sessions + service_assignments docs.
+  function parsePioneerAssignmentFromUrl() {
+    try {
+      const params = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
+      const assignmentId = (params.get("pioneer_assignment_id") || "").trim();
+      if (!assignmentId) return null;
+      return {
+        pioneer_assignment_id:      assignmentId,
+        pioneer_service_session_id: (params.get("pioneer_service_session_id") || "").trim(),
+        customer_slug:              (params.get("customer_slug") || "").trim(),
+        customer_name:              (params.get("customer_name") || "").trim(),
+        sync_date:                  (params.get("sync_date")     || "").trim()
+      };
+    } catch (e) { return null; }
+  }
+  const pioneerAssignmentParams = parsePioneerAssignmentFromUrl();
+
+  /* ---------- 2026-06-22 Phase 32D — DCR no-clock-in preflight ----------
+   *
+   * Detects DCR submissions that aren't tied to any clock-in evidence
+   * (no pioneer_service_session_id, no pioneer_assignment_id, no
+   * deputy_shift_id in the URL). Renders the amber warning banner,
+   * lets the tech jump to /work OR acknowledge and continue. If they
+   * continue, the ack flag rides on the DCR payload's submission_meta
+   * so admin can audit "orphan DCR — tech acknowledged at submit time"
+   * vs "orphan DCR — silent" downstream.
+   *
+   * The banner does NOT block submission. It is informational + a UX
+   * nudge to clock in first. Stays hidden whenever any handoff is
+   * present in the URL (the normal Start Work flow).
+   *
+   * dcrNoSessionAcknowledged is read once by onSubmit() during payload
+   * construction. Defaults to false; set to true when the tech clicks
+   * "Continue anyway".
+   */
+  let dcrNoSessionAcknowledged = false;
+
+  function hasAnyClockInLinkage() {
+    if (pioneerAssignmentParams && (
+          pioneerAssignmentParams.pioneer_assignment_id ||
+          pioneerAssignmentParams.pioneer_service_session_id)) return true;
+    if (deputyShiftParams && (
+          deputyShiftParams.deputy_shift_id ||
+          deputyShiftParams.pioneer_session_id)) return true;
+    return false;
+  }
+
+  function wireDcrNoSessionBanner() {
+    const banner = $("dcr-no-session-banner");
+    if (!banner) return;
+    if (hasAnyClockInLinkage()) {
+      banner.hidden = true;
+      return;
+    }
+    banner.hidden = false;
+    try { console.info("[phase32d] dcr opened without clock-in linkage — preflight banner shown"); } catch (_e) {}
+    const continueBtn = $("dcr-no-session-continue");
+    if (continueBtn) {
+      continueBtn.addEventListener("click", function () {
+        dcrNoSessionAcknowledged = true;
+        banner.hidden = true;
+        try { console.info("[phase32d] tech acknowledged no-clock-in — continuing without session"); } catch (_e) {}
+      });
+    }
+    // The "/work" link is a plain <a href>; no JS handler needed. The
+    // browser navigates away, and the tech's draft (if any) is preserved
+    // by the existing localStorage draft system so they can come back to
+    // the DCR after clocking in.
+  }
+
+  /* ---------- Phase 1e.2: linked Pioneer session over-budget check ----------
+   *
+   * When the URL carries a pioneer_service_session_id (set by service-clock.js
+   * when the tech taps "Complete DCR" from Time Clock), read that session and
+   * decide whether to reveal the optional scope-change Time card.
+   *
+   * Reveal rule: work_minutes > budget_minutes + 15  (strict greater-than)
+   * Everything else (no id, no session, no budget, under-budget, error) leaves
+   * the card hidden — the question is purely opt-in collaborative context.
+   *
+   * Reads pioneer_service_sessions/{id} once. The session's read rule is
+   * `isPioneerAdmin() || own staff_uid` — the tech who submitted the clock-in
+   * is also the one filling the DCR, so this is allowed. Any failure is
+   * swallowed and the card just stays hidden (zero impact on submission).
+   */
+  function revealTimeBudgetCard() {
+    const card = document.getElementById("time-budget-card");
+    if (card) card.hidden = false;
+  }
+
+  async function loadLinkedPioneerSession() {
+    try {
+      if (!pioneerAssignmentParams ||
+          !pioneerAssignmentParams.pioneer_service_session_id) return;
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+      const sid  = pioneerAssignmentParams.pioneer_service_session_id;
+      const snap = await firebase.firestore()
+        .collection("pioneer_service_sessions").doc(sid).get();
+      if (!snap.exists) return;
+      const s      = snap.data() || {};
+      const work   = (typeof s.work_minutes   === "number") ? s.work_minutes   : null;
+      const budget = (typeof s.budget_minutes === "number") ? s.budget_minutes : null;
+      if (work == null || budget == null || budget <= 0) return;
+      const overBy = work - budget;
+      if (overBy <= 15) return;
+      timeOverBudgetSnapshot = {
+        pioneer_service_session_id: sid,
+        work_minutes:    work,
+        budget_minutes:  budget,
+        over_by_minutes: overBy
+      };
+      revealTimeBudgetCard();
+    } catch (e) {
+      // Permission, network, or any other failure → stay hidden.
+      // Never blocks submission; the question is optional.
+      try { console.warn("[dcr] linked pioneer session check failed", e && (e.message || e.code)); } catch (_) {}
+    }
+  }
+
   function formatScheduledRange(startIso, endIso) {
     function fmt(iso) {
       if (!iso) return "";
@@ -344,12 +536,51 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  function applyDeputyShiftFromUrl() {
+  // Phase A Deputy launcher — fire-and-forget click log for the DCR
+  // success page's "Open Deputy App" button. Soft-fails on every error
+  // so a failed write never blocks the anchor navigation. Twin of the
+  // logDeputyOpenClick helper in today-work.js; rules in firestore.rules
+  // require staff.uid == request.auth.uid.
+  function logDeputyOpenClick(source, extras) {
+    try {
+      if (!window.firebase || typeof firebase.firestore !== "function") return;
+      const staff = (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
+        ? window.STAFF_AUTH.getCachedStaff() : null) || {};
+      const authU = (firebase.auth && firebase.auth().currentUser) || null;
+      const uid   = staff.uid || (authU && authU.uid) || null;
+      if (!uid) return;
+      const payload = Object.assign({
+        action:     "open_deputy",
+        source:     String(source || "unknown"),
+        staff: {
+          uid:         uid,
+          email:       String(staff.email || (authU && authU.email) || ""),
+          displayName: String(staff.displayName || (authU && authU.displayName) || "")
+        },
+        page_url:   (typeof location !== "undefined" && location.pathname) || "",
+        user_agent: (typeof navigator !== "undefined" && navigator.userAgent) || "",
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      }, extras || {});
+      firebase.firestore().collection("employee_action_events").add(payload)
+        .catch(function (err) {
+          try { console.warn("[app] deputy click log failed (non-fatal)", err && err.code); } catch (_e) {}
+        });
+    } catch (e) {
+      try { console.warn("[app] deputy click log threw (non-fatal)", e); } catch (_e) {}
+    }
+  }
+
+  function applyDeputyShiftFromUrl(staffArg) {
     const banner = document.getElementById("deputy-shift-banner");
     const metaEl = document.getElementById("deputy-shift-banner-meta");
     const actEl  = document.getElementById("deputy-shift-banner-actions");
     if (!banner || !metaEl || !actEl) return;
     if (!deputyShiftParams) { banner.hidden = true; return; }
+    // Cached staff fallback — earlier boot paths sometimes call this
+    // without an explicit staff arg, but the assigned-shift handoff
+    // needs the signed-in user's tech identity. Keep working either way.
+    const staffForCard = staffArg || (window.STAFF_AUTH && window.STAFF_AUTH.getCachedStaff
+      ? window.STAFF_AUTH.getCachedStaff() : null);
 
     // Match priority: explicit slug, then exact customer_name (case-
     // insensitive), then exact location_name, then substring of the
@@ -516,6 +747,157 @@
     }
 
     banner.hidden = false;
+
+    // ----------------------------------------------------------------
+    // Assigned-shift summary card.
+    //
+    // When the handoff is confident — customer matched + pioneer work
+    // session present + signed-in user owns the shift — collapse the
+    // manual Visit Details section and surface a four-line summary
+    // ("complete tonight's assigned shift", not "fill out a generic
+    // form"). Falls back to the original setup form for:
+    //   • unmatched customer (tech still needs to pick)
+    //   • no pioneer_session_id (DCR opened outside the Start Work flow)
+    //   • admin viewing another tech's shift (no auto-populate)
+    //   • the staff record is missing or denied
+    // Admins get an inline "Change shift / Advanced" toggle to fall back
+    // to the manual form for office overrides; cleaning techs never see it.
+    paintAssignedShiftSummary({
+      matchedOption: matched,
+      staff:         staffForCard,
+      banner:        banner
+    });
+  }
+
+  function paintAssignedShiftSummary(ctx) {
+    const card = document.getElementById("assigned-shift-summary");
+    const visit = document.getElementById("visit-details-section");
+    if (!card || !visit) return;
+    const params = deputyShiftParams;
+    if (!params) return;
+
+    // Confident handoff guard: every input must be present for the card
+    // to take over. Otherwise leave the manual form in place — that's
+    // the safe fallback the user explicitly asked for.
+    const hasSession = !!String(params.pioneer_session_id || "").trim();
+    const techMatched = ctx.staff && ctx.staff.tech && ctx.staff.tech.slug;
+    const techIsCleaner = ctx.staff && ctx.staff.role === "cleaning_tech";
+    // Admin path: only auto-populate when the admin is also the tech of
+    // record on the shift (rare but valid — admins occasionally pick up
+    // shifts). For the much more common "admin reviewing another tech's
+    // shift" case, fall back to the manual form so the admin can edit.
+    const adminOwnsShift = ctx.staff && ctx.staff.role === "admin" &&
+      techMatched &&
+      String(params.deputy_shift_id || "").length > 0 &&
+      // The assigned-shift card shows the SIGNED-IN tech's name. For an
+      // admin who isn't the assignee, the card would be misleading. We
+      // detect this by checking whether the shift's employee_email param
+      // (when present) matches the admin's email — but the URL doesn't
+      // carry that today, so for the pilot we conservatively only auto-
+      // populate for cleaning_tech role. Admins see the manual form +
+      // banner (existing behavior).
+      false;
+
+    if (!hasSession || !ctx.matchedOption || !techMatched || (!techIsCleaner && !adminOwnsShift)) {
+      // Fallback to manual form. Make sure the card is hidden in case a
+      // previous render left it visible (e.g., draft restore edge case).
+      card.hidden = true;
+      visit.hidden = false;
+      return;
+    }
+
+    // ---- All preconditions met — paint the card + hide the manual form.
+    const custEl = document.getElementById("assigned-shift-customer-name");
+    const techEl = document.getElementById("assigned-shift-tech-name");
+    const dateEl = document.getElementById("assigned-shift-date");
+    const timeEl = document.getElementById("assigned-shift-time");
+
+    if (custEl) {
+      // textContent is the helper-derived display label (honors
+      // displayNameMode + customDisplayName). dataset.name carries the
+      // raw `customer_name` field — used downstream for the DCR doc's
+      // identity-style `customer_name` write, but we don't want to
+      // show that raw value when an admin has authored a different
+      // public-facing display string.
+      const custName =
+        ctx.matchedOption.textContent ||
+        (ctx.matchedOption.dataset && ctx.matchedOption.dataset.name) ||
+        params.customer_name ||
+        "(customer)";
+      custEl.textContent = custName;
+    }
+    if (techEl) {
+      const techDisplayName =
+        (ctx.staff.tech && ctx.staff.tech.display_name) ||
+        (els.tech && els.tech.selectedOptions[0] && els.tech.selectedOptions[0].textContent.trim()) ||
+        ctx.staff.email || "";
+      techEl.textContent = techDisplayName;
+    }
+    if (dateEl) {
+      dateEl.textContent = formatAssignedShiftDate(params.sync_date);
+    }
+    if (timeEl) {
+      const range = formatScheduledRange(params.scheduled_start, params.scheduled_end);
+      timeEl.textContent = range || "Time not set";
+    }
+
+    // Align clean_date with the shift's sync_date so the submission
+    // carries the right operational day even if the tech opens the DCR
+    // after midnight Pacific. Manual flow keeps "today" as its default.
+    if (params.sync_date && /^\d{4}-\d{2}-\d{2}$/.test(params.sync_date) && els.cleanDate) {
+      els.cleanDate.value = params.sync_date;
+      try { els.cleanDate.dispatchEvent(new Event("change", { bubbles: true })); } catch (_e) {}
+    }
+
+    // Admins ONLY get the advanced toggle. Cleaning techs see the four
+    // lines and head straight into the checklist — no fallback exposed.
+    const toggle = document.getElementById("assigned-shift-advanced-toggle");
+    if (toggle) {
+      const showToggle = ctx.staff && ctx.staff.role === "admin";
+      toggle.hidden = !showToggle;
+      if (showToggle && !toggle.dataset.wired) {
+        toggle.dataset.wired = "1";
+        toggle.addEventListener("click", function () {
+          const open = visit.hidden;
+          visit.hidden = !open;
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.textContent = open ? "Hide advanced" : "Change shift / Advanced";
+        });
+      }
+    }
+
+    // The Deputy banner duplicates info shown by the summary card. Hide
+    // it in the assigned-shift mode so the screen stays focused.
+    if (ctx.banner) ctx.banner.hidden = true;
+
+    card.hidden = false;
+    visit.hidden = true;
+    try {
+      console.info("[DCR] assigned-shift summary applied", {
+        shift_id:       params.deputy_shift_id,
+        session_id:     params.pioneer_session_id,
+        customer_slug:  ctx.matchedOption.value,
+        tech_slug:      ctx.staff.tech && ctx.staff.tech.slug,
+        sync_date:      params.sync_date
+      });
+    } catch (_e) {}
+  }
+
+  // Format YYYY-MM-DD (Pacific calendar day, as emitted by Deputy sync)
+  // into "Monday, May 26" — the human-readable variant the summary card
+  // wants. Falls back to the raw string on parse failure so a bad input
+  // never blanks the card.
+  function formatAssignedShiftDate(yyyymmdd) {
+    if (!yyyymmdd || !/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return yyyymmdd || "";
+    try {
+      // Build noon-Pacific so DST + timezone never flip the calendar day.
+      const d = new Date(yyyymmdd + "T12:00:00-07:00");
+      if (isNaN(d.getTime())) return yyyymmdd;
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        weekday: "long", month: "long", day: "numeric"
+      }).format(d);
+    } catch (_e) { return yyyymmdd; }
   }
 
   // Re-apply the saved draft's customer + tech selection after the live
@@ -559,6 +941,14 @@
       const card = document.createElement("section");
       card.className = "card checklist-card";
       card.dataset.sectionId = section.id;
+
+      // V20260614 — Select All / Clear All control. Wraps the existing
+      // collapsible header in a positioning zone so a sibling button
+      // can sit at the top-right corner without producing an invalid
+      // nested-<button> tree. Click on the Select-All button stops
+      // propagation so it never toggles the collapse.
+      const headZone = document.createElement("div");
+      headZone.className = "checklist-card-head-zone";
 
       // Collapsible header: the whole top row is one button that toggles
       // the section's `is-collapsed` state. iOS Settings density — title +
@@ -605,7 +995,29 @@
       bar.appendChild(fill);
       headerBtn.appendChild(bar);
 
-      card.appendChild(headerBtn);
+      // V20260614 — Select All / Clear All sibling button. Positioned
+      // absolutely inside .checklist-card-head-zone (see CSS) so it
+      // sits at the top-right of the header without nesting inside
+      // headerBtn. Label flips between "Select All" and "Clear All"
+      // based purely on current state (every item has any state set ?
+      // "Clear All" : "Select All"). updateSelectAllLabel() recomputes
+      // on every state change so manual unchecks bring "Select All"
+      // back automatically.
+      const selectAllBtn = document.createElement("button");
+      selectAllBtn.type = "button";
+      selectAllBtn.className = "select-all-btn";
+      selectAllBtn.dataset.sectionId = section.id;
+      selectAllBtn.textContent = "Select All";
+      selectAllBtn.setAttribute("aria-label", "Select All for " + section.label);
+      selectAllBtn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleSelectAllForSection(section.id);
+      });
+
+      headZone.appendChild(headerBtn);
+      headZone.appendChild(selectAllBtn);
+      card.appendChild(headZone);
 
       // Compact instruction line under the header.
       const sub = document.createElement("p");
@@ -679,9 +1091,42 @@
         });
         issueDetail.appendChild(note);
 
+        // Phase 3: replace the passive "tip — add a photo above" line
+        // with an active affordance: a small button that scrolls to the
+        // Photos card and opens the file picker so techs don't have to
+        // hunt for it while marking issues.
+        const photoCta = document.createElement("button");
+        photoCta.type = "button";
+        photoCta.className = "issue-photo-cta";
+        photoCta.innerHTML =
+          '<span class="issue-photo-cta-icon" aria-hidden="true">📷</span>' +
+          '<span class="issue-photo-cta-text">Add a photo for this issue</span>';
+        photoCta.addEventListener("click", function (ev) {
+          // V6 — open the file picker SYNCHRONOUSLY inside the user
+          // click handler. The earlier `setTimeout(..., 240)` wrapper
+          // broke iOS Safari's user-activation requirement, so the
+          // file picker silently refused to open on iPhone. We also
+          // stop propagation so this click can't bubble to any
+          // ancestor that might react to it.
+          ev.stopPropagation();
+          const photosLabel = document.querySelector('label.file-drop[for="photos"]');
+          const photosInput = document.getElementById("photos");
+          if (photosInput && typeof photosInput.click === "function") {
+            photosInput.click();
+          }
+          if (photosLabel) {
+            photosLabel.scrollIntoView({ behavior: "smooth", block: "center" });
+            photosLabel.classList.add("is-flashing");
+            setTimeout(function () { photosLabel.classList.remove("is-flashing"); }, 1200);
+          }
+        });
+        issueDetail.appendChild(photoCta);
+
+        // Subtle secondary hint so the user knows the photo is optional
+        // and lives in the shared Photos block above.
         const hint = document.createElement("p");
         hint.className = "issue-hint";
-        hint.textContent = "Tip: add a photo above to document this issue.";
+        hint.textContent = "Optional. Photos help the office triage this issue faster.";
         issueDetail.appendChild(hint);
 
         // Confirmation line — hidden by CSS until the row is `.issue-resolved`,
@@ -703,6 +1148,108 @@
 
       updateSectionProgress(section.id);
     });
+  }
+
+  /* ---------- Select All / Clear All ----------
+     V20260614 — Per-section batch control.
+     - "Select All" sets every item to "done".
+     - "Clear All" clears state AND notes for every item in the section.
+     - Button label is derived purely from current state:
+         every item has any state ? "Clear All" : "Select All".
+       So a manual uncheck on a single item flips the label back to
+       "Select All" without any additional flag tracking. */
+  function toggleSelectAllForSection(sectionId) {
+    const cfg = window.DCR_FORM_CONFIG;
+    if (!cfg || !cfg.checklist_sections) return;
+    const section = cfg.checklist_sections.find(function (s) { return s.id === sectionId; });
+    if (!section) return;
+
+    if (!checklistState[sectionId]) checklistState[sectionId] = {};
+    if (!checklistNotes[sectionId]) checklistNotes[sectionId] = {};
+
+    const allHaveState = section.items.every(function (item) {
+      return !!checklistState[sectionId][item.id];
+    });
+
+    if (allHaveState) {
+      // Clear All — wipe state + notes for the whole section.
+      section.items.forEach(function (item) {
+        delete checklistState[sectionId][item.id];
+        delete checklistNotes[sectionId][item.id];
+      });
+    } else {
+      // Select All — set every item to "done" (overwriting existing).
+      // Notes for items previously at "issue" are PRESERVED in
+      // checklistNotes so the tech can re-flag the item without
+      // re-typing the note.
+      section.items.forEach(function (item) {
+        checklistState[sectionId][item.id] = "done";
+      });
+    }
+
+    // Re-paint each row's pills + status classes from the new state.
+    const card = document.querySelector('.checklist-card[data-section-id="' +
+      cssEscape(sectionId) + '"]');
+    if (card) {
+      section.items.forEach(function (item) {
+        const row = card.querySelector('.checklist-item[data-item-id="' +
+          cssEscape(item.id) + '"]');
+        if (!row) return;
+        const newState = checklistState[sectionId][item.id] || null;
+        // Reset pill active classes.
+        row.querySelectorAll(".pill").forEach(function (p) {
+          p.classList.remove("is-active--done", "is-active--issue", "is-active--na");
+          if (newState && p.dataset.state === newState) {
+            p.classList.add("is-active--" + newState);
+          }
+        });
+        // Reset row status classes.
+        row.classList.remove("status-done", "status-issue", "status-na", "has-issue", "issue-resolved");
+        if (newState) {
+          row.classList.add("is-answered", "status-" + newState);
+          if (newState === "issue") row.classList.add("has-issue");
+        } else {
+          row.classList.remove("is-answered");
+          // Also clear any inline note textarea value when fully cleared.
+          const note = row.querySelector(".issue-note");
+          if (note) note.value = "";
+        }
+        refreshIssueResolved(row, sectionId, item.id);
+      });
+    }
+
+    updateSectionProgress(sectionId);
+    scheduleSaveDraft();
+    refreshDcrCompletion();
+  }
+
+  // Minimal CSS.escape polyfill — needed because some section/item IDs
+  // contain hyphens or special characters that CSS attribute selectors
+  // can't parse directly.
+  function cssEscape(s) {
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(s);
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, function (c) {
+      return "\\" + c;
+    });
+  }
+
+  // Recompute and apply the Select-All button label for a section based
+  // on whether every item currently has any state set.
+  function updateSelectAllLabel(sectionId) {
+    const cfg = window.DCR_FORM_CONFIG;
+    if (!cfg || !cfg.checklist_sections) return;
+    const section = cfg.checklist_sections.find(function (s) { return s.id === sectionId; });
+    if (!section) return;
+    const btn = document.querySelector('.select-all-btn[data-section-id="' +
+      cssEscape(sectionId) + '"]');
+    if (!btn) return;
+    const allHaveState = section.items.every(function (item) {
+      return !!(checklistState[sectionId] && checklistState[sectionId][item.id]);
+    });
+    const newLabel = allHaveState ? "Clear All" : "Select All";
+    if (btn.textContent !== newLabel) btn.textContent = newLabel;
+    btn.classList.toggle("is-clear-all", allHaveState);
+    btn.setAttribute("aria-label", newLabel + " for " + section.label);
   }
 
   function onChecklistPill(sectionId, itemId, state, row, btn) {
@@ -745,6 +1292,7 @@
 
     updateSectionProgress(sectionId);
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3: instant sticky context + submit-bar update
     // Auto-collapse if all items are now answered AND the user didn't just
     // pick "issue" (in which case they probably want to type a note).
     maybeAutoCollapse(sectionId, state);
@@ -809,6 +1357,11 @@
       .find(function (s) { return s.id === sectionId; });
     if (!section) return;
 
+    // V20260614 — Keep the per-section Select All / Clear All label
+    // in sync with current state. A manual uncheck on a single item
+    // flips the label back to "Select All" automatically.
+    updateSelectAllLabel(sectionId);
+
     const total = section.items.length;
     let completed = 0;
     let issueCount = 0;
@@ -826,10 +1379,12 @@
     const pct = total > 0 ? (completed / total) * 100 : 0;
     if (fill)  fill.style.width = pct + "%";
     if (count) {
-      // Compact "X/Y" format saves horizontal space in the (now smaller) header.
+      // V20260614 — Append "Complete" word so the badge reads as a
+      // completion count (e.g. "5/6 Complete") per product spec. Stays
+      // mobile-friendly: pill width grows a few px but doesn't wrap.
       // `completed` counts an issue-with-note as 1 — typing the note bumps the
       // badge so the user sees their action register immediately.
-      count.textContent = `${completed}/${total}`;
+      count.textContent = `${completed}/${total} Complete`;
       count.classList.toggle("is-complete", isComplete);
       // `has-issues` colors the badge coral — section-level issue scanning
       // becomes a glance: green pill = clear, coral pill = noted issues.
@@ -863,14 +1418,168 @@
       const stillComplete = section.items.every(function (item) {
         return isItemComplete(sectionId, item.id);
       });
-      if (stillComplete) collapseSection(sectionId);
+      if (stillComplete) {
+        debugDcrScroll("completedSection", { sectionId: sectionId, scrollY: window.scrollY });
+        collapseSection(sectionId);
+      }
     }, 450);
   }
 
   function collapseSection(sectionId) {
+    // Resolve the scroll target BEFORE the layout shrinks. Once the
+    // section is marked is-collapsed, its items go display:none and the
+    // page height drops by hundreds of pixels — if we measure positions
+    // AFTER that, "next section" can land at the wrong y. Capturing the
+    // element here means we just call scrollIntoView on it post-collapse
+    // and the browser handles the rest.
+    const nextSectionId = findNextIncompleteSectionId(sectionId);
+    const beforeY = (typeof window !== "undefined") ? window.scrollY : 0;
     sectionCollapsed[sectionId] = true;
     applyCollapseState(sectionId);
     scheduleSaveDraft();
+
+    // After the .is-collapsed class flips, the browser needs one frame
+    // to recompute layout. Schedule the scroll in requestAnimationFrame
+    // so we never read stale coordinates. Falls back to setTimeout for
+    // older runtimes.
+    const doScroll = function () {
+      scrollToSectionHeader(nextSectionId, { source: "auto-collapse", completedSectionId: sectionId, beforeY: beforeY });
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () { window.requestAnimationFrame(doScroll); });
+    } else {
+      setTimeout(doScroll, 32);
+    }
+  }
+
+  // Iterate config sections in order; return the FIRST section AFTER
+  // `currentSectionId` that still has unfinished items. Returns null if
+  // every later section is already complete (caller falls back to the
+  // submit/affirmation area). Manually-collapsed sections still count
+  // as incomplete if their underlying items aren't all done — we want
+  // to land on the user's next work, not their next visible card.
+  function findNextIncompleteSectionId(currentSectionId) {
+    const sections = (window.DCR_FORM_CONFIG && window.DCR_FORM_CONFIG.checklist_sections) || [];
+    let started = false;
+    for (let i = 0; i < sections.length; i++) {
+      const s = sections[i];
+      if (!started) {
+        if (s.id === currentSectionId) started = true;
+        continue;
+      }
+      const incomplete = !s.items.every(function (item) {
+        return isItemComplete(s.id, item.id);
+      });
+      if (incomplete) return s.id;
+    }
+    return null;
+  }
+
+  // Sum of sticky-at-top elements (brand header + DCR sticky context).
+  // Used as the scroll offset so the section header doesn't tuck behind
+  // the sticky strip. Computed at scroll-time so it adapts when the
+  // sticky context bar is hidden (e.g. on /admin pages or before the
+  // form hydrates).
+  function stickyOffsetTop() {
+    let bottom = 0;
+    const candidates = document.querySelectorAll(".brand-header, .dcr-sticky-context");
+    candidates.forEach(function (el) {
+      if (!el || el.hidden) return;
+      const rect = el.getBoundingClientRect();
+      // Element is currently stuck at the top when its top is at/near 0.
+      // Anything stuck below ~12px isn't pinned (it's scrolled off).
+      if (rect.top <= 4 && rect.bottom > bottom) bottom = rect.bottom;
+    });
+    return bottom;
+  }
+
+  // Centralized scroll helper. Uses native scrollIntoView({block:"start"})
+  // with a dynamically-set scroll-margin-top so the browser handles all
+  // positioning math from fresh post-collapse measurements. The margin =
+  // current sticky-strip bottom + 24px of comfortable breathing room so the
+  // next section header lands clearly below the sticky bar, not glued under
+  // it and not scrolled past it.
+  //
+  // Phase 1e.2 — replaced the prior manual window.scrollTo(beforeY + rect.top
+  // - offset - 8) math, which overshot the target after a collapse shrank the
+  // document above the viewport (stale beforeY vs fresh rect.top led to a
+  // landing well past the next section).
+  function scrollToSectionHeader(sectionId, ctx) {
+    ctx = ctx || {};
+    let target = null;
+    if (sectionId) {
+      target = document.querySelector('.checklist-card[data-section-id="' + sectionId + '"]');
+    }
+    if (!target) {
+      // Phase 1e.2 fix — when the LAST checklist section finishes, there's
+      // no next incomplete checklist to land on, but there ARE more cards
+      // below (Supplies, How was the clean?, Photos, Occupancy, Notes,
+      // Sign & submit). Walk forward from the #checklist-cards container
+      // and land on the FIRST visible .card so the tech sees the next
+      // question's header — not the affirmation checkbox at the bottom.
+      // Honors `hidden` (the Phase 1e.2 #time-budget-card stays hidden
+      // unless the over-budget reveal fires).
+      const checklistRoot = document.getElementById("checklist-cards");
+      if (checklistRoot) {
+        let sibling = checklistRoot.nextElementSibling;
+        while (sibling) {
+          if (sibling.classList &&
+              sibling.classList.contains("card") &&
+              !sibling.hidden) {
+            target = sibling;
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+      // Last-resort fallback if no card was found (e.g. checklist-cards is
+      // the final element on the page): land on the submit area so the
+      // tech still sees what's next instead of staying where they were.
+      if (!target) {
+        target = document.getElementById("affirm") ||
+                 document.getElementById("submit-btn") ||
+                 document.querySelector(".submit-bar") ||
+                 null;
+      }
+    }
+    debugDcrScroll("nextIncompleteSection", {
+      sectionId: sectionId,
+      target: target ? (target.id || target.dataset.sectionId || "(fallback)") : "(none)"
+    });
+    if (!target) return;
+
+    const offset = stickyOffsetTop();
+    const margin = offset + 24;   // 24px comfortable padding below the sticky strip
+    // scroll-margin-top is honored by scrollIntoView in all modern engines
+    // (Chrome, Safari, Firefox). Setting it per-call keeps the value in sync
+    // with whichever sticky strips are currently pinned.
+    try { target.style.scrollMarginTop = margin + "px"; } catch (_) {}
+    debugDcrScroll("scrollTarget", {
+      sectionId: sectionId, offset: offset, scrollMarginTop: margin,
+      completedSectionId: ctx.completedSectionId
+    });
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Log the resolved scroll position on the next frame for debug
+    // verification — useful when tuning the offset on a real device.
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          debugDcrScroll("afterY", { scrollY: window.scrollY });
+        });
+      });
+    }
+  }
+
+  // ?debug_dcr_scroll=1 surfaces the auto-collapse → scroll trace in the
+  // browser console. Off by default — there's no visual indicator.
+  let _DCR_SCROLL_DEBUG = false;
+  try {
+    const u = new URLSearchParams((typeof location !== "undefined" && location.search) || "");
+    _DCR_SCROLL_DEBUG = u.get("debug_dcr_scroll") === "1" || u.get("debug_dcr_scroll") === "true";
+  } catch (_e) {}
+  function debugDcrScroll(label, meta) {
+    if (!_DCR_SCROLL_DEBUG) return;
+    try { console.info("[DCRScroll] " + label, meta || ""); } catch (_e) {}
   }
 
   function toggleSectionCollapse(sectionId) {
@@ -911,6 +1620,7 @@
       b.classList.toggle("is-active", b.dataset.value === value);
     });
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3 instant update
   }
 
   /* ---------- render: time budget reason groups ---------- */
@@ -919,47 +1629,58 @@
     const root = $("time-budget-reasons");
     if (!root) return;
     root.innerHTML = "";
-    const groups = cfg.budget_reason_groups || {};
-    Object.keys(groups).forEach(function (groupKey) {
-      const groupTitle =
-        groupKey === "over_budget_due_to"
-          ? "Over budget — what slowed you down?"
-          : groupKey === "under_budget_due_to"
-            ? "Under budget — why?"
-            : groupKey;
+    // Phase 1e.2 — render the canonical scope-change option set. The
+    // "Anything else…" note textarea below is always visible when the
+    // card is shown (no per-reason reveal), so no "other"-gated logic.
+    const opts = Array.isArray(cfg.over_budget_context_options)
+      ? cfg.over_budget_context_options
+      : [];
+    if (!opts.length) return;
 
-      const block = document.createElement("div");
-      block.className = "reason-group";
+    const block = document.createElement("div");
+    block.className = "reason-group";
 
-      const t = document.createElement("div");
-      t.className = "reason-group-title";
-      t.textContent = groupTitle;
-      block.appendChild(t);
+    opts.forEach(function (reason) {
+      const label = document.createElement("label");
+      label.className = "check-row";
 
-      groups[groupKey].forEach(function (reason) {
-        const label = document.createElement("label");
-        label.className = "check-row";
-
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.value = reason.id;
-        cb.dataset.group = groupKey;
-        cb.addEventListener("change", function () {
-          if (cb.checked) timeBudgetReasons.add(reason.id);
-          else            timeBudgetReasons.delete(reason.id);
-          scheduleSaveDraft();
-        });
-
-        const span = document.createElement("span");
-        span.textContent = reason.label;
-
-        label.appendChild(cb);
-        label.appendChild(span);
-        block.appendChild(label);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = reason.id;
+      cb.dataset.group = "over_budget_context";
+      cb.addEventListener("change", function () {
+        if (cb.checked) timeBudgetReasons.add(reason.id);
+        else            timeBudgetReasons.delete(reason.id);
+        scheduleSaveDraft();
       });
 
-      root.appendChild(block);
+      const span = document.createElement("span");
+      span.textContent = reason.label;
+
+      label.appendChild(cb);
+      label.appendChild(span);
+      block.appendChild(label);
     });
+
+    root.appendChild(block);
+  }
+
+  // Phase 1e.2 retired the "other"-gated note reveal. The textarea is
+  // now always visible when the Time card is shown ("Anything else
+  // that would help us explain the extra time?"). This helper remains
+  // as a no-op so older draft-restore / reset callers don't blow up;
+  // a follow-up cleanup can delete it once those callers are pruned.
+  function toggleOverBudgetOtherNoteVisibility(_visible) {
+    const ta = $("over-budget-other-note");
+    if (!ta) return;
+    if (_visible === false) {
+      // Reset path — clear the textarea + module state so a fresh DCR
+      // starts blank. (Truthy calls used to reveal #over-budget-other-wrap,
+      // which no longer exists; left intentionally noop.)
+      ta.value = "";
+      overBudgetOtherNote = "";
+      scheduleSaveDraft();
+    }
   }
 
   /* ---------- yes/no segmented control ---------- */
@@ -980,6 +1701,7 @@
     });
     updateConditionals();
     scheduleSaveDraft();
+    refreshDcrCompletion();   // Phase 3 instant update
   }
 
   function updateConditionals() {
@@ -1110,7 +1832,162 @@
     return null;
   }
 
-  function onFileInputChange(ev) {
+  /* ---------- 2026-06-18 hotfix v2 — client-side photo compression ----------
+   *
+   * Triggered at file-input time so the rest of the upload pipeline never
+   * sees the original 3-5 MB iPhone JPEGs. Targets:
+   *   • Long-edge cap: 1600 px (preserves 2x retina at the customer email's
+   *     ~800 px display size).
+   *   • JPEG quality: 0.78 (visually indistinguishable from the original
+   *     at email size; ~10x smaller on disk).
+   *   • Skip when: already <= 500 KB, OR non-JPEG/PNG MIME, OR
+   *     createImageBitmap throws (fall back to the original file —
+   *     better to upload a big file than to lose it).
+   *
+   * Returns the file to enqueue (compressed Blob wrapped as File, OR the
+   * original File). Always returns a File-shaped object so the rest of
+   * the pipeline (extFromFile, ref.put(file), etc.) treats it the same.
+   *
+   * Memory note: createImageBitmap decodes off the main thread on modern
+   * Chromium / Safari. Canvas draw + toBlob run on the main thread but
+   * with the bitmap at TARGET size, not source — keeps peak heap modest.
+   */
+  const COMPRESS_SKIP_BELOW_BYTES = 500 * 1024;
+  const COMPRESS_LONG_EDGE_PX     = 1600;
+  const COMPRESS_JPEG_QUALITY     = 0.78;
+
+  async function compressPhotoIfNeeded(file) {
+    const t0 = (self.performance && self.performance.now) ? self.performance.now() : Date.now();
+    const originalKb = Math.round(file.size / 1024);
+
+    // Skip-policy: tiny files and non-image-ish MIMEs go through unchanged.
+    if (file.size <= COMPRESS_SKIP_BELOW_BYTES) {
+      try { console.info("[photo-compress] skip-small", { name: file.name, kb: originalKb }); } catch (_e) {}
+      return file;
+    }
+    const mime = (file.type || "").toLowerCase();
+    if (mime !== "image/jpeg" && mime !== "image/jpg" && mime !== "image/png") {
+      try { console.info("[photo-compress] skip-unsupported-mime", { name: file.name, type: mime }); } catch (_e) {}
+      return file;
+    }
+    if (typeof self.createImageBitmap !== "function") {
+      // 2026-06-18 hotfix v3 — louder log (warn vs info) so this jumps
+      // out in field reports. iOS Safari < 16.4 lacks createImageBitmap,
+      // so the original multi-MB file goes on the wire — which is the
+      // single biggest reason an upload still fails on a marginal signal
+      // after the compression hotfix. Includes UA so we can tell devices apart.
+      try {
+        console.warn("[photo-compress] DISABLED — createImageBitmap unsupported on this device", {
+          name: file.name,
+          original_kb: originalKb,
+          ua: (self.navigator && self.navigator.userAgent) || "unknown"
+        });
+      } catch (_e) {}
+      return file;
+    }
+
+    let bitmap = null;
+    try {
+      // imageOrientation: "from-image" applies the EXIF rotation so
+      // sideways iPhone photos don't end up rotated in the customer email.
+      // Supported on Chromium, Safari 17+. Falls back to default on older
+      // Safari (mostly a no-op since older Safari's createImageBitmap also
+      // honors EXIF by default).
+      bitmap = await self.createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch (e) {
+      try { console.warn("[photo-compress] decode failed — keeping original", { name: file.name, err: e && e.message }); } catch (_e) {}
+      return file;
+    }
+
+    const srcW = bitmap.width  || 1;
+    const srcH = bitmap.height || 1;
+    const longEdge = Math.max(srcW, srcH);
+
+    let dstW, dstH;
+    if (longEdge <= COMPRESS_LONG_EDGE_PX) {
+      // Image is already at or below target resolution. Re-encode anyway
+      // to capture the quality drop (a 4 MB JPEG at 12 MP is often 4x
+      // bigger than a re-encode at quality 0.78). Same dimensions.
+      dstW = srcW; dstH = srcH;
+    } else {
+      const scale = COMPRESS_LONG_EDGE_PX / longEdge;
+      dstW = Math.round(srcW * scale);
+      dstH = Math.round(srcH * scale);
+    }
+
+    let blob = null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width  = dstW;
+      canvas.height = dstH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("2D context unavailable");
+      ctx.drawImage(bitmap, 0, 0, dstW, dstH);
+      // toBlob is async — wrap as promise.
+      blob = await new Promise(function (resolve, reject) {
+        canvas.toBlob(function (b) {
+          if (b) resolve(b);
+          else reject(new Error("toBlob returned null"));
+        }, "image/jpeg", COMPRESS_JPEG_QUALITY);
+      });
+    } catch (e) {
+      try { console.warn("[photo-compress] encode failed — keeping original", { name: file.name, err: e && e.message }); } catch (_e) {}
+      return file;
+    } finally {
+      try { bitmap.close && bitmap.close(); } catch (_e) {}
+    }
+
+    // Defensive: if the "compressed" output is somehow bigger (already
+    // small + ultra-low entropy), keep the original. Rare but possible.
+    if (blob.size >= file.size) {
+      try { console.info("[photo-compress] skip-no-win", { name: file.name, original_kb: originalKb, compressed_kb: Math.round(blob.size / 1024) }); } catch (_e) {}
+      return file;
+    }
+
+    const t1 = (self.performance && self.performance.now) ? self.performance.now() : Date.now();
+    const compressedKb = Math.round(blob.size / 1024);
+    try {
+      console.info("[photo-compress] ok", {
+        name:           file.name,
+        original_kb:    originalKb,
+        compressed_kb:  compressedKb,
+        ratio:          +(blob.size / file.size).toFixed(3),
+        src_dims:       srcW + "x" + srcH,
+        dst_dims:       dstW + "x" + dstH,
+        elapsed_ms:     Math.round(t1 - t0)
+      });
+    } catch (_e) {}
+
+    // Wrap the Blob as a File so downstream code (uploadPhoto's
+    // ref.put(file, { contentType: file.type })) sees the same shape.
+    // Preserve the original name with a .jpg suffix so server-side path
+    // building stays stable.
+    const baseName = (file.name || "photo").replace(/\.[^.]+$/, "");
+    try {
+      return new File([blob], baseName + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
+    } catch (_e) {
+      // Older Safari: File constructor unsupported. Return the Blob —
+      // ref.put accepts Blob just fine; extFromFile falls back to MIME.
+      return blob;
+    }
+  }
+
+  async function compressIncomingPhotos(accepted) {
+    // Serial compression — keeps peak memory bounded to one decoded
+    // bitmap + one canvas at a time. Important on low-end Android.
+    const out = [];
+    for (let i = 0; i < accepted.length; i++) {
+      try {
+        out.push(await compressPhotoIfNeeded(accepted[i]));
+      } catch (e) {
+        try { console.warn("[photo-compress] unexpected throw — keeping original", { i, err: e && e.message }); } catch (_e) {}
+        out.push(accepted[i]);
+      }
+    }
+    return out;
+  }
+
+  async function onFileInputChange(ev) {
     const incoming = Array.from(ev.target.files || []);
     const errors = [];
     const accepted = [];
@@ -1120,7 +1997,14 @@
       else accepted.push(f);
     });
 
-    pendingFiles = pendingFiles.concat(accepted).slice(0, MAX_PHOTOS);
+    // 2026-06-18 hotfix v2 — compress before the photo enters
+    // pendingFiles. The original File is never referenced again. The
+    // small "Preparing photos…" status hint is best-effort: very fast
+    // compressions (<200ms) won't visibly flash, which is fine.
+    if (accepted.length) setStatus("busy", "Preparing photo" + (accepted.length > 1 ? "s" : "") + "…");
+    const compressed = await compressIncomingPhotos(accepted);
+
+    pendingFiles = pendingFiles.concat(compressed).slice(0, MAX_PHOTOS);
 
     if (errors.length) setStatus("err", errors.join(" "));
     else               setStatus("", "");
@@ -1164,14 +2048,16 @@
   /* ---------- upload progress UI ---------- */
 
   function showUploadProgress(label) {
-    const root = $("upload-progress");
-    const lbl  = $("upload-progress-label");
-    const pct  = $("upload-progress-pct");
-    const fill = $("upload-progress-bar-fill");
-    if (root) root.hidden = false;
-    if (lbl)  lbl.textContent  = label || "Uploading…";
-    if (pct)  pct.textContent  = "0%";
-    if (fill) fill.style.width = "0%";
+    const root   = $("upload-progress");
+    const lbl    = $("upload-progress-label");
+    const pct    = $("upload-progress-pct");
+    const fill   = $("upload-progress-bar-fill");
+    const cancel = $("upload-progress-cancel");
+    if (root)   root.hidden = false;
+    if (lbl)    lbl.textContent  = label || "Uploading…";
+    if (pct)    pct.textContent  = "0%";
+    if (fill)   fill.style.width = "0%";
+    if (cancel) cancel.hidden = false;
   }
   function setUploadProgress(label, pctValue) {
     const lbl  = $("upload-progress-label");
@@ -1183,8 +2069,10 @@
     if (fill) fill.style.width = clamped + "%";
   }
   function hideUploadProgress() {
-    const root = $("upload-progress");
-    if (root) root.hidden = true;
+    const root   = $("upload-progress");
+    const cancel = $("upload-progress-cancel");
+    if (root)   root.hidden = true;
+    if (cancel) cancel.hidden = true;
   }
 
   /* ---------- submission id ---------- */
@@ -1197,67 +2085,137 @@
 
   /* ---------- upload one photo (UNCHANGED storage path contract) ---------- */
 
-  function uploadPhoto(storage, customerSlug, submissionId, file, index, onProgress) {
-    const ext  = extFromFile(file);
-    const path = `dcr-photos/${customerSlug}/${submissionId}/photo-${index + 1}.${ext}`;
-    const ref  = storage.ref(path);
-    const task = ref.put(file, { contentType: file.type });
+  // 2026-06-18 hotfix v2 — per-upload escape hatches with split watchdog.
+  //
+  //   INITIAL_STALL_MS  : armed at upload start; cleared on first progress
+  //                       event. If it fires, no bytes ever flowed — likely
+  //                       a connection refused / DNS / true network failure.
+  //                       Short threshold (30s) so the user isn't stuck on
+  //                       a dead connection.
+  //
+  //   INTER_PROGRESS_MS : armed only AFTER the first progress event. Re-
+  //                       armed on every subsequent progress event. If it
+  //                       fires, the upload was moving but stopped — slow
+  //                       signal that gave up. Longer threshold (75s)
+  //                       because Firebase Storage SDK only fires events
+  //                       at chunk boundaries (256 KB), and one chunk on a
+  //                       weak cell signal can legitimately take >20s.
+  //
+  //   UPLOAD_HARD_MS    : absolute cap. 180s covers a single ~500KB
+  //                       compressed photo at ~3 KB/s with margin.
+  //
+  // Rejections carry code === "pioneer/upload-aborted" with a sub-reason
+  // surfaced via message, so onSubmit's catch can choose user-facing copy.
+  const UPLOAD_INITIAL_STALL_MS  = 30000;
+  const UPLOAD_INTER_PROGRESS_MS = 75000;
+  const UPLOAD_HARD_MS           = 180000;
 
+  function wrapUploadWithGuards(task, onProgress, completePayloadFn) {
     return new Promise(function (resolve, reject) {
+      let stallTimer       = null;
+      let hardTimer        = null;
+      let settled          = false;
+      let progressFiredYet = false;
+
+      function clearTimers() {
+        if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+        if (hardTimer)  { clearTimeout(hardTimer);  hardTimer  = null; }
+      }
+      function abort(message) {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        const err = new Error(message);
+        err.code = "pioneer/upload-aborted";
+        try { task.cancel(); } catch (_e) {}
+        reject(err);
+      }
+      function armInitialStall() {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(function () {
+          abort("Couldn't reach upload server. Your DCR is saved on this device — try again with a stronger signal.");
+        }, UPLOAD_INITIAL_STALL_MS);
+      }
+      function armInterProgressStall() {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(function () {
+          abort("Photo upload is struggling. Your DCR is saved — try fewer photos or a stronger signal.");
+        }, UPLOAD_INTER_PROGRESS_MS);
+      }
+
+      hardTimer = setTimeout(function () {
+        abort("Photo upload taking too long. Your DCR is saved — try fewer photos or a stronger signal.");
+      }, UPLOAD_HARD_MS);
+      armInitialStall();
+
       task.on(
         "state_changed",
         function (snap) {
+          if (settled) return;
+          // First progress event flips us into the inter-progress
+          // (longer-threshold) watchdog mode. Subsequent events just
+          // re-arm that watchdog.
+          if (!progressFiredYet) progressFiredYet = true;
+          armInterProgressStall();
           const pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
           if (onProgress) onProgress(pct);
         },
-        reject,
+        function (err) {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          reject(err);
+        },
         async function () {
+          if (settled) return;
+          settled = true;
+          clearTimers();
           try {
-            const url = await task.snapshot.ref.getDownloadURL();
-            resolve({
-              id: `ph_${index + 1}`,
-              storage_path: path,
-              download_url: url,
-              content_type: file.type || null,
-              size_bytes:   file.size,
-              width:  null,
-              height: null,
-              caption: "",
-              tag: "general"
-            });
+            const payload = await completePayloadFn();
+            resolve(payload);
           } catch (e) { reject(e); }
         }
       );
     });
   }
 
+  function uploadPhoto(storage, customerSlug, submissionId, file, index, onProgress, onTask) {
+    const ext  = extFromFile(file);
+    const path = `dcr-photos/${customerSlug}/${submissionId}/photo-${index + 1}.${ext}`;
+    const ref  = storage.ref(path);
+    const task = ref.put(file, { contentType: file.type });
+    if (onTask) onTask(task);
+    return wrapUploadWithGuards(task, onProgress, async function () {
+      const url = await task.snapshot.ref.getDownloadURL();
+      return {
+        id: `ph_${index + 1}`,
+        storage_path: path,
+        download_url: url,
+        content_type: file.type || null,
+        size_bytes:   file.size,
+        width:  null,
+        height: null,
+        caption: "",
+        tag: "general"
+      };
+    });
+  }
+
   /* ---------- upload signature (UNCHANGED storage path contract) ---------- */
 
-  function uploadSignature(storage, customerSlug, submissionId, blob, onProgress) {
+  function uploadSignature(storage, customerSlug, submissionId, blob, onProgress, onTask) {
     const path = `dcr-signatures/${customerSlug}/${submissionId}/signature.png`;
     const ref  = storage.ref(path);
     const task = ref.put(blob, { contentType: "image/png" });
-
-    return new Promise(function (resolve, reject) {
-      task.on(
-        "state_changed",
-        function (snap) {
-          const pct = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
-          if (onProgress) onProgress(pct);
-        },
-        reject,
-        async function () {
-          try {
-            const url = await task.snapshot.ref.getDownloadURL();
-            resolve({
-              storage_path: path,
-              download_url: url,
-              content_type: "image/png",
-              size_bytes:   blob.size
-            });
-          } catch (e) { reject(e); }
-        }
-      );
+    if (onTask) onTask(task);
+    return wrapUploadWithGuards(task, onProgress, async function () {
+      const url = await task.snapshot.ref.getDownloadURL();
+      return {
+        storage_path: path,
+        download_url: url,
+        content_type: "image/png",
+        size_bytes:   blob.size
+      };
     });
   }
 
@@ -1296,7 +2254,13 @@
     const anyoneIn       = segState.anyone_in_building === "yes";
     const occupancyLevel = anyoneIn ? (els.occupancyLevel.value || "") : "empty";
 
-    const onTimeBudget = segState.on_time_budget !== "no";
+    // Phase 1e.1 — the yes/no on_time_budget control was retired (Pioneer
+    // Time Clock now captures worked vs budget directly). We still emit
+    // the same on_time_budget / timeBudget fields so downstream readers
+    // (admin DCR review, email render, dashboards) don't break, but we
+    // synthesize them from the "what slowed you down" picks: any reason
+    // checked → off budget; no reasons checked → on budget.
+    const onTimeBudget = timeBudgetReasons.size === 0;
 
     return {
       checklist:            checklist,
@@ -1308,7 +2272,44 @@
       anyone_in_building:   anyoneIn,
       occupancy_level:      occupancyLevel,
       on_time_budget:       onTimeBudget,
-      time_budget_reasons:  onTimeBudget ? [] : Array.from(timeBudgetReasons)
+      time_budget_reasons:  onTimeBudget ? [] : Array.from(timeBudgetReasons),
+      // V6 pilot — freeform "other" note for the over-budget reason.
+      // Persisted under multiple field names so any downstream reader
+      // (admin UI, DCR email render, future operational dashboards)
+      // can pick it up without schema-migration churn:
+      //   - snake_case (matches the rest of form_data shape)
+      //   - camelCase mirrors per the V6 spec (overBudgetReason
+      //     "other", overBudgetNote = freeform text)
+      //   - timeBudget structured object for compose/render layers
+      //     that prefer the nested shape
+      // Only populated when over-budget AND "other" is selected;
+      // empty otherwise so the doc doesn't carry stale notes.
+      time_budget_other_note: (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? overBudgetOtherNote : "",
+      overBudgetReason:       (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? "other" : null,
+      overBudgetNote:         (!onTimeBudget && timeBudgetReasons.has("other"))
+        ? overBudgetOtherNote : "",
+      timeBudget: {
+        withinBudget:  !!onTimeBudget,
+        reasons:       onTimeBudget ? [] : Array.from(timeBudgetReasons),
+        reasonsOther:  (!onTimeBudget && timeBudgetReasons.has("other"))
+          ? overBudgetOtherNote : ""
+      },
+      // Phase 1e.2 — structured snapshot of the scope-change question. Only
+      // present when the Time card was actually shown (linked Pioneer session
+      // exceeded budget by >15m). Absence signals "no over-budget check
+      // happened" — downstream readers can treat that as "no signal."
+      time_over_budget_context: timeOverBudgetSnapshot
+        ? {
+            pioneer_service_session_id: timeOverBudgetSnapshot.pioneer_service_session_id,
+            work_minutes:    timeOverBudgetSnapshot.work_minutes,
+            budget_minutes:  timeOverBudgetSnapshot.budget_minutes,
+            over_by_minutes: timeOverBudgetSnapshot.over_by_minutes,
+            reasons:         Array.from(timeBudgetReasons),
+            note:            overBudgetOtherNote || ""
+          }
+        : null
     };
   }
 
@@ -1334,6 +2335,7 @@
         checklistNotes:     checklistNotes,
         sectionCollapsed:   sectionCollapsed,
         timeBudgetReasons:  Array.from(timeBudgetReasons),
+        overBudgetOtherNote: overBudgetOtherNote,
         supplyRequestText:  els.supplyRequestText.value,
         problemCategory:    els.problemCategory.value,
         problemSummary:     els.problemSummary.value,
@@ -1346,6 +2348,135 @@
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (e) { /* quota / privacy mode — silently skip */ }
+    // Phase 3 polish: refresh the sticky context bar + submit-bar count
+    // on every draft save. saveDraft is debounced to ~500ms after input,
+    // so this won't run on every keystroke. Discrete state-change
+    // handlers (onSeg, onRating, onChecklistPill) call refreshDcrCompletion
+    // directly for instant feedback.
+    refreshDcrCompletion();
+  }
+
+  /* ---------- Phase 3: sticky visit context + completion progress ----------
+     Two consumers:
+       1. #dcr-sticky-context — sticky bar at top showing customer · tech
+          · date once all three are filled, with a slim progress bar.
+       2. .submit-bar-progress — the "N of M sections complete" chip
+          next to the Submit button. Sticky on mobile via existing CSS.
+     Counts ONLY operational sections (customer/tech/date, the N
+     checklist sections, supplies, rating, problems, occupancy, time,
+     sign+signature). Photos + Notes are optional so they don't show
+     up in the denominator. */
+  function computeDcrCompletion() {
+    const gates = [];
+    gates.push({ id: "visit",      done: !!(els.customer && els.customer.value &&
+                                            els.tech && els.tech.value &&
+                                            els.cleanDate && els.cleanDate.value) });
+    gates.push({ id: "supplies",   done: !!segState.needs_supplies });
+    gates.push({ id: "rating",     done: !!ratingState });
+    gates.push({ id: "problems",   done: !!segState.has_problem });
+    gates.push({ id: "occupancy",  done: !!segState.anyone_in_building });
+    // Phase 1e.1 — "time" gate removed. The time-budget question is now
+    // an optional what-slowed-you-down picker, not a required yes/no.
+    gates.push({ id: "submit",     done: !!(els.affirm && els.affirm.checked &&
+                                            signaturePad && signaturePad.hasInk()) });
+
+    const sections = (window.DCR_FORM_CONFIG &&
+                      Array.isArray(window.DCR_FORM_CONFIG.checklist_sections))
+                       ? window.DCR_FORM_CONFIG.checklist_sections : [];
+    sections.forEach(function (section) {
+      const items = section.items || [];
+      let allDone = items.length > 0;
+      for (let i = 0; i < items.length; i++) {
+        const itemId = items[i].id;
+        const st = checklistState[section.id] && checklistState[section.id][itemId];
+        if (!st) { allDone = false; break; }
+        if (st === "issue") {
+          // Issue rows need a non-empty note to be considered complete —
+          // matches the form-level submit validation in onSubmit.
+          const note = (checklistNotes[section.id] && checklistNotes[section.id][itemId]) || "";
+          if (!String(note).trim()) { allDone = false; break; }
+        }
+      }
+      gates.push({ id: "section:" + section.id, done: allDone });
+    });
+
+    const total = gates.length;
+    const done  = gates.filter(function (g) { return g.done; }).length;
+    return { total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
+
+  function refreshDcrCompletion() {
+    // Only paint when the form is on screen (success card hides it).
+    const successCard = document.getElementById("success-card");
+    if (successCard && successCard.hidden === false) {
+      const sticky = document.getElementById("dcr-sticky-context");
+      if (sticky) sticky.hidden = true;
+      return;
+    }
+
+    const stickyEl = document.getElementById("dcr-sticky-context");
+    if (stickyEl) {
+      const hasCtx = !!(els.customer && els.customer.value &&
+                        els.tech && els.tech.value &&
+                        els.cleanDate && els.cleanDate.value);
+      if (!hasCtx) {
+        stickyEl.hidden = true;
+      } else {
+        // Pull display names from the SELECTED option's textContent so
+        // the bar shows "Lydig Construction" not "lydig-construction".
+        const custName = (els.customer.selectedOptions && els.customer.selectedOptions[0])
+                           ? els.customer.selectedOptions[0].textContent.trim()
+                           : els.customer.value;
+        const techName = (els.tech.selectedOptions && els.tech.selectedOptions[0])
+                           ? els.tech.selectedOptions[0].textContent.trim()
+                           : els.tech.value;
+        let dateLabel = els.cleanDate.value;
+        try {
+          const d = new Date(els.cleanDate.value + "T12:00:00");
+          if (!isNaN(d.getTime())) {
+            dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          }
+        } catch (_e) { /* fall through to raw value */ }
+
+        const setEl = function (id, text) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = text;
+        };
+        setEl("dcr-sticky-customer", custName);
+        setEl("dcr-sticky-tech",     techName);
+        setEl("dcr-sticky-date",     dateLabel);
+        stickyEl.hidden = false;
+      }
+    }
+
+    const comp = computeDcrCompletion();
+
+    // Sticky bar progress.
+    const pctEl  = document.getElementById("dcr-sticky-progress-pct");
+    const fillEl = document.getElementById("dcr-sticky-progress-fill");
+    const barEl  = document.getElementById("dcr-sticky-progress-bar");
+    if (pctEl)  pctEl.textContent = comp.pct + "%";
+    if (fillEl) fillEl.style.width = comp.pct + "%";
+    if (barEl) {
+      barEl.setAttribute("aria-valuenow", String(comp.pct));
+      barEl.setAttribute("data-state",
+        comp.pct === 100 ? "complete" :
+        comp.pct >= 60   ? "moving"   :
+        comp.pct >  0    ? "started"  : "idle");
+    }
+
+    // Submit-bar progress chip.
+    const sbTextEl = document.getElementById("submit-bar-progress-text");
+    const sbWrapEl = document.getElementById("submit-bar-progress");
+    if (sbTextEl) {
+      sbTextEl.textContent = comp.done + " of " + comp.total + " sections complete";
+    }
+    if (sbWrapEl) {
+      sbWrapEl.setAttribute("data-state",
+        comp.pct === 100 ? "complete" :
+        comp.pct >= 60   ? "moving"   :
+        comp.pct >  0    ? "started"  : "idle");
+    }
   }
 
   function clearDraft() {
@@ -1431,9 +2562,20 @@
         if (cb) cb.checked = true;
       });
 
+      // Phase 1e.2 — the "Anything else…" note textarea is always visible
+      // when the Time card is shown (no "other"-gated reveal anymore).
+      // Always hydrate the saved note + the textarea so the tech sees their
+      // prior input. Card visibility is reasserted by loadLinkedPioneerSession.
+      overBudgetOtherNote = String(draft.overBudgetOtherNote || "").trim();
+      const overOtherEl = $("over-budget-other-note");
+      if (overOtherEl) overOtherEl.value = overBudgetOtherNote;
+
       return true;
     } finally {
       isRestoringDraft = false;
+      // Phase 3: once the draft is hydrated, refresh the sticky bar +
+      // submit count so the tech sees their resume state right away.
+      refreshDcrCompletion();
     }
   }
 
@@ -1540,12 +2682,10 @@
       errors.push({ msg: "Choose how busy the building was",    scrollTo: "#occupancy_level" });
     }
 
-    // ---- 10: time budget (yes/no, plus reasons if no) ----
-    if (!segState.on_time_budget) {
-      errors.push({ msg: "Answer: did you stick to your time budget?", scrollTo: '.seg[data-name="on_time_budget"]' });
-    } else if (segState.on_time_budget === "no" && timeBudgetReasons.size === 0) {
-      errors.push({ msg: "Pick a reason for being off budget",         scrollTo: "#time-budget-reasons" });
-    }
+    // ---- 10: time budget — Phase 1e.1 retired the required yes/no.
+    //          The "what slowed you down" picker is OPTIONAL and never
+    //          gates submission. Pioneer Time Clock now captures
+    //          worked time vs budget directly.
 
     // ---- 11: affirmation checkbox ----
     if (!els.affirm.checked) {
@@ -1560,38 +2700,146 @@
     return errors;
   }
 
+  // Map a terse internal validation message to a calm, guided string
+  // for the single-focus validation card. Returns the existing msg if
+  // there's no specific mapping, so future errors don't crash.
+  function guidedValidationCopy(err) {
+    const m = (err && err.msg) || "";
+    // Exact-match table for the canned strings collectValidationErrors
+    // emits today. Order doesn't matter; this is a lookup.
+    const MAP = {
+      "Select a customer":                  "Pick a customer to start",
+      "Select a cleaning tech":             "Pick the tech who cleaned",
+      "Pick a clean date":                  "Set the clean date",
+      "Answer: do you need supplies?":      "Tell us about supplies",
+      "List the supplies you need":         "List the supplies you need",
+      "Rate how the clean went":            "Rate how the clean went",
+      "Answer: was there a problem?":       "Tell us if anything went wrong",
+      "Choose a problem category":          "Pick the problem category",
+      "Add a short problem summary or details": "Describe the problem briefly",
+      "Add at least one photo":             "One more step — add a photo",
+      "Answer: was anyone in the building?": "Tell us about occupancy",
+      "Choose how busy the building was":   "Pick how busy it was",
+      "Answer: did you stick to your time budget?": "Tell us about your time budget",
+      "Pick a reason for being off budget": "Pick what threw the timing off",
+      "Check the affirmation box":          "Check the affirmation to sign off",
+      "Add your handwritten signature":     "Add your signature to finish"
+    };
+    if (MAP[m]) return MAP[m];
+
+    // Checklist-section "N items still need a status" → "<Section> still needs attention"
+    const sectionMatch = m.match(/^(.+?):\s+\d+\s+items?\s+still\s+needs?\s+a\s+status$/i);
+    if (sectionMatch) return sectionMatch[1] + " still needs attention";
+
+    // Per-item issue note: "Add a quick note for the issue at \"<item>\""
+    const issueMatch = m.match(/^Add a quick note for the issue at\s+"(.+)"$/);
+    if (issueMatch) return "Add a note to the issue on " + issueMatch[1];
+
+    // Fall back to the original copy if a new error type lands without
+    // a mapping — caller still gets readable text, just less polished.
+    return m;
+  }
+
+  // Pick a supportive eyebrow based on how many items remain. The
+  // wording shifts as the tech gets closer to done so the card feels
+  // like it's cheering them on, not nagging.
+  function validationEyebrowFor(count) {
+    if (count <= 1) return "One last thing";
+    if (count <= 2) return "Almost there";
+    if (count <= 4) return "Just a few more steps";
+    return "A few things to wrap up";
+  }
+
+  // Phase 4 refactor: single-focus operational guidance instead of a
+  // bullet wall. Surfaces ONLY the next highest-priority missing item
+  // with a tap-anywhere CTA that scrolls, expands, and glows. The
+  // submit gate (collectValidationErrors) is unchanged.
   function showValidationErrors(errors) {
     const summary = $("validation-summary");
-    const list    = $("validation-list");
     const head    = $("validation-head");
-    if (!summary || !list) return;
-
-    if (head) {
-      head.textContent = errors.length === 1
-        ? "Almost there — one more thing:"
-        : `Almost there — ${errors.length} items left to finish:`;
+    const msgEl   = $("validation-message");
+    const ctaEl   = $("validation-cta");
+    if (!summary) return;
+    if (!errors || errors.length === 0) {
+      summary.hidden = true;
+      return;
     }
 
-    list.innerHTML = "";
-    errors.forEach(function (e) {
-      const li = document.createElement("li");
-      li.textContent = e.msg;
-      list.appendChild(li);
-    });
+    const first      = errors[0];
+    const guidedText = guidedValidationCopy(first);
+    if (msgEl) msgEl.textContent = guidedText;
+    if (head)  head.textContent  = validationEyebrowFor(errors.length);
+
+    // Stash the target selector on the wrapper + CTA so the click
+    // handler (wired once in wireValidationCta) can navigate to it.
+    summary.dataset.scrollTo = first.scrollTo || "";
+    if (ctaEl) ctaEl.dataset.scrollTo = first.scrollTo || "";
+
     summary.hidden = false;
 
-    // Scroll to the first incomplete field's card. `scroll-margin-top` on
-    // .card (see styles.css) keeps the card title clear of the sticky header.
-    const first = errors[0];
-    if (first && first.scrollTo) {
-      const target = document.querySelector(first.scrollTo);
-      if (target) {
-        const card = target.closest(".card") || target;
-        setTimeout(function () {
-          card.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 80);
+    // Auto-scroll to the target on first paint so the tech sees both
+    // the guidance card AND the destination together. The handler
+    // below covers re-taps after the initial scroll.
+    scrollToValidationTarget(first.scrollTo);
+  }
+
+  // Bring a missing-field target into view, expand the section if
+  // it's collapsed, and pulse a brief glow. Used both on initial
+  // showValidationErrors paint and on every CTA click.
+  function scrollToValidationTarget(selector) {
+    if (!selector) return;
+    const target = document.querySelector(selector);
+    if (!target) return;
+
+    // Identify the wrapping card so we can expand + glow it as a unit.
+    const card = target.closest(".checklist-card, .card") || target;
+
+    // Expand a collapsed checklist section so its items become
+    // visible after the scroll lands. toggleSectionCollapse handles
+    // the actual aria-expanded + is-collapsed flip + persistence.
+    if (card.classList && card.classList.contains("checklist-card") &&
+        card.classList.contains("is-collapsed")) {
+      const sectionId = card.dataset.sectionId;
+      if (sectionId && typeof toggleSectionCollapse === "function") {
+        toggleSectionCollapse(sectionId);
       }
     }
+
+    // Smooth scroll + temporary glow. The glow class is removed on
+    // animationend OR after a defensive 1.6s timeout in case the
+    // browser drops the event.
+    setTimeout(function () {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+      card.classList.add("is-validation-glow");
+      const cleanup = function () { card.classList.remove("is-validation-glow"); };
+      card.addEventListener("animationend", cleanup, { once: true });
+      setTimeout(cleanup, 1600);
+    }, 60);
+  }
+
+  // Wire the CTA + card-as-button once on boot so the click handler
+  // survives every showValidationErrors() / hideValidationSummary()
+  // toggle cycle.
+  let _validationCtaWired = false;
+  function wireValidationCta() {
+    if (_validationCtaWired) return;
+    const summary = $("validation-summary");
+    const ctaEl   = $("validation-cta");
+    if (!summary) return;
+    function go(ev) {
+      ev && ev.preventDefault && ev.preventDefault();
+      const target = (ctaEl && ctaEl.dataset.scrollTo) ||
+                     summary.dataset.scrollTo || "";
+      scrollToValidationTarget(target);
+    }
+    if (ctaEl)  ctaEl.addEventListener("click", go);
+    // The whole card is also a soft tap target — wide thumbs win.
+    summary.addEventListener("click", function (ev) {
+      // Don't double-fire when the inner button was the actual click.
+      if (ev.target && ev.target.closest("#validation-cta")) return;
+      go(ev);
+    });
+    _validationCtaWired = true;
   }
 
   function hideValidationSummary() {
@@ -1638,11 +2886,71 @@
     }, 700);
   }
 
+  /* ---------- Phase 31 prototype — queue drain helper ----------
+   *
+   * Builds the deps the queue worker needs and invokes processQueue. Safe
+   * to call when:
+   *   • OFFLINE_QUEUE_ENABLED is false (early returns; zero side effects)
+   *   • the queue module didn't load (early returns)
+   *   • firebase isn't initialized yet (early returns)
+   *   • there are zero pending rows (worker resolves with [])
+   *
+   * Errors are logged + swallowed — the drain is best-effort. The user-
+   * facing path that enqueued the row already returned success.
+   */
+  function runQueueDrain(reason) {
+    if (!window.OFFLINE_QUEUE_ENABLED) return;
+    if (!window.PIONEER_QUEUE_WORKER)  return;
+    if (!firebaseCtx || !firebaseCtx.storage) return;
+    try { console.info("[phase31] drain start", { reason: reason }); } catch (_e) {}
+    try {
+      window.PIONEER_QUEUE_WORKER.processQueue(
+        {
+          storage: firebaseCtx.storage,
+          submitFn: async function (finalPayload, idToken) {
+            const res = await fetch(window.SUBMIT_DCR_V1_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type":  "application/json",
+                "Authorization": "Bearer " + idToken
+              },
+              body: JSON.stringify(finalPayload)
+            });
+            const body = await res.json().catch(function () { return {}; });
+            return {
+              ok:     res.ok && body.ok !== false,
+              status: res.status,
+              body:   body
+            };
+          },
+          getIdToken: function () {
+            return window.STAFF_AUTH ? window.STAFF_AUTH.getIdToken() : Promise.resolve(null);
+          }
+        },
+        { maxRows: 5 }
+      ).then(function (results) {
+        try { console.info("[phase31] drain results", results); } catch (_e) {}
+      }).catch(function (err) {
+        try { console.warn("[phase31] drain error", err && err.message); } catch (_e) {}
+      });
+    } catch (err) {
+      try { console.warn("[phase31] drain wrap error", err && err.message); } catch (_e) {}
+    }
+  }
+
   /* ---------- submit ---------- */
 
   async function onSubmit(ev) {
     ev.preventDefault();
     if (isSubmitting) return;
+
+    // Prime the success-sound element INSIDE the user-gesture chain.
+    // The fully-async submit path (Storage upload → Function call) can
+    // outlive Safari's "play allowed after gesture" window, so creating
+    // + load()ing the Audio object here, while the click is still fresh,
+    // lets the eventual onSuccess() call .play() on an already-primed
+    // element. Silent no-op if the feature flag is off.
+    primeDcrSuccessSound();
 
     // Roster gate — block submit if the live customer/tech list hasn't
     // loaded. Skipping this would let the form submit with empty slugs
@@ -1651,6 +2959,17 @@
       setStatus("err",
         "Couldn't reach the customer / tech list. Refresh the page and try again. " +
         "If the issue persists, email info@pioneercomclean.com to confirm Firestore is reachable."
+      );
+      return;
+    }
+
+    // 2026-06-18 hotfix — offline pre-check. Bails before we kick off any
+    // Storage upload so the SDK doesn't grind silently in the background.
+    // Draft is already auto-saved (DRAFT_KEY) so the form survives a reload.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setStatus("err",
+        "You're offline — your form is saved on this device. " +
+        "Reconnect and tap Submit again."
       );
       return;
     }
@@ -1665,6 +2984,11 @@
       return;
     }
     hideValidationSummary();
+    // 2026-06-18 hotfix — clear the "Checking…" busy status that was set
+    // above. Without this, the busy line stays painted on screen while the
+    // upload progress chip renders below it, which is what Bonnie saw at
+    // Baker Construction ("Checking…" + "Uploading photo 1 of 2… 0%").
+    setStatus("", "");
 
     // Past the gate — the validator above guarantees these are populated.
     const customerOpt   = els.customer.selectedOptions[0];
@@ -1679,6 +3003,147 @@
     isSubmitting = true;
     els.submitBtn.disabled = true;
 
+    // 2026-06-18 hotfix v2 — soft 6-minute banner. Non-blocking. After
+    // 6 minutes of cumulative upload wall-clock since this Submit click,
+    // amend the upload-progress label so the tech knows it's working but
+    // slow. Doesn't abort anything — the per-file watchdog + hard cap
+    // remain authoritative. Cleared by hideUploadProgress on success/abort.
+    const softBannerTimer = setTimeout(function () {
+      const lbl = $("upload-progress-label");
+      if (lbl) lbl.textContent = "Still uploading — feel free to keep waiting, or Cancel and try with fewer photos.";
+    }, 360000);
+    const clearSoftBanner = function () { try { clearTimeout(softBannerTimer); } catch (_e) {} };
+
+    // ------------------------------------------------------------------
+    // Phase 31 prototype — queue branch.
+    //
+    // When OFFLINE_QUEUE_ENABLED, capture photos + signature into IDB
+    // queue and return immediately with a local success. The drain
+    // (background processQueue) handles uploads + submitDcrV1 POST. The
+    // flag-off path below is unchanged from the 2026-06-18 hotfix.
+    // ------------------------------------------------------------------
+    if (window.OFFLINE_QUEUE_ENABLED && window.PIONEER_QUEUE_WORKER) {
+      try {
+        // Capture signature NOW — signaturePad is in-memory and gets
+        // reset on form clear. The blob travels into IDB; the worker
+        // uploads it at drain time and splices the URL into the payload.
+        const signatureBlobQ = await signaturePad.toBlob("image/png");
+
+        const formDataQ = buildFormData(window.DCR_FORM_CONFIG);
+        // Signature URL gets filled in by the worker after upload. The
+        // form_data.signature placeholder keeps the doc shape stable.
+        formDataQ.signature = { storage_path: null, download_url: null };
+
+        const customerNameQ        = customerOpt.dataset.name             || customerOpt.textContent;
+        const customerEmailQ       = customerOpt.dataset.email            || "";
+        const locationNameQ        = customerOpt.dataset.locationName     || customerNameQ;
+        const customerDcrEmailEnabledQ = customerOpt.dataset.dcrEmailEnabled !== "false";
+        const reviewFiveStarQ      = customerOpt.dataset.reviewFiveStar   || "";
+        const reviewIssueQ         = customerOpt.dataset.reviewIssue      || "";
+
+        const payloadQ = window.buildDcrV1Payload({
+          submission_id: submissionId,
+          source: "web_form_queued",
+          customer: {
+            slug: customerSlug,
+            name: customerNameQ,
+            email: customerEmailQ,
+            location_name: locationNameQ,
+            dcr_email_enabled: customerDcrEmailEnabledQ,
+            review_links: { five_star_url: reviewFiveStarQ, issue_url: reviewIssueQ }
+          },
+          tech: {
+            slug: techOpt.value,
+            display_name:     techOpt.dataset.displayName     || techOpt.textContent,
+            experience_level: techOpt.dataset.experienceLevel || "standard"
+          },
+          clean_date: els.cleanDate.value,
+          occupancy:  formDataQ.occupancy_level || "",
+          notes:      els.notes.value || "",
+          // Worker fills these in after upload.
+          photos:     [],
+          affirmation: {
+            affirmed:        true,
+            signature_name:  signatureName,
+            affirmed_text:   AFFIRM_TEXT,
+            signature_url:   null
+          }
+        });
+        payloadQ.form_data = formDataQ;
+
+        // 2026-06-22 Phase 32D — mirror the inline-path ack onto the
+        // queued payload so the eventual drain carries the same audit
+        // signal. See the inline branch below for full rationale.
+        if (dcrNoSessionAcknowledged) {
+          payloadQ.submission_meta = payloadQ.submission_meta || {};
+          payloadQ.submission_meta.acknowledged_no_session = true;
+        }
+
+        // Carry deputy / pioneer handoffs through the queue so the
+        // server-side writebacks still fire when the row drains.
+        if (deputyShiftParams && deputyShiftParams.deputy_shift_id) {
+          payloadQ.deputy_shift_id          = deputyShiftParams.deputy_shift_id;
+          payloadQ.deputy_sync_date         = deputyShiftParams.sync_date         || "";
+          payloadQ.deputy_scheduled_start   = deputyShiftParams.scheduled_start   || "";
+          payloadQ.deputy_scheduled_end     = deputyShiftParams.scheduled_end     || "";
+          payloadQ.deputy_customer_name     = deputyShiftParams.customer_name     || "";
+          payloadQ.deputy_location_name     = deputyShiftParams.location_name     || "";
+          payloadQ.deputy_shift_url         = deputyShiftParams.deputy_shift_url  || "";
+          payloadQ.deputy_actual_start          = null;
+          payloadQ.deputy_actual_end            = null;
+          payloadQ.deputy_timesheet_id          = null;
+          payloadQ.deputy_time_variance_minutes = null;
+          if (deputyShiftParams.pioneer_session_id) {
+            payloadQ.pioneer_session_id = deputyShiftParams.pioneer_session_id;
+          }
+        }
+        if (pioneerAssignmentParams && pioneerAssignmentParams.pioneer_assignment_id) {
+          payloadQ.pioneer_assignment_id = pioneerAssignmentParams.pioneer_assignment_id;
+          if (pioneerAssignmentParams.pioneer_service_session_id) {
+            payloadQ.pioneer_service_session_id = pioneerAssignmentParams.pioneer_service_session_id;
+          }
+        }
+
+        const queuePhotos = pendingFiles.map(function (f) {
+          return {
+            blob:         f,
+            content_type: f.type || "image/jpeg",
+            ext:          extFromFile(f)
+          };
+        });
+
+        await window.PIONEER_QUEUE_WORKER.queueSubmissionFromForm({
+          submission_id:  submissionId,
+          payload:        payloadQ,
+          photos:         queuePhotos,
+          signature_blob: signatureBlobQ
+        });
+
+        try { console.info("[phase31] enqueued", { submission_id: submissionId, photos: queuePhotos.length }); } catch (_e) {}
+        clearDraft();
+        clearSoftBanner();
+        onSuccess(submissionId, { offline_queued: true });
+        // Kick a drain so the row leaves immediately if we're online.
+        // If we're offline, processQueue's first upload will hit its
+        // watchdog and the row will reschedule itself.
+        setTimeout(function () { runQueueDrain("post-submit"); }, 250);
+        return;
+      } catch (err) {
+        console.error("[phase31] enqueue failed — falling back to inline path", err);
+        // Drop through to the inline upload path below. The user keeps
+        // their form data and gets the standard error UX if that path
+        // also fails. Re-enable the button so they can retry.
+        isSubmitting = false;
+        els.submitBtn.disabled = false;
+        clearSoftBanner();
+        // Fall through to the existing try-block by re-entering the
+        // submit handler with a synthetic event would be too risky;
+        // instead, we re-arm and require the user to tap again.
+        setStatus("err", "Couldn't save locally — tap Submit again to upload now.");
+        return;
+      }
+    }
+
     try {
       let uploadedPhotos = [];
 
@@ -1691,8 +3156,10 @@
             firebaseCtx.storage, customerSlug, submissionId, pendingFiles[i], i,
             function (pct) {
               setUploadProgress(`Uploading photo ${photoIndex} of ${pendingFiles.length}…`, pct);
-            }
+            },
+            function (task) { activeUploadTask = task; }
           );
+          activeUploadTask = null;
           uploadedPhotos.push(meta);
         }
       }
@@ -1701,8 +3168,10 @@
       const signatureBlob = await signaturePad.toBlob("image/png");
       const signatureMeta = await uploadSignature(
         firebaseCtx.storage, customerSlug, submissionId, signatureBlob,
-        function (pct) { setUploadProgress("Uploading signature…", pct); }
+        function (pct) { setUploadProgress("Uploading signature…", pct); },
+        function (task) { activeUploadTask = task; }
       );
+      activeUploadTask = null;
 
       hideUploadProgress();
       setStatus("busy", "Saving DCR…");
@@ -1753,6 +3222,16 @@
 
       payload.form_data = formData;
 
+      // 2026-06-22 Phase 32D — if the tech acknowledged the
+      // no-clock-in preflight warning, stamp it onto submission_meta so
+      // admin reports can distinguish "deliberate orphan DCR" from
+      // "silent orphan DCR" downstream. Field is undefined (omitted)
+      // when the form had a normal clock-in handoff.
+      if (dcrNoSessionAcknowledged) {
+        payload.submission_meta = payload.submission_meta || {};
+        payload.submission_meta.acknowledged_no_session = true;
+      }
+
       // Deputy-shift handoff — when the form was launched from a
       // Today's Assignments card, the snapshot lives in module state
       // (parsed once at boot from location.search). We attach it to
@@ -1786,6 +3265,18 @@
         }
       }
 
+      // Phase 1b.4 — Pioneer Time Clock handoff. Independent from the
+      // Deputy block above (a DCR can carry either, both, or neither).
+      // submitDcrV1 reads pioneer_assignment_id + pioneer_service_session_id
+      // and back-stamps dcr_submission_id onto the matching
+      // pioneer_service_sessions doc + service_assignments doc.
+      if (pioneerAssignmentParams && pioneerAssignmentParams.pioneer_assignment_id) {
+        payload.pioneer_assignment_id = pioneerAssignmentParams.pioneer_assignment_id;
+        if (pioneerAssignmentParams.pioneer_service_session_id) {
+          payload.pioneer_service_session_id = pioneerAssignmentParams.pioneer_service_session_id;
+        }
+      }
+
       // Defensive guard against any silent shape regression.
       if (
         !payload.affirmation ||
@@ -1802,6 +3293,7 @@
       if (!idToken) {
         throw new Error("You're not signed in. Refresh the page and sign in again.");
       }
+      try { console.info("[DCR] send start", { submissionId: submissionId, customer_slug: payload.customer_slug }); } catch (_e) {}
       const res = await fetch(window.SUBMIT_DCR_V1_URL, {
         method: "POST",
         headers: {
@@ -1819,15 +3311,50 @@
         throw new Error(`${body.error || `Server returned ${res.status}`}${details}`);
       }
 
+      try {
+        console.info("[DCR] submit accepted", {
+          submission_id: body.submission_id || submissionId,
+          email_status:  (body.email && body.email.status) || null,
+          feedback_links_generated:
+            !!(body.feedback && (body.feedback.complimentUrl || body.feedback.problemUrl))
+        });
+      } catch (_e) {}
       clearDraft();
       onSuccess(body.submission_id || submissionId, body.zapier || null);
     } catch (err) {
-      console.error(err);
+      console.error("[DCR] submit failed", err);
       hideUploadProgress();
-      setStatus("err", `Submission failed: ${err.message || err}`);
+      // 2026-06-18 hotfix — distinguish aborted uploads (watchdog, hard cap,
+      // or user-clicked Cancel) from real server / network errors. Draft
+      // survives in localStorage either way; the copy just tells the tech
+      // what happened so they know to retry rather than escalate.
+      // 2026-06-18 hotfix v3 — also treat storage/retry-limit-exceeded as
+      // an abort. The SDK throws it when its retry budget runs out (see
+      // setMaxUploadRetryTime above); previously this fell through to the
+      // raw "Submission failed:" path. Map to the same calm "DCR saved,
+      // try again" UX as our own watchdog. Surfaced by Bonnie 2026-06-18.
+      const isAbort =
+        (err && err.code === "pioneer/upload-aborted") ||
+        (err && err.code === "storage/canceled") ||
+        (err && err.code === "storage/retry-limit-exceeded");
+      if (isAbort) {
+        let abortMsg;
+        if (err.code === "storage/canceled") {
+          abortMsg = "Submission canceled. Your DCR is saved — try again.";
+        } else if (err.code === "storage/retry-limit-exceeded") {
+          abortMsg = "Photo upload couldn't complete. Your DCR is saved — try fewer photos or a stronger signal.";
+        } else {
+          abortMsg = err.message || "Upload aborted — your DCR is saved.";
+        }
+        setStatus("err", abortMsg);
+      } else {
+        setStatus("err", `Submission failed: ${err.message || err}`);
+      }
     } finally {
       isSubmitting = false;
       els.submitBtn.disabled = false;
+      activeUploadTask = null;
+      clearSoftBanner();
     }
   }
 
@@ -1841,10 +3368,223 @@
     $("success-submission-id").textContent = submissionId;
     renderSuccessZapier(zapierStatus);
     spawnConfetti();
+    paintSuccessGoldenPath();
     $("success-card").hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
     triggerCelebration();
     playSuccessLottie();
+    playDcrSuccessSound(submissionId);
+    // Phase 3: hide the sticky context bar — the DCR is in the post-
+    // submit celebration moment, not "open".
+    const sticky = document.getElementById("dcr-sticky-context");
+    if (sticky) sticky.hidden = true;
+  }
+
+  // Show the right post-submit affordance block:
+  //   • Session-linked DCR (came in from Start Work) → "Final step"
+  //     panel with Finish Work + Open Deputy.
+  //   • Manual / admin / no session → calmer fallback with
+  //     "Back to Today's Work" + "Start another DCR".
+  function paintSuccessGoldenPath() {
+    // Phase 1b.4 — the "final-step" panel paints for EITHER a Deputy
+    // hand-off (deputy.pioneer_session_id) OR a Pioneer Time Clock
+    // hand-off (pioneer_assignment_id). Both flows can coexist on the
+    // same DCR (uncommon today; future cross-link). When only Pioneer
+    // is present, hide the Deputy-specific buttons.
+    const deputySessionId          = (deputyShiftParams      && String(deputyShiftParams.pioneer_session_id              || "").trim()) || "";
+    const pioneerAssignmentId      = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_assignment_id     || "").trim()) || "";
+    // V20260614 — Pioneer Time Clock session id from the DCR open URL.
+    // service-clock.js's dcrHref() sets this whenever the DCR was
+    // launched from a Pioneer Time Clock card. We pass it through to
+    // /work.html so the auto-finish handler can mark the session
+    // status: "completed" on the Pioneer side, not just the Deputy
+    // bridge.
+    const pioneerServiceSessionId  = (pioneerAssignmentParams && String(pioneerAssignmentParams.pioneer_service_session_id || "").trim()) || "";
+    const finalStep = document.getElementById("success-final-step");
+    const noSession = document.getElementById("success-no-session");
+    if (deputySessionId || pioneerAssignmentId) {
+      if (finalStep) finalStep.hidden = false;
+      if (noSession) noSession.hidden = true;
+
+      // Finish Work button — shows whenever EITHER the Deputy bridge
+      // flow OR the Pioneer Time Clock flow has a finishable session.
+      // The handler builds a /work.html URL carrying both ids when
+      // available; the auto-finish handlers in today-work.js and
+      // service-clock.js each pick up their respective param and
+      // close their own model. Deputy-only button (Open Deputy)
+      // still gated to deputySessionId presence.
+      const finishBtn = document.getElementById("success-finish-work");
+      const deputyBtn = document.getElementById("success-open-deputy");
+      const anyFinishable = !!(deputySessionId || pioneerServiceSessionId);
+      if (finishBtn) {
+        if (anyFinishable) {
+          finishBtn.hidden = false;
+          finishBtn.onclick = function () {
+            const qs = new URLSearchParams();
+            if (deputySessionId)         qs.set("finishSession",            deputySessionId);
+            if (pioneerServiceSessionId) qs.set("finishPioneerSession",     pioneerServiceSessionId);
+            if (pioneerAssignmentId)     qs.set("finishPioneerAssignment",  pioneerAssignmentId);
+            window.location.href = "/work.html?" + qs.toString();
+          };
+        } else {
+          finishBtn.hidden = true;
+        }
+      }
+      if (deputyBtn) {
+        if (deputySessionId) {
+          deputyBtn.hidden = false;
+          if (!deputyBtn.dataset.deputyClickWired) {
+            deputyBtn.dataset.deputyClickWired = "1";
+            deputyBtn.addEventListener("click", function () {
+              logDeputyOpenClick("dcr_success", {
+                shift_id:           String((deputyShiftParams && deputyShiftParams.deputy_shift_id) || ""),
+                sync_date:          String((deputyShiftParams && deputyShiftParams.sync_date) || ""),
+                pioneer_session_id: String((deputyShiftParams && deputyShiftParams.pioneer_session_id) || "")
+              });
+            });
+          }
+        } else {
+          deputyBtn.hidden = true;
+        }
+      }
+
+      // Pioneer-specific back-link — repurpose the existing
+      // #success-back-to-work anchor to point at /work.html?focus=ptc
+      // and relabel as "Back to Pioneer Time Clock". Falls back to the
+      // default "Back to Today's Work" / /work.html for the Deputy-only
+      // case.
+      const backToWorkLink = document.getElementById("success-back-to-work");
+      if (backToWorkLink) {
+        if (pioneerAssignmentId) {
+          backToWorkLink.href = "/work.html?focus=ptc";
+          backToWorkLink.textContent = "← Back to Pioneer Time Clock";
+        } else {
+          backToWorkLink.href = "/work.html";
+          backToWorkLink.textContent = "← Back to Today's Work";
+        }
+      }
+    } else {
+      if (finalStep) finalStep.hidden = true;
+      if (noSession) noSession.hidden = false;
+    }
+  }
+
+  // Tiny optional delight: a soft flush sound effect after a confirmed
+  // DCR submission. Strictly cosmetic.
+  //
+  // Contract:
+  //   • Only fires from onSuccess (post-submit). Never on validation
+  //     errors, never on draft restore, never on form reset.
+  //   • Dedup-by-submissionId so a success-card rerender can't replay.
+  //   • Silent on:
+  //       - feature flag off
+  //       - missing audio file (server 404 → play() rejects)
+  //       - browser autoplay restrictions (play() rejects)
+  //       - older browsers without the Audio constructor
+  //   • No screen-reader announcement — decorative audio only, no DOM.
+  //   • Volume capped at 0.25 so it never startles in a quiet office.
+  //
+  // Autoplay survival strategy:
+  //   The submit path is fully-async (Storage upload → Function call →
+  //   onSuccess). On Safari especially, the "user gesture" window can
+  //   expire before onSuccess fires, even though the original click is
+  //   the cause. primeDcrSuccessSound() runs inside the gesture chain
+  //   at the top of onSubmit() to pre-create + .load() the Audio
+  //   element while the click is still fresh, so the eventual .play()
+  //   has the best chance of being honored.
+  let _dcrSuccessAudio = null;
+
+  function primeDcrSuccessSound() {
+    if (!ENABLE_DCR_SUCCESS_SOUND) return;
+    if (typeof Audio === "undefined") return;
+    if (_dcrSuccessAudio) return;   // already primed for this page session
+    try {
+      _dcrSuccessAudio = new Audio(DCR_SUCCESS_SOUND_SRC);
+      _dcrSuccessAudio.volume  = DCR_SUCCESS_SOUND_VOLUME;
+      _dcrSuccessAudio.preload = "auto";
+      // V20260614d — Once metadata lands we know the file's true
+      // duration. If it exceeds the 4s cap, bump playbackRate
+      // proportionally so the celebration ends inside the budget
+      // without re-encoding the asset. Rate floored at 1.0 (never
+      // slow the audio down on a short file).
+      _dcrSuccessAudio.addEventListener("loadedmetadata", function () {
+        try {
+          const d = Number(_dcrSuccessAudio.duration);
+          if (Number.isFinite(d) && d > DCR_SUCCESS_SOUND_MAX_SEC) {
+            _dcrSuccessAudio.playbackRate = d / DCR_SUCCESS_SOUND_MAX_SEC;
+          }
+        } catch (_e) { /* leave rate at default */ }
+      }, { once: true });
+      // load() forces the browser to begin fetching the file so the
+      // network round-trip doesn't add to submit latency.
+      if (typeof _dcrSuccessAudio.load === "function") _dcrSuccessAudio.load();
+      // Log file-fetch problems so a missing MP3 surfaces in DevTools
+      // without breaking the submit flow.
+      _dcrSuccessAudio.addEventListener("error", function () {
+        console.warn("[dcr-success-sound] file unreachable at " + DCR_SUCCESS_SOUND_SRC +
+                     " — check that the MP3 is deployed.");
+      }, { once: true });
+    } catch (_e) {
+      // Audio constructor missing — drop silently.
+    }
+  }
+
+  function playDcrSuccessSound(submissionId) {
+    if (!ENABLE_DCR_SUCCESS_SOUND) return;
+    if (typeof Audio === "undefined") return;
+    // V20260614d — Per-device mute. Checked BEFORE the dedup so a tech
+    // can flip the toggle on the success card and have it stick
+    // immediately (no replay risk inside this submission anyway).
+    if (isDcrSuccessSoundMuted()) return;
+    const id = submissionId == null ? "" : String(submissionId);
+    if (id && id === _dcrSuccessSoundLastPlayedId) return;
+    _dcrSuccessSoundLastPlayedId = id || _dcrSuccessSoundLastPlayedId;
+
+    // Use the primed element when available — keeps the play() inside
+    // the user-gesture lineage. Fall back to a fresh Audio if no prime
+    // happened (e.g. submit handler reached onSuccess via a non-click
+    // code path — not currently possible, but defensive).
+    let audio = _dcrSuccessAudio;
+    if (!audio) {
+      try {
+        audio = new Audio(DCR_SUCCESS_SOUND_SRC);
+        audio.volume = DCR_SUCCESS_SOUND_VOLUME;
+        // Defensive duration cap for the fallback path. The primed
+        // element installs its own loadedmetadata handler above.
+        audio.addEventListener("loadedmetadata", function () {
+          try {
+            const d = Number(audio.duration);
+            if (Number.isFinite(d) && d > DCR_SUCCESS_SOUND_MAX_SEC) {
+              audio.playbackRate = d / DCR_SUCCESS_SOUND_MAX_SEC;
+            }
+          } catch (_e) { /* leave rate at default */ }
+        }, { once: true });
+      } catch (_e) {
+        return;
+      }
+    }
+    // Reset to start so a primed (possibly already-played) element
+    // replays from the beginning. Some browsers reject currentTime
+    // before the element has metadata; safe to swallow.
+    try { audio.currentTime = 0; } catch (_e) { /* not always settable */ }
+
+    const p = audio.play();
+    if (p && typeof p.then === "function") {
+      p.then(function () {
+        // Quiet success log so we can confirm in DevTools that the
+        // sound actually played. Not announced to screen readers.
+        try { console.info("[dcr-success-sound] played ok"); } catch (_e) {}
+      }).catch(function (err) {
+        // Most common failures:
+        //   • NotAllowedError — browser blocked autoplay
+        //   • NotSupportedError — file missing or wrong MIME
+        // The catch keeps the success flow uninterrupted either way.
+        try {
+          console.warn("[dcr-success-sound] play() rejected:",
+                       (err && (err.name + ": " + err.message)) || err);
+        } catch (_e) {}
+      });
+    }
   }
 
   // Trigger the Pioneer fist-bump animation. Deferred ~280 ms so the success
@@ -1863,9 +3603,12 @@
     }, 280);
   }
 
-  // Surface the Zapier delivery status on the success card without alarming the
-  // user when the webhook isn't configured yet. Hidden when status is missing
-  // or "not_configured" — those aren't actionable for the cleaner.
+  // Surface the delivery status on the success card. Currently the
+  // submit pipeline is fully native PioneerOps (no Zapier); the
+  // function name + CSS class are kept for stability but the user-
+  // facing copy now reflects the native pipeline. Hidden when status
+  // is missing or "not_configured" — those aren't actionable for the
+  // cleaner.
   function renderSuccessZapier(status) {
     const el = $("success-zapier");
     if (!el) return;
@@ -1875,23 +3618,29 @@
     if (!status || !status.status || status.status === "not_configured") return;
     if (status.status === "sent") {
       el.classList.add("is-sent");
-      el.textContent = "Sent to Zapier";
+      el.textContent = "Submitted to PioneerOps";
       el.hidden = false;
     } else if (status.status === "failed") {
       el.classList.add("is-failed");
-      el.textContent = "Zapier delivery pending — saved for retry";
+      el.textContent = "Delivery pending — saved for retry";
       el.hidden = false;
     }
   }
 
   function onNewDcr() {
-    pendingFiles      = [];
-    segState          = {};
-    ratingState       = "";
-    checklistState    = {};
-    checklistNotes    = {};
-    sectionCollapsed  = {};
-    timeBudgetReasons = new Set();
+    pendingFiles        = [];
+    segState            = {};
+    ratingState         = "";
+    checklistState      = {};
+    checklistNotes      = {};
+    sectionCollapsed    = {};
+    timeBudgetReasons   = new Set();
+    overBudgetOtherNote = "";
+    // Also collapse the "other" note textarea + clear its value so a
+    // fresh DCR doesn't start with the previous run's freeform text.
+    const overOtherTa = $("over-budget-other-note");
+    if (overOtherTa) overOtherTa.value = "";
+    toggleOverBudgetOtherNoteVisibility(false);
 
     // Re-seed per-section sub-maps so the next pill click lands somewhere
     // valid. Without this, the handlers throw on first interaction with the
@@ -1956,6 +3705,9 @@
     $("success-card").hidden = true;
     els.form.hidden = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
+    // Phase 3: reset the sticky context bar to its idle state for the
+    // fresh DCR (everything zeroed, bar hidden until customer/tech/date land).
+    refreshDcrCompletion();
   }
 
   /* ---------- input wiring for draft autosave ---------- */
@@ -1971,6 +3723,21 @@
       el.addEventListener("input",  scheduleSaveDraft);
       el.addEventListener("change", scheduleSaveDraft);
     });
+    // Phase 3: hook customer/tech/date directly so the sticky context
+    // bar reveals INSTANTLY when all three land — without waiting for
+    // saveDraft's 500ms debounce.
+    [els.customer, els.tech, els.cleanDate, els.affirm].forEach(function (el) {
+      if (!el) return;
+      el.addEventListener("change", refreshDcrCompletion);
+    });
+    // Signature drawing — listen on the canvas for pointer events so
+    // the "submit" gate flips once any ink lands.
+    const sigCanvas = document.getElementById("signature-canvas");
+    if (sigCanvas) {
+      ["mouseup", "touchend", "touchcancel"].forEach(function (evt) {
+        sigCanvas.addEventListener(evt, refreshDcrCompletion);
+      });
+    }
   }
 
   /* ---------- boot ---------- */
@@ -2075,6 +3842,7 @@
     { key: "customer-info",  label: "Customer Info Hub",    href: "/tech.html",           roles: ["admin", "cleaning_tech"] },
     { key: "supply-station", label: "Supply Station Order", href: "/supply-station.html", roles: ["admin", "cleaning_tech"] },
     { key: "team-hub",       label: "Pioneer Team Hub",     href: "/team-hub.html",       roles: ["admin", "cleaning_tech"] },
+    { key: "office-issues",  label: "Message the Office",   href: "/office-issues.html",   roles: ["admin", "cleaning_tech"] },
     { key: "training",       label: "Safety Training",      href: "/training.html",       roles: ["admin", "cleaning_tech"] },
     { key: "inspections",    label: "Inspections",          href: "/inspections.html",    roles: ["admin"] },
     { key: "admin",          label: "Admin",                href: "/admin",               roles: ["admin"] }
@@ -2144,6 +3912,22 @@
         if (typeof ts.seconds === "number") return ts.seconds * 1000;
         return null;
       }
+      // V20260614c — inline targetsMe so badge count agrees with the
+      // team-hub UI for admins (rule-bypass otherwise over-counts
+      // audienceType="selected" announcements that don't target them).
+      const myUid   = (staff && staff.uid) || null;
+      const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+      const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+      function targetsMe(a) {
+        if (!a) return false;
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;  // unknown — fail open
+        if (Array.isArray(a.recipientUids)      && myUid   && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails)    && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug  && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
       const now = Date.now();
       let unread = 0;
       annsSnap.docs.forEach(function (d) {
@@ -2151,6 +3935,7 @@
         if (a.archived_at) return;
         const s = toMs(a.starts_at);   if (s != null && s > now) return;
         const e = toMs(a.expires_at);  if (e != null && e <= now) return;
+        if (!targetsMe(a)) return;
         if (!readIds.has(d.id)) unread += 1;
       });
       const pills = document.querySelectorAll(".role-nav-link");
@@ -2274,7 +4059,31 @@
     }
   }
 
+  // V20260614d — Mute-toggle button on the success card. Reflects the
+  // current localStorage preference; click toggles + persists. Doesn't
+  // replay the sound — the next DCR submit honors the new state.
+  // Defensive against missing element (the success card markup could
+  // theoretically be removed) and quota errors (private browsing).
+  function paintDcrSoundToggle() {
+    const btn = $("dcr-sound-toggle");
+    if (!btn) return;
+    const muted = isDcrSuccessSoundMuted();
+    btn.textContent  = muted ? "🔇 Submit sound off · Tap to unmute"
+                             : "🔊 Submit sound on · Tap to mute";
+    btn.setAttribute("aria-pressed", muted ? "true" : "false");
+  }
+  function wireDcrSoundToggle() {
+    const btn = $("dcr-sound-toggle");
+    if (!btn) return;
+    paintDcrSoundToggle();
+    btn.addEventListener("click", function () {
+      setDcrSuccessSoundMuted(!isDcrSuccessSoundMuted());
+      paintDcrSoundToggle();
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireDcrSoundToggle();
     els.form              = $("dcr-form");
     els.customer          = $("customer");
     els.tech              = $("tech");
@@ -2323,11 +4132,114 @@
       renderChecklists(cfg);
       renderRating(cfg);
       renderTimeBudgetReasons(cfg);
+      // Phase 1e.2 — fire-and-forget: kick off the linked-session read.
+      // Reveals the Time card if the session shows worked > budget + 15.
+      // Hidden by default; failure modes leave it hidden (no UX impact).
+      loadLinkedPioneerSession();
       wireSegments();
       updateSignatureAttribution();
+      // 2026-06-22 Phase 32D — render the "no clock-in" preflight banner
+      // when this DCR has no session/assignment handoff. No-op when the
+      // form was opened from /work with any handoff. Idempotent.
+      wireDcrNoSessionBanner();
 
       els.photos.addEventListener("change", onFileInputChange);
       els.form.addEventListener("submit",  onSubmit);
+
+      // 2026-06-18 hotfix — Cancel upload. Click cancels the in-flight
+      // Storage UploadTask; the watchdog/hard-cap path takes care of
+      // re-enabling Submit and showing a "draft saved" message. Idempotent
+      // when no task is active (rare race between progress event and click).
+      const cancelBtn = $("upload-progress-cancel");
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          if (!activeUploadTask) return;
+          try { activeUploadTask.cancel(); } catch (_e) {}
+        });
+      }
+
+      // ---------- Phase 31 prototype — drain triggers ----------
+      // Online listener + boot-time drain are no-ops when the flag is
+      // off (runQueueDrain early-returns). Registering them
+      // unconditionally keeps the boot path predictable; they cost
+      // nothing in the flag-off case.
+      if (window.OFFLINE_QUEUE_ENABLED) {
+        try { console.info("[phase31] queue flag ON — registering drain triggers"); } catch (_e) {}
+        window.addEventListener("online", function () {
+          runQueueDrain("online-event");
+        });
+        // Boot-time drain catches rows enqueued in a prior tab/session.
+        setTimeout(function () { runQueueDrain("boot"); }, 1500);
+
+        // Phase 31D — request persistent storage so IndexedDB queue rows
+        // (including photo Blobs) survive iOS Safari's storage eviction
+        // policy and Android's low-space cleanup. Chrome grants this
+        // automatically for installed PWAs. iOS Safari requires the user
+        // to add to home screen; the request is a no-op when denied.
+        // Best-effort: failure here does not block anything.
+        if (navigator.storage && typeof navigator.storage.persist === "function") {
+          navigator.storage.persist()
+            .then(function (granted) {
+              try { console.info("[phase31] navigator.storage.persist()", { granted: granted }); } catch (_e) {}
+              if (navigator.storage.estimate) {
+                navigator.storage.estimate()
+                  .then(function (est) {
+                    try {
+                      console.info("[phase31] storage estimate", {
+                        usage_mb: est.usage ? Math.round(est.usage / 1024 / 1024 * 10) / 10 : null,
+                        quota_mb: est.quota ? Math.round(est.quota / 1024 / 1024) : null,
+                        pct_used: (est.usage && est.quota) ? Math.round(est.usage / est.quota * 100) : null
+                      });
+                    } catch (_e) {}
+                  })
+                  .catch(function () {});
+              }
+            })
+            .catch(function (err) {
+              try { console.warn("[phase31] navigator.storage.persist() failed", err && err.message); } catch (_e) {}
+            });
+        } else {
+          try { console.warn("[phase31] navigator.storage.persist unavailable on this browser"); } catch (_e) {}
+        }
+      }
+
+      // V6 pilot — bind the "Other / leave a note" textarea so its
+      // value flows into module state + the draft. Input event keeps
+      // the live state in sync; blur ensures a final save on exit.
+      const overOtherEl = $("over-budget-other-note");
+      if (overOtherEl) {
+        overOtherEl.addEventListener("input", function () {
+          overBudgetOtherNote = String(overOtherEl.value || "").trim();
+          scheduleSaveDraft();
+        });
+      }
+
+      // V6 pilot regression guard — clicking "Add photos" must NEVER
+      // navigate the user away from the DCR form. Symptoms in the
+      // wild (Android Chrome, iOS Safari) included the page jumping
+      // to /tech.html ("Customer Info Hub") after a label tap —
+      // suspected cause was a click event bubbling out of the nested
+      // <input> + parent label combo to an ancestor handler. We
+      // moved the input OUT of the label (see index.html), and we
+      // also stop click propagation on BOTH the file-drop label and
+      // the hidden input so no parent listener ever sees the event.
+      // We do NOT preventDefault — the browser still needs to open
+      // the native file picker.
+      //
+      // Regression check: tap "Add photos" on the DCR form (mobile +
+      // desktop) → file picker opens → URL stays at "/" → after
+      // selecting a file, the page does NOT navigate. If this
+      // breaks, look for new ancestor click handlers and re-tighten
+      // the stopPropagation here.
+      const photosLabelEl = document.querySelector('label.file-drop[for="photos"]');
+      if (photosLabelEl) {
+        photosLabelEl.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+        });
+      }
+      els.photos.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+      });
 
       // Keep the signature-attribution line in sync as the tech dropdown
       // changes; that name becomes affirmation.signature_name on submit.
@@ -2366,6 +4278,7 @@
       updateSignatureAttribution();
 
       wireDraftInputs();
+      wireValidationCta();
 
       // Kick off the live customer + tech load. Runs in the background
       // (boot continues without awaiting) so the rest of the form is
@@ -2382,7 +4295,7 @@
         // Deputy-shift handoff — if the URL carries shift params from
         // Today's Assignments, prefill the customer dropdown and paint
         // the banner. Runs LAST so it overrides any draft selection.
-        applyDeputyShiftFromUrl();
+        applyDeputyShiftFromUrl(staff);
       }).catch(function (err) {
         // loadCustomersAndTechs already painted its in-dropdown error.
         // Surface a console hint for debugging.

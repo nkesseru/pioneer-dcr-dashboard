@@ -200,6 +200,14 @@
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
 }
+/* Defensive: the display:flex above outranks the user-agent
+   `[hidden] { display: none }` at higher specificity (author > UA),
+   so without this rule a JS-set `empty.hidden = true` leaves the
+   empty state permanently painted. Same pattern ui-empty-states.css:47
+   uses for .empty-state[hidden]. Phase 24 Attendance QA surfaced this:
+   the JS guard hid the empty state during loading, but it stayed
+   visible because the CSS was swallowing the attribute. */
+.admin-panel .admin-status.admin-empty[hidden] { display: none; }
 .admin-panel .admin-status.admin-empty::before {
   /* Calm emoji leader. .admin-empty has no icon DOM, so we add one
      via ::before. Matches the foundation .empty-state visual. */

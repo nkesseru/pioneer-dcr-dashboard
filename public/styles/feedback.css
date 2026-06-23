@@ -1,0 +1,267 @@
+/* feedback.css — shared styles for the two public feedback pages
+ * (feedback-compliment.html + feedback-issue.html).
+ *
+ * Matches the V2 email palette so the page reads as a continuation of
+ * the email customer just clicked from:
+ *   #1F1F24 ink, #71E1D1 teal accent, #F5F7FA surface, #34C759 success,
+ *   #E36D6D soft red.
+ *
+ * Mobile-first; no framework, no external fonts.
+ */
+
+:root {
+  --fb-ink:        #1F1F24;
+  --fb-muted:      #475569;
+  --fb-surface:    #F5F7FA;
+  --fb-card:       #FFFFFF;
+  --fb-border:     #E6E9EE;
+  --fb-teal:       #71E1D1;
+  --fb-teal-deep:  #2BBEA9;
+  --fb-success:    #34C759;
+  --fb-soft-red:   #E36D6D;
+  --fb-warning:    #F5B942;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--fb-surface);
+  color: var(--fb-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.fb-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.fb-brand-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--fb-border);
+}
+.fb-brand-strip img { display: block; height: auto; width: 92px; }
+.fb-brand-strip .fb-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--fb-muted);
+}
+
+.fb-card {
+  background: var(--fb-card);
+  border: 1px solid var(--fb-border);
+  border-radius: 14px;
+  padding: 22px 22px 26px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+h1.fb-headline {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+p.fb-subhead {
+  margin: 0 0 18px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--fb-muted);
+}
+
+.fb-context {
+  background: var(--fb-surface);
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--fb-muted);
+  margin: -6px 0 18px;
+}
+.fb-context strong { color: var(--fb-ink); font-weight: 700; }
+
+.fb-field { display: block; margin: 14px 0; }
+.fb-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--fb-ink);
+}
+.fb-label .fb-optional {
+  font-weight: 500;
+  color: var(--fb-muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.fb-input, .fb-select, .fb-textarea {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--fb-ink);
+  background: var(--fb-card);
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.fb-textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
+.fb-input:focus, .fb-select:focus, .fb-textarea:focus {
+  border-color: var(--fb-teal-deep);
+  box-shadow: 0 0 0 3px rgba(43, 190, 169, 0.18);
+}
+
+.fb-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fb-ink);
+}
+.fb-checkbox-row input[type="checkbox"] {
+  width: 18px; height: 18px;
+  margin-top: 2px;
+  accent-color: var(--fb-teal-deep);
+}
+
+.fb-radio-group { display: flex; flex-direction: column; gap: 8px; }
+.fb-radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.fb-radio-row:hover { background: var(--fb-surface); }
+.fb-radio-row input[type="radio"] { margin-top: 3px; accent-color: var(--fb-teal-deep); }
+.fb-radio-row .fb-radio-label-text { font-size: 14.5px; }
+
+/* Star rating */
+.fb-stars { display: flex; gap: 6px; }
+.fb-star {
+  width: 38px; height: 38px;
+  border: none;
+  background: transparent;
+  font-size: 28px;
+  line-height: 1;
+  color: #DDD9CC;
+  cursor: pointer;
+  padding: 0;
+}
+.fb-star.is-active { color: var(--fb-warning); }
+.fb-star:focus-visible {
+  outline: 2px solid var(--fb-teal-deep);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Photo upload list */
+.fb-photo-input { display: none; }
+.fb-photo-trigger {
+  display: inline-block;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--fb-surface);
+  border: 1px dashed var(--fb-border);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--fb-ink);
+}
+.fb-photo-list {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 10px;
+}
+.fb-photo-thumb {
+  position: relative;
+  width: 84px; height: 84px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--fb-surface);
+}
+.fb-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fb-photo-thumb button {
+  position: absolute; top: 4px; right: 4px;
+  width: 22px; height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(31, 31, 36, 0.78);
+  color: #FFF;
+  font-size: 14px; line-height: 1;
+  cursor: pointer;
+}
+
+/* Submit */
+.fb-submit {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px 18px;
+  font-size: 16px;
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  background: var(--fb-ink);
+  color: #FFFFFF;
+  cursor: pointer;
+}
+.fb-submit:disabled { opacity: 0.55; cursor: progress; }
+.fb-submit.fb-submit-teal { background: var(--fb-teal); color: var(--fb-ink); }
+
+/* Result panels */
+.fb-success, .fb-error {
+  margin-top: 14px;
+  padding: 14px 16px;
+  font-size: 14.5px;
+  border-radius: 10px;
+  line-height: 1.55;
+}
+.fb-success {
+  background: #E8F7EB;
+  border: 1px solid #BFEACB;
+  color: #1B5E20;
+}
+.fb-error {
+  background: #FFF1F1;
+  border: 1px solid #F5C3C3;
+  color: #8A2A2A;
+}
+
+/* Honeypot — visually hidden but still in the DOM for bots to fill. */
+.fb-hp {
+  position: absolute !important;
+  left: -9999px;
+  top: -9999px;
+  opacity: 0;
+  pointer-events: none;
+  height: 0; width: 0;
+}
+
+.fb-footnote {
+  margin-top: 26px;
+  font-size: 11.5px;
+  color: var(--fb-muted);
+  text-align: center;
+  line-height: 1.55;
+}
+.fb-footnote a { color: var(--fb-muted); }
+
+@media (max-width: 480px) {
+  .fb-page { padding: 16px 12px 56px; }
+  .fb-card { padding: 18px 16px 22px; }
+  h1.fb-headline { font-size: 22px; }
+}

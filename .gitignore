@@ -40,3 +40,20 @@ keys/
 *.keyo
 
 serviceAccountKey.json
+
+# Local-only secrets used by scripts/test-dcr-email-local.js. Holds
+# OPENAI_API_KEY / GMAIL_SENDER_EMAIL / GMAIL_SERVICE_ACCOUNT_KEY when
+# the developer prefers not to hit `firebase functions:secrets:access`
+# on every run (offline path). Never commit.
+.secrets.local.json
+.secrets.local.*.json
+
+# Phase 1a labor seed input — holds per-employee opening sick-leave
+# balances supplied by HR. The committed template
+# (opening-balances.example.json) is fine; the real file with HR
+# numbers must stay local.
+scripts/opening-balances.json
+
+# Claude Code session lock — created automatically when a session is
+# open in this repo. Never committable.
+.claude/scheduled_tasks.lock

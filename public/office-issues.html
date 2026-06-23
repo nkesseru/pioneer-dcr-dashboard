@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Message the Office · Pioneer</title>
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-kpi.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles/ui-empty-states.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
+  <style>
+    /* V20260615 — Office Issues page-local styles. Kept inline since the
+       page is small and we don't want a new CSS file for Phase 1. */
+    .oi-form-field          { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .oi-form-field label    { font-weight: 600; font-size: 14px; color: #1e293b; }
+    .oi-form-field select,
+    .oi-form-field textarea { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; font-family: inherit; }
+    .oi-form-field textarea { min-height: 100px; resize: vertical; }
+    .oi-form-help           { font-size: 12px; color: #64748b; }
+    .oi-submit-btn          { padding: 10px 18px; background: #0b3d2e; color: #fff; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; }
+    .oi-submit-btn:disabled { background: #94a3b8; cursor: wait; }
+    .oi-form-err            { color: #b91c1c; font-size: 13px; margin-top: 8px; }
+
+    .oi-list                { display: flex; flex-direction: column; gap: 10px; }
+    .oi-row                 { padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+    .oi-row-head            { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+    .oi-row-cat             { font-weight: 700; font-size: 14px; color: #1e293b; text-transform: capitalize; }
+    .oi-row-age             { font-size: 12px; color: #64748b; margin-left: auto; }
+    .oi-row-desc            { font-size: 14px; color: #334155; line-height: 1.4; }
+    .oi-empty               { padding: 18px; text-align: center; color: #64748b; font-size: 14px; background: #f8fafc; border-radius: 8px; }
+
+    .oi-chip                { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .oi-chip.is-new          { background: #dbeafe; color: #1e40af; }
+    .oi-chip.is-acknowledged { background: #e0e7ff; color: #3730a3; }
+    .oi-chip.is-working      { background: #fef3c7; color: #92400e; }
+    .oi-chip.is-waiting      { background: #fee2e2; color: #991b1b; }
+    .oi-chip.is-resolved     { background: #d1fae5; color: #065f46; }
+    .oi-chip.is-closed       { background: #e2e8f0; color: #475569; }
+  </style>
+</head>
+<body>
+
+  <div class="login-bg" aria-hidden="true">
+    <span class="login-streak login-streak-1"></span>
+    <span class="login-streak login-streak-2"></span>
+    <span class="login-streak login-streak-3"></span>
+  </div>
+
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img"
+             src="assets/pioneer-logo2.png"
+             alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+        <span class="brand-mark-fallback" aria-hidden="true">
+          <svg viewBox="0 0 56 32" xmlns="http://www.w3.org/2000/svg"
+               fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M3 26 L18 10 L26 20 L36 6 L53 26" />
+            <line x1="2" y1="28.5" x2="54" y2="28.5" />
+          </svg>
+        </span>
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Message the Office</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name"  id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+
+    <nav class="role-nav" id="role-nav" data-current-page="office-issues" aria-label="Primary" hidden></nav>
+
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Message the Office</h1>
+      <p class="subtitle">Submit issues to the back office. We see every one. We respond to every one.</p>
+    </section>
+
+    <!-- ============ Staff auth screens ============ -->
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2"/>
+          <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Sign in to message the office.</p>
+
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field">
+          <span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" name="email"
+                 autocomplete="username" inputmode="email"
+                 autocapitalize="off" spellcheck="false"
+                 placeholder="you@example.com" required />
+        </label>
+        <label class="staff-field">
+          <span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" name="password"
+                 autocomplete="current-password" required />
+        </label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+        <button type="button" class="staff-forgot-link" id="staff-forgot-link">Forgot password?</button>
+      </form>
+
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span>Continue with Google</span>
+      </button>
+      <p class="staff-auth-help">Active Pioneer Commercial Cleaning staff only.</p>
+    </section>
+
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <div class="staff-auth-icon is-denied" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </div>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">
+        Your account is not currently enabled for Pioneer DCR access.
+      </p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <!-- ============ Authorized content ============ -->
+    <div id="staff-auth-content" hidden>
+
+      <!-- ===== New Issue form ===== -->
+      <section class="card" id="oi-form-card">
+        <h2 style="margin-top:0;">Submit a new issue</h2>
+        <p style="margin-top:0;color:#64748b;">Tell us what's going on. We'll pick it up and respond.</p>
+
+        <form id="oi-form" novalidate>
+          <div class="oi-form-field">
+            <label for="oi-category">Category <span style="color:#dc2626;">*</span></label>
+            <select id="oi-category" required>
+              <option value="">— Choose one —</option>
+              <option value="payroll">Payroll</option>
+              <option value="schedule">Schedule</option>
+              <option value="supplies">Supplies</option>
+              <option value="sick_leave">Sick Leave</option>
+              <option value="time_adjustment">Time Adjustment</option>
+              <option value="equipment">Equipment</option>
+              <option value="customer_concern">Customer Concern</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="oi-form-field">
+            <label for="oi-description">What's going on? <span style="color:#dc2626;">*</span></label>
+            <textarea id="oi-description" required minlength="5" maxlength="4000"
+                      placeholder="Describe the issue. Include any relevant dates, customers, or shifts."></textarea>
+            <p class="oi-form-help">At least 5 characters. Be specific so the office can act on it.</p>
+          </div>
+
+          <div id="oi-form-err" class="oi-form-err" hidden></div>
+          <button type="submit" class="oi-submit-btn" id="oi-submit">Send to office</button>
+        </form>
+      </section>
+
+      <!-- ===== My Issues list ===== -->
+      <section class="card" id="oi-my-card">
+        <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="margin:0;">My Issues</h2>
+          <button type="button" class="staff-header-btn" id="oi-refresh">Refresh</button>
+        </header>
+        <div id="oi-my-list" class="oi-list"></div>
+        <p id="oi-my-empty" class="oi-empty" hidden>No issues yet. Submit one above when you need the office.</p>
+        <p id="oi-my-loading" class="oi-empty">Loading…</p>
+        <p id="oi-my-error" class="oi-empty" style="color:#b91c1c;" hidden></p>
+      </section>
+
+    </div><!-- /#staff-auth-content -->
+  </main>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="office-issues.js?v=20260615b-realtime-notes"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

@@ -507,6 +507,57 @@
 }
 .row-actions .row-btn[data-action="archive"] { color: var(--pc-danger-700); border-color: #ffd2d2; background: #fff5f5; }
 
+/* 2026-06-19 — DCR email action variants for the five-state Recent DCRs
+   grid. All variants share .row-btn's height/padding/radius; only color +
+   weight differ. data-variant is set by renderEmailActionButton in
+   admin/tab-recent-dcrs.js. */
+.row-actions .row-btn[data-variant="review"] {
+  color: #fff;
+  background: var(--pc-teal-700);
+  border-color: var(--pc-teal-700);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="review"]:hover {
+  background: var(--pc-teal);
+  border-color: var(--pc-teal);
+}
+.row-actions .row-btn[data-variant="retry"] {
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border-color: var(--pc-danger);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="retry"]:hover {
+  background: #ffe4e4;
+}
+.row-actions .row-btn[data-variant="incomplete"] {
+  color: var(--pc-text-muted);
+  background: var(--pc-silver-100);
+  border-color: var(--pc-silver-300);
+  cursor: pointer;
+}
+.row-actions .row-btn[data-variant="incomplete"]:hover {
+  background: #ececec;
+}
+.row-actions .row-btn[data-variant="resend-overflow"] {
+  color: var(--pc-text-muted);
+  background: transparent;
+  border-color: transparent;
+  font-size: 11px;
+  padding: 0 8px;
+  height: 26px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.row-actions .row-btn[data-variant="resend-overflow"]:hover {
+  background: var(--pc-silver-100);
+  opacity: 1;
+}
+
+/* Email pill emphasis — slightly tighter than other badges so the
+   "Sent · 2h ago" text reads as a status, not a label. */
+.badge.dcr-email-pill { font-weight: 600; letter-spacing: 0.1px; }
+
 /* ==========================================================================
    Status pills (active / archived / dcr-enabled / has-issues / zapier ...)
    ========================================================================== */
@@ -2301,6 +2352,14 @@
   color: var(--pc-text);
 }
 .admin-modal-body .check-field:last-child { margin-bottom: 0; }
+.check-field-help {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+  color: var(--pc-text-muted);
+}
 .admin-modal-body .check-field input[type="checkbox"],
 .admin-modal-body .check-field input[type="radio"] {
   width: 18px;
@@ -3286,4 +3345,4757 @@
   border-radius: 8px;
   font-size: 13px;
   color: var(--pc-text-muted, #6b7280);
+}
+
+/* =============================================================================
+ * Tech Photo / Signature manager (tech-media-modal)
+ *
+ * Layout: two-column upload zones (photo | signature) on wide screens,
+ * stacked on narrow screens. Below them: an active toggle and a live
+ * customer-facing preview that mirrors the DCR-email tech identity row.
+ *
+ * Calls uploadTechMediaV1 with a Firebase admin ID token.
+ * ============================================================================= */
+
+/* Wider variant of the standard modal dialog — the two-column upload
+ * grid + preview card needs room. Falls back to the responsive rule
+ * at the ≤720px breakpoint (full-screen on phones). */
+.admin-modal-dialog.admin-modal-dialog-wide {
+  width: min(780px, calc(100% - 32px));
+}
+
+.tech-media-warnings {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  background: #fff7e6;
+  border: 1px solid #fde3a8;
+  border-left: 3px solid #f5b942;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #7a4a05;
+  line-height: 1.5;
+}
+.tech-media-warnings strong { font-weight: 800; }
+
+.tech-media-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 4px 0 18px;
+}
+@media (max-width: 640px) {
+  .tech-media-grid { grid-template-columns: 1fr; }
+}
+
+.tech-media-zone {
+  background: var(--pc-surface, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tech-media-zone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tech-media-zone-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--pc-text, #0f172a);
+}
+.tech-media-zone-meta {
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+  text-align: right;
+}
+
+.tech-media-preview {
+  background: #ffffff;
+  border: 1px dashed var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.tech-media-preview-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 220px;
+}
+.tech-media-preview-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-media-preview-signature {
+  width: 100%;
+  height: 110px;
+}
+.tech-media-preview-signature img { max-width: 90%; max-height: 90%; display: block; }
+
+.tech-media-initial-bubble {
+  width: 86px; height: 86px;
+  border-radius: 50%;
+  background: #71E1D1;
+  color: #1F1F24;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 86px;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px var(--pc-border, #e6e9ee);
+}
+
+.tech-media-empty-hint {
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+.tech-media-rule {
+  margin: 4px 0 10px;
+  font-size: 11.5px;
+  color: var(--pc-text-muted, #6b7280);
+  line-height: 1.45;
+}
+
+.tech-media-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tech-media-upload-trigger {
+  display: inline-block;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--pc-text, #0f172a);
+  color: #ffffff;
+  border-radius: 999px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.tech-media-upload-trigger:hover { opacity: 0.9; }
+
+.tech-media-clear-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #ffffff;
+  color: #8a2a2a;
+  border: 1px solid #f5c3c3;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tech-media-clear-btn:hover { background: #fff3f3; }
+
+.tech-media-zone-err {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff1f1;
+  border: 1px solid #f5c3c3;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #8a2a2a;
+}
+.tech-media-zone-progress {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* ===== Customer-facing preview card (mirrors DCR email tech row) ===== */
+.tech-media-cust-card {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border, #e6e9ee);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+@media (max-width: 560px) {
+  .tech-media-cust-card { grid-template-columns: 56px 1fr; }
+  .tech-media-cust-sig  { grid-column: 1 / -1; text-align: left !important; padding-top: 6px; }
+}
+
+.tech-media-cust-photo {
+  width: 56px; height: 56px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #71E1D1;
+}
+.tech-media-cust-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-media-initial-cust {
+  width: 56px; height: 56px;
+  font-size: 22px;
+  line-height: 56px;
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 3px var(--pc-border, #e6e9ee);
+}
+
+.tech-media-cust-eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--pc-text-muted, #6b7280);
+}
+.tech-media-cust-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-text, #0f172a);
+  line-height: 1.25;
+}
+.tech-media-cust-sub {
+  font-size: 12px;
+  color: var(--pc-text-muted, #6b7280);
+  margin-top: 1px;
+}
+
+.tech-media-cust-sig { text-align: right; }
+.tech-media-cust-sig-cap {
+  font-size: 9.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--pc-text-muted, #6b7280);
+  margin-bottom: 4px;
+}
+.tech-media-cust-sig-frame {
+  display: inline-block;
+  background: #f5f7fa;
+  border: 1px solid var(--pc-border, #e6e9ee);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-width: 80px;
+  text-align: center;
+}
+.tech-media-cust-sig-frame img { max-height: 30px; max-width: 130px; display: block; }
+.tech-media-cust-sig-empty {
+  font-size: 11px;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+/* ===== Tiny thumbnail / missing-asset chip in the techs list rows ===== */
+.tech-row-thumb {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #71E1D1;
+  color: #1F1F24;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 32px;
+  text-align: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--pc-border, #e6e9ee);
+}
+.tech-row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tech-row-thumb.is-missing { background: #fff3f3; color: #8a2a2a; }
+
+.tech-row-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #fff7e6;
+  color: #7a4a05;
+  border: 1px solid #fde3a8;
+}
+.tech-row-asset-chip-bad {
+  background: #fff3f3;
+  color: #8a2a2a;
+  border-color: #f5c3c3;
+}
+
+/* =============================================================================
+ * DCR email Review & Send modal (V6)
+ *
+ * Renders the readiness-check result inside the admin modal. Layout:
+ *   .dcr-review-body
+ *     ↳ .dcr-review-checklist  (one row per resolved signal)
+ *     ↳ .dcr-review-issues-block (blockers — red)
+ *     ↳ .dcr-review-issues-warn  (warnings — amber)
+ *     ↳ .dcr-review-already-sent (previously-sent banner, when applicable)
+ *     ↳ .dcr-review-success      (post-send confirmation)
+ * ============================================================================= */
+
+.dcr-review-body { font-size: 14px; }
+.dcr-review-loading {
+  margin: 8px 0;
+  color: var(--pc-text-muted, #6b7280);
+  font-style: italic;
+}
+
+.dcr-review-checklist {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--pc-surface, #f8fafc);
+  border: 1px solid var(--pc-border, #e2e8f0);
+  border-radius: 10px;
+}
+.dcr-review-checklist li {
+  display: grid;
+  grid-template-columns: 18px 160px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  align-items: baseline;
+  font-size: 13.5px;
+}
+.dcr-review-check-icon {
+  font-weight: 800;
+  text-align: center;
+}
+.dcr-review-check-ok    .dcr-review-check-icon { color: #1B5E20; }
+.dcr-review-check-pending .dcr-review-check-icon { color: #8A2A2A; opacity: 0.8; }
+.dcr-review-check-label  { color: var(--pc-text, #0f172a); font-weight: 600; }
+.dcr-review-check-detail { color: var(--pc-text-muted, #6b7280); font-size: 12.5px; }
+
+.dcr-review-issues {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+.dcr-review-issues-title {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.dcr-review-issues-block {
+  background: #fff3f3;
+  border: 1px solid #f5c3c3;
+  color: #8A2A2A;
+}
+.dcr-review-issues-block .dcr-review-issues-title { color: #8A2A2A; }
+.dcr-review-issues-warn {
+  background: #fff7e6;
+  border: 1px solid #fde3a8;
+  color: #7a4a05;
+}
+.dcr-review-issues-warn .dcr-review-issues-title { color: #7a4a05; }
+.dcr-review-issues ul { margin: 0; padding-left: 18px; line-height: 1.55; }
+.dcr-review-issues li { margin-bottom: 4px; }
+
+.dcr-review-already-sent {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #1e3a8a;
+}
+.dcr-review-already-sent .dcr-review-issues-title { color: #1e3a8a; }
+
+.dcr-review-success {
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: #E8F7EB;
+  border: 1px solid #BFEACB;
+  border-radius: 10px;
+  color: #1B5E20;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.dcr-review-success-title {
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.dcr-review-success code {
+  background: #FFFFFF;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #BFEACB;
+}
+
+/* =============================================================================
+ * Today's Operations — V6 headline stats
+ *
+ * Three big-number tiles that sit between the eyebrow/title and the
+ * checklist bullets in `.admin-day-health`. The failures tile is hidden
+ * by default and only unhides when there's at least one failure in the
+ * last 24h.
+ *
+ * Tones:
+ *   data-tone="positive"  — green (most stats default here when 0)
+ *   data-tone="neutral"   — calm gray
+ *   data-tone="attention" — amber/red, used for the failures tile
+ * ============================================================================= */
+
+.admin-day-health-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+@media (max-width: 560px) {
+  .admin-day-health-stats { grid-template-columns: 1fr 1fr; }
+  .admin-day-health-stat-bad { grid-column: 1 / -1; }
+}
+
+.admin-day-health-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.admin-day-health-stat[data-tone="positive"] {
+  background: rgba(52, 199, 89, 0.10);
+  border-color: rgba(52, 199, 89, 0.30);
+}
+.admin-day-health-stat[data-tone="attention"] {
+  background: rgba(227, 109, 109, 0.16);
+  border-color: rgba(227, 109, 109, 0.45);
+}
+.admin-day-health-stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  color: #FFFFFF;
+}
+.admin-day-health-stat-label {
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.admin-day-health-stat[data-tone="attention"] .admin-day-health-stat-value {
+  color: #FFE3E3;
+}
+
+/* =============================================================================
+ * Pilot cleanup pass — header + KPI compaction
+ *
+ * Goal: save vertical scroll space on the admin landing without
+ * touching the IA. Same nav, same widgets, smaller chrome.
+ *   • Hero header → smaller h1, tighter padding
+ *   • Control-center intro → tighter padding, smaller sub-copy
+ *   • KPI strip → smaller cards, less padding, tighter grid gap
+ *   • Today's Operations stat row → smaller value font
+ *
+ * Mobile keeps the existing breakpoints intact — these rules only
+ * trim widths/font/padding, they don't change layout direction.
+ * ============================================================================= */
+.hero-admin {
+  padding: 12px 14px 4px;
+}
+.hero-admin h1 {
+  font-size: 22px;
+  margin: 0 0 2px;
+}
+.hero-admin .subtitle {
+  font-size: 13px;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .hero-admin h1 { font-size: 19px; }
+}
+
+.admin-control-intro {
+  padding: 10px 14px;
+  margin: 6px 0 10px;
+}
+.admin-control-eyebrow { font-size: 10.5px; }
+.admin-control-sub     { font-size: 12.5px; margin: 4px 0 0; }
+
+/* KPI strip — tighter cards. Same data, smaller footprint. */
+.kpi-grid.admin-kpi-strip { gap: 8px; }
+.admin-kpi-strip .kpi-card {
+  padding: 10px 12px;
+  min-height: 0;
+}
+.admin-kpi-strip .kpi-label { font-size: 10.5px; letter-spacing: 0.4px; }
+.admin-kpi-strip .kpi-value { font-size: 22px; line-height: 1.1; }
+.admin-kpi-strip .kpi-meta  { font-size: 11px;  margin-top: 1px; }
+
+/* Today's Operations — slightly smaller stat tiles + tighter card. */
+.admin-day-health { padding: 14px 16px; }
+.admin-day-health .health-eyebrow { font-size: 11px; }
+.admin-day-health .health-title   { font-size: 16px; margin: 4px 0 8px; line-height: 1.35; }
+.admin-day-health-stats { gap: 8px; margin: 4px 0 10px; }
+.admin-day-health-stat  { padding: 10px 12px; }
+.admin-day-health-stat-value { font-size: 24px; }
+.admin-day-health-stat-label { font-size: 10.5px; }
+.admin-day-health .health-checklist li { padding: 3px 0; font-size: 12.5px; }
+
+/* Ops-day window caption — small muted line under the title. */
+.health-window {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+
+/* Previous Ops Day summary — collapsible <details>. Compact + muted
+   so the dashboard stays scannable; admins expand when they want to
+   compare today with yesterday. */
+.health-prev {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.health-prev > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.health-prev[open] > summary { margin-bottom: 6px; }
+.health-prev-line {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  line-height: 1.5;
+}
+
+/* =============================================================================
+ * Admin Control Center — one compact menu card
+ *
+ * Sits directly under Today's Operations + the KPI strip. ONE white
+ * card containing:
+ *   • a thin header row (eyebrow + "Admin Control Center")
+ *   • three labeled tab rows (Core Ops / Quality / System)
+ *
+ * Each tab is a clear button (not floating text). Active tab is the
+ * dark ink fill. Badges retain their per-tab counts on the right.
+ *
+ * The earlier `.admin-tabs-grouped` design (nested cards with accent
+ * strips) is fully overridden here so the whole nav reads as one menu,
+ * not three stacked cards.
+ *
+ * Mobile (≤640px): each group's label stacks above its tab row.
+ * ============================================================================= */
+.admin-tabs-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  margin: 0 0 16px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(13, 18, 24, 0.04);
+}
+
+.admin-tabs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  margin-bottom: 4px;
+}
+.admin-tabs-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+
+/* Each group: inline row → [label] [tab pills]. No nested card chrome. */
+.admin-tabs-grouped .admin-tabs-group {
+  position: static;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 4px 0;
+  margin: 0;
+  background: transparent !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 32px;
+}
+.admin-tabs-grouped .admin-tabs-group::before { content: none; }
+.admin-tabs-grouped .admin-tabs-group[data-group] { background: transparent !important; }
+
+/* Group label — small inline eyebrow with a colored icon dot. */
+.admin-tabs-grouped .admin-tabs-group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  padding: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.admin-tabs-grouped .admin-tabs-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  border-radius: 6px;
+  border: 1px solid;
+  box-shadow: none;
+}
+.admin-tabs-grouped .admin-tabs-group[data-group="core"]    .admin-tabs-group-icon { background: #eff6ff; border-color: #bfdbfe; }
+.admin-tabs-grouped .admin-tabs-group[data-group="quality"] .admin-tabs-group-icon { background: #ecfeff; border-color: #99f6e4; }
+.admin-tabs-grouped .admin-tabs-group[data-group="system"]  .admin-tabs-group-icon { background: #f8fafc; border-color: #e2e8f0; }
+
+/* Tab row — flows next to the group label. */
+.admin-tabs-grouped .admin-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+/* Tab pill — clearly a clickable button. Light card background,
+   border, hover lift; active tab is the dark ink fill. */
+.admin-tabs-grouped .admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: none;
+  color: var(--pc-text);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast, 140ms) var(--ease-out, ease-out),
+    border-color var(--motion-fast, 140ms) var(--ease-out, ease-out),
+    color var(--motion-fast, 140ms) var(--ease-out, ease-out);
+}
+.admin-tabs-grouped .admin-tab:hover:not(.is-active) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: var(--pc-text);
+  transform: none;
+}
+.admin-tabs-grouped .admin-tab:focus-visible:not(.is-active) {
+  outline: 2px solid var(--pc-teal);
+  outline-offset: 2px;
+}
+
+/* Active tab — keeps the ink-gradient + teal underline from the
+   premium design but now reads against the white card behind it. */
+.admin-tabs-grouped .admin-tab.is-active {
+  background: linear-gradient(180deg, #1f2937 0%, #0f172a 100%);
+  border-color: #0f172a;
+  color: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 18px -10px rgba(15, 23, 42, 0.55);
+}
+
+@media (max-width: 720px) {
+  .admin-tabs-grouped { padding: 10px 12px 12px; }
+  .admin-tabs-grouped .admin-tabs-group { gap: 6px; }
+  .admin-tabs-grouped .admin-tabs-group-label { min-width: 0; width: 100%; }
+  .admin-tabs-grouped .admin-tabs-row { width: 100%; }
+  .admin-tabs-grouped .admin-tab { padding: 7px 11px; font-size: 12.5px; }
+}
+
+/* =============================================================================
+ * Team Schedule — admin panel
+ * ============================================================================= */
+.schedule-published {
+  margin: 0 0 18px;
+  padding: 14px 16px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7),
+              0 1px 2px rgba(13, 18, 24, 0.04);
+}
+.schedule-published-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.schedule-published-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pc-text);
+}
+.schedule-published-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+}
+.schedule-published-summary {
+  margin: 0 0 12px;
+}
+.schedule-published-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.schedule-published-stats > div {
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+}
+.schedule-published-stats dt {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+  margin: 0 0 2px;
+}
+.schedule-published-stats dd {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--pc-text);
+  margin: 0;
+  word-break: break-word;
+}
+.schedule-published-notes {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pc-text);
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+
+.schedule-publish-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.schedule-publish-horizon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+.schedule-publish-horizon legend {
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.schedule-publish-horizon-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--pc-text);
+  cursor: pointer;
+}
+.schedule-publish-horizon-opt input { margin: 0; }
+.schedule-publish-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--pc-text);
+}
+.schedule-publish-checkbox input { margin-top: 3px; }
+.schedule-publish-checkbox-help {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--pc-text-muted);
+  margin-top: 1px;
+}
+.schedule-publish-label { display: flex; flex-direction: column; gap: 4px; }
+.schedule-publish-label-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+.schedule-publish-form textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pc-text);
+  resize: vertical;
+  min-height: 52px;
+}
+.schedule-publish-status {
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  min-height: 16px;
+}
+.schedule-publish-error {
+  font-size: 12.5px;
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border: 1px solid #ffd2d2;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.schedule-publish-actions { display: flex; justify-content: flex-end; }
+
+.schedule-publish-debug {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+}
+.schedule-publish-debug > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+.schedule-publish-debug[open] > summary { margin-bottom: 8px; }
+.schedule-publish-debug-body p {
+  margin: 4px 0;
+  font-size: 12.5px;
+  color: var(--pc-text);
+}
+.schedule-publish-debug-range strong,
+.schedule-publish-debug-zero-summary strong { color: var(--pc-text); }
+.schedule-publish-debug-zero { color: var(--pc-danger-700, #7f1d1d); font-weight: 700; }
+.schedule-publish-debug-fail { color: var(--pc-danger-700, #7f1d1d); }
+.schedule-publish-debug-muted { color: var(--pc-text-muted); font-style: italic; }
+.schedule-publish-debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.schedule-publish-debug-table th,
+.schedule-publish-debug-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--pc-border);
+}
+.schedule-publish-debug-table th {
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+  background: #ffffff;
+}
+.schedule-publish-debug-table tr:last-child td { border-bottom: none; }
+
+/* ============================================================================
+ * Schedule Import V1 — paste/PDF → draft → publish
+ * ============================================================================ */
+.schedule-import-block {
+  margin: 0 0 18px;
+  padding: 14px 16px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(13, 18, 24, 0.04);
+}
+.schedule-import-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.schedule-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.schedule-import-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+.schedule-import-label-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+.schedule-import-block textarea {
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pc-text);
+  resize: vertical;
+  min-height: 110px;
+}
+.schedule-import-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.schedule-import-year {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--pc-text-muted);
+}
+.schedule-import-year input {
+  font: inherit;
+  width: 96px;
+  padding: 6px 8px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+}
+.schedule-import-status {
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  margin-top: 6px;
+  min-height: 16px;
+  white-space: pre-wrap;
+}
+.schedule-import-error {
+  font-size: 12.5px;
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border: 1px solid #ffd2d2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+
+/* Draft editor */
+.schedule-draft-block {
+  margin: 0 0 18px;
+  padding: 14px 16px 16px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(13, 18, 24, 0.04);
+}
+.schedule-draft-table-wrap { overflow-x: auto; }
+.schedule-draft-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.schedule-draft-table th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--pc-border);
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+}
+.schedule-draft-table td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--pc-border);
+  vertical-align: middle;
+}
+.schedule-draft-table tr:last-child td { border-bottom: none; }
+.schedule-draft-row.is-low-conf {
+  background: #fffbeb;
+}
+.schedule-draft-table input,
+.schedule-draft-table select {
+  font: inherit;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--pc-border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--pc-text);
+}
+.schedule-draft-table input[type="date"],
+.schedule-draft-table input[type="time"] {
+  font-variant-numeric: tabular-nums;
+}
+.schedule-draft-conf {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #0e7490;
+  border: 1px solid #99f6e4;
+}
+.schedule-draft-conf.is-low {
+  background: #fff8e1;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.schedule-draft-del {
+  border: 1px solid var(--pc-border);
+  background: #fff;
+  color: var(--pc-danger-700);
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.schedule-draft-del:hover { background: var(--pc-danger-soft); }
+
+.schedule-draft-head-actions { display: flex; gap: 8px; }
+.schedule-draft-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.schedule-draft-status {
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  min-height: 16px;
+}
+.schedule-draft-error {
+  font-size: 12.5px;
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border: 1px solid #ffd2d2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+.schedule-draft-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.schedule-published-aside {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--pc-text-subtle);
+  margin-top: 4px;
+}
+
+.schedule-pdf-block {
+  margin: 0;
+  padding: 14px 16px 0;
+  border-top: 1px solid var(--pc-border);
+}
+.schedule-pdf-head { margin-bottom: 12px; }
+.schedule-pdf-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-text);
+}
+.schedule-pdf-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+}
+
+.schedule-current {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7),
+              0 1px 2px rgba(13, 18, 24, 0.04);
+}
+.schedule-current-meta { min-width: 0; flex: 1 1 auto; }
+.schedule-current-eyebrow {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--pc-teal-700);
+  background: var(--pc-teal-50);
+  border: 1px solid var(--pc-teal-100);
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin-bottom: 6px;
+}
+.schedule-current-filename {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pc-text);
+  word-break: break-word;
+}
+.schedule-current-uploaded {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+}
+.schedule-current-notes {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--pc-text);
+  white-space: pre-wrap;
+}
+.schedule-current-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.schedule-upload-form { margin: 0; }
+.schedule-upload-fields {
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.schedule-upload-fields legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.schedule-upload-label { display: flex; flex-direction: column; gap: 4px; }
+.schedule-upload-label-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pc-text-muted);
+}
+.schedule-upload-file-help {
+  font-size: 11.5px;
+  color: var(--pc-text-subtle);
+  margin-top: 2px;
+}
+.schedule-upload-form input[type="file"],
+.schedule-upload-form input[type="month"],
+.schedule-upload-form textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pc-text);
+}
+.schedule-upload-form textarea { resize: vertical; min-height: 56px; }
+.schedule-upload-status {
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  min-height: 16px;
+}
+.schedule-upload-error {
+  font-size: 12.5px;
+  color: var(--pc-danger-700);
+  background: var(--pc-danger-soft);
+  border: 1px solid #ffd2d2;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.schedule-upload-actions { display: flex; justify-content: flex-end; }
+@media (max-width: 640px) {
+  .schedule-current { padding: 12px 14px; }
+  .schedule-current-actions { width: 100%; }
+  .schedule-current-actions .panel-action { flex: 1 1 0; text-align: center; }
+}
+
+/* =============================================================================
+ * Attendance — Time-Off + Call-Outs admin panel
+ * ============================================================================= */
+.attendance-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--pc-border);
+}
+.attendance-subtab {
+  appearance: none;
+  border: 1px solid var(--pc-border);
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pc-text-muted);
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.attendance-subtab:hover { background: #f1f5f9; color: var(--pc-text); }
+.attendance-subtab.is-active {
+  background: var(--pc-text, #0f172a);
+  border-color: var(--pc-text, #0f172a);
+  color: #ffffff;
+}
+.attendance-subtab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 999px;
+  background: var(--pc-danger-soft, #fff1f2);
+  color: var(--pc-danger-700, #7f1d1d);
+  border: 1px solid #fecaca;
+}
+.attendance-subtab.is-active .attendance-subtab-badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.attendance-subpanel { display: none; }
+.attendance-subpanel.is-active { display: block; }
+
+.attn-card {
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(13, 18, 24, 0.04);
+}
+.attn-card--review { background: #f9fafb; }
+.attn-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.attn-card-who { min-width: 0; }
+.attn-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-text);
+}
+.attn-card-sub {
+  font-size: 12.5px;
+  color: var(--pc-text-muted);
+  margin-top: 2px;
+}
+.attn-card-note {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--pc-text);
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+.attn-card-meta {
+  font-size: 11.5px;
+  color: var(--pc-text-subtle);
+  margin: 6px 0 0;
+}
+.attn-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+.attn-mgr-note,
+.attn-coverage-note {
+  font: inherit;
+  flex: 1 1 200px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+}
+.attn-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pc-border);
+  background: #ffffff;
+  color: var(--pc-text);
+  cursor: pointer;
+}
+.attn-btn:hover { background: #f1f5f9; }
+.attn-btn:disabled { opacity: 0.6; cursor: progress; }
+.attn-btn-approve {
+  background: #065f46;
+  border-color: #065f46;
+  color: #ffffff;
+}
+.attn-btn-approve:hover { background: #047857; border-color: #047857; }
+.attn-btn-deny {
+  background: #ffffff;
+  border-color: #fecaca;
+  color: #7f1d1d;
+}
+.attn-btn-deny:hover { background: #fff1f2; }
+
+/* Calendar heatmap */
+.attendance-calendar-help {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pc-text-muted);
+}
+.attn-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--pc-text-muted);
+}
+.attn-cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.attn-cal-legend-sw {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--pc-border);
+}
+.attn-cal-legend-sw--yellow { background: #fff8e1; border-color: #fde68a; }
+.attn-cal-legend-sw--orange { background: #fff1d4; border-color: #fed7aa; }
+.attn-cal-legend-sw--red    { background: #fee2e2; border-color: #fecaca; }
+
+.attendance-calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .attendance-calendar { grid-template-columns: 1fr; }
+}
+.attn-cal-cell {
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  min-height: 70px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.attn-cal-cell--yellow { background: #fff8e1; border-color: #fde68a; }
+.attn-cal-cell--orange { background: #fff1d4; border-color: #fed7aa; }
+.attn-cal-cell--red {
+  background: #fee2e2;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset;
+}
+.attn-cal-critical {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #7f1d1d;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  line-height: 1.35;
+}
+.attn-cal-cell.is-today {
+  outline: 2px solid var(--pc-teal, #14b8a6);
+  outline-offset: -2px;
+}
+.attn-cal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.attn-cal-wkday {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.attn-cal-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pc-text);
+  flex: 1 1 auto;
+}
+.attn-cal-count {
+  font-size: 11px;
+  font-weight: 800;
+  color: #7f1d1d;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.attn-cal-cell--yellow .attn-cal-count { color: #92400e; border-color: #fde68a; }
+.attn-cal-cell--orange .attn-cal-count { color: #9a3412; border-color: #fed7aa; }
+.attn-cal-names {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--pc-text);
+}
+.attn-cal-name { line-height: 1.3; }
+.attn-cal-name--pending { color: var(--pc-text-muted); }
+.attn-cal-name--pending em { font-style: italic; font-size: 10.5px; }
+
+/* ====================================================================
+ * Open Shifts sub-panel — admin CRUD on open_shift_requests.
+ * ==================================================================== */
+.attn-os-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.attn-os-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--pc-text); }
+.attn-os-sub   { margin: 4px 0 0; font-size: 12.5px; color: var(--pc-text-muted); }
+
+.attn-os-form {
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+}
+.attn-os-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.attn-os-field { display: flex; flex-direction: column; gap: 4px; }
+.attn-os-field > span {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--pc-text-muted);
+}
+.attn-os-field input,
+.attn-os-field textarea {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+}
+.attn-os-field--wide { grid-column: 1 / -1; }
+.attn-os-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.attn-os-form-status {
+  flex: 1 1 auto;
+  font-size: 12px;
+  color: var(--pc-text-muted);
+}
+@media (max-width: 600px) {
+  .attn-os-form-grid { grid-template-columns: 1fr; }
+  .attn-os-form-actions { flex-wrap: wrap; }
+}
+
+.attn-os-card {
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-left: 3px solid #14b8a6;
+  border-radius: 10px;
+}
+.attn-os-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.attn-os-card-title { font-size: 14px; font-weight: 700; color: var(--pc-text); }
+.attn-os-card-meta  { font-size: 12px; color: var(--pc-text-muted); margin-top: 2px; }
+.attn-os-card-notes {
+  margin: 6px 0 0; padding: 6px 10px;
+  font-size: 12.5px; color: var(--pc-text);
+  background: #f8fafc; border: 1px solid var(--pc-border); border-radius: 8px;
+  white-space: pre-wrap;
+}
+.attn-os-card-accepted {
+  margin: 8px 0 0; padding: 8px 10px;
+  font-size: 12.5px; color: var(--pc-text);
+  background: #ecfeff; border: 1px solid #99f6e4; border-radius: 8px;
+}
+.attn-os-bonus-pill {
+  display: inline-block; margin-left: 4px;
+  padding: 1px 8px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase;
+  background: #ffffff; border: 1px solid #99f6e4; border-radius: 999px; color: #0e7490;
+}
+.attn-os-card-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  justify-content: flex-end; margin-top: 10px;
+}
+.attn-os-chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  border-radius: 999px; border: 1px solid;
+}
+.attn-os-chip.is-open     { color: #0e7490; background: #ecfeff; border-color: #99f6e4; }
+.attn-os-chip.is-accepted { color: #92400e; background: #fff8e1; border-color: #fde68a; }
+
+/* ====================================================================
+ * Tech Health — operational support dashboard (admin-only)
+ * ====================================================================
+ * Card grid, positive-first metric row, supportive watch language. */
+.tech-health-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 14px;
+}
+.tech-health-pill {
+  appearance: none;
+  border: 1px solid var(--pc-border);
+  background: #ffffff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pc-text-muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.tech-health-pill:hover { background: #f1f5f9; color: var(--pc-text); }
+.tech-health-pill.is-active {
+  background: var(--pc-text, #0f172a);
+  color: #ffffff;
+  border-color: var(--pc-text, #0f172a);
+}
+
+.tech-health-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.th-card {
+  background: #ffffff;
+  border: 1px solid var(--pc-border);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  box-shadow: 0 1px 2px rgba(13, 18, 24, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;            /* let flex children shrink past their content */
+  overflow-wrap: anywhere;
+}
+.th-card--watch         { border-left: 4px solid #f59e0b; }
+.th-card--needs-support { border-left: 4px solid #ef4444; background: #fff7f7; }
+
+.th-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.th-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid var(--pc-border);
+  background: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+.th-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.th-name {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--pc-text);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.th-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.th-status-chip--stable        { color: #065f46; background: #ecfdf5; border-color: #a7f3d0; }
+.th-status-chip--watch         { color: #92400e; background: #fff8e1; border-color: #fde68a; }
+.th-status-chip--needs-support { color: #7f1d1d; background: #fff1f2; border-color: #fecaca; }
+
+.th-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+.th-metrics > div {
+  padding: 6px 8px;
+  background: #f8fafc;
+  border: 1px solid var(--pc-border);
+  border-radius: 8px;
+  text-align: center;
+}
+.th-metrics dt {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--pc-text-subtle);
+}
+.th-metrics dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-text);
+}
+
+.th-watch {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #7f1d1d;
+  background: #fff1f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.th-watch .th-watch-label,
+.th-watch .th-watch-cta { display: inline; max-width: 100%; }
+.th-card--watch .th-watch {
+  color: #78350f;
+  background: #fff8e1;
+  border-color: #fde68a;
+}
+.th-watch-label {
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  margin-right: 4px;
+}
+.th-watch-cta {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.tech-health-note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--pc-text-muted);
+  background: #f8fafc;
+  border: 1px dashed var(--pc-border);
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .tech-health-list { grid-template-columns: 1fr; }
+  .th-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ==========================================================================
+   Pilot Readiness panel — admin pre-rollout audit (Admin → System → Pilot Readiness)
+   ========================================================================== */
+
+.panel-header-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pilot-readiness-summary {
+  margin: 1rem 0 0.75rem;
+}
+.pr-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.pr-summary-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
+}
+.pr-summary-stat strong { font-size: 1rem; color: #0f172a; }
+.pr-stat-pass { background: rgba(16, 185, 129, 0.12); color: #065f46; }
+.pr-stat-warn { background: rgba(234, 179,   8, 0.14); color: #854d0e; }
+.pr-stat-fail { background: rgba(239, 68,   68, 0.12); color: #991b1b; }
+.pr-stat-time { margin-left: auto; font-size: 0.75rem; color: #64748b; background: transparent; }
+
+.pilot-readiness-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.pr-tech {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.625rem;
+  padding: 0.85rem 1rem 0.6rem;
+  background: #ffffff;
+}
+.pr-tech-PASS { border-left: 4px solid #10b981; }
+.pr-tech-WARN { border-left: 4px solid #eab308; }
+.pr-tech-FAIL { border-left: 4px solid #ef4444; }
+
+.pr-tech-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.pr-tech-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 0.3rem;
+  letter-spacing: 0.04em;
+}
+.pr-tech-PASS .pr-tech-badge { background: #d1fae5; color: #065f46; }
+.pr-tech-WARN .pr-tech-badge { background: #fef3c7; color: #854d0e; }
+.pr-tech-FAIL .pr-tech-badge { background: #fee2e2; color: #991b1b; }
+.pr-tech-name { font-size: 1rem; color: #0f172a; }
+.pr-tech-meta { font-size: 0.8125rem; color: #64748b; }
+
+.pr-category { margin-top: 0.5rem; }
+.pr-category-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #475569;
+  margin: 0.2rem 0 0.25rem;
+}
+.pr-check-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.pr-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.35rem;
+}
+.pr-check.pr-PASS { background: rgba(16, 185, 129, 0.06); color: #064e3b; }
+.pr-check.pr-WARN { background: rgba(234, 179,  8, 0.08); color: #713f12; }
+.pr-check.pr-FAIL { background: rgba(239, 68,   68, 0.07); color: #7f1d1d; }
+.pr-check-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.7);
+  color: inherit;
+}
+.pr-check-label { color: #0f172a; }
+.pr-check-detail {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: #475569;
+  margin-top: 0.1rem;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .pr-summary-row { gap: 0.4rem; }
+  .pr-stat-time   { width: 100%; margin-left: 0; }
+}
+
+/* ==========================================================================
+   Yesterday's Work / Nightly Recap panel
+   ========================================================================== */
+
+.yesterday-date-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.yesterday-date-input {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 0.35rem;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.yesterday-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem;
+  margin: 0.8rem 0 1rem;
+}
+.ydw-stat {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.55rem;
+  padding: 0.6rem 0.75rem;
+}
+.ydw-stat-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+.ydw-stat strong {
+  font-size: 1.4rem;
+  color: #0f172a;
+  line-height: 1;
+}
+.ydw-stat-pass { background: rgba(16, 185, 129, 0.07); border-color: rgba(16, 185, 129, 0.3); }
+.ydw-stat-pass strong { color: #065f46; }
+.ydw-stat-warn { background: rgba(234, 179,   8, 0.10); border-color: rgba(234, 179, 8, 0.35); }
+.ydw-stat-warn strong { color: #854d0e; }
+.ydw-stat-fail { background: rgba(239, 68,   68, 0.08); border-color: rgba(239, 68, 68, 0.30); }
+.ydw-stat-fail strong { color: #991b1b; }
+
+.yesterday-by-tech {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.ydw-tech {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  padding: 0.7rem 0.9rem;
+}
+.ydw-tech-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+.ydw-tech-name { font-size: 1.05rem; color: #0f172a; }
+.ydw-tech-meta { font-size: 0.8rem; color: #64748b; }
+.ydw-tech-counts {
+  font-size: 0.8125rem;
+  color: #475569;
+  margin-left: auto;
+  text-align: right;
+}
+.ydw-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.3rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+.ydw-tag.warn { background: #fef3c7; color: #854d0e; }
+.ydw-tag.fail { background: #fee2e2; color: #991b1b; }
+
+.ydw-row-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ydw-row {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  border-left: 4px solid #cbd5e1;
+}
+.ydw-row-GREEN  { border-left-color: #10b981; }
+.ydw-row-YELLOW { border-left-color: #eab308; background: rgba(234, 179, 8, 0.05); }
+.ydw-row-RED    { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.05); }
+
+.ydw-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.ydw-status {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  letter-spacing: 0.05em;
+}
+.ydw-GREEN  { background: #d1fae5; color: #065f46; }
+.ydw-YELLOW { background: #fef3c7; color: #854d0e; }
+.ydw-RED    { background: #fee2e2; color: #991b1b; }
+.ydw-row-customer { font-size: 0.95rem; color: #0f172a; }
+.ydw-row-time { font-size: 0.8rem; color: #64748b; margin-left: auto; }
+
+.ydw-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.25rem 0;
+}
+.ydw-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.ydw-chip.pass { background: #d1fae5; color: #065f46; }
+.ydw-chip.warn { background: #fef3c7; color: #854d0e; }
+.ydw-chip.fail { background: #fee2e2; color: #991b1b; }
+.ydw-row-reason {
+  display: block;
+  font-size: 0.78rem;
+  color: #475569;
+}
+.ydw-row-actions {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+}
+.ydw-link {
+  color: #0d9488;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ydw-debug {
+  margin-top: 0.3rem;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.yesterday-extra {
+  margin-top: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: #f8fafc;
+  border-radius: 0.55rem;
+  border: 1px solid #e2e8f0;
+}
+.yesterday-extra-head { margin: 0 0 0.2rem; font-size: 1rem; color: #0f172a; }
+.yesterday-extra-sub  { margin: 0 0 0.55rem; font-size: 0.8rem; color: #64748b; }
+.ydw-unmatched-row {
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+.ydw-unmatched-row:last-child { border-bottom: 0; }
+
+@media (max-width: 640px) {
+  .ydw-tech-counts { margin-left: 0; width: 100%; text-align: left; }
+  .ydw-row-time    { margin-left: 0; }
+}
+
+/* Recommended-workflow strip — visual flow + numbered steps shown at
+   the top of the schedule import block. Office staff sees the simple
+   path at a glance: Deputy PDF → Upload → Extract → Review → Publish. */
+.schedule-flow {
+  margin: 0.6rem 0 1rem;
+  padding: 0.85rem 1rem 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #14b8a6;
+  border-radius: 0.55rem;
+}
+.schedule-flow-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+.schedule-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  font-size: 0.8125rem;
+  color: #0f172a;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.schedule-flow-icon  { font-size: 1rem; line-height: 1; }
+.schedule-flow-arrow {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 1rem;
+  user-select: none;
+}
+.schedule-flow-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: #334155;
+  line-height: 1.55;
+}
+.schedule-flow-steps li { margin: 0.15rem 0; }
+.schedule-flow-steps strong { color: #0f172a; }
+
+/* Primary CTA variant for the Extract button. Teal-on-ink, beefier
+   than the muted panel-action gray. */
+.panel-action.panel-action-primary {
+  background: #14b8a6;
+  color: #052e2b;
+  border-color: #0d9488;
+  font-weight: 700;
+}
+.panel-action.panel-action-primary:hover  { background: #0d9488; }
+.panel-action.panel-action-primary:active { background: #0b7e74; }
+.panel-action.panel-action-primary:disabled {
+  background: #cbd5e1;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+#schedule-import-from-pdf:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Advanced / Manual Import disclosure — collapsed by default so the
+   primary workflow stays prominent. Still discoverable for admins. */
+.schedule-import-advanced {
+  margin-top: 1.1rem;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 0.85rem;
+}
+.schedule-import-advanced-summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #475569;
+  padding: 0.25rem 0;
+}
+.schedule-import-advanced[open] .schedule-import-advanced-summary {
+  color: #0f172a;
+}
+.schedule-import-advanced-help {
+  margin: 0.4rem 0 0.7rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .schedule-flow-strip { gap: 0.3rem; }
+  .schedule-flow-step  { font-size: 0.75rem; padding: 0.25rem 0.45rem; }
+  .schedule-flow-arrow { font-size: 0.85rem; }
+}
+
+/* ==========================================================================
+   Schedule — primary "Sync next 21 days from Deputy" card
+   ========================================================================== */
+
+.schedule-sync-primary {
+  margin: 0.75rem 0 1rem;
+  padding: 1rem 1.1rem 0.95rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #14b8a6;
+  border-radius: 0.65rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.schedule-sync-head { margin-bottom: 0.75rem; }
+.schedule-sync-title {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.schedule-sync-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.5;
+}
+.schedule-sync-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+.schedule-sync-actions .panel-action {
+  font-size: 0.95rem;
+  padding: 0.7rem 1.1rem;
+  min-height: 44px;
+}
+.schedule-sync-status {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.4rem;
+  background: rgba(20, 184, 166, 0.07);
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  color: #134e4a;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin-top: 0.4rem;
+}
+.schedule-sync-error {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.4rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #991b1b;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin-top: 0.4rem;
+}
+
+/* Success summary */
+.schedule-sync-success {
+  margin-top: 0.7rem;
+  padding: 0.8rem 0.9rem;
+  background: rgba(16, 185, 129, 0.07);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 0.55rem;
+}
+.schedule-sync-success-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.schedule-sync-success-headline strong {
+  font-size: 1rem;
+  color: #064e3b;
+}
+.schedule-sync-success-icon { font-size: 1.1rem; line-height: 1; }
+.schedule-sync-success-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.55rem 0 0.45rem;
+  padding: 0;
+}
+.schedule-sync-success-stats > div {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 5rem;
+}
+.schedule-sync-success-stats dt {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #475569;
+  text-transform: uppercase;
+}
+.schedule-sync-success-stats dd {
+  margin: 0.05rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.schedule-sync-success-note {
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+.schedule-sync-success-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Debug breakdown under the success card. */
+.schedule-sync-debug {
+  margin-top: 0.7rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed #e2e8f0;
+}
+.schedule-sync-debug summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* Advanced backup details (PDF + import + advanced publish) */
+.schedule-advanced {
+  margin-top: 1.2rem;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 0.85rem;
+}
+.schedule-advanced-summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #475569;
+  padding: 0.25rem 0;
+}
+.schedule-advanced[open] .schedule-advanced-summary { color: #0f172a; }
+.schedule-advanced-help {
+  margin: 0.5rem 0 0.85rem;
+  font-size: 0.825rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Help Improve Pioneer — admin review panel
+   ========================================================================== */
+
+.improvements-filter-bar {
+  display: flex;
+  gap: 6px;
+  margin: 0.4rem 0 0.85rem;
+  flex-wrap: wrap;
+}
+.improvements-filter {
+  background: #f1f5f9;
+  color: #475569;
+  border: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.improvements-filter.is-active {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.improvements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.impr-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #cbd5e1;
+  border-radius: 0.65rem;
+  padding: 0.85rem 1rem 0.75rem;
+}
+.impr-status-submitted          { border-left-color: #3b82f6; }
+.impr-status-reviewing          { border-left-color: #f59e0b; }
+.impr-status-needs_clarification { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.04); }
+.impr-status-implemented        { border-left-color: #10b981; background: rgba(16, 185, 129, 0.04); }
+.impr-status-declined           { border-left-color: #94a3b8; background: rgba(148, 163, 184, 0.04); }
+.impr-card.is-protected {
+  border-left-color: #b45309;
+  background: rgba(180, 83,   9, 0.04);
+}
+
+.impr-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.impr-card-titles { flex: 1 1 220px; min-width: 0; }
+.impr-card-submitter {
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+.impr-meta-email {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-left: 0.3rem;
+}
+.impr-card-meta {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+.impr-card-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.impr-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.impr-tag-protected { background: #fef3c7; color: #78350f; }
+.impr-tag-anon      { background: #fee2e2; color: #991b1b; }
+.impr-tag-app       { background: #e0e7ff; color: #3730a3; }
+
+.impr-card-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0 0.55rem;
+}
+.impr-card-answers > div { margin: 0; }
+.impr-card-answers dt {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #475569;
+  margin: 0 0 0.1rem;
+}
+.impr-card-answers dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #0f172a;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.impr-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.55rem;
+}
+.impr-photo img {
+  display: block;
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.impr-card-admin {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 0.55rem;
+  align-items: end;
+  padding-top: 0.55rem;
+  border-top: 1px dashed #e2e8f0;
+}
+.impr-card-admin label > span {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #475569;
+  margin-bottom: 0.15rem;
+}
+.impr-card-admin select,
+.impr-card-admin textarea {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.impr-card-admin textarea { resize: vertical; min-height: 36px; }
+.impr-save-notes {
+  height: 36px;
+  align-self: end;
+}
+
+@media (max-width: 640px) {
+  .impr-card-admin { grid-template-columns: 1fr; }
+  .impr-save-notes { justify-self: flex-end; }
+}
+
+/* ==========================================================================
+   SOS Events — admin review panel
+   ========================================================================== */
+
+.sos-filter-bar {
+  display: flex;
+  gap: 6px;
+  margin: 0.5rem 0 0.85rem;
+  flex-wrap: wrap;
+}
+.sos-filter {
+  background: #f1f5f9;
+  color: #475569;
+  border: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sos-filter.is-active { background: #0f172a; color: #ffffff; }
+
+.sos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sos-evt {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #cbd5e1;
+  border-radius: 0.65rem;
+  padding: 0.85rem 1rem 0.75rem;
+}
+.sos-evt-help_needed { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.04); }
+.sos-evt-critical    { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.05); }
+.sos-evt-resolved {
+  opacity: 0.78;
+  background: #f8fafc;
+}
+.sos-evt-resolved.sos-evt-help_needed { border-left-color: #94a3b8; background: #f8fafc; }
+.sos-evt-resolved.sos-evt-critical    { border-left-color: #94a3b8; background: #f8fafc; }
+
+.sos-evt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.sos-evt-sev {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.sos-sev-help_needed { background: #fef3c7; color: #78350f; }
+.sos-sev-critical    { background: #fee2e2; color: #991b1b; }
+.sos-evt-tech { font-size: 0.95rem; color: #0f172a; }
+.sos-evt-time { font-size: 0.78rem; color: #64748b; margin-left: auto; }
+
+.sos-evt-meta {
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 0.4rem;
+}
+.sos-evt-meta-piece { display: inline-block; }
+.sos-evt-customer-empty { color: #94a3b8; font-style: italic; }
+.sos-evt-geo {
+  display: inline-block;
+  color: #0d9488;
+  text-decoration: underline;
+}
+
+.sos-evt-details {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #0f172a;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sos-evt-details-empty { color: #94a3b8; font-style: italic; }
+
+.sos-evt-notif {
+  font-size: 0.78rem;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-bottom: 0.5rem;
+}
+
+.sos-evt-callbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0.5rem;
+}
+.sos-evt-call-btn {
+  display: inline-block;
+  padding: 8px 12px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 6px;
+  text-decoration: none;
+}
+.sos-evt-call-btn:active { background: #b91c1c; }
+
+.sos-evt-resolve {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.sos-evt-notes {
+  flex: 1 1 220px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.sos-evt-resolution {
+  padding-top: 6px;
+  border-top: 1px dashed #cbd5e1;
+}
+.sos-evt-resolution-when {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  color: #475569;
+}
+.sos-evt-resolution-notes {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #0f172a;
+  background: #f1f5f9;
+  padding: 6px 9px;
+  border-radius: 6px;
+}
+
+/* ==========================================================================
+   Targeted Announcements — admin extras
+   ========================================================================== */
+
+.announcement-audience-summary {
+  margin: 6px 0 4px;
+  font-size: 13px;
+  color: #475569;
+}
+.announcement-audience-summary.announcement-audience-selected { color: #134e4a; }
+
+.ann-recipient-picker {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  margin-top: 6px;
+}
+.ann-recipient-counter {
+  font-size: 12px;
+  color: #475569;
+  margin: 6px 0;
+}
+.ann-recipient-list {
+  max-height: 220px;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  padding: 6px;
+}
+.ann-recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.ann-recipient-row:hover { background: #f8fafc; }
+.ann-recipient-name  { flex: 1 1 auto; color: #0f172a; font-weight: 600; }
+.ann-recipient-email { font-size: 11.5px; color: #64748b; }
+
+/* Thread panel */
+.announcement-thread-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.ann-thread-loading,
+.ann-thread-empty,
+.ann-thread-error {
+  font-size: 13px;
+  color: #64748b;
+  font-style: italic;
+}
+.ann-thread-error { color: #991b1b; }
+.ann-thread-header { margin-bottom: 10px; }
+.ann-thread-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.ann-thread-count {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #1e293b;
+  font-weight: 600;
+}
+.ann-thread-count-ack { background: #d1fae5; color: #065f46; }
+.ann-thread-count-rep { background: #dbeafe; color: #1e40af; }
+
+.ann-thread-recipients {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px;
+  font-size: 12.5px;
+}
+.ann-thread-recipients li {
+  display: flex;
+  justify-content: space-between;
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+.ann-thread-recipient-status {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ann-thread-recipient-status-unread       { color: #94a3b8; }
+.ann-thread-recipient-status-viewed       { color: #64748b; }
+.ann-thread-recipient-status-acknowledged { color: #065f46; }
+.ann-thread-recipient-status-replied      { color: #1e40af; }
+
+.ann-thread-comments { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.ann-thread-comment {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.ann-thread-comment.is-admin {
+  background: #ecfeff;
+  border-color: #a5f3fc;
+}
+.ann-thread-comment-head {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.ann-thread-role {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #0d9488;
+  color: #ffffff;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.ann-thread-comment-when {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-left: auto;
+}
+.ann-thread-comment-body {
+  margin: 0;
+  font-size: 13.5px;
+  color: #0f172a;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ann-thread-replyform { display: flex; flex-direction: column; gap: 6px; }
+.ann-thread-replybox {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+  min-height: 48px;
+}
+.ann-thread-replybtn { align-self: flex-end; }
+
+/* ==========================================================================
+   Targeted Announcements — avatar + status summary polish
+   ========================================================================== */
+
+.ann-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 12px;
+  flex: 0 0 28px;
+  overflow: hidden;
+}
+.ann-avatar-sm {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  flex-basis: 24px;
+}
+.ann-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ann-avatar-fallback { background: #cbd5e1; }
+
+/* Recipient picker — refreshed with avatars */
+.ann-recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.ann-recipient-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.ann-recipient-name  { color: #0f172a; font-weight: 600; }
+.ann-recipient-email { font-size: 11.5px; color: #64748b; }
+
+/* Thread recipient list — refreshed with avatars */
+.ann-thread-recipients li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  font-size: 12.5px;
+}
+.ann-thread-recipients .ann-thread-recipient-name {
+  flex: 1 1 auto;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+/* Comment cards — avatar layout */
+.ann-thread-comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.ann-thread-comment-text { flex: 1 1 auto; min-width: 0; }
+
+/* Status summary line on each card */
+.announcement-status-summary {
+  margin: 6px 0 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12.5px;
+  color: #475569;
+}
+.ann-status-counts strong { color: #0f172a; font-weight: 700; }
+.ann-status-loading {
+  color: #94a3b8;
+  font-style: italic;
+}
+.ann-status-error { color: #991b1b; font-style: italic; }
+.ann-status-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.ann-status-badge-await { background: #fef3c7; color: #78350f; }
+.ann-status-badge-done  { background: #d1fae5; color: #065f46; }
+
+/* ==========================================================================
+   Archive confirmation dialog + archived-tech badge polish
+   ========================================================================== */
+
+.badge.is-muted {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.tech-archive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.tech-archive-overlay[hidden] { display: none; }
+.tech-archive-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.62);
+  cursor: pointer;
+}
+.tech-archive-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 24px 22px 20px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.40);
+  animation: techArchiveIn 200ms ease-out;
+}
+.tech-archive-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.tech-archive-title {
+  margin: 0 0 8px;
+  font-size: 19px;
+  color: #0f172a;
+  padding-right: 24px;
+}
+.tech-archive-lede {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  color: #334155;
+  line-height: 1.55;
+  font-weight: 600;
+}
+.tech-archive-bullets {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  font-size: 13.5px;
+  color: #334155;
+  line-height: 1.55;
+}
+.tech-archive-bullets li { margin: 4px 0; }
+
+.tech-archive-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.tech-archive-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14.5px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  min-height: 44px;
+}
+.tech-archive-btn-cancel {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.tech-archive-btn-cancel:active { background: #e2e8f0; }
+.tech-archive-btn-confirm {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.30);
+}
+.tech-archive-btn-confirm:hover  { background: #b91c1c; }
+.tech-archive-btn-confirm:active { background: #991b1b; }
+
+@keyframes techArchiveIn {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ==========================================================================
+   Labor Review tab (Phase 1e Lite) — admin Pioneer Time Clock dashboard
+   ========================================================================== */
+
+.labor-block {
+  margin-top: 18px;
+}
+.labor-block:first-of-type { margin-top: 8px; }
+.labor-block-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pc-text-strong, #0f172a);
+  margin: 0 0 4px 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.labor-block-sub {
+  margin: 0 0 10px 0;
+  color: var(--pc-text-muted, #64748b);
+  font-size: 13px;
+}
+
+/* ---- Open active sessions: prominent cards stacked ---- */
+.labor-active-list {
+  display: grid;
+  gap: 10px;
+}
+.labor-active-card {
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #2f6dd6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(47, 109, 214, 0.04), #fff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.labor-active-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 4px;
+}
+.labor-active-name  { font-weight: 700; font-size: 15px; color: #0f172a; }
+.labor-active-sub   { color: #475569; font-size: 13px; }
+.labor-active-meta  { color: #475569; font-size: 13px; display: flex; gap: 6px; flex-wrap: wrap; }
+.labor-active-meta strong { color: #0f172a; font-weight: 600; }
+.labor-active-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---- Today's-sessions table (grid-based dense rows) ----
+   Kirby usability fix — the 11 grid columns sum to ~1180px minimum
+   plus gaps + padding. Cards narrower than that were clipping the
+   right-side columns (DCR + actions). overflow-x:auto gives a
+   horizontal scrollbar when needed while preserving the
+   border-radius. Inner rows get min-width to keep all columns
+   aligned even when the container is narrower. */
+.labor-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #fff;
+}
+.labor-row {
+  display: grid;
+  grid-template-columns:
+    minmax(70px,  0.7fr)   /* date     (Phase 2A.3) */
+    minmax(110px, 1.1fr)   /* employee */
+    minmax(160px, 2fr)     /* customer */
+    minmax(110px, 1fr)     /* status   */
+    minmax(60px,  0.6fr)   /* in       */
+    minmax(60px,  0.6fr)   /* out      */
+    minmax(80px,  0.8fr)   /* worked   */
+    minmax(70px,  0.7fr)   /* budget   */
+    minmax(140px, 1.2fr)   /* geo      */
+    minmax(80px,  0.8fr)   /* dcr      */
+    minmax(160px, 1.4fr);  /* actions  */
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #1e293b;
+  /* Keep all columns visible at their min widths even when the table
+     scrolls horizontally — without min-width the grid auto-shrinks
+     and the right columns vanish entirely. */
+  min-width: 1180px;
+}
+.labor-row .lr-col-date { color: #475569; font-variant-numeric: tabular-nums; }
+/* Phase 2A.4 — completed/dcr_pending rows with work_minutes=0 render
+   "Review Required" instead of an authoritative "0m". Muted amber
+   italic so admin spots them without alarm-bell red. */
+.labor-row .lr-col-wkd.is-review-required {
+  color: #b45309;
+  font-style: italic;
+  font-weight: 600;
+}
+.labor-row:last-child { border-bottom: 0; }
+.labor-row-head {
+  background: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.labor-row .lr-col-emp   { font-weight: 600; color: #0f172a; }
+/* Customer column — ellipsis when names are long so the column doesn't
+   push neighboring columns off-screen. min-width:0 is required for
+   text-overflow inside a grid item. */
+.labor-row .lr-col-cust  {
+  color: #475569;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.labor-row .lr-col-in,
+.labor-row .lr-col-out,
+.labor-row .lr-col-wkd,
+.labor-row .lr-col-bgt   { font-variant-numeric: tabular-nums; }
+.labor-row .lr-col-act   { text-align: right; }
+.lr-row-meta {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #64748b;
+  padding-top: 4px;
+}
+.lr-reviewed-meta::before    { content: "✓ "; color: #047857; }
+.lr-forceclosed-meta::before { content: "⚠ "; color: #b45309; }
+
+/* ---- Chips (reuse Pioneer Time Clock palette tokens) ---- */
+.lr-chip {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  background: #e2e8f0; color: #475569;
+}
+.lr-chip.is-active   { background: #ccfbf1; color: #115e59; }
+.lr-chip.is-paused   { background: #e2e8f0; color: #334155; }
+.lr-chip.is-dcr      { background: #fef3c7; color: #78350f; }
+.lr-chip.is-complete { background: #d1fae5; color: #065f46; }
+.lr-chip.is-review   { background: #fee2e2; color: #991b1b; }
+.lr-chip.is-canceled { background: #f1f5f9; color: #64748b; }
+.lr-chip.is-missed   { background: #fee2e2; color: #991b1b; }
+/* Phase 2A.2 — "Removed from PTC" admin-only chip. Sits next to the
+   normal status chip so audit history stays glanceable. */
+.lr-chip.is-removed  { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+
+.lr-geo {
+  display: inline-block;
+  font-size: 11px; font-weight: 700;
+  padding: 1px 6px; border-radius: 999px;
+}
+.lr-geo.is-onsite   { background: #d1fae5; color: #065f46; }
+.lr-geo.is-nearby   { background: #fef3c7; color: #78350f; }
+.lr-geo.is-offsite  { background: #fee2e2; color: #991b1b; }
+.lr-geo.is-unknown  { background: #e2e8f0; color: #475569; }
+
+.lr-dcr {
+  display: inline-block;
+  font-size: 11.5px; font-weight: 600;
+  color: #475569;
+}
+.lr-dcr.is-submitted { color: #047857; }
+.lr-dcr.is-pending   { color: #b45309; }
+.lr-dcr.is-none      { color: #94a3b8; }
+
+/* ---- Buttons in labor cards ---- */
+.labor-btn {
+  font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: #f1f5f9; color: #1e293b;
+  transition: background 80ms ease, transform 80ms ease;
+}
+.labor-btn:hover  { background: #e2e8f0; }
+.labor-btn:active { transform: translateY(1px); }
+.labor-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+.labor-btn-review {
+  background: #fef3c7; color: #78350f; border-color: #fde68a;
+}
+.labor-btn-review:hover { background: #fde68a; }
+.labor-btn-danger {
+  background: #fee2e2; color: #991b1b; border-color: #fecaca;
+}
+.labor-btn-danger:hover { background: #fecaca; }
+/* Phase 2A.2 — Remove from PTC button. Distinct from danger (Force close)
+   because removal is a softer, audit-only action. */
+.labor-btn-remove {
+  background: #e0e7ff; color: #3730a3; border-color: #c7d2fe;
+  margin-left: 6px;
+}
+.labor-btn-remove:hover { background: #c7d2fe; }
+/* Phase 2A.4 — Link DCR placeholder button. Amber to match DCR theme. */
+.labor-btn-linkdcr {
+  background: #fef3c7; color: #78350f; border-color: #fde68a;
+  margin-left: 6px;
+}
+.labor-btn-linkdcr:hover { background: #fde68a; }
+
+/* ==========================================================================
+   Phase 28A — payroll approval (per-row chip + buttons + bulk bar).
+   ========================================================================== */
+
+.lr-payroll-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 4px;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+.lr-payroll-chip.is-pending-review       { background: #f1f5f9; color: #475569; }
+.lr-payroll-chip.is-reviewed             { background: #dbeafe; color: #1e40af; }
+.lr-payroll-chip.is-approved-for-payroll { background: #d1fae5; color: #065f46; }
+.lr-payroll-chip.is-exported             { background: #064e3b; color: #ecfdf5; }
+
+/* Phase 28B — small amber OT chip next to payroll chip when a session
+   has any allocated overtime. Inline ".lr-ot-line" decorates the Worked
+   column's "+ Xh Ym OT" tail in matching amber. */
+.lr-ot-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  vertical-align: middle;
+}
+.lr-ot-line {
+  color: #b45309;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* Phase 29A — Approved Time Adjustment surface on the Worked column.
+   ".lr-adj-line" is the muted Original / +adj subtext under Final.
+   ".lr-adj-chip" is the green Approved badge mirrored from the Payroll
+   Exceptions tab's is-approved chip palette. */
+.lr-adj-line {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: #475569;
+  line-height: 1.3;
+}
+.lr-adj-delta {
+  color: #065f46;
+  font-weight: 600;
+}
+.lr-adj-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  vertical-align: middle;
+}
+.labor-be-ot {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-left: 4px;
+  border: 1px solid #fde68a;
+}
+
+/* ==========================================================================
+   Phase 28C — Payroll tab (period picker, verification banner,
+   per-employee summary table, recent exports placeholder).
+   ========================================================================== */
+
+.payroll-period-row {
+  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.payroll-period-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+}
+.payroll-period-select {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  min-width: 220px;
+}
+.payroll-custom-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.payroll-custom-row label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.payroll-custom-row input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.payroll-apply-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f6dd6;
+  background: #2f6dd6;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.payroll-apply-btn:hover { background: #1d4ed8; }
+.payroll-custom-err {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.payroll-block {
+  margin-top: 14px;
+}
+.payroll-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   Phase 29C — Payroll Readiness card. Sits above the Verification banner.
+   Three hours tiles + lock/export status rows + unresolved items list.
+   ========================================================================== */
+.payroll-readiness-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.payroll-readiness-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.payroll-readiness-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.payroll-readiness-period {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Hours tiles row */
+.payroll-ready-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.payroll-ready-tile {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.payroll-ready-tile.is-positive { border-color: #a7f3d0; background: #ecfdf5; }
+.payroll-ready-tile.is-negative { border-color: #fecaca; background: #fef2f2; }
+.payroll-ready-tile.is-final    { border-color: #1d4ed8; background: #eff6ff; }
+.payroll-ready-tile-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-ready-tile.is-final .payroll-ready-tile-label { color: #1e3a8a; }
+.payroll-ready-tile-value {
+  margin-top: 4px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.payroll-ready-tile.is-final .payroll-ready-tile-value { color: #1d4ed8; }
+.payroll-ready-tile.is-positive .payroll-ready-tile-value { color: #047857; }
+.payroll-ready-tile.is-negative .payroll-ready-tile-value { color: #b91c1c; }
+.payroll-ready-tile-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+/* Lock + Export status rows */
+.payroll-ready-status-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.payroll-ready-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.payroll-ready-status-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.payroll-ready-status-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.payroll-ready-status-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Unresolved items */
+.payroll-ready-items-block {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.payroll-ready-items-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.payroll-ready-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.payroll-ready-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-ready-item-body { flex: 1; }
+.payroll-ready-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+.payroll-ready-item.has-count  .payroll-ready-dot { background: #b91c1c; }
+.payroll-ready-item.is-zero    .payroll-ready-dot { background: #22c55e; }
+.payroll-ready-item.is-disabled { color: #64748b; }
+.payroll-ready-item.is-disabled .payroll-ready-dot { background: #cbd5e1; }
+.payroll-ready-ok {
+  color: #047857;
+  font-weight: 600;
+}
+.payroll-ready-na {
+  color: #64748b;
+  font-style: italic;
+}
+.payroll-ready-link-btn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #1e40af;
+  background: #fff;
+  color: #1e3a8a;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-ready-link-btn:hover { background: #dbeafe; }
+
+/* Phase 29D — Employee review bucket pills inline within the
+   Employee review item. Mirrors the dot-color logic so the line
+   visually reads as one whole status. */
+.payroll-ready-review-buckets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 4px;
+  align-items: center;
+}
+.payroll-ready-review-bucket {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.payroll-ready-review-bucket.is-reviewed {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.payroll-ready-review-bucket.has-count {
+  background: #fef3c7;
+  color: #78350f;
+  border-color: #fcd34d;
+}
+.payroll-ready-review-bucket.is-pending {
+  background: #ffffff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.payroll-ready-review-bucket.is-auto {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+}
+.payroll-ready-review-icon { font-size: 11px; line-height: 1; }
+.payroll-ready-review-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+@media (max-width: 700px) {
+  .payroll-ready-tiles { grid-template-columns: 1fr; }
+  .payroll-ready-item { flex-wrap: wrap; }
+  .payroll-ready-review-buckets { width: 100%; margin-left: 0; margin-top: 4px; }
+}
+
+/* ==========================================================================
+   Phase 29E-A — Payroll Workflow bar (UI scaffolding).
+   Five-stage progression: Review → Ready → Lock → Export → History.
+   No live writes in Phase A — Lock/Unlock buttons are disabled stubs.
+   ========================================================================== */
+.payroll-workflow-bar {
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.payroll-workflow-bar.is-blocked  { border-color: #fecaca; }
+.payroll-workflow-bar.is-ready    { border-color: #a7f3d0; }
+.payroll-workflow-bar.is-locked   { border-color: #1d4ed8; }
+.payroll-workflow-bar.is-exported { border-color: #94a3b8; background: #f8fafc; }
+.payroll-workflow-bar.is-custom   { border-color: #e2e8f0; background: #f8fafc; }
+.payroll-workflow-custom-note {
+  font-size: 13px;
+  color: #475569;
+}
+
+.payroll-workflow-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.payroll-workflow-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.payroll-workflow-period {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Stage strip. Connectors are flex children between stages. */
+.payroll-workflow-stages {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.payroll-workflow-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 84px;
+  text-align: center;
+  padding: 4px 6px;
+}
+.payroll-workflow-stage-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-workflow-stage-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+.payroll-workflow-stage-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.payroll-workflow-stage.is-done .payroll-workflow-stage-icon    { color: #047857; }
+.payroll-workflow-stage.is-done .payroll-workflow-stage-sub     { color: #047857; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-icon    { color: #1d4ed8; font-weight: 800; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-label   { color: #1d4ed8; }
+.payroll-workflow-stage.is-now  .payroll-workflow-stage-sub     { color: #1d4ed8; }
+.payroll-workflow-stage.is-blocked .payroll-workflow-stage-sub  { color: #b91c1c; }
+.payroll-workflow-stage.is-locked  .payroll-workflow-stage-sub  { color: #1d4ed8; }
+.payroll-workflow-stage.is-future  .payroll-workflow-stage-icon { opacity: 0.5; }
+.payroll-workflow-stage.is-future  .payroll-workflow-stage-sub  { opacity: 0.7; }
+
+/* Connectors. Heavy line for "completed" segments; thin grey for future. */
+.payroll-workflow-connector {
+  flex: 1 1 24px;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  margin: 0 2px;
+}
+.payroll-workflow-connector.is-done    { background: #047857; }
+.payroll-workflow-connector.is-now     { background: linear-gradient(to right, #047857 0%, #1d4ed8 70%, #cbd5e1 100%); }
+.payroll-workflow-connector.is-blocked { background: linear-gradient(to right, #047857 0%, #b91c1c 70%, #cbd5e1 100%); }
+.payroll-workflow-connector.is-locked  { background: #1d4ed8; }
+.payroll-workflow-connector.is-future  { background: #e2e8f0; }
+
+/* Status panel below the bar. Color matched to the active stage. */
+.payroll-workflow-panel {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-workflow-panel.is-blocked  { background: #fef2f2; border-color: #fecaca; }
+.payroll-workflow-panel.is-ready    { background: #ecfdf5; border-color: #a7f3d0; }
+.payroll-workflow-panel.is-locked   { background: #eff6ff; border-color: #c7d2fe; }
+.payroll-workflow-panel.is-exported { background: #f1f5f9; border-color: #cbd5e1; }
+.payroll-workflow-panel.is-review,
+.payroll-workflow-panel.is-empty    { background: #f8fafc; border-color: #e2e8f0; }
+
+.payroll-workflow-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+.payroll-workflow-panel-icon  { font-size: 16px; line-height: 1; }
+.payroll-workflow-panel-meta  { margin: 4px 0; font-size: 12.5px; color: #475569; }
+.payroll-workflow-panel-meta code {
+  background: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  font-size: 11.5px;
+}
+.payroll-workflow-panel-stats { margin: 4px 0 8px; font-size: 13px; font-weight: 600; }
+.payroll-workflow-panel-sub   { margin: 8px 0 0; font-size: 12px; color: #64748b; }
+.payroll-workflow-bullets {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  font-size: 12.5px;
+  color: #7f1d1d;
+}
+.payroll-workflow-bullets li { padding: 2px 0; }
+.payroll-workflow-explainer {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #475569;
+}
+.payroll-workflow-explainer li { padding: 1px 0; }
+
+/* CTA row — Lock / Continue / Unlock buttons. Phase A: all disabled. */
+.payroll-workflow-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.payroll-workflow-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.payroll-workflow-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.payroll-workflow-btn.is-lock {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+.payroll-workflow-btn.is-continue {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+.payroll-workflow-btn.is-unlock {
+  background: #ffffff;
+  color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+.payroll-workflow-phase-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+.payroll-workflow-status-msg {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+.payroll-workflow-status-msg[data-tone="ok"]    { color: #047857; }
+.payroll-workflow-status-msg[data-tone="error"] { color: #b91c1c; }
+
+/* Phase 29E-B — Labor Review action-cell "Period locked" pill. Replaces
+   Approve / Unapprove / Archive buttons on any session whose semi-
+   monthly period is currently locked. */
+.lr-period-lock-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+@media (max-width: 700px) {
+  .payroll-workflow-stages { gap: 4px; }
+  .payroll-workflow-stage { min-width: 64px; }
+  .payroll-workflow-stage-icon { font-size: 20px; }
+  .payroll-workflow-stage-label, .payroll-workflow-stage-sub { font-size: 10px; }
+}
+
+/* Verification Layer banner — 3 states. */
+.payroll-banner {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+.payroll-banner.is-ready   { background: #ecfdf5; border-color: #6ee7b7; }
+.payroll-banner.is-blocked { background: #fef3c7; border-color: #fbbf24; }
+.payroll-banner.is-empty   { background: #f1f5f9; border-color: #cbd5e1; }
+.payroll-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0f172a;
+}
+.payroll-banner.is-ready   .payroll-banner-head { color: #065f46; }
+.payroll-banner.is-blocked .payroll-banner-head { color: #78350f; }
+.payroll-banner.is-empty   .payroll-banner-head { color: #475569; }
+.payroll-banner-dot { font-size: 14px; }
+.payroll-banner-msg {
+  margin: 8px 0 0 0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.payroll-banner-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+}
+.payroll-banner-list li {
+  padding: 4px 0;
+  font-size: 13px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.payroll-banner-bullet { color: #78350f; font-weight: 700; }
+.payroll-link-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #fbbf24;
+  background: #fff;
+  color: #78350f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-link-btn:hover { background: #fef3c7; }
+.payroll-banner-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.payroll-export-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #047857;
+  background: #047857;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.payroll-export-note {
+  font-size: 12px;
+  font-weight: 600;
+  color: #65a30d;
+}
+
+/* Per-employee summary table — 10 columns. */
+.payroll-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.payroll-row {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1.6fr)
+    minmax(70px,  0.7fr)
+    minmax(60px,  0.6fr)
+    minmax(60px,  0.6fr)
+    minmax(60px,  0.6fr)
+    minmax(70px,  0.8fr)
+    minmax(50px,  0.5fr)
+    minmax(50px,  0.5fr)
+    minmax(50px,  0.5fr)
+    minmax(110px, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.payroll-row:last-child { border-bottom: 0; }
+.payroll-row-head {
+  background: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.payroll-row-total {
+  background: #f8fafc;
+  font-weight: 800;
+  border-top: 2px solid #cbd5e1;
+}
+.payroll-row .pr-col-emp  { font-weight: 600; color: #0f172a; }
+.payroll-row .pr-col-num  { font-variant-numeric: tabular-nums; text-align: right; }
+.payroll-row .pr-col-total { font-weight: 700; }
+.payroll-row .pr-col-drive { color: #94a3b8; }
+.payroll-row .pr-col-apv  { text-align: right; }
+
+.pr-apv {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.pr-apv-all      { background: #d1fae5; color: #065f46; }
+.pr-apv-partial  { background: #fef3c7; color: #78350f; }
+.pr-apv-none     { background: #f1f5f9; color: #475569; }
+.pr-apv-zero     { background: #f1f5f9; color: #94a3b8; }
+.pr-apv-exported { background: #064e3b; color: #ecfdf5; }
+
+.payroll-footnote {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+.payroll-footnote code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.payroll-exports-placeholder {
+  padding: 14px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+}
+.payroll-exports-placeholder p { margin: 0 0 4px 0; font-size: 13px; }
+.payroll-exports-placeholder p:last-child { margin: 0; }
+.payroll-exports-sub { font-size: 12px; color: #64748b; }
+
+/* Phase 28D — Recent Exports list + export/void affordances. */
+.payroll-export-btn.is-ready {
+  cursor: pointer;
+  opacity: 1;
+}
+.payroll-export-btn.is-ready:hover { background: #065f46; border-color: #065f46; }
+.payroll-export-btn.is-ready:active { transform: translateY(1px); }
+.payroll-export-row {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.payroll-export-row.is-voided {
+  background: #fafafa;
+  border-color: #d4d4d8;
+  opacity: 0.85;
+}
+.payroll-export-row-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.payroll-export-date   { font-weight: 700; font-variant-numeric: tabular-nums; }
+.payroll-export-period { color: #475569; }
+.payroll-export-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.payroll-export-badge.is-active { background: #d1fae5; color: #065f46; }
+.payroll-export-badge.is-voided { background: #fee2e2; color: #991b1b; }
+.payroll-export-overlap {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1e40af;
+}
+.payroll-export-row-meta {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12.5px;
+}
+.payroll-export-voided-line {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #991b1b;
+}
+.payroll-export-row-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* Phase 28D v3 — selector covers both <a> (legacy) and <button>
+   (auth-fetch download) so the styling stays consistent. */
+.payroll-export-download {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #1e40af;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.payroll-export-download:hover { background: #1e3a8a; }
+.payroll-export-download:disabled { opacity: 0.6; cursor: wait; }
+.payroll-export-no-url {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.payroll-export-void-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payroll-export-void-btn:hover { background: #fecaca; }
+.payroll-export-success-headline {
+  font-size: 14px;
+  color: #065f46;
+  margin: 0 0 6px;
+}
+
+@media (max-width: 900px) {
+  .payroll-row {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 4px;
+  }
+  .payroll-row-head { display: none; }
+  .payroll-row .pr-col-emp { grid-column: 1 / -1; }
+  .payroll-row .pr-col-apv { grid-column: 1 / -1; text-align: left; }
+}
+
+.labor-btn-approve {
+  background: #d1fae5; color: #065f46; border-color: #a7f3d0;
+  margin-left: 6px;
+}
+.labor-btn-approve:hover { background: #a7f3d0; }
+.labor-btn-unapprove {
+  background: #fef3c7; color: #92400e; border-color: #fde68a;
+  margin-left: 6px;
+}
+.labor-btn-unapprove:hover { background: #fde68a; }
+
+.labor-bulk-bar {
+  margin: 10px 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  background: #ecfdf5;
+}
+.labor-bulk-msg {
+  color: #065f46;
+  font-size: 13px;
+}
+.labor-bulk-cap {
+  color: #92400e;
+  font-weight: 600;
+  font-size: 12px;
+  margin-left: 4px;
+}
+.labor-bulk-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #047857;
+  background: #047857;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labor-bulk-btn:hover  { background: #065f46; border-color: #065f46; }
+.labor-bulk-btn:active { transform: translateY(1px); }
+.lr-removed-meta {
+  color: #4338ca;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.lr-removed-meta::before { content: "🚫 "; }
+/* Phase 2A.2 regression — muted placeholder for rows where neither
+   Review nor Remove buttons render. Keeps the Actions column boundary
+   visible on every row so admin sees the column even when empty. */
+.lr-no-actions { color: #94a3b8; font-size: 12px; }
+
+/* ---- Responsive: collapse the table on narrow widths ---- */
+@media (max-width: 980px) {
+  .labor-row {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: auto;
+    row-gap: 4px;
+  }
+  .labor-row-head { display: none; }
+  .labor-row .lr-col-date { grid-column: 1 / -1; font-weight: 600; color: #0f172a; }
+  .labor-row .lr-col-cust { grid-column: 1 / -1; color: #64748b; font-size: 12.5px; }
+  .labor-row .lr-col-geo  { grid-column: 1 / -1; }
+  .labor-row .lr-col-act  { grid-column: 1 / -1; text-align: left; }
+}
+
+/* ==========================================================================
+   Phase 2A.3 — date range controls, totals strip, by-employee list
+   ========================================================================== */
+
+.labor-range-row {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.labor-range-inputs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.labor-range-inputs label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.labor-range-inputs input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.labor-range-apply {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f6dd6;
+  background: #2f6dd6;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.labor-range-apply:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.labor-range-apply:active { transform: translateY(1px); }
+
+.labor-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.labor-filter-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-right: 2px;
+}
+/* Phase 2A.4 — status filter row sits below the date filter row. Reuses
+   the same chip-button styles so the two rows match visually. */
+.labor-status-filters { margin-top: 2px; }
+/* Phase 28A — separator pip between exception-state filters and the
+   new payroll-state filters so admins read them as two logical groups. */
+.labor-filter-sep {
+  color: #cbd5e1;
+  font-weight: 700;
+  padding: 0 4px;
+  user-select: none;
+}
+.labor-quick-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.labor-quick-btn:hover { background: #f1f5f9; }
+.labor-quick-btn.is-active {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: #fff;
+}
+.labor-range-err {
+  padding: 8px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.labor-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.labor-tile {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.labor-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.labor-tile-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.labor-tile-sub {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.labor-tile-sub span[title] {
+  text-decoration: dotted underline;
+}
+.labor-tile-running-dot { color: #16a34a; margin-right: 4px; }
+
+.labor-by-employee {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.labor-be-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(100px, 0.9fr) minmax(180px, 1.5fr) minmax(160px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+}
+.labor-be-row:last-child { border-bottom: 0; }
+.labor-be-name  { font-weight: 700; color: #0f172a; }
+.labor-be-count { color: #64748b; font-variant-numeric: tabular-nums; }
+.labor-be-time  { color: #1e293b; font-variant-numeric: tabular-nums; }
+.labor-be-running {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ccfbf1;
+  color: #115e59;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.labor-be-flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.labor-be-flag.is-review { background: #fee2e2; color: #991b1b; }
+.labor-be-flag.is-dcr    { background: #fef3c7; color: #78350f; }
+
+@media (max-width: 700px) {
+  .labor-be-row { grid-template-columns: 1fr; row-gap: 4px; }
+}
+
+/* ==========================================================================
+   Phase 29B — Sessions Filtering & Investigation Tools
+
+   New filter row layout (replaces .labor-range-row): three stacked rows
+   for date / pickers / status, plus an active-filter chip strip and the
+   existing range-error banner. Pickers row shows Pay period + Employee
+   + Search side-by-side on desktop.
+   ========================================================================== */
+
+.labor-filters {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.labor-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.labor-filter-row-pickers {
+  align-items: flex-end;
+  gap: 12px;
+}
+.labor-filter-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+.labor-filter-cell-search { flex: 1 1 280px; }
+.labor-select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  color: #0f172a;
+  min-width: 200px;
+}
+.labor-select:focus { outline: 2px solid #2f6dd6; outline-offset: 1px; }
+.labor-search-input {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 100%;
+  min-width: 240px;
+}
+.labor-search-input:focus { outline: 2px solid #2f6dd6; outline-offset: 1px; }
+
+/* Active-filter chip strip beneath the picker row. Each chip is a button
+   so the × is keyboard-activatable. */
+.labor-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.labor-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #1e40af;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labor-active-chip:hover { background: #bfdbfe; }
+.labor-active-chip > span[aria-hidden="true"] {
+  font-size: 13px;
+  line-height: 1;
+}
+.labor-active-clear {
+  margin-left: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.labor-active-clear:hover { color: #0f172a; }
+
+/* Sessions section header — small grey "showing X of Y · …" suffix. */
+.labor-sessions-count {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* By Employee — Phase 29B card upgrades.
+   Five columns now: name · session count · time · stats · flags.
+   Whole row is clickable. */
+.labor-by-employee .labor-be-row {
+  grid-template-columns:
+    minmax(160px, 1.3fr)
+    minmax(90px, 0.7fr)
+    minmax(160px, 1.4fr)
+    minmax(170px, 1.4fr)
+    minmax(150px, 1.2fr);
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+.labor-by-employee .labor-be-row:hover { background: #f8fafc; }
+.labor-by-employee .labor-be-row:focus-visible {
+  outline: 2px solid #2f6dd6;
+  outline-offset: -2px;
+}
+.labor-by-employee .labor-be-row.is-selected {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #1d4ed8;
+}
+.labor-be-check {
+  display: inline-block;
+  margin-left: 6px;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+.labor-be-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #475569;
+  font-size: 12.5px;
+}
+.labor-be-adj,
+.labor-be-exc {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.labor-be-adj.has-count {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.labor-be-exc.has-count {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+@media (max-width: 800px) {
+  .labor-filter-row-pickers { flex-direction: column; align-items: stretch; }
+  .labor-filter-cell { min-width: 0; }
+  .labor-by-employee .labor-be-row {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+}
+
+/* ==========================================================================
+   Phase 2A.1 — Pioneer Time Clock bridge block (inside Schedule tab).
+   ========================================================================== */
+
+.schedule-bridge-block {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.schedule-bridge-title {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.schedule-bridge-sub {
+  margin: 0;
+  color: var(--pc-text-muted, #64748b);
+  font-size: 13px;
+}
+.schedule-bridge-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+.schedule-bridge-row label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+.schedule-bridge-row input[type="date"],
+.schedule-bridge-row input[type="number"] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.schedule-bridge-dry {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 500;
+}
+.schedule-bridge-status {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--pc-text-muted, #64748b);
+}
+.schedule-bridge-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+.schedule-bridge-result {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.bridge-result-headline {
+  font-size: 13px;
+  color: #334155;
+  margin-bottom: 10px;
+}
+.bridge-result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 12px;
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+.bridge-result-stats > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.bridge-result-stats dt { font-size: 12px; color: #64748b; margin: 0; }
+.bridge-result-stats dd { font-weight: 700; font-variant-numeric: tabular-nums; margin: 0; color: #0f172a; }
+.bridge-result-skips dt { color: #94a3b8; }
+.bridge-result-skips dd { color: #64748b; }
+.bridge-result-detail {
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+.bridge-result-detail summary { cursor: pointer; font-weight: 600; color: #475569; }
+.bridge-result-detail ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.bridge-result-detail li {
+  padding: 3px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: #334155;
+}
+.bridge-result-detail li code {
+  background: #f1f5f9;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.bridge-result-errors li { color: #991b1b; font-family: ui-sans-serif, system-ui, sans-serif; }
+.bridge-detail-reason {
+  display: inline-block; padding: 0 5px; border-radius: 3px;
+  background: #fef3c7; color: #78350f; font-size: 10.5px;
+  margin-left: 4px;
+}
+
+/* ==========================================================================
+   Customer-edit modal — Phase 1g additions (Standing Notes summary +
+   Access & Security editor subgroups + raw Deputy notes block).
+   ========================================================================== */
+
+.standing-notes-summary {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #1e293b;
+}
+.standing-notes-empty {
+  margin: 0;
+  color: var(--pc-text-muted, #64748b);
+}
+.standing-notes-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.standing-notes-summary-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.standing-notes-summary-list li:last-child { border-bottom: 0; }
+.standing-notes-cat {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  margin-right: 6px;
+}
+.standing-notes-more {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: var(--pc-text-muted, #64748b);
+}
+
+/* Sub-group divider used inside Access & Security to separate
+   "Visible to techs" / "Admin-only" / "Imported (read-only)". */
+.admin-modal-body .field-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--pc-text-subtle, #64748b);
+  margin: 14px 0 6px 0;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+.admin-modal-body .field-section-label:first-of-type {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Read-only raw Deputy notes pre block. */
+.cust-edit-raw-deputy {
+  margin: 0;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+  color: #334155;
+}
+
+/* ==========================================================================
+   Sick Leave tab (Phase 1f) — per-tech balance table
+   ========================================================================== */
+
+.sick-leave-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  margin-top: 8px;
+}
+.sick-row {
+  display: grid;
+  grid-template-columns:
+    minmax(140px, 1.2fr)  /* name     */
+    minmax(180px, 1.8fr)  /* email    */
+    minmax(110px, 1fr)    /* avail    */
+    minmax(80px,  0.8fr)  /* used     */
+    minmax(80px,  0.8fr)  /* period   */
+    minmax(140px, 1.2fr)  /* updated  */
+    minmax(160px, 1.2fr); /* action   */
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  color: #1e293b;
+}
+.sick-row:last-child { border-bottom: 0; }
+.sick-row-head {
+  background: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.sick-row .sl-col-name  { font-weight: 600; color: #0f172a; }
+.sick-row .sl-col-email { color: #475569; }
+.sick-row .sl-col-avail,
+.sick-row .sl-col-used,
+.sick-row .sl-col-period { font-variant-numeric: tabular-nums; }
+.sick-row .sl-col-act   { text-align: right; }
+.sl-muted { color: #94a3b8; font-weight: 400; }
+.sl-cap-chip {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #78350f;
+  margin-left: 4px;
+}
+
+.sick-btn {
+  font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  background: #f1f5f9; color: #1e293b;
+  transition: background 80ms ease, transform 80ms ease;
+}
+.sick-btn:hover  { background: #e2e8f0; }
+.sick-btn:active { transform: translateY(1px); }
+.sick-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+.sick-btn-primary {
+  background: #dbeafe; color: #1e40af; border-color: #bfdbfe;
+}
+.sick-btn-primary:hover { background: #bfdbfe; }
+
+@media (max-width: 980px) {
+  .sick-row {
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: auto;
+    row-gap: 4px;
+  }
+  .sick-row-head { display: none; }
+  .sick-row .sl-col-email   { grid-column: 1 / -1; }
+  .sick-row .sl-col-updated { grid-column: 1 / -1; }
+  .sick-row .sl-col-act     { grid-column: 1 / -1; text-align: left; }
 }

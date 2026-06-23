@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1218" />
+  <title>Pioneer · Open Shifts</title>
+  <link rel="stylesheet" href="styles/ui-tokens.css" />
+  <link rel="stylesheet" href="styles/ui-shell.css" />
+  <link rel="stylesheet" href="styles/ui-cards.css" />
+  <link rel="stylesheet" href="styles/ui-chips.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/attendance.css" />
+  <link rel="stylesheet" href="styles/open-shifts.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+  <header class="brand-header">
+    <div class="brand-inner">
+      <span class="brand-mark">
+        <img class="brand-logo-img" src="assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning"
+             onerror="this.parentElement.classList.add('show-fallback');" />
+      </span>
+      <div class="brand-meta">
+        <div class="brand-name">Pioneer Commercial Cleaning</div>
+        <div class="brand-tag">Open Shifts</div>
+      </div>
+      <div class="staff-header-account" id="staff-header-account" hidden>
+        <div class="staff-header-identity">
+          <span class="staff-header-name" id="staff-header-name"></span>
+          <span class="staff-header-email" id="staff-header-email">—</span>
+        </div>
+        <button class="staff-header-btn" type="button" data-staff-signout>Sign out</button>
+      </div>
+    </div>
+    <nav class="role-nav" id="role-nav" data-current-page="team-hub" aria-label="Primary" hidden></nav>
+    <div class="brand-accent" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Open Shifts</h1>
+      <p class="subtitle">Help cover a shift — earn a $25 Rockstar bonus for stepping up.</p>
+    </section>
+
+    <section id="staff-auth-checking" class="card staff-auth-screen">
+      <div class="staff-auth-spinner" aria-hidden="true"></div>
+      <p class="staff-auth-title">Checking access…</p>
+    </section>
+    <section id="staff-auth-signin" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Pioneer Staff Sign-In</p>
+      <p class="staff-auth-sub">Sign in to view and pick up open shifts.</p>
+      <form id="staff-password-form" class="staff-password-form" novalidate>
+        <label class="staff-field"><span class="staff-field-label">Email</span>
+          <input type="email" id="staff-email" autocomplete="username" required /></label>
+        <label class="staff-field"><span class="staff-field-label">Password</span>
+          <input type="password" id="staff-password" autocomplete="current-password" required /></label>
+        <div id="staff-auth-inline-msg" class="staff-auth-inline-msg" role="alert" hidden></div>
+        <button type="submit" class="staff-password-btn" id="staff-password-submit">Sign in</button>
+      </form>
+      <div class="staff-auth-divider" aria-hidden="true"><span>or</span></div>
+      <button class="staff-google-btn is-secondary" id="staff-signin-btn" type="button">
+        <span>Continue with Google</span>
+      </button>
+    </section>
+    <section id="staff-auth-denied" class="card staff-auth-screen" hidden>
+      <p class="staff-auth-title">Access Not Authorized</p>
+      <p class="staff-auth-sub" id="staff-auth-denied-msg">Your account is not enabled.</p>
+      <button class="staff-google-btn is-secondary" type="button" data-staff-signout>Sign out</button>
+    </section>
+
+    <div id="staff-auth-content" hidden>
+      <!-- Available shifts (status: open) — the things a tech can claim. -->
+      <section class="card os-card" id="os-available-card">
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">Available now</h2>
+          <p class="team-hub-section-sub">
+            First to accept gets the shift. Coverage is confirmed by Kirby; bonus is paid out after confirmation.
+          </p>
+        </header>
+        <div class="os-status" id="os-status-loading" aria-live="polite">Loading open shifts…</div>
+        <div class="os-status os-status--error" id="os-status-error" hidden></div>
+        <div class="os-empty" id="os-empty" hidden>
+          No open shifts right now. Check back when a call-out happens.
+        </div>
+        <ul class="os-list" id="os-available-list"></ul>
+      </section>
+
+      <!-- Accepted / confirmed shifts the current tech has personally taken. -->
+      <section class="card os-card os-history" id="os-mine-card" hidden>
+        <header class="team-hub-section-head">
+          <h2 class="team-hub-section-title">Your covered shifts</h2>
+          <p class="team-hub-section-sub">Open shifts you've accepted. Bonus status is shown next to each.</p>
+        </header>
+        <ul class="os-list" id="os-mine-list"></ul>
+      </section>
+
+      <!-- Confirmation banner — replaces the available list after a
+           successful accept until the user navigates away. -->
+      <div class="os-toast" id="os-toast" hidden></div>
+    </div>
+
+    <footer class="app-footer">
+      <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
+      <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code></p>
+    </footer>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="staff-auth.js"></script>
+  <script src="celebrate.js?v=20260528-celebrate"></script>
+  <script src="open-shifts.js?v=20260528-celebrate"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

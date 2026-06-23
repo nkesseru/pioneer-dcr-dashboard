@@ -13,9 +13,16 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="admin.css?v=20260616-lock-workflow-B" />
   <link rel="stylesheet" href="training.css" />
   <link rel="stylesheet" href="styles/admin-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
 </head>
 <body class="admin-body">
 
@@ -69,15 +76,11 @@
     <section class="hero hero-admin">
       <h1>DCR Hub — Admin</h1>
       <p class="subtitle">Customers, techs, and recent submissions.</p>
+      <p class="subtitle" style="margin-top:6px;font-size:13px;">
+        Manager?
+        <a href="/manager" style="color:#fff;text-decoration:underline;font-weight:600;">Office Manager Mission Control →</a>
+      </p>
     </section>
-
-    <!-- Phase-1 access warning. Now backed by an auth gate (Google sign-in
-         + email allowlist); kept visible as a reminder that this page is
-         internal-only. -->
-    <div class="admin-warning" role="status">
-      <strong>Internal use only.</strong>
-      Sign in with your Pioneer Google account. Don't share this URL externally.
-    </div>
 
     <!-- ================== Auth views (mutually exclusive) ================== -->
 
@@ -138,46 +141,136 @@
          user's email matches the allowlist. -->
     <div id="auth-content" hidden>
 
-    <!-- ============ Admin ops overview (Phase 2 normalization) ============
-         Top-of-page command-center summary. Three modules in one block:
-           1. .health-card  — dark "Today's Operations" headline + checklist
-           2. global search — proxies the active tab's per-tab search input
-           3. .kpi-grid     — six normalized KPI cards
-         All counts come from the existing in-memory caches (customers,
-         techs, dcrs, supplyRequests, dcrIssues) plus a single lightweight
-         inspections-this-week query. The Zapier-failures signal moved into
-         the Day Health checklist so the KPI strip stays focused on the six
-         tiles the spec calls for. -->
+    <!-- ============ Admin ops overview ============
+         Top-of-page command-center summary. Two modules in one block:
+           1. .health-card  — dark "Today's Operations" headline + native
+                              PioneerOps DCR-pipeline metrics
+           2. .kpi-grid     — compact attention KPIs (per-tab search lives
+                              INSIDE each tab panel; there is no global
+                              search bar here on purpose)
+         All counts come from in-memory caches (customers, techs, dcrs,
+         supplyRequests, dcrIssues) plus two lightweight 24h-window
+         queries on dcr_email_payloads + customer_feedback (admin-only
+         per firestore.rules). See refreshDayHealthMetrics24h. -->
+    <!-- Phase 33D-F admin layout overrides — keep them all here so the
+         change history is auditable in one place and admin.css stays
+         untouched. -->
+    <style>
+      /* 33E — widen + center the admin canvas (was 980px → felt narrow
+         on a wide desktop and "right-shifted" the dark MC card). */
+      .admin-main { max-width: 1160px; }
+
+      /* 33F — Hide the legacy 5-tile KPI strip ("attention-strip"). Every
+         signal it surfaces (Open Supply, DCR Email Off, Need Assignments,
+         New Issues, Inspections This Week) is now redundant with Mission
+         Control alerts. The 5 small cards rendered as "skinny floating
+         vertical tiles" on a wide canvas and broke the page composition.
+         To restore: delete this rule. The DOM + click wiring on the
+         strip are intact in admin.js — nothing else needs to be
+         re-enabled. */
+      #attention-strip { display: none !important; }
+
+      /* 33E — full-width pin on the legacy DCR Email Metrics collapsed
+         details so it can't be visually misread as a side card. */
+      #admin-legacy-dcr-email-metrics { width: 100%; display: block; }
+
+      /* 33F — tighten the gap between MC and Admin Control Center. With
+         the KPI strip hidden, the only ops-overview children are MC and
+         the collapsed legacy DCR row, so total ops-overview height drops
+         to ~MC + ~30px summary. Sibling gap pulled from 6px to 4px and
+         section bottom-margin from 6px to 4px so the nav sits ~16-20px
+         below MC + legacy row. */
+      #admin-ops-overview            { margin-bottom: 4px; }
+      #admin-ops-overview > * + *    { margin-top: 4px; }
+
+      /* 33E — trim hero bottom padding by 2px so MC sits one notch
+         closer to the page title without crowding the subtitle. */
+      .hero-admin { padding-bottom: 2px; }
+    </style>
     <section class="admin-ops-overview" id="admin-ops-overview" aria-label="Operations overview">
 
+      <!-- ============ PioneerOps Mission Control (Phase 31) ============
+           Top-of-page operational snapshot. Replaces the leading-with-
+           DCR-email-metrics design with a 6-card view oriented around
+           what matters at shift rollout: shifts → DCRs → clock issues
+           → supply → readiness → payroll exceptions. Ops day window
+           is 4 PM Pacific cutoff (yesterday 4 PM → today 4 PM). The
+           legacy DCR-email-pipeline card below this is preserved in a
+           collapsed `<details>` so the old metrics remain one click
+           away — not removed. -->
+      <section id="mission-control" aria-label="PioneerOps Mission Control"></section>
+
+      <!-- "Current Ops Day" — native PioneerOps DCR pipeline health.
+           Window is Pioneer ops-day-aligned (4 PM Pacific cutoff, see
+           getOpsDayWindow() in admin.js), not midnight or rolling 24h.
+           Layout:
+             1. Eyebrow "Current Ops Day" + dynamic title + window label
+                (e.g., "Yesterday 4 PM → Today 4 PM")
+             2. Headline stat row: New issues / DCR emails sent /
+                Failed DCR emails — all "· ops day"
+             3. Dashboard bullets: Customer links active / Delivered /
+                Failures / Feedback — all "· ops day"
+             4. Yesterday Review (collapsible) — previous ops-day counts
+             5. Footer line — operational summary + (optional) Review link
+           Open tracking is intentionally NOT shown — we don't track opens
+           today, so a fake "—" or zero would mislead. See the TODO block
+           in admin.js for the future tracking-pixel / click-event plan. -->
+      <details class="admin-legacy-dcr-email-metrics" id="admin-legacy-dcr-email-metrics" style="margin-bottom:6px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#64748b;padding:6px 10px;background:#f4f6fb;border:1px solid #e2e6ee;border-radius:8px;list-style:revert;">Legacy DCR Email Metrics (native pipeline send-side stats)</summary>
+        <div style="margin-top:10px;">
       <section class="health-card admin-day-health" id="admin-day-health" data-status="healthy">
         <header class="health-head">
-          <span class="health-eyebrow">Today's Operations</span>
-          <h2 class="health-title" id="admin-day-health-title">Everything looks stable today.</h2>
+          <span class="health-eyebrow">Current Ops Day</span>
+          <h2 class="health-title" id="admin-day-health-title">Loading native DCR pipeline metrics…</h2>
+          <!-- Pacific-anchored window label, populated by
+               refreshAdminDayHealth from the dayHealthOps window.
+               Examples: "Today 4 PM → Tomorrow 4 PM" /
+                         "Yesterday 4 PM → Today 4 PM". -->
+          <p class="health-window" id="admin-day-health-window" hidden></p>
         </header>
-        <p class="health-summary" id="admin-day-health-summary">Loading the day's operational signals…</p>
+
+        <!-- Headline stats. Each tile renders a single big number with
+             a tight label. The failures tile (admin-day-health-stat-failures-wrap)
+             stays hidden when there have been zero failures in the
+             current ops day so the card reads as calm. -->
+        <div class="admin-day-health-stats" id="admin-day-health-stats">
+          <div class="admin-day-health-stat" data-tone="neutral">
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-new-issues">—</span>
+            <span class="admin-day-health-stat-label">New issues · ops day</span>
+          </div>
+          <div class="admin-day-health-stat" data-tone="positive">
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-emails-sent">—</span>
+            <span class="admin-day-health-stat-label">DCR emails sent · ops day</span>
+          </div>
+          <div class="admin-day-health-stat admin-day-health-stat-bad"
+               id="admin-day-health-stat-failures-wrap" data-tone="attention" hidden>
+            <span class="admin-day-health-stat-value" id="admin-day-health-stat-failures">—</span>
+            <span class="admin-day-health-stat-label">Failed DCR emails · ops day</span>
+          </div>
+        </div>
+
         <ul class="health-checklist" id="admin-day-health-checklist">
-          <li data-state="ok"    id="admin-day-health-li-assigned">All active techs assigned</li>
-          <li data-state="ok"    id="admin-day-health-li-dcr">DCR delivery healthy</li>
-          <li data-state="ok"    id="admin-day-health-li-issues">No new operational issues</li>
+          <li data-state="ok" id="admin-day-health-li-links">— customer links active</li>
+          <li data-state="ok" id="admin-day-health-li-delivered">— DCR emails delivered · ops day</li>
+          <li data-state="ok" id="admin-day-health-li-failures">0 DCR email failures · ops day</li>
+          <li data-state="ok" id="admin-day-health-li-feedback">— customer feedback received · ops day</li>
         </ul>
+
+        <!-- Previous Ops Day collapsible summary. Hidden until metrics
+             load so we never show a placeholder line. Compact /
+             muted on purpose — admins glance, optionally expand. -->
+        <details class="health-prev" id="admin-day-health-prev" hidden>
+          <summary>Yesterday Review · Previous Ops Day</summary>
+          <p class="health-prev-line" id="admin-day-health-prev-summary">—</p>
+        </details>
+
         <footer class="health-foot">
-          <span id="admin-day-health-foot-left">Live summary from open caches</span>
+          <span id="admin-day-health-foot-left">Native PioneerOps metrics · 4 PM Pacific ops-day cutoff</span>
           <a href="#admin-ops-overview" id="admin-day-health-foot-right" hidden>Review</a>
         </footer>
       </section>
-
-      <div class="admin-global-search" role="search">
-        <span class="admin-global-search-icon" aria-hidden="true">🔎</span>
-        <input type="search" id="admin-global-search-input"
-               class="admin-global-search-input"
-               placeholder="Search customers, techs, DCRs…"
-               autocomplete="off"
-               aria-label="Search across the active admin tab" />
-        <span class="admin-global-search-hint" id="admin-global-search-hint" aria-live="polite">
-          Filtering: Customers
-        </span>
-      </div>
+        </div>
+      </details>
 
       <!-- The strip keeps id="attention-strip" so the existing
            wireAttentionStrip() click delegator and every
@@ -219,35 +312,33 @@
           <span class="kpi-value" id="attn-inspections-week">—</span>
           <span class="kpi-meta"  id="attn-inspections-week-meta">Last 7 days</span>
         </a>
-        <article class="kpi-card" data-tone="neutral"
-                 title="Month-to-date budget integration is not yet wired">
-          <span class="kpi-label">MTD Budget Health</span>
-          <span class="kpi-value" id="attn-mtd-budget">—</span>
-          <span class="kpi-meta">Not connected yet</span>
-        </article>
       </div>
     </section>
 
-    <!-- Control-center microcopy — calmer feel than landing on a wall
-         of tabs. The grouped nav below partitions tabs into three
-         operational buckets so the page reads as a tool, not a
-         spreadsheet. -->
-    <div class="admin-control-intro">
-      <span class="admin-control-eyebrow">Pioneer Control Center</span>
-      <p class="admin-control-sub">Operational tabs grouped by intent. Counts on the right are calm signals — they grow as work piles up, not alarms.</p>
-    </div>
+    <!-- ============ Admin Control Center ============
+         Compact navigation card. Sits directly under Today's Operations
+         + the KPI strip and directly above the active tab panel so the
+         user can scan: signals → menu → content with no empty space.
 
+         All search lives INSIDE each tab panel (#customer-search,
+         #tech-search, …) — there is no global search bar here. Group
+         labels are inline eyebrow tags so the card reads as ONE menu,
+         not three nested cards. -->
     <nav class="admin-tabs admin-tabs-grouped" role="tablist" aria-label="Admin sections">
-      <!-- ---- Core Ops ---- -->
-      <div class="admin-tabs-group" data-group="core">
+      <header class="admin-tabs-header">
+        <span class="admin-tabs-title">Admin Control Center</span>
+      </header>
+
+      <!-- ---- Daily Ops (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="daily-ops">
         <span class="admin-tabs-group-label">
           <span class="admin-tabs-group-icon" aria-hidden="true">🧭</span>
-          Core Ops
+          Daily Ops
         </span>
         <div class="admin-tabs-row">
           <button class="admin-tab is-active" data-tab="customers" role="tab" aria-selected="true">Customers</button>
-          <button class="admin-tab"           data-tab="techs"     role="tab" aria-selected="false">Cleaning Techs</button>
           <button class="admin-tab"           data-tab="dcrs"      role="tab" aria-selected="false">Recent DCRs</button>
+          <button class="admin-tab"           data-tab="yesterday" role="tab" aria-selected="false">Yesterday's Work</button>
           <button class="admin-tab"           data-tab="supply"    role="tab" aria-selected="false">
             Supply Requests
             <span class="admin-tab-badge" id="supply-tab-badge"
@@ -255,6 +346,55 @@
                   aria-label="Open supply requests"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="feed"      role="tab" aria-selected="false">Feed</button>
+        </div>
+      </div>
+
+      <!-- ---- People (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="people">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">👥</span>
+          People
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="techs"        role="tab" aria-selected="false">Cleaning Techs</button>
+          <button class="admin-tab"           data-tab="admins"       role="tab" aria-selected="false">Admins</button>
+          <button class="admin-tab"           data-tab="tech-health"  role="tab" aria-selected="false">
+            Tech Health
+            <span class="admin-tab-badge" id="tech-health-tab-badge"
+                  title="Techs flagged Watch or Needs Support"
+                  aria-label="Techs needing attention"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="attendance"   role="tab" aria-selected="false">
+            Attendance
+            <span class="admin-tab-badge" id="attendance-tab-badge"
+                  title="Pending time-off requests + new call-outs"
+                  aria-label="Pending attendance items"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="office-issues" role="tab" aria-selected="false">Office Issues</button>
+        </div>
+      </div>
+
+      <!-- ---- Payroll & Labor (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="payroll-labor">
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">💵</span>
+          Payroll &amp; Labor
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab"           data-tab="schedule"            role="tab" aria-selected="false">Schedule</button>
+          <button class="admin-tab"           data-tab="labor-review"        role="tab" aria-selected="false">Labor</button>
+          <button class="admin-tab"           data-tab="payroll"             role="tab" aria-selected="false">Payroll</button>
+          <button class="admin-tab"           data-tab="payroll-exceptions"  role="tab" aria-selected="false">
+            Payroll Exceptions
+            <span class="admin-tab-badge" id="payroll-exceptions-tab-badge"
+                  title="Pending time adjustment requests"
+                  aria-label="Pending time adjustment requests"
+                  hidden>0</span>
+          </button>
+          <button class="admin-tab"           data-tab="sick-leave"          role="tab" aria-selected="false">Sick Leave</button>
         </div>
       </div>
 
@@ -286,6 +426,13 @@
                   aria-label="Notes needing review"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="pending-uploads" role="tab" aria-selected="false">
+            Pending Uploads
+            <span class="admin-tab-badge" id="pending-uploads-badge"
+                  title="DCRs queued on tech devices waiting to upload"
+                  aria-label="Pending DCR uploads"
+                  hidden>0</span>
+          </button>
           <button class="admin-tab"           data-tab="suggestions" role="tab" aria-selected="false">
             Note Suggestions
             <span class="admin-tab-badge" id="suggestions-pending-badge"
@@ -293,21 +440,32 @@
                   aria-label="Pending suggestions"
                   hidden>0</span>
           </button>
+          <button class="admin-tab"           data-tab="improvements" role="tab" aria-selected="false">
+            Improvements
+            <span class="admin-tab-badge" id="improvements-tab-badge"
+                  title="New submissions awaiting review"
+                  aria-label="New improvement submissions" hidden>0</span>
+          </button>
         </div>
       </div>
 
-      <!-- ---- System ---- -->
-      <div class="admin-tabs-group" data-group="system">
+      <!-- ---- System Setup (V20260616 regroup) ---- -->
+      <div class="admin-tabs-group" data-group="system-setup">
         <span class="admin-tabs-group-label">
           <span class="admin-tabs-group-icon" aria-hidden="true">⚙</span>
-          System
+          System Setup
         </span>
         <div class="admin-tabs-row">
-          <button class="admin-tab"           data-tab="feed"          role="tab" aria-selected="false">Feed</button>
-          <button class="admin-tab"           data-tab="announcements" role="tab" aria-selected="false">Announcements</button>
-          <button class="admin-tab"           data-tab="admins"        role="tab" aria-selected="false">Admins</button>
-          <button class="admin-tab"           data-tab="training"      role="tab" aria-selected="false">Training</button>
-          <button class="admin-tab"           data-tab="deputy"        role="tab" aria-selected="false">Deputy</button>
+          <button class="admin-tab"           data-tab="deputy"          role="tab" aria-selected="false">Deputy</button>
+          <button class="admin-tab"           data-tab="pilot-readiness" role="tab" aria-selected="false">Pilot Readiness</button>
+          <button class="admin-tab"           data-tab="training"        role="tab" aria-selected="false">Training</button>
+          <button class="admin-tab"           data-tab="announcements"   role="tab" aria-selected="false">Announcements</button>
+          <button class="admin-tab"           data-tab="sos"             role="tab" aria-selected="false">
+            SOS Events
+            <span class="admin-tab-badge" id="sos-tab-badge"
+                  title="Open SOS events awaiting acknowledgment"
+                  aria-label="Open SOS events" hidden>0</span>
+          </button>
         </div>
       </div>
     </nav>
@@ -434,6 +592,49 @@
       <div class="admin-status admin-empty"   id="dcr-empty" hidden>No DCR submissions yet.</div>
 
       <div class="admin-list" id="dcr-list" role="list"></div>
+    </section>
+
+    <!-- ================== Yesterday's Work / Nightly Recap ================== -->
+    <!-- Admin-only operational recap for the previous ops day window
+         (4pm PT → 4pm PT). Tells admin "what happened last night" with
+         per-tech grouping, shift→DCR matching, and status traffic lights.
+         Pure frontend — admin reads cover every collection it needs. -->
+    <section class="card admin-panel" data-panel="yesterday" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Yesterday's Work</h2>
+          <p class="panel-sub" id="yesterday-window-label">Pioneer ops window · 4pm → 4pm Pacific</p>
+        </div>
+        <div class="panel-header-actions yesterday-date-controls">
+          <button class="panel-action" id="yesterday-prev-day" type="button" aria-label="Previous day">←</button>
+          <input class="yesterday-date-input" id="yesterday-date" type="date" />
+          <button class="panel-action" id="yesterday-next-day" type="button" aria-label="Next day">→</button>
+          <button class="panel-action" id="yesterday-refresh" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <div class="admin-status admin-loading" id="yesterday-loading" hidden>Pulling shifts, sessions, DCRs, and email status…</div>
+      <div class="admin-status admin-error"   id="yesterday-error"   hidden></div>
+
+      <div id="yesterday-summary" class="yesterday-summary" hidden></div>
+
+      <div id="yesterday-by-tech" class="yesterday-by-tech"></div>
+
+      <div id="yesterday-unmatched-dcrs" class="yesterday-extra" hidden>
+        <h3 class="yesterday-extra-head">Unmatched DCRs</h3>
+        <p class="yesterday-extra-sub">DCRs submitted that don't link to a scheduled shift in this window.</p>
+        <div id="yesterday-unmatched-dcrs-list"></div>
+      </div>
+
+      <div id="yesterday-unmatched-shifts" class="yesterday-extra" hidden>
+        <h3 class="yesterday-extra-head">Unmatched shifts</h3>
+        <p class="yesterday-extra-sub">Scheduled shifts with no submitted DCR. Top of the follow-up list.</p>
+        <div id="yesterday-unmatched-shifts-list"></div>
+      </div>
+
+      <div class="admin-status admin-empty" id="yesterday-empty" hidden>
+        No scheduled work in this window.
+      </div>
     </section>
 
     <!-- ================== Supply Requests ================== -->
@@ -929,6 +1130,97 @@
       </div>
     </section>
 
+    <!-- ================== Pilot Readiness ================== -->
+    <!-- Admin-only pre-rollout audit. Runs the same engine as
+         `node scripts/pilot-readiness-check.js` against every active
+         cleaning_techs row. Read-only — no writes, no test docs. -->
+    <section class="card admin-panel" data-panel="pilot-readiness" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Pilot Readiness</h2>
+          <p class="panel-sub">
+            Pre-flight check for every active cleaning tech. Verifies Firebase Auth,
+            Deputy mapping, upcoming shifts, customer setup, and the structural
+            inputs each Firestore rule needs. No writes — safe to run repeatedly.
+          </p>
+        </div>
+        <div class="panel-header-actions">
+          <button class="panel-action" id="pilot-readiness-run" type="button">Run check</button>
+          <button class="panel-action" id="pilot-readiness-refresh" type="button" hidden>Refresh</button>
+          <button class="panel-action" id="pilot-readiness-copy" type="button" hidden>Copy report</button>
+        </div>
+      </header>
+
+      <div class="admin-status admin-loading" id="pilot-readiness-loading" hidden>Running checks — this can take 10–30 seconds depending on roster size…</div>
+      <div class="admin-status admin-error"   id="pilot-readiness-error"   hidden></div>
+
+      <div id="pilot-readiness-summary" class="pilot-readiness-summary" hidden></div>
+      <div id="pilot-readiness-results" class="pilot-readiness-results" hidden></div>
+
+      <div class="admin-status admin-empty" id="pilot-readiness-empty" hidden>
+        No active cleaning_techs to check. Add a tech in the Cleaning Techs tab first.
+      </div>
+    </section>
+
+    <!-- ================== SOS Events ==================
+         Pioneer SOS — Phase 1 lone-worker protection. Real-time read
+         of `emergency_events`. Admin-only via Firestore rules.
+         Severity-driven chrome. Resolve workflow with notes. -->
+    <section class="card admin-panel" data-panel="sos" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">SOS Events</h2>
+          <p class="panel-sub">
+            Live feed of Pioneer SOS alerts. Help-needed (amber) and emergency
+            (red) events fan out via SMS to April, Kirby, and Nick. Mark
+            resolved once the situation is handled.
+          </p>
+        </div>
+        <button class="panel-action" id="sos-refresh" type="button">Refresh</button>
+      </header>
+
+      <div class="sos-filter-bar">
+        <button type="button" class="sos-filter is-active" data-filter="open">Open</button>
+        <button type="button" class="sos-filter" data-filter="critical">Critical only</button>
+        <button type="button" class="sos-filter" data-filter="resolved">Resolved</button>
+        <button type="button" class="sos-filter" data-filter="all">All</button>
+      </div>
+
+      <div class="admin-status admin-loading" id="sos-loading" hidden>Loading SOS events…</div>
+      <div class="admin-status admin-error"   id="sos-error" hidden></div>
+      <div class="admin-status admin-empty"   id="sos-empty" hidden>No SOS events yet — quiet shift, good.</div>
+
+      <div class="sos-list" id="sos-list" role="list"></div>
+    </section>
+
+    <!-- ================== Pending DCR Uploads (Phase 31D) ================== -->
+    <!-- Read-only admin view of dcr_pending_uploads — DCRs queued on tech
+         devices waiting to upload. Backed by the IndexedDB queue worker
+         (queue/queue-worker.js). Empty when OFFLINE_QUEUE_ENABLED is off
+         in production (no shadow docs are ever written). -->
+    <section class="card admin-panel" data-panel="pending-uploads" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Pending DCR Uploads</h2>
+          <p class="panel-sub" id="pending-uploads-count">— pending uploads</p>
+        </div>
+        <button class="panel-action" id="pending-uploads-refresh" type="button"
+                title="Re-fetch pending DCR uploads">Refresh</button>
+      </header>
+
+      <div class="status-row">
+        <p class="status-loading" id="pending-uploads-loading" hidden>Loading pending uploads…</p>
+        <p class="status-empty"   id="pending-uploads-empty"   hidden>No pending DCR uploads.</p>
+        <p class="status-error"   id="pending-uploads-error"   hidden></p>
+      </div>
+
+      <div class="admin-list pu-list" id="pending-uploads-list" role="list"></div>
+
+      <p class="panel-footnote" style="margin-top:14px;font-size:12px;color:var(--pc-text-muted);">
+        Source: <code>dcr_pending_uploads</code> Firestore collection. Shadow docs are written by the IndexedDB queue worker on enqueue and deleted when the DCR successfully uploads to <code>dcr_submissions</code>. While <code>OFFLINE_QUEUE_ENABLED</code> is false in production, this list will be empty — the worker's shadow writes never fire.
+      </p>
+    </section>
+
     <!-- ================== Service Recoveries ================== -->
     <!-- Operational board for follow-up tasks tied to a customer
          (and optionally an inspection). Admin-only — service
@@ -979,6 +1271,1081 @@
       <div class="admin-status admin-empty"   id="recoveries-empty" hidden>No service recoveries yet. Create one from an inspection's detail view.</div>
 
       <div class="admin-list" id="recoveries-list" role="list"></div>
+    </section>
+
+    <!-- ================== Help Improve Pioneer ==================
+         Admin review surface for the operational improvement channel
+         (and separate protected-concern reports). Reads
+         pioneer_improvements. Admin-only; rule enforces the read gate. -->
+    <section class="card admin-panel" data-panel="improvements" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Help Improve Pioneer</h2>
+          <p class="panel-sub">
+            Operational improvement ideas from the team, plus a separate
+            protected-concern channel. Triage with status, follow up if
+            needed, mark Implemented when something ships.
+          </p>
+        </div>
+        <button class="panel-action" id="improvements-refresh" type="button">Refresh</button>
+      </header>
+
+      <div class="improvements-filter-bar">
+        <button type="button" class="improvements-filter is-active" data-filter="open">Open</button>
+        <button type="button" class="improvements-filter" data-filter="implemented">Implemented</button>
+        <button type="button" class="improvements-filter" data-filter="protected">Protected only</button>
+        <button type="button" class="improvements-filter" data-filter="all">All</button>
+      </div>
+
+      <div class="admin-status admin-loading" id="improvements-loading" hidden>Loading submissions…</div>
+      <div class="admin-status admin-error"   id="improvements-error" hidden></div>
+      <div class="admin-status admin-empty"   id="improvements-empty" hidden>No submissions yet. Share the /improve.html link with the team.</div>
+
+      <div class="improvements-list" id="improvements-list" role="list"></div>
+    </section>
+
+    <!-- ================== Tech Health ==================
+         Operational support dashboard. NOT surveillance, NOT public
+         ranking. Admin-only. Reads existing PioneerOps signals over
+         the trailing 30 days to surface reliability, positive
+         contribution, and watch signals per cleaning tech.
+
+         Statuses:
+           • stable        — default; nothing to flag
+           • watch         — early-warning thresholds met (e.g.,
+                             ≥ 2 call-outs OR ≥ 2 over-budget DCRs)
+           • needs-support — clearer pattern (≥ 4 call-outs); admin
+                             should check in supportively
+
+         Positive surfacing leads:
+           DCRs submitted, open-shift pickups, Rockstar bonuses,
+           5-star inspections.
+
+         Phase 2 TODO:
+           • midnight cron: shifts that ended in Deputy with no
+             matching DCR → email Kirby + flag tech as Watch
+           • complaint/compliment linkage via dcrId join
+           • customer continuity (consistent customers vs frequent
+             reassignments)
+           • opt-in "support check-in" workflow with manager notes -->
+    <section class="card admin-panel" data-panel="tech-health" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Tech Health</h2>
+          <p class="panel-sub">
+            Operational support view. Last 30 days, per active tech. Use this to <strong>spot patterns and check in</strong> — not to score or rank.
+          </p>
+        </div>
+        <button class="panel-action" id="tech-health-refresh" type="button">Refresh</button>
+      </header>
+
+      <nav class="tech-health-filter" role="tablist" aria-label="Filter by status">
+        <button class="tech-health-pill is-active" data-th-filter="all" role="tab" aria-selected="true">All</button>
+        <button class="tech-health-pill"           data-th-filter="needs-support" role="tab" aria-selected="false">Needs Support</button>
+        <button class="tech-health-pill"           data-th-filter="watch"        role="tab" aria-selected="false">Watch</button>
+        <button class="tech-health-pill"           data-th-filter="stable"       role="tab" aria-selected="false">Stable</button>
+      </nav>
+
+      <div class="admin-status admin-loading" id="tech-health-loading">Loading tech health…</div>
+      <div class="admin-status admin-error"   id="tech-health-error" hidden></div>
+      <div class="admin-status admin-empty"   id="tech-health-empty" hidden>No active techs to display.</div>
+
+      <div class="tech-health-list" id="tech-health-list" role="list"></div>
+
+      <p class="tech-health-note">
+        This view is for operational support. Watch flags are early signals — they're a prompt to talk with the tech, not a judgment.
+      </p>
+    </section>
+
+    <!-- ================== Attendance (Time-Off + Call-Outs) ================== -->
+    <!-- Office-manager surface for the two attendance flows.
+         Tabs: Pending Time Off · Approved Time Off · Call-Outs · Calendar.
+
+         Phase 2 TODO:
+           • Cloud Function on call_outs/time_off_requests create →
+             email Kirby (replaces the in-app notification doc)
+           • Notify tech back when status changes (approved/denied/
+             acknowledged/resolved)
+           • Blackout windows + max-people-off-per-day rule -->
+    <section class="card admin-panel" data-panel="attendance" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Time-Off & Call-Outs</h2>
+          <p class="panel-sub">
+            Office-manager review surface. Approve / deny planned requests, acknowledge urgent call-outs, and scan the staffing-risk calendar.
+          </p>
+        </div>
+        <button class="panel-action" id="attendance-refresh" type="button"
+                title="Re-read call_outs and time_off_requests">Refresh</button>
+      </header>
+
+      <nav class="attendance-subtabs" role="tablist" aria-label="Attendance sub-tabs">
+        <button class="attendance-subtab is-active" data-attn-tab="pending"  role="tab" aria-selected="true">
+          Pending Time Off
+          <span class="attendance-subtab-badge" id="attn-pending-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="approved" role="tab" aria-selected="false">Approved Time Off</button>
+        <button class="attendance-subtab"           data-attn-tab="callouts" role="tab" aria-selected="false">
+          Call-Outs
+          <span class="attendance-subtab-badge" id="attn-callouts-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="openshifts" role="tab" aria-selected="false">
+          Open Shifts
+          <span class="attendance-subtab-badge" id="attn-openshifts-count" hidden>0</span>
+        </button>
+        <button class="attendance-subtab"           data-attn-tab="calendar" role="tab" aria-selected="false">Calendar</button>
+      </nav>
+
+      <div class="admin-status admin-loading" id="attendance-loading">Loading attendance data…</div>
+      <div class="admin-status admin-error"   id="attendance-error" hidden></div>
+
+      <!-- Sub-panels — only one visible at a time. -->
+      <section class="attendance-subpanel is-active" data-attn-panel="pending">
+        <div class="admin-status admin-empty" id="attn-pending-empty" hidden>No pending time-off requests.</div>
+        <div class="admin-list" id="attn-pending-list" role="list"></div>
+      </section>
+      <section class="attendance-subpanel" data-attn-panel="approved" hidden>
+        <div class="admin-status admin-empty" id="attn-approved-empty" hidden>No approved time-off requests yet.</div>
+        <div class="admin-list" id="attn-approved-list" role="list"></div>
+      </section>
+      <section class="attendance-subpanel" data-attn-panel="callouts" hidden>
+        <div class="admin-status admin-empty" id="attn-callouts-empty" hidden>No recent call-outs.</div>
+        <div class="admin-list" id="attn-callouts-list" role="list"></div>
+      </section>
+      <!-- Open Shifts — admin CRUD on open_shift_requests. Create new
+           open shifts, see what's open, see what's been accepted by
+           a tech (awaiting confirmation), confirm coverage (which
+           writes a rockstar_bonuses doc), or cancel. -->
+      <section class="attendance-subpanel" data-attn-panel="openshifts" hidden>
+        <header class="attn-os-head">
+          <div>
+            <h3 class="attn-os-title">Open Shifts &amp; Rockstar Bonuses</h3>
+            <p class="attn-os-sub">Create open shifts when a call-out needs coverage. Confirm the tech who picks it up to record their $25 Rockstar bonus.</p>
+          </div>
+          <button type="button" class="panel-action" id="attn-os-new-btn">+ New open shift</button>
+        </header>
+
+        <!-- Create form. Hidden until "+ New open shift" is clicked. -->
+        <form class="attn-os-form" id="attn-os-form" hidden autocomplete="off" novalidate>
+          <div class="attn-os-form-grid">
+            <label class="attn-os-field">
+              <span>Customer / building</span>
+              <input type="text" id="attn-os-customer-name" required maxlength="160" placeholder="e.g. Baker Construction" />
+            </label>
+            <label class="attn-os-field">
+              <span>Customer slug (optional)</span>
+              <input type="text" id="attn-os-customer-slug" maxlength="80" placeholder="baker-construction" />
+            </label>
+            <label class="attn-os-field">
+              <span>Shift date</span>
+              <input type="date" id="attn-os-shift-date" required />
+            </label>
+            <label class="attn-os-field">
+              <span>Shift time (optional)</span>
+              <input type="text" id="attn-os-shift-time" maxlength="40" placeholder="e.g. 5:00pm-8:30pm" />
+            </label>
+            <label class="attn-os-field attn-os-field--wide">
+              <span>Notes (optional)</span>
+              <textarea id="attn-os-notes" rows="2" maxlength="400" placeholder="Anything the team should know — access codes, special instructions, etc."></textarea>
+            </label>
+          </div>
+          <div class="attn-os-form-actions">
+            <div class="attn-os-form-status" id="attn-os-form-status" aria-live="polite"></div>
+            <button type="button" class="panel-action" id="attn-os-form-cancel">Cancel</button>
+            <button type="submit" class="modal-btn-save" id="attn-os-form-submit">Create open shift</button>
+          </div>
+        </form>
+
+        <div class="admin-status admin-empty" id="attn-os-empty" hidden>No open or accepted shifts right now.</div>
+        <div class="admin-list" id="attn-os-list" role="list"></div>
+      </section>
+
+      <section class="attendance-subpanel" data-attn-panel="calendar" hidden>
+        <p class="attendance-calendar-help">
+          Each cell counts how many people have requested off (approved + pending). Red dates are critically difficult for coverage — additional requests may be hard to approve.
+        </p>
+        <div class="attn-cal-legend" aria-label="Calendar color legend">
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--yellow"></span>1 off</span>
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--orange"></span>2 off</span>
+          <span class="attn-cal-legend-item"><span class="attn-cal-legend-sw attn-cal-legend-sw--red"></span>3+ off · critical</span>
+        </div>
+        <div class="attendance-calendar" id="attn-calendar"></div>
+      </section>
+    </section>
+
+    <!-- ================== Labor Review (Phase 1e Lite) ==================
+         Today's Pioneer Time Clock sessions for admin review. Two blocks:
+         open active sessions (force-close affordance) + today's full list
+         (Review action on rows flagged needs_review).
+    -->
+    <section class="card admin-panel" data-panel="labor-review" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Labor</h2>
+          <p class="panel-sub" id="labor-sub">Loading today's sessions…</p>
+        </div>
+        <button class="panel-action" id="labor-refresh" type="button"
+                title="Re-read today's pioneer_service_sessions + active_service_sessions">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="labor-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="labor-error"   hidden></div>
+
+      <!-- Phase 29B — Sessions Filtering & Investigation Tools. Date
+           range + status filter (existing) plus pay-period dropdown,
+           employee dropdown, free-text search, and an active-filter
+           chip strip. All filters compose client-side after the
+           Firestore range query — only the date range triggers a refresh. -->
+      <section class="labor-filters">
+        <div class="labor-filter-row labor-filter-row-date">
+          <span class="labor-filter-label">Date:</span>
+          <div class="labor-quick-filters" role="group" aria-label="Quick date filters">
+            <button type="button" class="labor-quick-btn" data-labor-quick="today"      aria-pressed="true">Today</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="yesterday"  aria-pressed="false">Yesterday</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="last_7"     aria-pressed="false">Last 7 Days</button>
+            <button type="button" class="labor-quick-btn" data-labor-quick="last_30"    aria-pressed="false">Last 30 Days</button>
+          </div>
+          <div class="labor-range-inputs">
+            <label for="labor-range-start">Start</label>
+            <input type="date" id="labor-range-start" autocomplete="off" />
+            <span aria-hidden="true">→</span>
+            <label for="labor-range-end">End</label>
+            <input type="date" id="labor-range-end" autocomplete="off" />
+            <button type="button" class="labor-range-apply" id="labor-range-apply">Apply</button>
+          </div>
+        </div>
+
+        <div class="labor-filter-row labor-filter-row-pickers">
+          <div class="labor-filter-cell">
+            <label class="labor-filter-label" for="labor-pay-period-select">Pay period</label>
+            <select id="labor-pay-period-select" class="labor-select" aria-label="Pay period">
+              <!-- options populated by renderPayPeriodPicker() -->
+            </select>
+          </div>
+          <div class="labor-filter-cell">
+            <label class="labor-filter-label" for="labor-employee-select">Employee</label>
+            <select id="labor-employee-select" class="labor-select" aria-label="Employee">
+              <!-- options populated by renderEmployeePicker() -->
+            </select>
+          </div>
+          <div class="labor-filter-cell labor-filter-cell-search">
+            <label class="labor-filter-label" for="labor-search-input">Search</label>
+            <input type="search" id="labor-search-input" class="labor-search-input"
+                   placeholder="Tech, customer, location, reason…"
+                   autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- Phase 2A.4 — status filter row. Defaults to "All" (excludes
+             archived). "Archived" is the only path to see archived rows.
+             Pure client-side filter; no Firestore round trip.
+             Phase 28A — 4 new payroll-state chips appended on the right. -->
+        <div class="labor-filter-row labor-filter-row-status">
+          <span class="labor-filter-label">Status:</span>
+          <div class="labor-quick-filters labor-status-filters" role="group" aria-label="Status filter">
+            <button type="button" class="labor-quick-btn" data-labor-status="all"            aria-pressed="true">All</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="needs_review"   aria-pressed="false">Needs Review</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="dcr_pending"    aria-pressed="false">DCR Pending</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="archived"       aria-pressed="false">Archived</button>
+            <span class="labor-filter-sep" aria-hidden="true">·</span>
+            <button type="button" class="labor-quick-btn" data-labor-status="pending_review" aria-pressed="false">Pending Review</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="reviewed"       aria-pressed="false">Reviewed</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="approved"       aria-pressed="false">Approved</button>
+            <button type="button" class="labor-quick-btn" data-labor-status="exported"       aria-pressed="false">Exported</button>
+          </div>
+        </div>
+
+        <!-- Phase 29B — Active filter chip strip. Each chip has an × that
+             clears its own filter. "Clear all" resets non-date filters. -->
+        <div class="labor-active-filters" id="labor-active-filters" hidden></div>
+        <div class="labor-range-err" id="labor-range-err" role="alert" hidden></div>
+      </section>
+
+      <!-- Phase 2A.3 — totals strip. Six tiles: Sessions / Worked /
+           Running / Needs review / DCR pending / Exceptions. Exceptions
+           shows the SUM of (over-budget + offsite + admin-removed +
+           force-closed) with a per-flag breakdown line beneath. -->
+      <section class="labor-block">
+        <h3 class="labor-block-title">Totals</h3>
+        <div class="labor-totals" id="labor-totals"></div>
+      </section>
+
+      <section class="labor-block" id="labor-active-section">
+        <h3 class="labor-block-title">Open active sessions</h3>
+        <p class="labor-block-sub">Techs currently clocked in (not date-filtered). Force-close any session stuck after the shift ended.</p>
+        <div class="labor-active-list" id="labor-active-list"></div>
+        <p class="admin-status admin-empty" id="labor-active-empty" hidden>No active sessions right now.</p>
+      </section>
+
+      <!-- Phase 2A.3 — by-employee summary, sorted by total time (worked
+           + running) desc. Expanded by default per decision. -->
+      <section class="labor-block">
+        <h3 class="labor-block-title">By employee</h3>
+        <div class="labor-by-employee" id="labor-by-employee-list"></div>
+        <p class="admin-status admin-empty" id="labor-by-employee-empty" hidden>No sessions in this range.</p>
+      </section>
+
+      <section class="labor-block">
+        <h3 class="labor-block-title">Sessions <span class="labor-sessions-count" id="labor-sessions-count"></span></h3>
+        <!-- Phase 28A — bulk-approve bar. Populated by renderBulkApproveBar
+             whenever there's at least one approvable row in the current
+             filter view. Click → opens labor-bulk-approve-modal. -->
+        <div class="labor-bulk-bar" id="labor-bulk-bar" hidden></div>
+        <div class="labor-table" id="labor-table"></div>
+        <p class="admin-status admin-empty" id="labor-table-empty" hidden>No Pioneer Time Clock sessions in this range.</p>
+      </section>
+    </section>
+
+    <!-- ================== Payroll (Phase 28C) ==================
+         Read-only summary surface over Phase 28A/B approval data.
+         Period picker · Verification Layer banner (Payroll Ready /
+         Blocked / No Approved) · per-employee summary table with
+         totals row · placeholder for Phase 28D exports.
+         No writes. No rule/index/function changes. -->
+    <section class="card admin-panel" data-panel="payroll" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Payroll</h2>
+          <p class="panel-sub" id="payroll-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="payroll-refresh" type="button"
+                title="Re-read sessions + sick leave for the selected period">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="payroll-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="payroll-error"   hidden></div>
+
+      <!-- Period picker: dropdown of recent semi-monthly periods + Custom. -->
+      <section class="payroll-period-row">
+        <label for="payroll-period-select" class="payroll-period-label">Period:</label>
+        <select id="payroll-period-select" class="payroll-period-select"></select>
+
+        <div class="payroll-custom-row" id="payroll-custom-row" hidden>
+          <label for="payroll-custom-start">Start</label>
+          <input type="date" id="payroll-custom-start" autocomplete="off" />
+          <span aria-hidden="true">→</span>
+          <label for="payroll-custom-end">End</label>
+          <input type="date" id="payroll-custom-end" autocomplete="off" />
+          <button type="button" class="payroll-apply-btn" id="payroll-custom-apply">Apply</button>
+          <div class="payroll-custom-err" id="payroll-custom-err" role="alert" hidden></div>
+        </div>
+      </section>
+
+      <!-- Phase 29E-A — Payroll Workflow bar. Top-of-tab summary of
+           where the period is in the Review → Ready → Lock → Export →
+           History progression. Phase A is UI scaffolding only; Phase B
+           wires Lock/Unlock backend writers + Export gate. -->
+      <section class="payroll-block">
+        <div id="payroll-workflow-bar"></div>
+      </section>
+
+      <!-- Phase 29C — Payroll Readiness card. Read-only confidence
+           layer ABOVE the verification banner. Surfaces total original
+           hours, approved-adjustment delta, final payroll hours, lock
+           status, export status, and three unresolved-item counts
+           (exceptions, pending adjustment requests, employee responses
+           which are an explicit n/a placeholder pending the sign-off
+           feature). Does NOT gate the export — banner below still owns
+           that decision. -->
+      <section class="payroll-block">
+        <div id="payroll-readiness-card"></div>
+      </section>
+
+      <!-- Verification Layer banner — rendered by tab-payroll.js. -->
+      <section class="payroll-block">
+        <div id="payroll-banner"></div>
+      </section>
+
+      <!-- Per-employee summary table. -->
+      <section class="payroll-block">
+        <h3 class="payroll-block-title">Per-employee summary</h3>
+        <div class="payroll-table" id="payroll-employee-table"></div>
+        <p class="admin-status admin-empty" id="payroll-employee-empty" hidden>No sessions in this period yet.</p>
+        <p class="payroll-footnote">
+          ⓘ <strong>Drive time integration ships after Phase 28D.</strong>
+          Today the Drive column reads <code>0.00</code> for everyone.
+          Hours are decimal (e.g. 8.50 = 8h 30m).
+        </p>
+      </section>
+
+      <!-- Recent exports placeholder — Phase 28D content lands here. -->
+      <section class="payroll-block">
+        <h3 class="payroll-block-title">Recent exports</h3>
+        <div id="payroll-recent-exports"></div>
+      </section>
+    </section>
+
+    <!-- ================== Payroll Exceptions (Phase 29) ================
+         Employee-submitted time-adjustment requests. Replaces the legacy
+         Slack-based payroll correction loop. Pending / Approved / Denied
+         sub-tabs. Approve writes effective_clock_in/out + effective_minutes
+         on the related pioneer_service_sessions doc (original clock data
+         preserved); the payroll export re-buckets OT on the fly when an
+         adjustment is present. -->
+    <section class="card admin-panel" data-panel="payroll-exceptions" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Payroll Exceptions</h2>
+          <p class="panel-sub" id="payroll-exceptions-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="payroll-exceptions-refresh" type="button"
+                title="Re-read time_adjustment_requests">Refresh</button>
+      </header>
+
+      <div class="admin-status admin-loading" id="payroll-exceptions-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="payroll-exceptions-error"   hidden></div>
+
+      <div id="payroll-exceptions-subtabs" role="tablist" aria-label="Status">
+        <button type="button" class="pe-subtab is-active" role="tab"
+                aria-selected="true" data-pe-subtab="pending">
+          Pending <span class="pe-subtab-count">0</span>
+        </button>
+        <button type="button" class="pe-subtab" role="tab"
+                aria-selected="false" data-pe-subtab="approved">
+          Approved <span class="pe-subtab-count">0</span>
+        </button>
+        <button type="button" class="pe-subtab" role="tab"
+                aria-selected="false" data-pe-subtab="denied">
+          Denied <span class="pe-subtab-count">0</span>
+        </button>
+      </div>
+
+      <div id="payroll-exceptions-list"></div>
+    </section>
+
+    <!-- ================== Sick Leave (Phase 1f) ==================
+         Per-tech banked paid sick-leave balance management.
+         Set opening balance (one-time per tech) or post a signed
+         admin_adjustment. Every change creates a sick_leave_ledger
+         entry; balance docs are recomputed atomically in the same
+         batch. Cap = 2400 minutes (40h); admin can override per entry. -->
+    <section class="card admin-panel" data-panel="sick-leave" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Sick Leave</h2>
+          <p class="panel-sub" id="sick-leave-sub">Loading…</p>
+        </div>
+        <div class="panel-actions">
+          <button class="panel-action" id="sick-leave-seed-all" type="button"
+                  title="Seed zero-balance staff_labor_balances docs for every active tech missing one">Seed All Missing</button>
+          <button class="panel-action" id="sick-leave-refresh" type="button"
+                  title="Re-read staff_labor_balances">Refresh</button>
+        </div>
+      </header>
+
+      <div class="admin-status admin-loading" id="sick-leave-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="sick-leave-error"   hidden></div>
+
+      <div class="sick-leave-table" id="sick-leave-table"></div>
+      <p class="admin-status admin-empty" id="sick-leave-empty" hidden>No active cleaning techs.</p>
+    </section>
+
+    <!-- ================== Office Issues (Phase 1) ==================
+         Message-the-Office triage. Employees submit via
+         /office-issues.html; admins read + transition status from
+         this panel. Future ingest channels (customer_email,
+         external_complaint) will land in the same office_issues
+         collection via Cloud Functions, surfacing here automatically. -->
+    <section class="card admin-panel" data-panel="office-issues" role="tabpanel" hidden>
+      <style>
+        /* V20260615 — Office Issues page-local styles. Compact grid;
+           reuses the admin panel chrome around it. */
+        .oi-admin-row {
+          display: grid;
+          grid-template-columns: 110px 130px 160px minmax(180px, 1fr) 80px 160px 60px;
+          gap: 10px; padding: 10px 12px;
+          border-bottom: 1px solid #e2e8f0;
+          align-items: center;
+          cursor: pointer;
+          font-size: 13px;
+        }
+        .oi-admin-row:hover { background: #f8fafc; }
+        .oi-admin-row-head { background: #f1f5f9; font-weight: 700; cursor: default; font-size: 12px; text-transform: uppercase; color: #475569; }
+        .oi-admin-row-head:hover { background: #f1f5f9; }
+        .oi-admin-muted   { color: #94a3b8; font-style: italic; }
+        .oi-admin-chip {
+          display: inline-block; padding: 2px 8px; border-radius: 999px;
+          font-size: 11px; font-weight: 700;
+        }
+        .oi-admin-chip.is-new          { background: #dbeafe; color: #1e40af; }
+        .oi-admin-chip.is-acknowledged { background: #e0e7ff; color: #3730a3; }
+        .oi-admin-chip.is-working      { background: #fef3c7; color: #92400e; }
+        .oi-admin-chip.is-waiting      { background: #fee2e2; color: #991b1b; }
+        .oi-admin-chip.is-resolved     { background: #d1fae5; color: #065f46; }
+        .oi-admin-chip.is-closed       { background: #e2e8f0; color: #475569; }
+        .oi-admin-prio {
+          display: inline-block; padding: 2px 8px; border-radius: 4px;
+          font-size: 11px; font-weight: 700;
+        }
+        .oi-admin-prio.is-low    { background: #f1f5f9; color: #64748b; }
+        .oi-admin-prio.is-high   { background: #fef3c7; color: #92400e; }
+        .oi-admin-prio.is-urgent { background: #fee2e2; color: #991b1b; }
+        .oi-admin-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .oi-admin-filters select { padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+        .oi-admin-filters label  { font-size: 12px; color: #475569; font-weight: 600; }
+
+        /* V20260615b — Internal notes rendering in the edit modal. */
+        .oi-notes-section { margin-top: 18px; border-top: 1px solid #e2e8f0; padding-top: 14px; }
+        .oi-notes-list    { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; max-height: 280px; overflow-y: auto; }
+        .oi-note          { padding: 8px 12px; background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 4px; }
+        .oi-note-head     { font-size: 12px; color: #475569; margin-bottom: 4px; }
+        .oi-note-body     { font-size: 14px; color: #334155; white-space: pre-wrap; line-height: 1.4; }
+        .oi-notes-empty   { padding: 12px; text-align: center; color: #94a3b8; font-size: 13px; background: #f8fafc; border-radius: 6px; }
+
+        /* V20260615b — Mobile-responsive table. Below 720px, grid
+           collapses to a stacked card layout so each issue is fully
+           readable on a phone. Filter row stays full-width and
+           stacks its label/select pairs. */
+        @media (max-width: 720px) {
+          .oi-admin-row {
+            grid-template-columns: 1fr;
+            grid-gap: 4px;
+            padding: 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+          }
+          .oi-admin-row-head { display: none; }
+          .oi-admin-row > div:before {
+            content: attr(data-mobile-label);
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-right: 8px;
+            min-width: 80px;
+          }
+          .oi-admin-row .oi-col-desc { font-size: 14px; }
+          .oi-admin-filters { flex-direction: column; align-items: stretch; }
+          .oi-admin-filters select { width: 100%; }
+        }
+      </style>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Office Issues</h2>
+          <p class="panel-sub" id="office-issues-sub">Loading…</p>
+        </div>
+        <button class="panel-action" id="office-issues-refresh" type="button"
+                title="Re-read office_issues">Refresh</button>
+      </header>
+
+      <div class="oi-admin-filters">
+        <label for="office-issues-filter-status">Status</label>
+        <select id="office-issues-filter-status">
+          <option value="open" selected>Open (not resolved/closed)</option>
+          <option value="all">All</option>
+          <option value="new">New</option>
+          <option value="acknowledged">Acknowledged</option>
+          <option value="working">Working</option>
+          <option value="waiting">Waiting</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+        </select>
+        <label for="office-issues-filter-category">Category</label>
+        <select id="office-issues-filter-category">
+          <option value="all" selected>All</option>
+          <option value="payroll">Payroll</option>
+          <option value="schedule">Schedule</option>
+          <option value="supplies">Supplies</option>
+          <option value="sick_leave">Sick Leave</option>
+          <option value="time_adjustment">Time Adjustment</option>
+          <option value="equipment">Equipment</option>
+          <option value="customer_concern">Customer Concern</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div class="admin-status admin-loading" id="office-issues-loading" hidden>Loading…</div>
+      <div class="admin-status admin-error"   id="office-issues-error"   hidden></div>
+
+      <div id="office-issues-table"></div>
+      <p class="admin-status admin-empty" id="office-issues-empty" hidden>No office issues yet.</p>
+    </section>
+
+    <!-- ================== Team Schedule ==================
+         Pilot v1 — single source of truth lives in
+         `team_schedule/current` (Firestore) and the file blob in
+         `team-schedules/{yyyymm}/{timestamp}-{filename}` (Storage).
+         Admin uploads a PDF (preferred) or image; Team Hub renders
+         "View / Download" buttons under an Announcements-adjacent
+         section.
+
+         Phase 2 TODO:
+           • native Deputy monthly schedule sync (auto-overwrite this
+             doc from a scheduled function — no manual upload needed)
+           • team schedule calendar view (per-tech, per-customer,
+             per-date filters)
+           • current week vs current month toggle
+           • upload history archive (Firestore subcollection) so admins
+             can roll back to a prior PDF if needed
+    -->
+    <section class="card admin-panel" data-panel="schedule" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">Team Schedule</h2>
+          <p class="panel-sub" id="schedule-sub">
+            One button. Pulls the latest Deputy schedule and updates Team Hub.
+          </p>
+        </div>
+        <button class="panel-action" id="schedule-refresh" type="button"
+                title="Re-read team_schedule/current and published_team_schedule/current">Refresh</button>
+      </header>
+
+      <!-- ============ Primary action: Sync next 21 days from Deputy ============
+           Single-button workflow. Wraps the existing publish pipeline
+           (refreshDeputyShiftsRangeV1 → read deputy_shift_cache →
+           write published_team_schedule/current) with simple language
+           and a success summary the office can read at a glance. -->
+      <section class="schedule-sync-primary" id="schedule-sync-primary">
+        <header class="schedule-sync-head">
+          <div>
+            <h3 class="schedule-sync-title">Sync next 21 days from Deputy</h3>
+            <p class="schedule-sync-sub">
+              This pulls the latest published Deputy shifts and updates the Team Hub schedule.
+            </p>
+          </div>
+        </header>
+
+        <div class="schedule-sync-actions">
+          <button type="button" class="panel-action panel-action-primary" id="schedule-sync-now-btn">
+            Sync next 21 days from Deputy
+          </button>
+        </div>
+
+        <div class="schedule-sync-status"  id="schedule-sync-status"  aria-live="polite" hidden></div>
+        <div class="schedule-sync-error"   id="schedule-sync-error"   role="alert" hidden></div>
+
+        <!-- ============ Phase 2A.1 — Pioneer Time Clock bridge ============
+             Calls refreshServiceAssignmentsFromDeputyV1 server-side. Reads
+             deputy_shift_cache for the chosen date (+ optional days_forward)
+             and creates/updates one service_assignments doc per shift. Dry-run
+             default ON so the first click previews the result without writing.
+             Sits inside the Sync block so admins finishing a Deputy sync can
+             immediately push the changes into Pioneer Time Clock. -->
+        <section class="schedule-bridge-block" id="schedule-bridge-block">
+          <header class="schedule-bridge-head">
+            <div>
+              <h3 class="schedule-bridge-title">Refresh Pioneer Time Clock from Deputy</h3>
+              <p class="schedule-bridge-sub">
+                Generates a Pioneer service_assignment for every Deputy shift on the date
+                you pick. Idempotent — re-running on the same date is safe. Never overwrites
+                active or completed Pioneer sessions.
+              </p>
+            </div>
+          </header>
+
+          <div class="schedule-bridge-row">
+            <label for="schedule-bridge-date">Date (Pacific)</label>
+            <input type="date" id="schedule-bridge-date" autocomplete="off" />
+
+            <label for="schedule-bridge-days-forward">+ days forward</label>
+            <input type="number" id="schedule-bridge-days-forward"
+                   min="0" max="30" step="1" value="0" inputmode="numeric" />
+
+            <label class="schedule-bridge-dry">
+              <input type="checkbox" id="schedule-bridge-dry-run" checked />
+              <span>Dry-run (preview only — no writes)</span>
+            </label>
+
+            <button type="button" class="panel-action panel-action-primary"
+                    id="schedule-bridge-run-btn"
+                    title="Calls refreshServiceAssignmentsFromDeputyV1 server-side">
+              Refresh Pioneer Time Clock from Deputy
+            </button>
+          </div>
+
+          <div class="schedule-bridge-status" id="schedule-bridge-status" aria-live="polite" hidden></div>
+          <div class="schedule-bridge-error"  id="schedule-bridge-error"  role="alert" hidden></div>
+          <div class="schedule-bridge-result" id="schedule-bridge-result" hidden></div>
+        </section>
+
+        <!-- Success summary — shown after a clean sync. Populated by admin.js. -->
+        <div class="schedule-sync-success" id="schedule-sync-success" hidden>
+          <div class="schedule-sync-success-row schedule-sync-success-headline">
+            <span class="schedule-sync-success-icon" aria-hidden="true">✅</span>
+            <strong>Schedule synced.</strong>
+          </div>
+          <dl class="schedule-sync-success-stats">
+            <div><dt>Shifts</dt><dd id="schedule-sync-success-shifts">—</dd></div>
+            <div><dt>Range</dt><dd id="schedule-sync-success-range">—</dd></div>
+            <div><dt>Published</dt><dd id="schedule-sync-success-when">—</dd></div>
+          </dl>
+          <p class="schedule-sync-success-note">Published to Team Hub.</p>
+          <div class="schedule-sync-success-actions">
+            <a class="panel-action" id="schedule-sync-view-link" href="/team-schedule.html" target="_blank" rel="noopener noreferrer">
+              View Team Schedule ↗
+            </a>
+          </div>
+        </div>
+
+        <!-- Per-day breakdown stays available for the office that wants
+             to triage which days returned zero shifts. Hidden under a
+             disclosure so the calm success summary above stays the
+             primary readout. -->
+        <details class="schedule-sync-debug" id="schedule-sync-debug" hidden>
+          <summary>Sync details (per-day breakdown)</summary>
+          <div class="schedule-publish-debug-body" id="schedule-sync-debug-body"></div>
+        </details>
+      </section>
+
+      <!-- ============ Advanced: PDF backup ============
+           PDF upload + parse path kept available for non-Deputy
+           imports / printable archive. Collapsed by default; admins
+           rarely need it now that Deputy sync is the primary path. -->
+      <details class="schedule-advanced" id="schedule-advanced-pdf">
+        <summary class="schedule-advanced-summary">
+          Backup PDF (not needed for normal schedule updates)
+        </summary>
+        <p class="schedule-advanced-help">
+          Optional. Upload a printable PDF for the office archive. Team Hub
+          will surface a "View printable PDF" button alongside the live
+          Deputy snapshot, but no parsing is required.
+        </p>
+
+      <!-- ============ Schedule Import V1 ============
+           Primary path while Deputy's range API is unreliable. Admin
+           pastes (or extracts from PDF) the next 1-3 weeks of
+           schedule text → the parser produces a draft of shifts →
+           admin reviews/edits in the table below → "Publish from
+           draft" writes the snapshot to `published_team_schedule/current`,
+           which Team Hub already reads.
+
+           Phase 2 TODO:
+             • improve parser heuristics with sample real-world PDFs
+             • sync direct from Deputy when range API is reliable
+             • detect changes week-to-week (diff vs previous draft)
+             • auto-highlight updated shifts in the editor
+             • OCR fallback for image-only PDFs
+             • per-tech color preview in the editor table -->
+      <section class="schedule-import-block" id="schedule-import-block">
+        <header class="schedule-import-head">
+          <div>
+            <h3 class="schedule-published-title">Publish the team schedule</h3>
+            <p class="schedule-published-sub">
+              Export the Deputy schedule PDF, upload it below, then publish it to Team Hub
+              in three taps.
+            </p>
+          </div>
+        </header>
+
+        <!-- Recommended workflow strip — visual flow + numbered steps so
+             the office staff sees the simple path at a glance. -->
+        <div class="schedule-flow" aria-label="Recommended workflow">
+          <ol class="schedule-flow-strip">
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">📄</span>
+              <span class="schedule-flow-label">Deputy PDF</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">⤴</span>
+              <span class="schedule-flow-label">Upload</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">✨</span>
+              <span class="schedule-flow-label">Extract</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">👀</span>
+              <span class="schedule-flow-label">Review</span>
+            </li>
+            <li class="schedule-flow-arrow" aria-hidden="true">→</li>
+            <li class="schedule-flow-step">
+              <span class="schedule-flow-icon" aria-hidden="true">📣</span>
+              <span class="schedule-flow-label">Publish</span>
+            </li>
+          </ol>
+          <ol class="schedule-flow-steps">
+            <li>Export the schedule PDF from Deputy.</li>
+            <li>Upload the PDF below.</li>
+            <li>Click <strong>Extract from current PDF</strong>.</li>
+            <li>Review the schedule that appears.</li>
+            <li>Publish to Team Hub.</li>
+          </ol>
+        </div>
+
+        <div class="schedule-import-actions">
+          <button type="button" class="panel-action panel-action-primary" id="schedule-import-from-pdf"
+                  title="Pull the schedule out of the currently uploaded PDF">
+            Extract from current PDF
+          </button>
+        </div>
+
+        <div class="schedule-import-status" id="schedule-import-status" aria-live="polite"></div>
+        <div class="schedule-import-error"  id="schedule-import-error" role="alert" hidden></div>
+
+        <!-- Advanced / Manual Import — collapsed by default. Kept available
+             for admins who want to hand-edit the parsed text, debug a
+             parser issue, or paste a schedule from a non-Deputy source. -->
+        <details class="schedule-import-advanced" id="schedule-import-advanced">
+          <summary class="schedule-import-advanced-summary">
+            Advanced / Manual Import
+          </summary>
+          <p class="schedule-import-advanced-help">
+            Most schedules go through the Extract button above. Use this only when
+            the office is hand-typing a schedule, or when Nick has asked you to
+            paste a debug copy.
+          </p>
+          <label class="schedule-import-label">
+            <span class="schedule-import-label-text">Advanced manual schedule import</span>
+            <textarea id="schedule-import-text" rows="6"
+                      placeholder="Paste schedule text here, then click Convert below."></textarea>
+          </label>
+          <div class="schedule-import-controls">
+            <label class="schedule-import-year">
+              <span>Year (for date inference)</span>
+              <input type="number" id="schedule-import-year" min="2024" max="2099" />
+            </label>
+            <button type="button" class="panel-action" id="schedule-import-clear"
+                    title="Clear the paste area">Clear</button>
+            <button type="button" class="modal-btn-save" id="schedule-import-parse">
+              Convert to schedule draft
+            </button>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ Draft Review & Publish ============
+           Visible only when a draft exists. Each row is an editable
+           shift; admins can fix parsed values, add/remove rows, then
+           "Publish from draft" to push to `published_team_schedule/current`.
+           Low-confidence rows get a warning chip + a yellow row tint. -->
+      <section class="schedule-draft-block" id="schedule-draft-block" hidden>
+        <header class="schedule-import-head">
+          <div>
+            <h3 class="schedule-published-title">Draft review & publish</h3>
+            <p class="schedule-published-sub" id="schedule-draft-meta">—</p>
+          </div>
+          <div class="schedule-draft-head-actions">
+            <button type="button" class="panel-action" id="schedule-draft-add-row">+ Add shift</button>
+          </div>
+        </header>
+
+        <div class="schedule-draft-table-wrap">
+          <table class="schedule-draft-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Tech</th>
+                <th>Customer</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Notes</th>
+                <th>Conf</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody id="schedule-draft-rows"></tbody>
+          </table>
+        </div>
+
+        <div class="schedule-draft-actions">
+          <div class="schedule-draft-status" id="schedule-draft-status" aria-live="polite"></div>
+          <div class="schedule-draft-error"  id="schedule-draft-error" role="alert" hidden></div>
+          <div class="schedule-draft-buttons">
+            <button type="button" class="panel-action" id="schedule-draft-save">Save draft</button>
+            <button type="button" class="panel-action" id="schedule-draft-discard">Discard draft</button>
+            <button type="button" class="modal-btn-save" id="schedule-draft-publish">Publish from draft</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Published from Deputy ============
+           Reads `deputy_shift_cache` for sync_date in
+           [today, today+13] (Pacific), normalizes each row by joining
+           the cached employee_email / employee_display_name / customer_slug
+           / customer_name, and overwrites `published_team_schedule/current`.
+
+           Snapshot model is intentional: Team Hub does NOT reflect live
+           Deputy edits — admins publish when ready. The cache only
+           contains days that have been Deputy-synced; today is synced
+           every 10 minutes, future days require an admin Deputy refresh
+           per day.
+
+           Phase 2 TODO:
+             • monthly calendar view + printable export
+             • personal "my schedule" filtering on the tech side
+             • shift swaps / PTO overlays / open-shift coverage
+             • live vs deferred publish modes (currently always deferred)
+             • auto-sync future Deputy days as part of the publish step
+             • server-side publish (Cloud Function) so a scheduled job
+               can re-publish nightly without an admin browser open
+             • "Open Deputy" button per shift (deep-link to roster) -->
+      <section class="schedule-published" id="schedule-published-block">
+        <header class="schedule-published-head">
+          <div>
+            <h3 class="schedule-published-title">Publish directly from Deputy (secondary)</h3>
+            <p class="schedule-published-sub" id="schedule-published-meta">
+              Loading current published snapshot…
+            </p>
+            <p class="schedule-published-sub schedule-published-aside">
+              Use this when Deputy reliably returns the full date range. While Deputy's
+              future-day API is unreliable, prefer the Import path above.
+            </p>
+          </div>
+        </header>
+
+        <div class="admin-status admin-loading" id="schedule-published-loading">Loading published snapshot…</div>
+        <div class="admin-status admin-error"   id="schedule-published-error" hidden></div>
+        <div class="admin-status admin-empty"   id="schedule-published-empty" hidden>
+          Nothing published yet. Click <strong>Publish next 14 days from Deputy</strong> below.
+        </div>
+
+        <!-- Snapshot summary — populated by admin.js when
+             published_team_schedule/current exists. -->
+        <div class="schedule-published-summary" id="schedule-published-summary" hidden>
+          <dl class="schedule-published-stats">
+            <div><dt>Published</dt><dd id="schedule-published-when">—</dd></div>
+            <div><dt>Range</dt><dd id="schedule-published-range">—</dd></div>
+            <div><dt>Shifts</dt><dd id="schedule-published-count">—</dd></div>
+            <div><dt>Techs</dt><dd id="schedule-published-techs">—</dd></div>
+          </dl>
+          <p class="schedule-published-notes" id="schedule-published-notes" hidden></p>
+        </div>
+
+        <!-- Publish form. Notes are optional. Publishing OVERWRITES the
+             current snapshot — there is no per-publish history yet
+             (Phase 2 TODO).
+
+             "Sync future days from Deputy first" is ON by default and
+             calls refreshDeputyShiftsRangeV1 server-side, which loops
+             the daily Deputy sync for the chosen horizon before the
+             snapshot is read. Turn it off to publish from whatever is
+             already in deputy_shift_cache (faster but possibly stale). -->
+        <form class="schedule-publish-form" id="schedule-publish-form" autocomplete="off" novalidate>
+          <fieldset class="schedule-publish-horizon" id="schedule-publish-horizon-fs">
+            <legend>Publish range</legend>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="7" />
+              <span>7 days</span>
+            </label>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="14" />
+              <span>14 days</span>
+            </label>
+            <label class="schedule-publish-horizon-opt">
+              <input type="radio" name="schedule-publish-horizon" value="21" checked />
+              <span>21 days (default)</span>
+            </label>
+          </fieldset>
+
+          <label class="schedule-publish-checkbox">
+            <input type="checkbox" id="schedule-publish-sync-first" checked />
+            <span>
+              Sync future days from Deputy first
+              <em class="schedule-publish-checkbox-help">
+                Recommended — pulls fresh Deputy shifts for every day in the range before publishing.
+              </em>
+            </span>
+          </label>
+
+          <label class="schedule-publish-label">
+            <span class="schedule-publish-label-text">Publish notes (optional)</span>
+            <textarea id="schedule-publish-notes" rows="2" maxlength="400"
+                      placeholder="e.g. Updated for the May 18 shift swaps. Please confirm any conflicts by Friday."></textarea>
+          </label>
+
+          <div class="schedule-publish-status" id="schedule-publish-status" aria-live="polite"></div>
+          <div class="schedule-publish-error"  id="schedule-publish-error" role="alert" hidden></div>
+
+          <!-- Per-day breakdown rendered after a publish. Lists Deputy
+               fetch count + cache docs found per date so admins can
+               see exactly which days returned zero shifts and decide
+               whether that's Deputy reality or a sync issue. -->
+          <details class="schedule-publish-debug" id="schedule-publish-debug" hidden>
+            <summary>Publish details (per-day breakdown)</summary>
+            <div class="schedule-publish-debug-body" id="schedule-publish-debug-body"></div>
+          </details>
+
+          <div class="schedule-publish-actions">
+            <button type="submit" class="modal-btn-save" id="schedule-publish-submit">
+              Publish to Team Hub
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ============ Printable PDF backup ============
+           Kept as a fallback / printable version. Some admins / techs
+           prefer a single-page PDF; the Deputy-powered snapshot above
+           is the primary view on Team Hub. -->
+      <section class="schedule-pdf-block">
+        <header class="schedule-pdf-head">
+          <h3 class="schedule-pdf-title">Printable PDF backup</h3>
+          <p class="schedule-pdf-sub">
+            Optional. Upload a printable PDF version of the schedule. Team Hub
+            renders a "View printable PDF" button alongside the Deputy snapshot.
+          </p>
+        </header>
+
+      <div class="admin-status admin-loading" id="schedule-loading">Loading current schedule…</div>
+      <div class="admin-status admin-error"   id="schedule-error" hidden></div>
+
+      <!-- Current schedule summary — populated by admin.js when
+           team_schedule/current exists. Hidden until first paint. -->
+      <div class="schedule-current" id="schedule-current" hidden>
+        <div class="schedule-current-meta">
+          <span class="schedule-current-eyebrow">Currently published</span>
+          <p class="schedule-current-filename" id="schedule-current-filename">—</p>
+          <p class="schedule-current-uploaded" id="schedule-current-uploaded">—</p>
+          <p class="schedule-current-notes" id="schedule-current-notes" hidden></p>
+        </div>
+        <div class="schedule-current-actions">
+          <a class="panel-action" id="schedule-current-view" href="#"
+             target="_blank" rel="noopener noreferrer"
+             title="Open the current schedule in a new tab">View</a>
+          <a class="panel-action" id="schedule-current-download" href="#"
+             title="Download the current schedule">Download</a>
+        </div>
+      </div>
+
+      <!-- Empty state — admin-only since this panel is admin-only. -->
+      <div class="admin-status admin-empty" id="schedule-empty" hidden>
+        No schedule uploaded yet. Pick a PDF below to publish the first one.
+      </div>
+
+      <!-- Upload form. Effective month + notes are both optional. -->
+      <form class="schedule-upload-form" id="schedule-upload-form" autocomplete="off" novalidate>
+        <fieldset class="schedule-upload-fields">
+          <legend>Update Team Schedule</legend>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Schedule file</span>
+            <input type="file" id="schedule-upload-file"
+                   accept="application/pdf,image/png,image/jpeg,image/webp"
+                   aria-describedby="schedule-upload-file-help" />
+            <span class="schedule-upload-file-help" id="schedule-upload-file-help">
+              PDF preferred. PNG/JPG/WEBP also accepted. Max 10 MB.
+            </span>
+          </label>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Effective month (optional)</span>
+            <input type="month" id="schedule-upload-effective-month"
+                   aria-label="Effective month for this schedule" />
+          </label>
+
+          <label class="schedule-upload-label">
+            <span class="schedule-upload-label-text">Notes (optional)</span>
+            <textarea id="schedule-upload-notes" rows="2" maxlength="400"
+                      placeholder="e.g. May 2026 schedule — please confirm any conflicts by Friday."></textarea>
+          </label>
+
+          <div class="schedule-upload-status" id="schedule-upload-status" aria-live="polite"></div>
+          <div class="schedule-upload-error"  id="schedule-upload-error" role="alert" hidden></div>
+
+          <div class="schedule-upload-actions">
+            <button type="submit" class="modal-btn-save" id="schedule-upload-submit">
+              Upload PDF backup
+            </button>
+          </div>
+        </fieldset>
+      </form>
+      </section><!-- /.schedule-pdf-block -->
+      </details><!-- /.schedule-advanced /pdf+import -->
     </section>
 
     </div><!-- /#auth-content -->
@@ -1040,13 +2407,15 @@
           <label class="check-field"><input type="checkbox" id="cust-edit-dcr-enabled" />
             <span><strong>DCR enabled</strong> &mdash; show in DCR form dropdown</span></label>
           <label class="check-field"><input type="checkbox" id="cust-edit-dcr-email-enabled" />
-            <span><strong>Send daily DCR email to customer</strong> &mdash; Zapier skips the Gmail step when off; Slack / Sheets / GHL still run</span></label>
+            <span><strong>Send daily DCR email to customer</strong>
+              <em class="check-field-help">When off: customer email delivery is disabled. PioneerOps internal tracking still runs.</em>
+            </span></label>
         </div>
 
         <div class="field-row">
-          <label for="cust-edit-slack">Slack channel</label>
+          <label for="cust-edit-slack">Internal channel reference</label>
           <input type="text" id="cust-edit-slack" autocomplete="off"
-                 placeholder="#customer-acme" />
+                 placeholder="#customer-acme or internal notes channel" />
         </div>
 
         <div class="field-group">
@@ -1086,6 +2455,20 @@
           </dl>
         </div>
 
+        <!-- Phase 1g — Standing Cleaning Notes read-only summary. Source
+             of truth is customer_notes; managed in the Customer Notes tab.
+             This block is just an at-a-glance for admins working in
+             customer settings. Populated by populateStandingNotesSummary. -->
+        <div class="field-group" id="cust-edit-standing-notes-block">
+          <div class="field-group-title">Standing Cleaning Notes</div>
+          <p class="field-helper">
+            Tribal operational knowledge for this location (separate from
+            sensitive codes). Manage standing notes in the
+            <strong>Customer Notes</strong> tab.
+          </p>
+          <div id="cust-edit-standing-notes-body" class="standing-notes-summary">—</div>
+        </div>
+
         <div class="field-group" id="cust-edit-sop-block">
           <div class="field-group-title">Customer SOP — Public</div>
           <p class="field-helper">
@@ -1097,16 +2480,85 @@
           <div id="cust-edit-sop-body"></div>
         </div>
 
-        <div class="field-group" id="cust-edit-secure-block">
-          <div class="field-group-title">Admin-only Secure Ops</div>
+        <!-- Phase 1g — Access & Security Info editor. Replaces the
+             prior read-only "Admin-only Secure Ops" display. Writes to
+             customer_secure/{slug} (admin-only by firestore.rules) +
+             flips customers/{slug}.hasSecureSop atomically with the
+             basics save above. Visible-to-techs fields are forwarded
+             by techHubViewV1 to /tech.html Security Info modal; the
+             admin-only fields are NEVER forwarded. One entry per line. -->
+        <div class="field-group" id="cust-edit-access-security-block">
+          <div class="field-group-title">Access &amp; Security Info</div>
           <p class="field-helper">
-            Sensitive operational info — alarm / door / gate codes,
-            emergency contacts, raw Deputy notes, and any code-bearing
-            instructions. Read from <code>customer_secure/{slug}</code>
-            (admin-only by firestore.rules). Never appears in customer-facing
-            emails or tech-side pages.
+            Admin-only. <strong>Never</strong> appears in customer-facing DCR
+            emails or operational event logs. Techs see only the
+            "Visible to techs" fields below, and only for customers they're
+            assigned to. One entry per line.
           </p>
-          <div id="cust-edit-secure-body"></div>
+
+          <p class="field-section-label">Visible to techs on assigned customers</p>
+
+          <div class="field-row">
+            <label for="cust-edit-alarm-codes">Alarm code(s)</label>
+            <textarea id="cust-edit-alarm-codes" rows="2" autocomplete="off"
+              placeholder="e.g. 1234 (panel by side door)"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-disarm-instructions">Disarm instructions</label>
+            <textarea id="cust-edit-disarm-instructions" rows="2" autocomplete="off"
+              placeholder="e.g. Enter code within 30 seconds, then press OFF."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-door-codes">Door code(s)</label>
+            <textarea id="cust-edit-door-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Front: 5678 · Back: 9012"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-gate-codes">Gate code(s)</label>
+            <textarea id="cust-edit-gate-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Main gate: 4321"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-lockbox-codes">Lockbox code(s)</label>
+            <textarea id="cust-edit-lockbox-codes" rows="2" autocomplete="off"
+              placeholder="e.g. Lockbox on north fence: 8765 (key inside)"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-key-fob-notes">Key location / fob notes</label>
+            <textarea id="cust-edit-key-fob-notes" rows="2" autocomplete="off"
+              placeholder="e.g. Key fob hangs inside utility closet; building access fob is required for elevator."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-arm-instructions">Arm instructions</label>
+            <textarea id="cust-edit-arm-instructions" rows="2" autocomplete="off"
+              placeholder="e.g. Press AWAY, exit through side door within 60 seconds, then pull door shut."></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-secure-instructions">Building access / security instructions</label>
+            <textarea id="cust-edit-secure-instructions" rows="3" autocomplete="off"
+              placeholder="Free-form notes techs need at the door (e.g. ramp on left, follow alley to back entrance)."></textarea>
+          </div>
+
+          <p class="field-section-label">Admin-only (never shown to techs)</p>
+
+          <div class="field-row">
+            <label for="cust-edit-emergency-contacts">Emergency contact(s)</label>
+            <textarea id="cust-edit-emergency-contacts" rows="2" autocomplete="off"
+              placeholder="e.g. Susie Brittain · 509-927-2937 · after-hours alarms"></textarea>
+          </div>
+          <div class="field-row">
+            <label for="cust-edit-alarm-company-notes">Alarm company</label>
+            <textarea id="cust-edit-alarm-company-notes" rows="2" autocomplete="off"
+              placeholder="e.g. Allied &amp; Fire Security · 509-624-3154"></textarea>
+          </div>
+
+          <p class="field-section-label">Imported (read-only)</p>
+          <div class="field-row">
+            <label>Raw Deputy notes</label>
+            <pre id="cust-edit-raw-deputy-notes" class="cust-edit-raw-deputy">—</pre>
+          </div>
+
+          <p class="field-hint" id="cust-edit-secure-last-edited">No Access &amp; Security edits recorded yet.</p>
         </div>
       </div>
       <footer class="admin-modal-footer">
@@ -1179,6 +2631,166 @@
         <div class="admin-modal-err" id="tech-edit-err" hidden></div>
         <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
         <button type="button" class="modal-btn-save"   id="tech-edit-save">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== DCR email Review & Send modal ==================
+       V6 pilot. Opened from a per-DCR "Review & Send" button on the
+       Recent DCRs tab. Calls getDcrEmailReadinessV1 → renders
+       blockers/warnings/readiness checklist → enables Send only when
+       the DCR is ready (or a Resend is confirmed). Send hits the
+       existing generateAndSendDcrEmailV1 endpoint. -->
+  <div id="dcr-email-review-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog admin-modal-dialog-wide"
+         role="dialog" aria-modal="true" aria-labelledby="dcr-review-title">
+      <header class="admin-modal-header">
+        <div>
+          <h2 id="dcr-review-title">Review DCR email</h2>
+          <p class="panel-sub" id="dcr-review-subtitle">—</p>
+        </div>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="dcr-review-body" class="dcr-review-body">
+          <p class="dcr-review-loading">Running readiness check…</p>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="dcr-review-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+        <button type="button" class="modal-btn-save"   id="dcr-review-send"   hidden>Send Customer DCR Email</button>
+        <button type="button" class="modal-btn-save"   id="dcr-review-resend" hidden>Resend</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Tech Photo / Signature manager modal ==================
+       Admin-only photo + signature manager. Calls uploadTechMediaV1 with
+       a Firebase admin ID token. Reads the live cleaning_techs doc on
+       open so the preview matches what the customer sees in DCR emails.
+
+       Wired in admin.js → openTechMediaModal(techId). Closes via the
+       shared modal-close pattern (data-modal-close). -->
+  <div id="tech-media-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog admin-modal-dialog-wide"
+         role="dialog" aria-modal="true" aria-labelledby="tech-media-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="tech-media-modal-title">Tech identity manager</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <input type="hidden" id="tech-media-id" />
+
+        <p class="field-group-sub" id="tech-media-context">
+          A real tech photo is required for the customer-facing DCR trust
+          promise. The initials bubble is an emergency fallback only.
+        </p>
+
+        <!-- Missing-asset warnings — shown only when applicable. -->
+        <div id="tech-media-warnings" class="tech-media-warnings" hidden></div>
+
+        <div class="tech-media-grid">
+          <!-- ===== Photo column ===== -->
+          <div class="tech-media-zone" data-kind="photo">
+            <div class="tech-media-zone-head">
+              <span class="tech-media-zone-title">Profile photo</span>
+              <span class="tech-media-zone-meta" id="tech-media-photo-meta">No photo on file</span>
+            </div>
+
+            <div class="tech-media-preview tech-media-preview-photo">
+              <img id="tech-media-photo-img" alt="Tech photo preview" hidden />
+              <div id="tech-media-photo-initial" class="tech-media-initial-bubble" hidden></div>
+            </div>
+
+            <p class="tech-media-rule">JPEG / PNG / WebP / HEIC · up to 5 MB · square portraits work best.</p>
+
+            <div class="tech-media-actions">
+              <label class="tech-media-upload-trigger" for="tech-media-photo-file">
+                <span data-photo-action="upload-label">Upload new photo</span>
+                <input id="tech-media-photo-file" type="file" accept="image/*" hidden />
+              </label>
+              <button id="tech-media-photo-clear" class="tech-media-clear-btn" type="button"
+                      title="Remove the current photo (initials fallback will show)" hidden>
+                Remove
+              </button>
+            </div>
+
+            <div id="tech-media-photo-error" class="tech-media-zone-err" hidden></div>
+            <div id="tech-media-photo-progress" class="tech-media-zone-progress" hidden>Uploading…</div>
+          </div>
+
+          <!-- ===== Signature column ===== -->
+          <div class="tech-media-zone" data-kind="signature">
+            <div class="tech-media-zone-head">
+              <span class="tech-media-zone-title">Signature image</span>
+              <span class="tech-media-zone-meta" id="tech-media-sig-meta">No signature on file</span>
+            </div>
+
+            <div class="tech-media-preview tech-media-preview-signature">
+              <img id="tech-media-sig-img" alt="Signature preview" hidden />
+              <div id="tech-media-sig-empty" class="tech-media-empty-hint">No signature on file</div>
+            </div>
+
+            <p class="tech-media-rule">PNG / JPEG · up to 1 MB · transparent background recommended.</p>
+
+            <div class="tech-media-actions">
+              <label class="tech-media-upload-trigger" for="tech-media-sig-file">
+                <span data-sig-action="upload-label">Upload new signature</span>
+                <input id="tech-media-sig-file" type="file" accept="image/*" hidden />
+              </label>
+              <button id="tech-media-sig-clear" class="tech-media-clear-btn" type="button"
+                      title="Remove the current signature" hidden>
+                Remove
+              </button>
+            </div>
+
+            <div id="tech-media-sig-error" class="tech-media-zone-err" hidden></div>
+            <div id="tech-media-sig-progress" class="tech-media-zone-progress" hidden>Uploading…</div>
+          </div>
+        </div>
+
+        <!-- ===== Active toggle ===== -->
+        <div class="field-group">
+          <div class="field-group-title">Visibility</div>
+          <label class="check-field"><input type="checkbox" id="tech-media-active" />
+            <span><strong>Active</strong> &mdash; uncheck to archive (tech vanishes from DCR form + Tech Hub)</span></label>
+          <div id="tech-media-active-progress" class="tech-media-zone-progress" hidden>Saving…</div>
+        </div>
+
+        <!-- ===== Customer-facing preview ===== -->
+        <div class="field-group">
+          <div class="field-group-title">Customer-facing preview</div>
+          <p class="field-group-sub">
+            This is what shows up in the DCR email tech identity row — the
+            photo replaces the initials bubble, the signature renders on
+            the right with a "Signed after visit" caption.
+          </p>
+          <div class="tech-media-cust-card">
+            <div class="tech-media-cust-photo">
+              <img id="tech-media-cust-photo-img" alt="" hidden />
+              <div id="tech-media-cust-photo-initial" class="tech-media-initial-bubble tech-media-initial-cust" hidden></div>
+            </div>
+            <div class="tech-media-cust-id">
+              <div class="tech-media-cust-eyebrow">CLEANED BY</div>
+              <div class="tech-media-cust-name" id="tech-media-cust-name">—</div>
+              <div class="tech-media-cust-sub" id="tech-media-cust-sub">regular Pioneer tech</div>
+            </div>
+            <div class="tech-media-cust-sig">
+              <div class="tech-media-cust-sig-cap">Signed after visit</div>
+              <div class="tech-media-cust-sig-frame">
+                <img id="tech-media-cust-sig-img" alt="" hidden />
+                <span id="tech-media-cust-sig-empty" class="tech-media-cust-sig-empty">no signature</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="tech-media-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
       </footer>
     </div>
   </div>
@@ -1294,9 +2906,9 @@
             <div class="field-group-title">Password reset link (backup)</div>
             <p class="field-group-sub">
               Firebase has already emailed this reset link to the tech. Copy it
-              here if you'd prefer to send it via text or Slack as a backup. The
-              link expires according to Firebase's default policy (typically
-              one hour).
+              here if you'd prefer to send it via text or another secure channel
+              as a backup. The link expires according to Firebase's default
+              policy (typically one hour).
             </p>
             <div class="tech-create-copy-row">
               <input type="text" id="tech-create-reset-link" readonly />
@@ -1394,9 +3006,9 @@
             <div class="field-group-title">Password reset link (backup)</div>
             <p class="field-group-sub">
               Firebase has already emailed this reset link to the new admin.
-              Copy it here if you'd prefer to send it via text or Slack as a
-              backup. Expires per Firebase's default policy (typically one
-              hour).
+              Copy it here if you'd prefer to send it via text or another
+              secure channel as a backup. Expires per Firebase's default
+              policy (typically one hour).
             </p>
             <div class="tech-create-copy-row">
               <input type="text" id="admin-create-reset-link" readonly />
@@ -1588,9 +3200,19 @@
                 title="Open the note editor with the tech's text pre-filled">
           Apply to note…
         </button>
+        <!-- Phase 1e.3 — backfill button. Visible ONLY on already-approved
+             suggestions that have no resulting_note_id (i.e. the standing
+             note was never created by the old approve-only flow). One click
+             publishes the text as a customer_notes doc and stamps
+             resulting_note_id on the suggestion. -->
+        <button type="button" class="row-btn" id="suggestion-republish" hidden
+                title="Publish this approved suggestion as a standing customer note">
+          Re-publish as note
+        </button>
         <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
         <button type="button" class="row-btn row-btn-danger" id="suggestion-reject">Reject</button>
-        <button type="button" class="modal-btn-save" id="suggestion-approve">Approve</button>
+        <button type="button" class="modal-btn-save" id="suggestion-approve"
+                title="Approve and publish as a standing customer note (visible to techs on /tech.html)">Approve</button>
       </footer>
     </div>
   </div>
@@ -1691,11 +3313,33 @@
         </div>
 
         <div class="field-group">
+          <div class="field-group-title">Audience</div>
+          <label class="check-field">
+            <input type="radio" name="announcement-audience" value="all" checked id="announcement-audience-all" />
+            <span><strong>All active staff</strong> &mdash; everyone with a Pioneer login.</span>
+          </label>
+          <label class="check-field">
+            <input type="radio" name="announcement-audience" value="selected" id="announcement-audience-selected" />
+            <span><strong>Selected team members</strong> &mdash; pick from active cleaning techs below.</span>
+          </label>
+          <div class="ann-recipient-picker" id="announcement-recipient-picker" hidden>
+            <input type="search" class="admin-search" id="announcement-recipient-search"
+                   placeholder="Search techs…" autocomplete="off" />
+            <div class="ann-recipient-counter" id="announcement-recipient-counter">0 selected</div>
+            <div class="ann-recipient-list" id="announcement-recipient-list"></div>
+          </div>
+        </div>
+
+        <div class="field-group">
           <div class="field-group-title">Visibility &amp; behavior</div>
           <label class="check-field"><input type="checkbox" id="announcement-edit-active" checked />
             <span><strong>Active</strong> &mdash; visible to staff. Uncheck to hide.</span></label>
           <label class="check-field"><input type="checkbox" id="announcement-edit-mandatory" />
             <span><strong>Mandatory</strong> &mdash; pops a blocking modal staff must read before continuing.</span></label>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-require-ack" />
+            <span><strong>Require acknowledgement</strong> &mdash; recipients see an "Acknowledge" button on Team Hub.</span></label>
+          <label class="check-field"><input type="checkbox" id="announcement-edit-require-reply" />
+            <span><strong>Require reply</strong> &mdash; the announcement stays open on Team Hub until each recipient replies.</span></label>
         </div>
 
         <div class="field-row">
@@ -1788,6 +3432,553 @@
     </div>
   </div>
 
+  <!-- ================== Force-close session modal (Phase 1e Lite) ================== -->
+  <div id="labor-force-close-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-fc-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-fc-title">Force close session</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-fc-summary">—</p>
+        <input type="hidden" id="labor-fc-session-id" />
+        <input type="hidden" id="labor-fc-active-uid" />
+
+        <div class="field-row">
+          <label for="labor-fc-clock-out-time">Clock-out time</label>
+          <input type="datetime-local" id="labor-fc-clock-out-time" autocomplete="off" />
+          <p class="field-hint">Defaults to now. Set this to the actual end time if you know it.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="labor-fc-reason">Reason <span class="req">*</span></label>
+          <textarea id="labor-fc-reason" rows="3" required minlength="5"
+                    placeholder="e.g. Tech forgot to clock out — verified end time via DCR submit at 4:30 PM."
+                    maxlength="500"></textarea>
+          <p class="field-hint">At least 5 characters. This is stored on the session for audit.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          This marks the session <strong>completed</strong>, removes the open active record,
+          stamps <code>force_closed_by_admin</code>, and flags it for review. No time_punches doc is written.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-fc-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-fc-save">Force close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Archive assignment modal (Phase 2A.2 + 2A.4 relabel) ==================
+       Phase 2A.4 — UI relabeled "Remove from PTC" → "Archive Assignment".
+       Underlying Firestore fields (status:"admin_removed",
+       removed_from_ptc, removed_reason/by/at) unchanged for back-compat. -->
+  <div id="labor-remove-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-rm-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-rm-title">Archive assignment</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-rm-summary">—</p>
+        <input type="hidden" id="labor-rm-assignment-id" />
+
+        <div class="field-row">
+          <label for="labor-rm-reason">Reason <span class="req">*</span></label>
+          <textarea id="labor-rm-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Created by mistake — duplicate of 6817 Cedar. No DCR needed."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the assignment and any related sessions for audit.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          The assignment is archived (Firestore <code>status: "admin_removed"</code>) and
+          hidden from the tech's Pioneer Time Clock + the default Labor view.
+          <strong>Nothing is deleted</strong>; related <code>pioneer_service_sessions</code> are
+          preserved and flagged <code>admin_removed: true</code>. Use the
+          <strong>Archived</strong> status filter above to see archived rows. If a tech is
+          currently clocked into this assignment, you'll be asked to Force close first.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-rm-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-rm-save">Archive</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Export Payroll CSV modal (Phase 28D) ================== -->
+  <div id="payroll-export-confirm-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="payroll-export-confirm-title">
+      <header class="admin-modal-header">
+        <h2 id="payroll-export-confirm-title">Export payroll CSV</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="payroll-export-confirm-row">
+          <p class="field-hint" id="payroll-export-summary">—</p>
+          <p class="field-hint" style="margin-top:10px; line-height:1.5;">
+            This will mark every approved session in the selected period as
+            <code>exported</code> and lock the workweek(s) so the overtime
+            engine cannot re-allocate them. The CSV downloads through an
+            <strong>admin-only Cloud Function</strong> (server-side auth
+            verification). The <code>payroll_exports</code> doc + the CSV
+            file persist as the audit trail. <strong>Use Void this export
+            to roll back</strong> — exported sessions cannot be modified
+            until then.
+          </p>
+        </div>
+
+        <div id="payroll-export-success" hidden>
+          <p class="payroll-export-success-headline">
+            <strong>Export complete.</strong>
+          </p>
+          <p class="field-hint" id="payroll-export-success-summary">—</p>
+          <p style="margin-top:12px;">
+            <button type="button" id="payroll-export-success-dl"
+                    class="payroll-export-download" hidden>
+              Download CSV ↗
+            </button>
+          </p>
+          <p class="field-hint" style="margin-top:8px;">
+            Download streams through an <strong>admin-only Cloud Function</strong>
+            (auth checked server-side). The CSV file persists in Storage as the
+            audit artifact; re-download anytime from Recent Exports below.
+          </p>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="payroll-export-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+        <button type="button" class="modal-btn-save"   id="payroll-export-save">Confirm export</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Void Payroll Export modal (Phase 28D) ================== -->
+  <div id="payroll-void-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="payroll-void-title">
+      <header class="admin-modal-header">
+        <h2 id="payroll-void-title">Void payroll export</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="payroll-void-summary">—</p>
+        <input type="hidden" id="payroll-void-id" />
+
+        <div class="field-row">
+          <label for="payroll-void-reason">Reason <span class="req">*</span></label>
+          <textarea id="payroll-void-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Wrong session approved — need to remove and re-export."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the payroll_exports doc.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Void reverts each included session's <code>payroll_state</code>
+          back to <code>approved_for_payroll</code> and clears the
+          workweek-export lock so the overtime engine can re-allocate.
+          The CSV file in Storage is <strong>NOT deleted</strong> —
+          audit trail is preserved. A new export can be generated after
+          adjustments.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="payroll-void-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="payroll-void-save">Void export</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Bulk Approve modal (Phase 28A) ==================
+       Opens from the bulk-approve bar above the Sessions table when
+       admin clicks "Approve N session(s)". Single batch write up to
+       BULK_APPROVE_CAP (50) sessions per click. Cap enforced client-side;
+       admin re-clicks after refresh for remaining batches. -->
+  <div id="labor-bulk-approve-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-bulk-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-bulk-title">Bulk approve for payroll</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-bulk-summary">—</p>
+        <p class="field-hint" style="margin-top:10px; line-height:1.5;">
+          Sessions must pass <strong>all gates</strong> before approval:
+          not archived · not active · not paused · not DCR-pending ·
+          needs_review false · DCR submitted · <code>work_minutes &gt; 0</code> ·
+          <code>assignment_id</code> present.
+        </p>
+        <p class="field-hint" style="margin-top:8px;">
+          Each approved session can still be reverted via the per-row
+          <strong>Unapprove</strong> button — until the export Cloud
+          Function locks it (Phase 28D).
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="labor-bulk-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="labor-bulk-save">Approve</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Link DCR placeholder modal (Phase 2A.4) ==================
+       Opens from the per-row "Link DCR" button when DCR is pending.
+       Phase 2A.4 ships the affordance only; real wire-up arrives in
+       Phase 2B (admin pastes a DCR submission id + reason; batch writes
+       pioneer_service_sessions.{dcr_id, dcr_status, dcr_linked_by, …}).
+       Close-only modal with explainer copy — no write path. -->
+  <div id="labor-linkdcr-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="labor-linkdcr-title">
+      <header class="admin-modal-header">
+        <h2 id="labor-linkdcr-title">Link DCR</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="labor-linkdcr-summary">—</p>
+        <p class="field-hint" style="margin-top:8px; line-height:1.5;">
+          Manual DCR linking lets an admin attach an existing DCR submission ID to
+          this session — useful when a tech clocked out but submitted the DCR from a
+          different surface, or when the DCR was emailed in and recorded manually.
+        </p>
+        <p class="field-hint" style="margin-top:8px; line-height:1.5;">
+          <strong>Coming in Phase 2B.</strong> This phase ships the button only so
+          admins can plan around it. Nothing happens on Close.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Set opening sick-leave balance modal (Phase 1f) ================== -->
+  <div id="sick-seed-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-seed-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-seed-title">Set opening sick-leave balance</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-seed-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-seed-hours">Opening balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-seed-hours" autocomplete="off"
+                 min="0" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Hours. Cap is 40h unless you check the override below.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-seed-reason">Reason (optional)</label>
+          <textarea id="sick-seed-reason" rows="2" maxlength="500"
+                    placeholder="e.g. Migrating from prior payroll system on 2026-06-01."></textarea>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-seed-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — override the Phase 1 ceiling for this entry.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Writes <code>opening_balance</code> ledger entry and the matching
+          <code>staff_labor_balances</code> doc in one batch.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-seed-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-seed-save">Save opening balance</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Sick-leave adjustment modal (Phase 1f) ================== -->
+  <div id="sick-adj-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-adj-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-adj-title">Add sick-leave adjustment</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-adj-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-adj-hours">Hours delta <span class="req">*</span></label>
+          <input type="number" id="sick-adj-hours" autocomplete="off"
+                 min="-100" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Positive credits, negative debits. e.g. <code>1.5</code> or <code>-0.5</code>.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-adj-reason">Reason <span class="req">*</span></label>
+          <textarea id="sick-adj-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Comp time for double-shift on 2026-05-30 (per Kirby)."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the ledger for audit.</p>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-adj-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — required if this adjustment pushes the balance above 40h.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Posts an <code>admin_adjustment</code> ledger entry and updates the balance doc in one batch.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-adj-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-adj-save">Save adjustment</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Sick-leave EDIT modal (V20260614) ==================
+       Direct-set Available + Used. Audit ledger entry uses entry_type
+       "admin_edit" with previous + new value pair. Confirmation step
+       (window.confirm with diff summary) before commit.
+       ===================================================================== -->
+  <div id="sick-edit-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sick-edit-title">
+      <header class="admin-modal-header">
+        <h2 id="sick-edit-title">Edit sick-leave balance</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="field-hint" id="sick-edit-summary">—</p>
+
+        <div class="field-row">
+          <label for="sick-edit-available">Available balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-edit-available" autocomplete="off"
+                 min="0" max="100" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Direct set. Cap is 40h unless you check the override below.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-edit-used">Used balance (hours) <span class="req">*</span></label>
+          <input type="number" id="sick-edit-used" autocomplete="off"
+                 min="0" max="1000" step="0.25" inputmode="decimal" />
+          <p class="field-hint">Lifetime used. Leave unchanged if not correcting it.</p>
+        </div>
+
+        <div class="field-row">
+          <label for="sick-edit-reason">Reason <span class="req">*</span></label>
+          <textarea id="sick-edit-reason" rows="3" required minlength="5" maxlength="500"
+                    placeholder="e.g. Correcting data-entry error from 2026-06-10 manual seed."></textarea>
+          <p class="field-hint">At least 5 characters. Stored on the audit ledger.</p>
+        </div>
+
+        <label class="check-field">
+          <input type="checkbox" id="sick-edit-allow-cap" />
+          <span><strong>Allow above 40h cap</strong> — required if new Available exceeds 40h.</span>
+        </label>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Posts an <code>admin_edit</code> ledger entry (with previous &amp; new values)
+          and updates the balance doc in one batch. You'll be asked to confirm before save.
+        </p>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="sick-edit-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save"   id="sick-edit-save">Save changes</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== Office Issues — edit modal (Phase 1) ================== -->
+  <div id="office-issues-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="office-issues-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="office-issues-modal-title">Issue</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <div id="office-issues-modal-meta" class="field-hint" style="display:flex;flex-direction:column;gap:4px;font-size:13px;margin-bottom:14px;"></div>
+
+        <div class="field-row">
+          <label>Description</label>
+          <div id="office-issues-modal-description"
+               style="padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;white-space:pre-wrap;font-size:14px;line-height:1.4;"></div>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-status">Status</label>
+          <select id="office-issues-status">
+            <option value="new">New</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="working">Working</option>
+            <option value="waiting">Waiting</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-priority">Priority</label>
+          <select id="office-issues-priority">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <label for="office-issues-owner-email">Owner (email)</label>
+          <input type="email" id="office-issues-owner-email" autocomplete="off"
+                 placeholder="e.g. kirby@pioneercomclean.com" />
+          <p class="field-hint">Leave blank to unassign. UID resolution is Phase 2 — Phase 1 stores email only.</p>
+        </div>
+
+        <p class="field-hint" style="margin-top:8px;">
+          Saving appends a <code>status_history</code> entry whenever status changes.
+        </p>
+
+        <!-- V20260615b — Internal notes section. Admin-only by rule;
+             employees can never read these. Append-only. -->
+        <div class="oi-notes-section">
+          <h3 style="margin:0 0 4px;font-size:14px;color:#1e293b;">🔒 Internal notes (admin-only)</h3>
+          <p class="field-hint" style="margin:0;">Employees cannot see these. Append-only audit log.</p>
+
+          <p id="office-issues-notes-loading" class="oi-notes-empty" hidden>Loading notes…</p>
+          <p id="office-issues-notes-empty"   class="oi-notes-empty" hidden>No notes yet.</p>
+          <div id="office-issues-notes-list" class="oi-notes-list"></div>
+
+          <div class="field-row" style="margin-top:8px;">
+            <label for="office-issues-note-body">Add a note</label>
+            <textarea id="office-issues-note-body" rows="3" maxlength="4000"
+                      placeholder="e.g. Called employee, confirmed payroll error from 2026-06-12. Routing to Kirby."></textarea>
+            <p class="field-hint">Appended when you click Save. Leave blank to skip.</p>
+          </div>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <div class="admin-modal-err" id="office-issues-modal-err" hidden></div>
+        <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+        <button type="button" class="modal-btn-save" id="office-issues-modal-save">Save changes</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ================== V20260615b — Shared DCR photos modal ================
+       One modal, used by DCR Issues, Recent DCRs, and Yesterday's Work.
+       Opened via shell.openDcrPhotosModal(ctx). Photos resolved from
+       dcr_submissions/{submissionId} via shell.collectPhotosFromDcr().
+       Issue summary + admin notes sections only render when ctx supplies
+       them (i.e. when opened from a dcr_issues card). ============================ -->
+  <style>
+    .issue-detail-photos {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .issue-photo-thumb {
+      display: block;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f8fafc;
+      aspect-ratio: 1 / 1;
+    }
+    .issue-photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .issue-photo-thumb:hover { border-color: #0b3d2e; }
+    .issue-detail-section { margin-top: 14px; }
+    .issue-detail-section h3 { margin: 0 0 6px; font-size: 13px; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .issue-detail-meta-line { color: #475569; font-size: 13px; margin-bottom: 8px; }
+    .issue-detail-text {
+      white-space: pre-wrap;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 14px;
+      line-height: 1.4;
+      color: #334155;
+    }
+    .issue-detail-photos-status { color: #64748b; font-size: 13px; font-style: italic; margin: 6px 0; }
+    /* V20260615b — Prominent "View photos" affordance shared across tabs. */
+    .issue-detail-btn, .dcr-view-photos-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 6px;
+      padding: 6px 12px;
+      background: #0b3d2e;
+      color: #ffffff;
+      border: 0;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .issue-detail-btn:hover, .dcr-view-photos-btn:hover {
+      background: #134d3a;
+    }
+    .issue-detail-btn:before, .dcr-view-photos-btn:before {
+      content: "📷";
+      font-size: 14px;
+    }
+  </style>
+  <div id="dcr-photos-modal" class="admin-modal" hidden aria-hidden="true">
+    <div class="admin-modal-backdrop" data-modal-close></div>
+    <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="dcr-photos-modal-title">
+      <header class="admin-modal-header">
+        <h2 id="dcr-photos-modal-title">DCR photos</h2>
+        <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+      </header>
+      <div class="admin-modal-body">
+        <p class="issue-detail-meta-line" id="dcr-photos-modal-meta">—</p>
+
+        <div class="issue-detail-section" id="dcr-photos-modal-issue-summary-wrap" hidden>
+          <h3>Issue summary</h3>
+          <div class="issue-detail-text" id="dcr-photos-modal-issue-summary">—</div>
+        </div>
+
+        <div class="issue-detail-section" id="dcr-photos-modal-issue-notes-wrap" hidden>
+          <h3>Admin notes</h3>
+          <div class="issue-detail-text" id="dcr-photos-modal-issue-notes">—</div>
+          <p class="field-hint">Edit notes inline on the issue card; this modal is read-only for notes.</p>
+        </div>
+
+        <div class="issue-detail-section">
+          <h3>Photos</h3>
+          <p class="issue-detail-photos-status" id="dcr-photos-modal-status" hidden>Loading photos…</p>
+          <div class="issue-detail-photos" id="dcr-photos-modal-grid"></div>
+          <p class="field-hint" style="margin-top:8px;">
+            From DCR submission
+            <code id="dcr-photos-modal-submission-id">—</code>.
+            Click any thumbnail to open the full image in a new tab.
+          </p>
+        </div>
+      </div>
+      <footer class="admin-modal-footer">
+        <button type="button" class="modal-btn-cancel" data-modal-close>Close</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- Toast container — top-right slide-ins for success/error notifications. -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -1803,6 +3994,40 @@
   <script src="info-tip.js"></script>
   <script src="operational-feed.js"></script>
   <script src="customer-sop.js"></script>
-  <script src="admin.js"></script>
+  <script src="celebrate.js?v=20260528-displayfallback"></script>
+  <script src="customer-display.js?v=20260528-displayfallback"></script>
+  <script src="admin/_utils.js?v=20260530-refactor-phase23-hotfix-2"></script>
+  <script src="admin/_shell.js?v=20260615e-shared-photos-modal"></script>
+  <script src="admin/_budget.js?v=20260529-refactor-phase4a"></script>
+  <script src="admin/tab-sos.js?v=20260529-refactor-phase4b"></script>
+  <script src="admin/tab-improvements.js?v=20260529-refactor-phase5"></script>
+  <script src="admin/tab-customer-notes.js?v=20260601-phase1e3-approve-publishes"></script>
+  <script src="admin/tab-service-recoveries.js?v=20260529-refactor-phase7"></script>
+  <script src="admin/tab-training.js?v=20260529-refactor-phase8"></script>
+  <script src="admin/tab-pilot-readiness.js?v=20260529-refactor-phase9"></script>
+  <script src="admin/tab-feed.js?v=20260529-refactor-phase10"></script>
+  <script src="admin/tab-recent-dcrs.js?v=20260619-email-states"></script>
+  <script src="admin/tab-pending-uploads.js?v=20260622-phase31d"></script>
+  <script src="admin/tab-dcr-issues.js?v=20260615e-shared-modal"></script>
+  <script src="admin/tab-tech-health.js?v=20260529-refactor-phase13"></script>
+  <script src="admin/tab-yesterdays-work.js?v=20260615e-view-photos"></script>
+  <script src="admin/tab-customers.js?v=20260601-phase1g-access-security"></script>
+  <script src="admin/tab-techs.js?v=20260529-refactor-phase16b"></script>
+  <script src="admin/tab-admins.js?v=20260529-refactor-phase17"></script>
+  <script src="admin/tab-supply-requests.js?v=20260529-refactor-phase18"></script>
+  <script src="admin/tab-day-health.js?v=20260529-refactor-phase19"></script>
+  <script src="admin/tab-announcements.js?v=20260529-refactor-phase20"></script>
+  <script src="admin/tab-dcr-review.js?v=20260530-refactor-phase21"></script>
+  <script src="admin/tab-deputy-mapping.js?v=20260530-refactor-phase22-hotfix"></script>
+  <script src="admin/tab-schedule.js?v=20260601-phase2a1-bridge"></script>
+  <script src="admin/tab-attendance.js?v=20260530-refactor-phase24"></script>
+  <script src="admin/tab-labor-review.js?v=20260617-decimal-totals"></script>
+  <script src="admin/tab-payroll.js?v=20260617-waived-honored"></script>
+  <script src="admin/tab-payroll-exceptions.js?v=20260603-phase29-v1"></script>
+  <script src="admin/tab-mission-control.js?v=20260622-phase32c"></script>
+  <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
+  <script src="admin/tab-office-issues.js?v=20260616b-getcount"></script>
+  <script src="admin.js?v=20260615d-strip-logs"></script>
+  <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
 </html>

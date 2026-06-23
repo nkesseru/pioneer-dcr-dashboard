@@ -1004,3 +1004,455 @@
   border-radius: 999px;
   vertical-align: middle;
 }
+
+/* ============================================================
+   Phase Inspection V2 — section + item form
+   ============================================================ */
+.insp-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px 8px;
+  margin-bottom: 14px;
+}
+.insp-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.insp-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0b1220;
+  letter-spacing: -0.2px;
+}
+.insp-section-progress {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #64748b;
+}
+.insp-section-items { display: flex; flex-direction: column; }
+.insp-item {
+  padding: 10px 0;
+  border-top: 1px solid #f1f5f9;
+}
+.insp-item:first-child { border-top: none; }
+.insp-item-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.insp-item-label {
+  flex: 1;
+  min-width: 180px;
+  font-size: 14px;
+  color: #0b1220;
+}
+.insp-item-results {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.insp-item-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.insp-item-btn:hover { background: #f8fafc; }
+.insp-item-btn[aria-pressed="true"] {
+  color: #ffffff;
+  border-color: transparent;
+}
+.insp-item-btn.tone-na[aria-pressed="true"]    { background: #64748b; }
+.insp-item-btn.tone-pass[aria-pressed="true"]  { background: #16a34a; }
+.insp-item-btn.tone-great[aria-pressed="true"] { background: #d4af37; color: #1f2937; }
+.insp-item-btn.tone-fail[aria-pressed="true"]  { background: #b91c1c; }
+.insp-item[data-result="fail"]  { background: #fef2f2; border-radius: 8px; padding-left: 10px; padding-right: 10px; }
+.insp-item[data-result="great"] { background: #fffbeb; border-radius: 8px; padding-left: 10px; padding-right: 10px; }
+.insp-item-comment {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.insp-item-comment-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1220;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.insp-item-photo {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* Overall card tones for v2 */
+.insp-overall.is-tone-empty .insp-overall-value { color: #64748b; }
+.insp-overall.is-tone-pass  .insp-overall-value { color: #16a34a; }
+.insp-overall.is-tone-great .insp-overall-value { color: #d4af37; }
+.insp-overall.is-tone-fail  .insp-overall-value { color: #b91c1c; }
+
+/* Detail modal — v2 item rows */
+.insp-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+.insp-detail-summary-chip {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.insp-detail-summary-chip.tone-pass  { background: #dcfce7; color: #166534; }
+.insp-detail-summary-chip.tone-great { background: #fef3c7; color: #92400e; }
+.insp-detail-summary-chip.tone-fail  { background: #fee2e2; color: #991b1b; }
+.insp-detail-summary-chip.tone-na    { background: #e2e8f0; color: #334155; }
+.insp-detail-section {
+  margin-bottom: 12px;
+}
+.insp-detail-section-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #475569;
+}
+.insp-detail-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #f1f5f9;
+}
+.insp-detail-item-row:first-child { border-top: none; }
+.insp-detail-item-name {
+  font-size: 13px;
+  color: #0b1220;
+}
+.insp-detail-item-verdict {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.insp-detail-item-verdict.tone-pass  { background: #dcfce7; color: #166534; }
+.insp-detail-item-verdict.tone-great { background: #fef3c7; color: #92400e; }
+.insp-detail-item-verdict.tone-fail  { background: #fee2e2; color: #991b1b; }
+.insp-detail-item-verdict.tone-na    { background: #e2e8f0; color: #334155; }
+
+/* ============================================================
+   Phase Timeclock Add-On — Inspection Clock (prominent hero card)
+   Always visible above hub + intake views. This is the "START HERE"
+   surface; size + color hierarchy should be unmistakable.
+   ============================================================ */
+.insp-clock-hero {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  padding: 26px 32px;
+  margin-bottom: 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(11, 18, 32, 0.18);
+  border-left: 6px solid #94a3b8;
+  position: relative;
+}
+.insp-clock-hero[data-state="active"] {
+  background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  border-left-color: #4ade80;
+  box-shadow: 0 6px 24px rgba(20, 83, 45, 0.32);
+}
+.insp-clock-hero[data-state="blocked"] {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+  border-left-color: #fbbf24;
+}
+.insp-clock-hero-left {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.insp-clock-hero-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.insp-clock-hero[data-state="active"] .insp-clock-hero-eyebrow {
+  color: #d1fae5;
+}
+.insp-clock-hero-timer {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  color: #ffffff;
+}
+.insp-clock-hero[data-state="idle"] .insp-clock-hero-timer {
+  font-size: 17px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+.insp-clock-hero-timer strong { color: #ffffff; }
+.insp-clock-hero-timer-detail {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 4px;
+}
+.insp-clock-hero-btn {
+  flex: none;
+  min-width: 220px;
+  background: #ffffff;
+  color: #0b1220;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 16px 26px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.insp-clock-hero-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.insp-clock-hero-btn:active:not(:disabled) { transform: translateY(0); }
+.insp-clock-hero-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.6);
+}
+.insp-clock-hero[data-state="active"] .insp-clock-hero-btn {
+  background: #ffffff;
+  color: #14532d;
+}
+.insp-clock-hero-err {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.92);
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .insp-clock-hero {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 22px 22px;
+    gap: 16px;
+  }
+  .insp-clock-hero-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 22px;
+    font-size: 18px;
+  }
+  .insp-clock-hero-timer { font-size: 26px; }
+}
+
+/* ============================================================
+   Phase Inspection 3 — Health Dashboard + Registry + Queue
+   ============================================================ */
+.insp-health-card { }
+.insp-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.insp-health-tile {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+}
+.insp-health-tile.is-warning {
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+.insp-health-tile.is-warning .insp-health-num { color: #92400e; }
+.insp-health-tile.is-feature {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+.insp-health-tile.is-feature .insp-health-num { color: #166534; }
+.insp-health-num {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: #0b1220;
+  line-height: 1.1;
+}
+.insp-health-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* Inspector queue + registry shared list aesthetic */
+.insp-queue-list,
+.insp-registry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.insp-reg-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1.4fr 1.4fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 13px;
+}
+.insp-reg-row[data-status="overdue"]    { border-left: 3px solid #b91c1c; }
+.insp-reg-row[data-status="assigned"]   { border-left: 3px solid #2563eb; }
+.insp-reg-row[data-status="unassigned"] { border-left: 3px solid #64748b; }
+.insp-reg-row[data-status="completed"]  { border-left: 3px solid #16a34a; }
+.insp-reg-name {
+  font-weight: 700;
+  color: #0b1220;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.insp-reg-meta {
+  font-size: 12px;
+  color: #475569;
+}
+.insp-reg-meta-key {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.insp-reg-status-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.insp-reg-status-chip.s-completed  { background: #dcfce7; color: #166534; }
+.insp-reg-status-chip.s-assigned   { background: #dbeafe; color: #1e40af; }
+.insp-reg-status-chip.s-overdue    { background: #fee2e2; color: #991b1b; }
+.insp-reg-status-chip.s-unassigned { background: #f1f5f9; color: #334155; }
+.insp-reg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.insp-reg-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+.insp-reg-btn:hover { background: #f8fafc; }
+.insp-reg-btn-primary {
+  background: #0b1220;
+  color: #ffffff;
+  border-color: transparent;
+}
+.insp-reg-btn-primary:hover { background: #1e293b; }
+
+.insp-registry-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.insp-reg-filter {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+}
+.insp-reg-filter:hover { background: #f1f5f9; }
+.insp-reg-filter.is-active {
+  background: #0b1220;
+  color: #ffffff;
+  border-color: transparent;
+}
+
+/* Collapse on narrow viewports */
+@media (max-width: 720px) {
+  .insp-reg-row {
+    grid-template-columns: 1fr;
+  }
+  .insp-reg-actions { justify-content: flex-start; }
+}

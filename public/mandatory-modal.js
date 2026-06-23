@@ -45,6 +45,64 @@
   const TITLE_TEXT  = "Required Announcement";
   const BUTTON_TEXT = "Mark as read and continue";
 
+  // V6 pilot — localStorage belt to the Firestore suspenders.
+  // If a per-tech `announcement_reads/{annId_uid}` write fails (rules
+  // glitch, offline, transient 500), the next page load shouldn't
+  // loop the same modal at the same tech forever. We mirror every
+  // successful Firestore mark-as-read to localStorage AND treat the
+  // local cache as authoritative for "already seen, don't reshow"
+  // even when the Firestore read returns stale.
+  //
+  // Storage shape:
+  //   key:   pioneer.annRead.<uid>
+  //   value: JSON map { <annId>: { v: <version|1>, t: <ISO ts> } }
+  //
+  // Version awareness: announcement docs MAY carry a `version` (or
+  // `revision`) number. When it bumps, the local cache + Firestore
+  // read shows the prior read as stale and the modal re-appears.
+  // Announcements without a version field are treated as v1.
+  const LOCAL_CACHE_PREFIX = "pioneer.annRead.";
+
+  function log(msg, meta) {
+    try { console.info("[PioneerOps Announcement] " + msg, meta || ""); }
+    catch (_e) { /* console suppressed */ }
+  }
+  function warn(msg, meta) {
+    try { console.warn("[PioneerOps Announcement] " + msg, meta || ""); }
+    catch (_e) { /* console suppressed */ }
+  }
+
+  function announcementVersion(a) {
+    if (!a) return 1;
+    const v = (a.version != null ? a.version : a.revision);
+    const n = Number(v);
+    return (Number.isFinite(n) && n > 0) ? n : 1;
+  }
+
+  function loadLocalReads(uid) {
+    if (!uid) return {};
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + uid);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch (_e) { return {}; }
+  }
+  function saveLocalRead(uid, announcementId, version) {
+    if (!uid || !announcementId) return;
+    try {
+      const map = loadLocalReads(uid);
+      map[announcementId] = { v: Number(version) || 1, t: new Date().toISOString() };
+      localStorage.setItem(LOCAL_CACHE_PREFIX + uid, JSON.stringify(map));
+    } catch (_e) { /* private mode, quota — soft-fail */ }
+  }
+  function localHasReadAtVersion(uid, announcementId, version) {
+    const map = loadLocalReads(uid);
+    const entry = map[announcementId];
+    if (!entry) return false;
+    return Number(entry.v) >= Number(version);
+  }
+
   let injected      = false;
   let modalEl       = null;
   let titleEl       = null;
@@ -61,9 +119,83 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // Pilot v20260526-mobileunlock — self-contained CSS so the modal
+  // renders as a fullscreen overlay on EVERY page, not just admin.css
+  // pages. Previously /work.html injected the modal HTML but had no
+  // .admin-modal styling, so the modal was an invisible inline block
+  // and the body's overflow:hidden lock stranded the tech with no way
+  // to dismiss → "iPhone can't scroll." This guarantees the modal is
+  // always visible and always dismissable.
+  function injectFallbackStyles() {
+    if (document.getElementById("mandatory-modal-fallback-styles")) return;
+    const style = document.createElement("style");
+    style.id = "mandatory-modal-fallback-styles";
+    style.textContent =
+      "#" + MODAL_ID + " {" +
+        "position: fixed;" +
+        "inset: 0;" +
+        "z-index: 10000;" +
+        "display: flex;" +
+        "align-items: center;" +
+        "justify-content: center;" +
+        "padding: 16px;" +
+      "}" +
+      "#" + MODAL_ID + "[hidden] { display: none !important; }" +
+      "#" + MODAL_ID + " .admin-modal-backdrop {" +
+        "position: absolute;" +
+        "inset: 0;" +
+        "background: rgba(13, 18, 24, 0.6);" +
+        "-webkit-backdrop-filter: blur(2px);" +
+        "backdrop-filter: blur(2px);" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-dialog {" +
+        "position: relative;" +
+        "width: min(560px, calc(100% - 0px));" +
+        "max-height: calc(100vh - 64px);" +
+        "background: #ffffff;" +
+        "border-radius: 14px;" +
+        "box-shadow: 0 20px 50px rgba(15,23,42,0.30);" +
+        "overflow: auto;" +
+        "-webkit-overflow-scrolling: touch;" +
+        "display: flex;" +
+        "flex-direction: column;" +
+        "padding: 20px;" +
+        "color: #0f172a;" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-header h2 {" +
+        "margin: 0 0 12px;" +
+        "font-size: 18px;" +
+        "font-weight: 800;" +
+      "}" +
+      "#" + MODAL_ID + " .admin-modal-footer {" +
+        "margin-top: 16px;" +
+        "display: flex;" +
+        "justify-content: flex-end;" +
+        "gap: 8px;" +
+      "}" +
+      "#" + MODAL_ID + " .modal-btn-save {" +
+        "background: #14b8a6;" +
+        "color: #052e2b;" +
+        "border: 0;" +
+        "padding: 10px 16px;" +
+        "border-radius: 8px;" +
+        "font-weight: 700;" +
+        "font-size: 15px;" +
+        "cursor: pointer;" +
+      "}" +
+      "#" + MODAL_ID + " .modal-btn-save:disabled { opacity: 0.6; }" +
+      "#" + MODAL_ID + " .admin-modal-err {" +
+        "color: #b91c1c;" +
+        "font-size: 13px;" +
+        "margin-right: auto;" +
+      "}";
+    document.head.appendChild(style);
+  }
+
   function injectMarkup() {
     if (injected) return;
     injected = true;
+    injectFallbackStyles();
     if (document.getElementById(MODAL_ID)) {
       // A page (e.g. team-hub.html) might already have the modal
       // markup. Bind to it and skip injection.
@@ -160,15 +292,47 @@
     currentClick = onMarkRead;
     modalEl.hidden = false;
     modalEl.setAttribute("aria-hidden", "false");
+    // Pilot v20260526-mobileunlock — use a class + inline style. Class
+    // gives the CSS-side rule something to target; inline style is the
+    // belt that survives a missing stylesheet (mandatory modal renders
+    // on every page including pages that don't load styles.css).
+    document.body.classList.add("modal-scroll-locked");
     document.body.style.overflow = "hidden";
+    try {
+      console.info("[ScrollLock]", {
+        source:        "mandatory-modal:open",
+        body_overflow: document.body.style.overflow || "(empty)",
+        html_overflow: document.documentElement.style.overflow || "(empty)",
+        modal_state:   "visible"
+      });
+    } catch (_e) {}
   }
 
   function hideModal() {
     if (!modalEl) return;
-    modalEl.hidden = true;
-    modalEl.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
-    currentClick = null;
+    try {
+      modalEl.hidden = true;
+      modalEl.setAttribute("aria-hidden", "true");
+      currentClick = null;
+    } finally {
+      // Pilot v20260526-mobileunlock — body overflow MUST clear even if
+      // the lines above throw. iOS Safari was getting stuck with the
+      // scroll lock dangling after the announcement queue completed.
+      document.body.classList.remove("modal-scroll-locked");
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.height   = "";
+      document.documentElement.style.overflow = "";
+      document.documentElement.style.height   = "";
+      try {
+        console.info("[ScrollLock]", {
+          source:        "mandatory-modal:close",
+          body_overflow: document.body.style.overflow || "(empty)",
+          html_overflow: document.documentElement.style.overflow || "(empty)",
+          modal_state:   "hidden"
+        });
+      } catch (_e) {}
+    }
   }
 
   function showError(msg) {
@@ -205,14 +369,33 @@
     return true;
   }
 
-  async function markRead(db, announcementId, staff) {
+  async function markRead(db, announcementId, version, staff) {
     const docId = announcementId + "_" + staff.uid;
-    await db.collection("announcement_reads").doc(docId).set({
+    const payload = {
       announcement_id: announcementId,
       uid:             staff.uid,
       email:           staff.email || "",
+      version:         Number(version) || 1,
       read_at:         firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
+    // Always update the local cache FIRST. Even if the Firestore
+    // write below fails (rules glitch, offline, transient 500), the
+    // user's session won't loop the same modal on every page load.
+    // The local cache is per-uid and per-version, so a republished
+    // announcement (version bump) still re-shows correctly.
+    saveLocalRead(staff.uid, announcementId, payload.version);
+    try {
+      await db.collection("announcement_reads").doc(docId).set(payload);
+      log("markRead ok", { announcementId: announcementId, version: payload.version, uid: staff.uid });
+    } catch (err) {
+      // Don't swallow — let the caller surface the error in the modal
+      // UI. But the local cache is already updated, so the next page
+      // load won't re-display this announcement at this tech.
+      warn("markRead Firestore write failed (local cache still updated)", {
+        announcementId: announcementId, code: err && err.code, message: err && err.message
+      });
+      throw err;
+    }
   }
 
   // Process the queue sequentially. Each entry shows the modal and
@@ -228,18 +411,23 @@
           return;
         }
         const entry = queue[i];
+        const version = announcementVersion(entry);
         showModalForEntry(entry, i, queue.length, async function onClick() {
           if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
           setButtonSaving(true);
           try {
-            await markRead(db, entry.id, staff);
+            await markRead(db, entry.id, version, staff);
             setButtonSaving(false);
             i += 1;
             next();
           } catch (err) {
-            console.error("[mandatory-modal] mark-as-read failed", err && err.code, err && err.message);
+            // Even if the Firestore write failed, the local cache
+            // was updated by markRead before the throw — so the
+            // user won't see this announcement again on next page
+            // load. We still surface the error so they can retry.
+            warn("mark-as-read Firestore write failed", { code: err && err.code, message: err && err.message });
             setButtonSaving(false);
-            showError("Couldn't save. Check your connection and try again.");
+            showError("Couldn't save to Firestore. We've recorded it locally so you won't see this again — but please retry to sync.");
             // Stay on this entry. User can retry by clicking the button.
           }
         });
@@ -249,9 +437,26 @@
   }
 
   async function check(staff) {
-    if (!staff || !staff.uid) return;
+    // 2026-06-03 — Rollout gate. The mandatory-announcement modal pops
+    // automatically on every page load whenever an unread mandatory
+    // announcement exists, which is the right behavior in steady state
+    // but the wrong behavior during a live shift-testing window where
+    // techs are mid-flow. Default OFF; flip window.MOBILE_POPUP_ENABLED
+    // to true in firebase-config.js to restore steady-state behavior.
+    // The component, the modal DOM, and every existing call site are
+    // preserved — only the auto-pop fires when this flag is true.
+    if (window.MOBILE_POPUP_ENABLED !== true) {
+      log("check skipped — MOBILE_POPUP_ENABLED is not true (auto-pop disabled)");
+      return;
+    }
+    // Safe fallback if user/tech identity missing — silently skip the
+    // check rather than block the page. Per the V6 pilot spec.
+    if (!staff || !staff.uid) {
+      log("check skipped — missing staff.uid");
+      return;
+    }
     if (!window.firebase || typeof firebase.firestore !== "function") {
-      console.warn("[mandatory-modal] firestore SDK unavailable — skipping check");
+      warn("firestore SDK unavailable — skipping check");
       return;
     }
     try {
@@ -260,29 +465,93 @@
         db.collection("announcements").where("active", "==", true).get(),
         db.collection("announcement_reads").where("uid", "==", staff.uid).get()
       ]);
-      const readIds = new Set();
+      // Firestore-side read map: announcement_id → read version (or 1
+      // for legacy reads written before V6 added the version field).
+      const firestoreReadVersions = Object.create(null);
       readsSnap.docs.forEach(function (d) {
         const data = d.data() || {};
-        if (data.announcement_id) readIds.add(data.announcement_id);
+        if (!data.announcement_id) return;
+        firestoreReadVersions[data.announcement_id] = Number(data.version) || 1;
       });
-      const queue = annsSnap.docs
+      // V2 audience filter — same logic as Team Hub. Pre-V2 docs (no
+      // audienceType field) are treated as "all" so legacy all-team
+      // mandatories still pop.
+      function targetsStaff(a) {
+        const type = String(a.audienceType || "all");
+        if (type === "all") return true;
+        if (type !== "selected") return true;
+        const myUid   = staff && staff.uid;
+        const myEmail = String((staff && staff.email) || "").toLowerCase().trim();
+        const mySlug  = String((staff && staff.tech && (staff.tech.slug || staff.tech.tech_slug)) || "");
+        if (Array.isArray(a.recipientUids) && myUid && a.recipientUids.indexOf(myUid) >= 0) return true;
+        if (Array.isArray(a.recipientEmails) && myEmail && a.recipientEmails.indexOf(myEmail) >= 0) return true;
+        if (Array.isArray(a.recipientTechSlugs) && mySlug && a.recipientTechSlugs.indexOf(mySlug) >= 0) return true;
+        return false;
+      }
+      const allActive = annsSnap.docs
         .map(function (d) { return Object.assign({ id: d.id }, d.data()); })
         .filter(isActiveNow)
-        .filter(function (a) { return a.mandatory && !readIds.has(a.id); })
-        .sort(function (a, b) {
-          // Urgent first, then created_at desc.
-          const pa = a.priority === "urgent" ? 0 : 1;
-          const pb = b.priority === "urgent" ? 0 : 1;
-          if (pa !== pb) return pa - pb;
-          const at = annTsToMs(a.created_at) || 0;
-          const bt = annTsToMs(b.created_at) || 0;
-          return bt - at;
-        });
+        .filter(function (a) { return !!a.mandatory; })
+        .filter(targetsStaff);
+
+      // Bucket each mandatory announcement. An item is queued ONLY if
+      // NEITHER Firestore NOR localStorage shows the user has read it
+      // at the current version. Firestore is authoritative on first
+      // run; localStorage is the belt that prevents a Firestore-write
+      // hiccup from looping the modal forever.
+      const queue = [];
+      const skipped = [];
+      allActive.forEach(function (a) {
+        const v = announcementVersion(a);
+        const fsRead = (firestoreReadVersions[a.id] || 0) >= v;
+        const localRead = localHasReadAtVersion(staff.uid, a.id, v);
+        if (fsRead || localRead) {
+          skipped.push({ id: a.id, v: v, fsRead: fsRead, localRead: localRead });
+          return;
+        }
+        queue.push(a);
+      });
+      queue.sort(function (a, b) {
+        // Urgent first, then created_at desc.
+        const pa = a.priority === "urgent" ? 0 : 1;
+        const pb = b.priority === "urgent" ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        const at = annTsToMs(a.created_at) || 0;
+        const bt = annTsToMs(b.created_at) || 0;
+        return bt - at;
+      });
+
+      log("check completed", {
+        uid:               staff.uid,
+        active_mandatory:  allActive.length,
+        skipped_already_read: skipped.length,
+        queue_count:       queue.length,
+        queue_ids:         queue.map(function (a) { return a.id; })
+      });
+
       if (queue.length === 0) return;
       await processQueue(db, queue, staff);
     } catch (err) {
       // Network / permissions / SDK error — don't block the page.
-      console.warn("[mandatory-modal] check failed; not blocking page", err && err.code);
+      warn("check failed; not blocking page", { code: err && err.code, message: err && err.message });
+    } finally {
+      // Pilot v20260526-shiftrestore — defense in depth: after check
+      // completes (success, failure, or thrown), if no modal is visible,
+      // clear any lingering body overflow lock. Closes the iOS Safari
+      // hang where the announcement modal cleaned up but scroll stayed
+      // disabled.
+      if (!modalEl || modalEl.hidden) {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+        try {
+          console.info("[ScrollLock]", {
+            source:        "mandatory-modal:check-finally",
+            body_overflow: document.body.style.overflow || "(empty)",
+            html_overflow: document.documentElement.style.overflow || "(empty)",
+            modal_state:   modalEl ? (modalEl.hidden ? "hidden" : "visible") : "not-injected"
+          });
+        } catch (_e) {}
+      }
     }
   }
 

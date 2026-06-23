@@ -14,8 +14,16 @@
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles/work-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+  <link rel="stylesheet" href="styles/sos.css?v=20260528-sosv1" />
 </head>
-<body>
+<body class="pioneer-work-page">
 
   <div class="login-bg" aria-hidden="true">
     <span class="login-streak login-streak-1"></span>
@@ -138,131 +146,60 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" hidden>
 
-      <!-- Today's Work workflow section.
-           Mounted by today-work.js (window.PIONEER_TODAY_WORK.init).
-           Same DOM ids the old Team Hub embedding used — keep so the
-           init code path stays identical. Phase 2 normalization adds:
-             • KPI strip + Day Health card above the list
-             • filter row (All / Not Started / In Progress / Completed / Unassigned)
-             • .empty-state replacement for the "no work" message
-           No data path changes; everything below renders from the same
-           workShiftsByShiftId + workSessionByShiftId in today-work.js. -->
-      <section class="card team-hub-section team-hub-assignments work-page-section"
-               id="team-hub-assignments-section" hidden>
-        <header class="team-hub-section-head">
-          <h2 class="team-hub-section-title">📅 Today's Work</h2>
-          <p class="team-hub-section-sub" id="team-hub-assignments-sub">
-            Start work, finish the DCR, and clock out — one step at a time.
-          </p>
-        </header>
+      <!-- ============ Pioneer Time Clock (Phase 1b) ============
+           Native service-assignment clock-in/out, sitting ABOVE the
+           legacy Deputy "Today's Work" section so techs see the
+           Pioneer surface first. Hidden until service-clock.js has
+           resolved the signed-in tech + loaded today's assignments.
+           Deputy stays available beneath this as a fallback during
+           beta. The whole section is mounted by service-clock.js. -->
+      <section class="card pioneer-time-clock work-page-section"
+               id="pioneer-time-clock-section" hidden>
+        <!-- Phase 1c.1 — the prior section header ("⏱ Pioneer Time Clock"
+             eyebrow + subtitle) was removed; the hero card IS the
+             section identity now. Centered around MY WORK per spec. -->
 
-        <!-- Admin-preview callout — only painted by today-work.js when
-             staff.role === "admin" AND ?work_date=… is on the URL. Stays
-             hidden in the normal tech flow. -->
-        <div class="team-hub-assignments-callout" id="team-hub-assignments-callout" hidden></div>
+        <!-- 2026-06-22 Phase 32A — clock-in breadcrumb recovery banner.
+             Hidden by default. Shown by service-clock.js#checkPendingClockIntent()
+             when localStorage has a "pioneer.clock.intent" breadcrumb AND
+             no matching active_service_sessions / pioneer_service_sessions
+             row was found. Lets the tech re-confirm or dismiss a clock-in
+             that may not have reached Firestore. -->
+        <aside id="ptc-clock-intent-banner" class="ptc-clock-intent-banner" role="alert" aria-live="polite" hidden>
+          <span class="ptc-clock-intent-icon" aria-hidden="true">⚠</span>
+          <div class="ptc-clock-intent-body">
+            <strong class="ptc-clock-intent-title">Your last clock-in may not have saved</strong>
+            <p class="ptc-clock-intent-meta" id="ptc-clock-intent-meta"></p>
+            <div class="ptc-clock-intent-actions">
+              <button type="button" class="ptc-clock-intent-btn primary" id="ptc-clock-intent-retry">Retry clock-in</button>
+              <button type="button" class="ptc-clock-intent-btn secondary" id="ptc-clock-intent-dismiss">Dismiss</button>
+            </div>
+          </div>
+        </aside>
 
-        <!-- ============ KPI strip (Phase 2 polish) ============
-             Populated by today-work.js renderWorkCards(). Values stay
-             "—" until init() resolves so the strip doesn't flash 0s
-             during load. Five tiles per the Phase 2 spec. -->
-        <div class="kpi-grid work-kpi-strip" id="work-kpi-strip" data-cols="4">
-          <article class="kpi-card" data-tone="neutral">
-            <span class="kpi-label">Shifts today</span>
-            <span class="kpi-value" id="work-kpi-shifts">—</span>
-            <span class="kpi-meta"  id="work-kpi-shifts-meta">Scheduled</span>
-          </article>
-          <article class="kpi-card" data-tone="neutral">
-            <span class="kpi-label">Hours scheduled</span>
-            <span class="kpi-value is-medium" id="work-kpi-hours">—</span>
-            <span class="kpi-meta">Sum of start–end</span>
-          </article>
-          <article class="kpi-card" data-tone="neutral">
-            <span class="kpi-label">Techs on</span>
-            <span class="kpi-value is-medium" id="work-kpi-techs">—</span>
-            <span class="kpi-meta" id="work-kpi-techs-meta">Distinct employees</span>
-          </article>
-          <article class="kpi-card" data-tone="neutral">
-            <span class="kpi-label">Not started</span>
-            <span class="kpi-value is-medium" id="work-kpi-not-started">—</span>
-            <span class="kpi-meta" id="work-kpi-not-started-meta">Awaiting Start</span>
-          </article>
-          <article class="kpi-card" data-tone="neutral">
-            <span class="kpi-label">In progress · Completed</span>
-            <span class="kpi-value is-medium" id="work-kpi-progress-done">—</span>
-            <span class="kpi-meta" id="work-kpi-progress-done-meta">Working / Finished</span>
-          </article>
-        </div>
-
-        <!-- ============ Day Health card ============
-             Dark .health-card from ui-cards.css. Tone + summary +
-             checklist driven by today-work.js based on the SAME shift
-             counts the KPI strip uses. Hidden until init() finishes. -->
-        <section class="health-card work-day-health" id="work-day-health" data-status="healthy" hidden>
-          <header class="health-head">
-            <span class="health-eyebrow" id="work-day-health-eyebrow">Day Health</span>
-            <h3 class="health-title" id="work-day-health-title">Day is on track.</h3>
-          </header>
-          <p class="health-summary" id="work-day-health-summary">—</p>
-          <ul class="health-checklist" id="work-day-health-checklist">
-            <li data-state="ok" id="work-day-health-li-started">All shifts started</li>
-            <li data-state="ok" id="work-day-health-li-assigned">All customers assigned</li>
-            <li data-state="muted" id="work-day-health-li-wrapped">All work wrapped up</li>
-          </ul>
-          <footer class="health-foot">
-            <span id="work-day-health-foot-left">Updated just now</span>
-            <span id="work-day-health-foot-right"></span>
-          </footer>
-        </section>
-
-        <!-- ============ Filter row ============
-             Pill-style buttons. Default = "all". Click → today-work.js
-             updates currentWorkFilter and calls renderWorkCards(). KPI
-             counts are NOT filter-affected — they always reflect the
-             full day. Filter changes only affect which cards render. -->
-        <div class="work-filter" id="work-filter" role="tablist" aria-label="Filter shifts">
-          <button type="button" class="work-filter-btn is-active" data-filter="all" role="tab" aria-selected="true">All
-            <span class="work-filter-count" id="work-filter-count-all">0</span>
-          </button>
-          <button type="button" class="work-filter-btn" data-filter="not_started" role="tab" aria-selected="false">Not Started
-            <span class="work-filter-count" id="work-filter-count-not_started">0</span>
-          </button>
-          <button type="button" class="work-filter-btn" data-filter="in_progress" role="tab" aria-selected="false">In Progress
-            <span class="work-filter-count" id="work-filter-count-in_progress">0</span>
-          </button>
-          <button type="button" class="work-filter-btn" data-filter="completed" role="tab" aria-selected="false">Completed
-            <span class="work-filter-count" id="work-filter-count-completed">0</span>
-          </button>
-          <button type="button" class="work-filter-btn" data-filter="unassigned" role="tab" aria-selected="false">Unassigned
-            <span class="work-filter-count" id="work-filter-count-unassigned">0</span>
-          </button>
-        </div>
-
-        <p class="team-hub-assignments-status"
-           id="team-hub-assignments-loading">Loading today's work…</p>
-        <p class="team-hub-assignments-status team-hub-assignments-error"
-           id="team-hub-assignments-error" hidden></p>
-
-        <!-- No-work empty state (the day has zero shifts at all). -->
-        <div class="empty-state" data-tone="neutral"
-             id="team-hub-assignments-empty" hidden>
-          <div class="empty-state-icon" aria-hidden="true">🧘</div>
-          <h3 class="empty-state-title">No work scheduled today</h3>
-          <p class="empty-state-body">Once Deputy posts shifts for today, they'll appear here.</p>
-        </div>
-
-        <!-- Filtered-to-zero empty state (there ARE shifts today, but
-             none match the current filter). today-work.js toggles this
-             vs the main list as the filter changes. -->
-        <div class="empty-state is-inline" data-tone="neutral"
-             id="team-hub-assignments-filter-empty" hidden>
-          <div class="empty-state-icon" aria-hidden="true">🔍</div>
-          <h3 class="empty-state-title" id="team-hub-assignments-filter-empty-title">No shifts match that filter</h3>
-          <p class="empty-state-body">Try a different filter, or tap All to see every shift.</p>
-        </div>
-
-        <div class="team-hub-assignments-list"
-             id="team-hub-assignments-list" role="list"></div>
+        <div class="ptc-hero"  id="ptc-hero"  hidden></div>
+        <div class="ptc-stats" id="ptc-stats" hidden></div>
+        <div class="ptc-assignments" id="ptc-assignments"></div>
+        <p class="ptc-fallback-note">
+          During beta, continue clocking in/out in Deputy too until the office tells you Pioneer Time Clock is official.
+        </p>
       </section>
+
+      <!-- UI cleanup (2026-06-02) — legacy "📅 Today's Work" duplicate
+           section removed. Field testing found employees were attempting
+           DCR submissions from BOTH this section AND Pioneer Time Clock
+           above, creating duplicates. Pioneer Time Clock is now the
+           single source of truth for shift interaction + DCR launch.
+
+           Code that previously rendered into this section
+           (today-work.js / PIONEER_TODAY_WORK) is no longer loaded;
+           the today-work.js file is retained in the repo as dead code
+           pending future deletion. The Phase 1g fallback banner
+           (#ptc-legacy-fallback-banner) and toggle helper in
+           service-clock.js are also removed since the "use Start Work
+           below" instruction no longer has a target. PTC's empty-state
+           copy now points techs to the office for clock-in support
+           when no Pioneer assignment exists. -->
 
     </div><!-- /#staff-auth-content -->
 
@@ -299,10 +236,21 @@
 
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
-  <script src="mandatory-modal.js"></script>
-  <script src="walkthrough.js"></script>
+  <script src="mandatory-modal.js?v=20260603-popup-gate"></script>
+  <script src="walkthrough.js?v=20260528-celebrate"></script>
   <script src="customer-sop.js"></script>
-  <script src="today-work.js"></script>
-  <script src="work.js"></script>
+  <script src="celebrate.js?v=20260528-celebrate"></script>
+  <script src="customer-display.js?v=20260528-displayname"></script>
+  <!-- today-work.js removed 2026-06-02 — duplicate Today's Work section
+       deleted from /work; Pioneer Time Clock above is the single source
+       of truth. File retained in repo as dead code pending future
+       cleanup; no longer loaded. -->
+  <!-- <script src="today-work.js?v=20260601-phase1b3-badge"></script> -->
+
+  <script src="assignment-eligibility.js?v=20260607-phase33-shared-eligibility"></script>
+  <script src="service-clock.js?v=20260622-phase32a"></script>
+  <script src="work.js?v=20260615-office-issues"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+  <script src="sos.js?v=20260528-sosv1"></script>
 </body>
 </html>

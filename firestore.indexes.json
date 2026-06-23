@@ -7,6 +7,312 @@
         { "fieldPath": "customer_slug", "order": "ASCENDING" },
         { "fieldPath": "created_at",    "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "confirmedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "shiftDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "open_shift_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "acceptedByTechUid", "order": "ASCENDING" },
+        { "fieldPath": "acceptedAt",        "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "service_date", "order": "ASCENDING" },
+        { "fieldPath": "status",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "service_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "customer_id",  "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "staff_uid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dcr_status",    "order": "ASCENDING"  },
+        { "fieldPath": "dcr_waived_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignment_id", "order": "ASCENDING"  },
+        { "fieldPath": "staff_uid",     "order": "ASCENDING"  },
+        { "fieldPath": "status",        "order": "ASCENDING"  },
+        { "fieldPath": "clock_out_at",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accrued_in_period_id", "order": "ASCENDING" },
+        { "fieldPath": "staff_uid",            "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pioneer_service_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",   "order": "ASCENDING" },
+        { "fieldPath": "workweek_id", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid", "order": "ASCENDING"  },
+        { "fieldPath": "punch_at",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "service_date", "order": "ASCENDING" },
+        { "fieldPath": "punch_at",     "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "drive_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "drive_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",       "order": "ASCENDING" },
+        { "fieldPath": "service_date", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "payroll_periods",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "start_date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payroll_periods",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "ASCENDING" },
+        { "fieldPath": "half",  "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "sick_leave_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",      "order": "ASCENDING"  },
+        { "fieldPath": "effective_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sick_leave_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",      "order": "ASCENDING"  },
+        { "fieldPath": "entry_type",     "order": "ASCENDING"  },
+        { "fieldPath": "effective_date", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "ceo_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ceo_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "category",   "order": "ASCENDING" },
+        { "fieldPath": "sourceType", "order": "ASCENDING" },
+        { "fieldPath": "sourceId",   "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "leadership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientType", "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "deliverAfter",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leadership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientType", "order": "ASCENDING" },
+        { "fieldPath": "recipientId",   "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "deliverAfter",  "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "leadership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ceo_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy",   "order": "ASCENDING"  },
+        { "fieldPath": "completedAt", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "communication_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category",         "order": "ASCENDING"  },
+        { "fieldPath": "status",           "order": "ASCENDING"  },
+        { "fieldPath": "last_message_at",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communication_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING"  },
+        { "fieldPath": "updated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communication_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "source_type", "order": "ASCENDING" },
+        { "fieldPath": "source_id",   "order": "ASCENDING" },
+        { "fieldPath": "status",      "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communication_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participant_ids",  "arrayConfig": "CONTAINS" },
+        { "fieldPath": "last_message_at",  "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "communication_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "thread_id",  "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communication_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipient_type", "order": "ASCENDING" },
+        { "fieldPath": "recipient_id",   "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "deliver_after",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "communication_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "channel",       "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "deliver_after", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "office_issues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employee_uid", "order": "ASCENDING"  },
+        { "fieldPath": "created_at",   "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "dcr_pending_uploads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "queued_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

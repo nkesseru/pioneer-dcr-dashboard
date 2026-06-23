@@ -97,6 +97,16 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+
+/* Pilot v20260526-scrollrestore — modal-scroll-locked is the ONLY
+   legitimate way to lock scroll. Modals add the class on open and
+   remove it on close. Everything else stays scrollable by browser
+   default. NO global !important overrides on html/body — the prior
+   version of this block stranded every page on desktop. */
+body.modal-scroll-locked {
+  overflow: hidden;
+}
+
 body {
   background: var(--pc-bg);
   color: var(--pc-text);
@@ -443,6 +453,156 @@ main { max-width: 680px; margin: 0 auto; padding: 8px 14px 120px; }
 .deputy-shift-banner-link:hover { text-decoration: none; }
 
 /* ==========================================================================
+   2026-06-22 Phase 32D — DCR no-clock-in preflight warning banner.
+   Shown when the DCR form was opened without any clock-in linkage.
+   Amber tone — warning but not alarm — so techs read it as a soft nudge
+   to clock in, not a hard error blocking their submission.
+   ========================================================================== */
+.dcr-no-session-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: var(--radius-input);
+}
+.dcr-no-session-banner-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.dcr-no-session-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dcr-no-session-banner-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  color: inherit;
+}
+.dcr-no-session-banner-msg {
+  margin: 0;
+  font-size: 12.5px;
+  color: inherit;
+}
+.dcr-no-session-banner-msg strong { font-weight: 700; }
+.dcr-no-session-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.dcr-no-session-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1;
+}
+.dcr-no-session-banner-btn.primary {
+  background: #f59e0b;
+  color: #fff;
+  border-color: #f59e0b;
+}
+.dcr-no-session-banner-btn.primary:hover { background: #d97706; border-color: #d97706; }
+.dcr-no-session-banner-btn.secondary {
+  background: #fff;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.dcr-no-session-banner-btn.secondary:hover { background: #fef3c7; }
+
+/* ==========================================================================
+   2026-06-22 Phase 32A — Clock-in breadcrumb recovery banner.
+   Shown at the top of /work's Pioneer Time Clock section when a prior
+   clock-in attempt left a localStorage breadcrumb but no matching session
+   exists in Firestore. Higher-urgency tone than the DCR preflight (red-ish
+   rather than amber) because the tech almost certainly believes they
+   already clocked in and hours are at risk.
+   ========================================================================== */
+.ptc-clock-intent-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  border-radius: var(--radius-input);
+}
+.ptc-clock-intent-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.ptc-clock-intent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ptc-clock-intent-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  color: inherit;
+}
+.ptc-clock-intent-meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: inherit;
+  opacity: 0.9;
+}
+.ptc-clock-intent-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ptc-clock-intent-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  line-height: 1;
+}
+.ptc-clock-intent-btn.primary {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+.ptc-clock-intent-btn.primary:hover { background: #dc2626; border-color: #dc2626; }
+.ptc-clock-intent-btn.primary:disabled { background: #f87171; border-color: #f87171; cursor: wait; opacity: 0.85; }
+.ptc-clock-intent-btn.secondary {
+  background: #fff;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.ptc-clock-intent-btn.secondary:hover { background: #fee2e2; }
+
+/* ==========================================================================
    Cards — clean glass-on-paper with a barely-perceptible vertical gradient
    ========================================================================== */
 
@@ -622,6 +782,83 @@ select {
 .progress-count.is-complete {
   background: var(--pc-teal-100);
   color: var(--pc-teal-700);
+}
+
+/* V20260614 — Select All / Clear All control on each section header.
+   .checklist-card-head-zone is a positioning ancestor that wraps the
+   existing collapsible <button class="checklist-header"> plus a
+   sibling <button class="select-all-btn">. The sibling is positioned
+   absolutely at the top-right so the section header still functions
+   as a single collapse target, but the batch-action button stays
+   reachable without nesting buttons (which would be invalid HTML). */
+.checklist-card-head-zone {
+  position: relative;
+}
+.checklist-card-head-zone .checklist-header {
+  /* Leave room on the right so the Select All chip never collides with
+     the existing progress-count + chevron group. ~96px fits "Clear All"
+     comfortably with breathing room. */
+  padding-right: 108px;
+}
+.select-all-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: var(--radius-pill);
+  background: var(--pc-teal-50, #e6f7f4);
+  color: var(--pc-teal-700, #0f766e);
+  border: 1px solid var(--pc-teal-200, #b8e3da);
+  cursor: pointer;
+  transition: background var(--t-base), color var(--t-base),
+              border-color var(--t-base), transform var(--t-base);
+  /* Slightly bigger tap target on touch devices without affecting layout. */
+  -webkit-tap-highlight-color: rgba(15, 118, 110, 0.18);
+}
+.select-all-btn:hover {
+  background: var(--pc-teal-100, #ccefe9);
+  color: var(--pc-teal-700, #0f766e);
+}
+.select-all-btn:active {
+  transform: scale(0.97);
+}
+.select-all-btn:focus-visible {
+  outline: 2px solid var(--pc-teal-500, #14b8a6);
+  outline-offset: 2px;
+}
+/* Clear All state — slightly louder so the destructive flip is visible. */
+.select-all-btn.is-clear-all {
+  background: var(--pc-bg-strong, #f4f6fb);
+  color: var(--pc-text-strong, #1a1a1a);
+  border-color: var(--pc-border, #e5e7eb);
+}
+.select-all-btn.is-clear-all:hover {
+  background: var(--pc-bg, #fafbfc);
+}
+/* Hide the Select All button while the section is collapsed — collapsed
+   sections show only the title row and don't need their batch action
+   exposed. Keeps the header tight. */
+.checklist-card.is-collapsed .select-all-btn {
+  display: none;
+}
+/* Mobile — slightly smaller chip + tighter padding so it doesn't crowd
+   the count badge on iPhone widths. */
+@media (max-width: 480px) {
+  .checklist-card-head-zone .checklist-header { padding-right: 96px; }
+  .select-all-btn {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    top: 12px;
+    right: 12px;
+  }
 }
 .progress-bar {
   height: 4px;
@@ -1203,6 +1440,24 @@ select {
   border-radius: 3px;
   transition: width var(--t-base);
 }
+.upload-progress-cancel {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pc-text);
+  background: #fff;
+  border: 1px solid var(--pc-border);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.upload-progress-cancel:hover,
+.upload-progress-cancel:focus-visible {
+  background: var(--pc-bg-strong);
+  border-color: var(--pc-text-muted);
+}
 
 /* ==========================================================================
    Submit bar + primary button — graphite with teal glow on hover
@@ -1557,6 +1812,101 @@ select {
     0 2px 6px rgba(13, 18, 24, 0.20),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* Golden-path success block — guides the tech from DCR submit to
+   Finish Work to Deputy clock-out. Sits above the submission ID. */
+.success-final-step {
+  margin: 8px 0 16px;
+  padding: 14px 16px 12px;
+  background: rgba(20, 184, 166, 0.06);
+  border: 1px solid rgba(20, 184, 166, 0.25);
+  border-left: 4px solid var(--pc-teal, #14b8a6);
+  border-radius: 10px;
+  text-align: left;
+}
+.success-final-step-title {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: var(--pc-text-muted, #475569);
+  text-transform: uppercase;
+}
+.success-final-step-body {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--pc-text, #0f172a);
+}
+.success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.success-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  min-height: 46px;
+  border: 0;
+  transition: background var(--t-fast, 160ms), transform 80ms;
+}
+.success-btn:active { transform: translateY(1px); }
+.success-btn-primary {
+  background: var(--pc-teal, #14b8a6);
+  color: #052e2b;
+  border: 1px solid #0d9488;
+  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.30);
+}
+.success-btn-primary:hover  { background: #0d9488; }
+.success-btn-primary:active { background: #0b7e74; }
+.success-btn-secondary {
+  background: #ffffff;
+  color: var(--pc-text, #0f172a);
+  border: 1px solid #cbd5e1;
+}
+.success-btn-secondary:hover  { background: #f8fafc; }
+.success-btn-secondary:active { background: #e2e8f0; }
+
+.success-helper {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--pc-text-muted, #64748b);
+  text-align: center;
+}
+.success-link {
+  display: inline-block;
+  font-size: 13.5px;
+  color: var(--pc-text-muted, #475569);
+  text-decoration: underline;
+  background: transparent;
+  border: 0;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.success-link:hover { color: var(--pc-text, #0f172a); }
+
+.success-no-session {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 14px;
+}
+.success-no-session .success-link { margin-top: 2px; }
+
+@media (min-width: 480px) {
+  .success-actions { flex-direction: row; }
+  .success-actions .success-btn { flex: 1 1 0; }
 }
 
 /* ==========================================================================
@@ -1963,6 +2313,134 @@ select {
 .work-step.is-active .work-step-label { color: var(--pc-teal-700); }
 .work-step.is-done   .work-step-label { color: #166534; }
 
+/* Secondary button — neutral outline used by the completed-shift card
+   actions (View Summary, Request Time Adjustment). Less visually loud
+   than .is-primary so the completed state doesn't compete with the
+   active CTAs on other cards in the list. */
+.assign-card-btn.is-secondary {
+  background: #fff;
+  color: var(--pc-text, #1f2937);
+  border: 1px solid var(--pc-border, #e5e7eb);
+}
+.assign-card-btn.is-secondary:hover {
+  background: var(--pc-bg, #f9fafb);
+}
+
+/* Physical location chip — shown under the customer name when the
+   Deputy shift carries a location_name distinct from the customer.
+   Helps techs disambiguate when they have multiple shifts at the
+   same customer (different floors, buildings, etc.). */
+.assign-card-loc.is-physical-location {
+  font-size: 11.5px;
+  color: var(--pc-text-muted, #6b7280);
+  margin-top: 2px;
+}
+
+/* ---------- Completed-shift card ----------
+   Replaces the old single-pill ".assign-card-done" for finished
+   shifts. Mandatory after a clock-out so the tech can never mistake
+   a completed shift for one waiting to be started. */
+.assign-card-completed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+}
+.assign-card-completed-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #047857;
+  letter-spacing: 0.2px;
+}
+.assign-card-completed-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: #166534;
+}
+.assign-card-completed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.assign-card-completed-label {
+  color: var(--pc-text-muted, #6b7280);
+  font-weight: 600;
+}
+.assign-card-completed-row strong {
+  color: #064e3b;
+  font-weight: 700;
+}
+.assign-card-completed-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.assign-card-completed-pill.is-ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+.assign-card-completed-pill.is-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+.assign-card-completed-pill code {
+  background: rgba(255,255,255,0.65);
+  border: 1px solid #a7f3d0;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  word-break: break-all;
+}
+.assign-card-completed-help {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--pc-text-subtle, #6b7280);
+  line-height: 1.5;
+}
+.assign-card-completed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.assign-card-completed-summary {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #d1fae5;
+  border-radius: 6px;
+}
+.assign-card-summary-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+.assign-card-summary-dl dt {
+  color: var(--pc-text-muted, #6b7280);
+  font-weight: 600;
+}
+.assign-card-summary-dl dd {
+  margin: 0;
+  color: var(--pc-text, #1f2937);
+  font-weight: 600;
+}
+
 /* Finished state — subtle inline confirmation instead of a button. */
 .assign-card-done {
   display: inline-flex;
@@ -2032,6 +2510,989 @@ select {
   .assign-card-head { flex-direction: column; align-items: stretch; gap: 6px; }
   .assign-chip      { align-self: flex-start; }
 }
+
+/* Phase 1C — Leadership Messages on Team Hub. One-way notes from
+   executives. Warm, supportive aesthetic; clearly different from
+   the operational announcement cards. */
+.team-hub-leadership-list { display: flex; flex-direction: column; gap: 12px; }
+.team-hub-leadership-card {
+  background: linear-gradient(135deg, #fdfbf6 0%, #f3ede2 100%);
+  border: 1px solid rgba(70, 60, 45, 0.08);
+  border-left: 3px solid #c8a96f;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.team-hub-leadership-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+.team-hub-leadership-type {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #6b8576;
+}
+.team-hub-leadership-from {
+  font-size: 12px;
+  color: #8a8275;
+}
+.team-hub-leadership-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: #2f2a24;
+  margin: 0 0 14px;
+  white-space: pre-wrap;
+}
+.team-hub-leadership-btns {
+  display: flex;
+  gap: 8px;
+}
+.team-hub-leadership-ack,
+.team-hub-leadership-dismiss {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: none;
+}
+.team-hub-leadership-ack {
+  background: #2f2a24;
+  color: #faf6ef;
+}
+.team-hub-leadership-dismiss {
+  background: transparent;
+  color: #5d564b;
+  border: 1px solid rgba(70, 60, 45, 0.12);
+}
+.team-hub-leadership-ack:disabled,
+.team-hub-leadership-dismiss:disabled { opacity: 0.5; cursor: default; }
+.team-hub-leadership-status {
+  font-size: 12px;
+  color: #6b8576;
+  margin: 8px 0 0;
+  min-height: 14px;
+}
+.team-hub-leadership-status[data-tone="error"] { color: #a26b76; }
+
+/* Phase 3B — Messages from Pioneer (thread-based). Distinct visual
+   treatment from Phase 1C leadership messages so techs can tell the
+   two apart while we run them in parallel. */
+.team-hub-comm-list { display: flex; flex-direction: column; gap: 14px; }
+.team-hub-comm-card {
+  background: #ffffff;
+  border: 1px solid rgba(70, 60, 45, 0.10);
+  border-left: 3px solid #6b8576;
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+}
+.team-hub-comm-card[data-category="leadership"] { border-left-color: #c8a96f; }
+.team-hub-comm-card[data-category="scheduling"] { border-left-color: #4a90e2; }
+.team-hub-comm-card[data-category="supplies"]   { border-left-color: #7b9d6c; }
+.team-hub-comm-card[data-category="callout"]    { border-left-color: #c4836a; }
+.team-hub-comm-card[data-category="customer"]   { border-left-color: #a26b76; }
+.team-hub-comm-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.team-hub-comm-card-subject {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2f2a24;
+}
+.team-hub-comm-card-meta {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #8a8275;
+}
+.team-hub-comm-card-from {
+  font-size: 12px;
+  color: #5d564b;
+  margin-bottom: 8px;
+}
+.team-hub-comm-card-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #2f2a24;
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+.team-hub-comm-card-reply {
+  margin-top: 8px;
+}
+.team-hub-comm-card-reply-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(70, 60, 45, 0.16);
+  border-radius: 10px;
+  background: #fdfbf6;
+  color: #2f2a24;
+  min-height: 60px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.team-hub-comm-card-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.team-hub-comm-btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: none;
+}
+.team-hub-comm-btn-primary {
+  background: #2f2a24;
+  color: #faf6ef;
+}
+.team-hub-comm-btn-secondary {
+  background: transparent;
+  color: #5d564b;
+  border: 1px solid rgba(70, 60, 45, 0.16);
+}
+.team-hub-comm-btn:disabled { opacity: 0.5; cursor: default; }
+.team-hub-comm-card-status {
+  font-size: 12px;
+  color: #6b8576;
+  margin: 8px 0 0;
+  min-height: 14px;
+}
+.team-hub-comm-card-status[data-tone="error"] { color: #a26b76; }
+.team-hub-comm-card-history {
+  margin: 6px 0 10px;
+  padding: 8px 10px;
+  background: rgba(110, 130, 110, 0.06);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #5d564b;
+}
+.team-hub-comm-card-history-item {
+  padding: 4px 0;
+  border-top: 1px solid rgba(70, 60, 45, 0.08);
+}
+.team-hub-comm-card-history-item:first-child { border-top: none; }
+
+/* Phase 3B.1 — Thread status chip on team-hub comm cards. Five tones
+   matching the manager surface so a tech who happens to also see
+   /manager learns one visual vocabulary. */
+.th-comm-status-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  white-space: nowrap;
+}
+.th-comm-status-chip.is-open                  { background: #e2e8f0; color: #475569; }
+.th-comm-status-chip.is-waiting_on_employee   { background: #dbeafe; color: #1e3a8a; }
+.th-comm-status-chip.is-waiting_on_management { background: #fef3c7; color: #92400e; }
+.th-comm-status-chip.is-resolved              { background: #dcfce7; color: #166534; }
+.th-comm-status-chip.is-closed                { background: #cbd5e1; color: #1e293b; }
+
+/* Phase 3B.2 — priority chip on team-hub comm cards. Same three
+   tones as /manager (fyi neutral, action_required amber, urgent red). */
+.th-comm-priority-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.th-comm-priority-chip.is-fyi             { background: #f1f5f9; color: #475569; }
+.th-comm-priority-chip.is-action_required { background: #fed7aa; color: #9a3412; }
+.th-comm-priority-chip.is-urgent          { background: #fecaca; color: #991b1b; }
+/* Urgent cards get an extra red ring on the left border so the eye
+   catches them in a long inbox. */
+.team-hub-comm-card[data-priority="urgent"] {
+  border-left-color: #dc2626 !important;
+  border-left-width: 4px;
+}
+/* Phase 3B.2 — category palette adjustments per spec:
+   callout was clay (#c4836a) → amber (high-attention)
+   customer was berry (#a26b76) → clay (warmer, distinct from callout) */
+.team-hub-comm-card[data-category="callout"]  { border-left-color: #f59e0b; }
+.team-hub-comm-card[data-category="customer"] { border-left-color: #c4836a; }
+.team-hub-comm-card-head {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ============================================================
+   Phase Employee Trust Layer — My Hours
+   Reassuring summary at the top, an expandable per-shift list
+   below, and a single "Request Adjustment" CTA at the bottom.
+   ============================================================ */
+.team-hub-my-hours .team-hub-section-sub { color: #475569; }
+.my-hours-summary {
+  background: linear-gradient(135deg, #0b1220 0%, #1e293b 100%);
+  border-radius: 14px;
+  padding: 22px 24px;
+  color: #ffffff;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  /* Stays visible while the tech scrolls through an expanded shift
+     list — the "How many hours / is payroll right" answer is always
+     in view. Releases when the My Hours section is fully scrolled past. */
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  box-shadow: 0 8px 20px rgba(11, 18, 32, 0.18);
+}
+.my-hours-summary-loading {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.my-hours-summary-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 4px;
+}
+.my-hours-summary-period {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  margin: 0;
+}
+.my-hours-summary-closes {
+  margin: 4px 0 14px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.2px;
+}
+.my-hours-summary-closes strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Confidence chip — sits above the period title so it's the FIRST
+   thing the tech reads. Green when no pending corrections; warm
+   amber when at least one is awaiting Kirby. */
+.my-hours-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+.my-hours-confidence-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.my-hours-confidence-ok {
+  background: rgba(74, 222, 128, 0.18);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+.my-hours-confidence-warn {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+.my-hours-summary-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+}
+.my-hours-tile {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.my-hours-tile-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 4px;
+}
+.my-hours-tile-value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  line-height: 1.1;
+}
+.my-hours-tile-value-small {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.my-hours-tile-pending .my-hours-tile-value { color: #fbbf24; }
+.my-hours-tile-approved .my-hours-tile-value { color: #4ade80; }
+.my-hours-tile-sick .my-hours-tile-value     { color: #93c5fd; }
+
+/* Phase 29G — Pay Period picker (light-background styling — sits above
+   the dark .my-hours-summary panel, ON the white .card parent). Status
+   pill below uses dark-theme colors because it lives inside the dark
+   summary panel; do NOT recolor the pill from this rule. */
+.my-hours-period-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  flex-wrap: wrap;
+}
+.my-hours-period-picker-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #334155;
+}
+.my-hours-period-select {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 240px;
+  flex: 1 1 240px;
+  appearance: auto;
+}
+.my-hours-period-select:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+  border-color: #2563eb;
+}
+.my-hours-period-select option { color: #0f172a; background: #ffffff; }
+.my-hours-period-picker-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.4;
+}
+@media (max-width: 600px) {
+  .my-hours-period-picker { padding: 10px; gap: 8px; }
+  .my-hours-period-select { width: 100%; min-width: 0; font-size: 15px; }
+  .my-hours-period-picker-label { width: 100%; }
+}
+
+.my-hours-period-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-bottom: 8px;
+}
+.my-hours-period-status.is-ok    { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }
+.my-hours-period-status.is-info  { background: rgba(147, 197, 253, 0.18); color: #93c5fd; border-color: rgba(147, 197, 253, 0.45); }
+.my-hours-period-status.is-warn  { background: rgba(251, 191, 36, 0.18); color: #fbbf24; border-color: rgba(251, 191, 36, 0.45); }
+.my-hours-period-status.is-muted { background: rgba(148, 163, 184, 0.16); color: rgba(255, 255, 255, 0.6); border-color: rgba(148, 163, 184, 0.4); }
+
+/* ============================================================
+   Phase 29G v2 — Pay Period History detail sections.
+   Past-period only — current period UI unchanged.
+   ============================================================ */
+.my-hours-subhead {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 16px 0 8px 0;
+}
+
+/* Per-session detail card */
+.my-hours-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 8px;
+}
+.my-hours-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.my-hours-card-head-main { flex: 1 1 auto; min-width: 0; }
+.my-hours-card-customer {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.95);
+}
+.my-hours-card-location {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.65);
+}
+.my-hours-card-date {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.my-hours-card-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+.my-hours-card-pill.is-ok    { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }
+.my-hours-card-pill.is-info  { background: rgba(147, 197, 253, 0.18); color: #93c5fd; border-color: rgba(147, 197, 253, 0.45); }
+.my-hours-card-pill.is-muted { background: rgba(148, 163, 184, 0.16); color: rgba(255, 255, 255, 0.6); border-color: rgba(148, 163, 184, 0.4); }
+.my-hours-card-body { margin-top: 8px; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.my-hours-card-times { margin-bottom: 4px; }
+.my-hours-card-time-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.my-hours-card-hours       { margin-top: 4px; }
+.my-hours-card-hours-orig  { color: rgba(255, 255, 255, 0.65); }
+.my-hours-card-hours-arrow { color: rgba(255, 255, 255, 0.45); }
+.my-hours-card-hours-adj   { color: #4ade80; font-weight: 700; }
+.my-hours-card-hours-delta { color: #4ade80; font-size: 12px; }
+.my-hours-card-ot {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #fbbf24;
+}
+.my-hours-card-dcr-row { margin-top: 6px; }
+.my-hours-card-dcr {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.8);
+}
+.my-hours-card-dcr.is-submitted { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }
+.my-hours-card-dcr.is-waived    { background: rgba(147, 197, 253, 0.18); color: #93c5fd; border-color: rgba(147, 197, 253, 0.45); }
+.my-hours-card-dcr.is-pending   { background: rgba(251, 191, 36, 0.18); color: #fbbf24; border-color: rgba(251, 191, 36, 0.45); }
+.my-hours-card-dcr.is-missing   { background: rgba(248, 113, 113, 0.18); color: #fca5a5; border-color: rgba(248, 113, 113, 0.45); }
+.my-hours-card-dcr.is-muted     { background: rgba(148, 163, 184, 0.16); color: rgba(255, 255, 255, 0.6); border-color: rgba(148, 163, 184, 0.4); }
+
+/* Period totals subtable */
+.my-hours-period-totals {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.my-hours-totals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.my-hours-totals-table th,
+.my-hours-totals-table td {
+  padding: 6px 0;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.85);
+}
+.my-hours-totals-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.my-hours-totals-grand th,
+.my-hours-totals-grand td {
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  padding-top: 8px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.my-hours-totals-foot {
+  margin: 6px 0 0 0;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+/* Adjustments section */
+.my-hours-adjustments-list { margin-top: 4px; }
+.my-hours-adj-row {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.my-hours-adj-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.my-hours-adj-date   { font-weight: 700; color: rgba(255, 255, 255, 0.95); }
+.my-hours-adj-status {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.my-hours-adj-status.is-ok    { background: rgba(74, 222, 128, 0.18); color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }
+.my-hours-adj-status.is-warn  { background: rgba(248, 113, 113, 0.18); color: #fca5a5; border-color: rgba(248, 113, 113, 0.45); }
+.my-hours-adj-status.is-info  { background: rgba(147, 197, 253, 0.18); color: #93c5fd; border-color: rgba(147, 197, 253, 0.45); }
+.my-hours-adj-detail { color: rgba(255, 255, 255, 0.85); }
+.my-hours-adj-foot   { margin-top: 4px; font-size: 11.5px; color: rgba(255, 255, 255, 0.6); }
+.my-hours-adj-reason { font-style: italic; }
+.my-hours-adj-meta   { color: rgba(255, 255, 255, 0.55); }
+.my-hours-empty-row {
+  margin: 6px 0 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+/* Sick leave section */
+.my-hours-sick-list { margin-top: 4px; }
+.my-hours-sick-row {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.my-hours-sick-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.my-hours-sick-date  { font-weight: 700; color: rgba(255, 255, 255, 0.95); }
+.my-hours-sick-hours {
+  color: #93c5fd;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.my-hours-sick-reason {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* Status timeline */
+.my-hours-status-timeline { margin-top: 4px; }
+.my-hours-timeline { list-style: none; margin: 0; padding: 0; }
+.my-hours-timeline-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.my-hours-timeline-row:last-child { border-bottom: 0; }
+.my-hours-timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.my-hours-timeline-label { font-weight: 700; color: rgba(255, 255, 255, 0.95); font-size: 13px; }
+.my-hours-timeline-when  { color: rgba(255, 255, 255, 0.7); font-size: 12.5px; margin-left: 4px; }
+.my-hours-timeline-sub   { color: rgba(255, 255, 255, 0.55); font-size: 11.5px; margin-top: 2px; }
+.my-hours-summary-empty {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Shift list */
+.my-hours-shifts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.my-hours-shift-row {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #94a3b8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  align-items: start;
+}
+.my-hours-shift-row[data-labor="inspection"]      { border-left-color: #2563eb; }
+.my-hours-shift-row[data-labor="supply_station"]  { border-left-color: #d97706; }
+.my-hours-shift-row[data-status="active"]         { border-left-color: #16a34a; background: #f0fdf4; }
+.my-hours-shift-row[data-pending="true"]          { background: #fffbeb; border-color: #fde68a; }
+.my-hours-shift-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.my-hours-shift-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.my-hours-shift-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b1220;
+}
+.my-hours-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}
+.my-hours-chip-cleaning      { background: #e0e7ff; color: #3730a3; }
+.my-hours-chip-inspection    { background: #dbeafe; color: #1e40af; }
+.my-hours-chip-supply_station{ background: #fef3c7; color: #92400e; }
+.my-hours-chip-drive         { background: #ede9fe; color: #5b21b6; }
+.my-hours-chip-other         { background: #f1f5f9; color: #334155; }
+.my-hours-chip-active        { background: #dcfce7; color: #166534; }
+.my-hours-chip-pending       { background: #fef3c7; color: #92400e; }
+.my-hours-chip-approved      { background: #dcfce7; color: #166534; }
+.my-hours-shift-detail {
+  font-size: 12.5px;
+  color: #475569;
+  line-height: 1.45;
+}
+.my-hours-shift-detail strong { color: #0b1220; }
+.my-hours-shift-actions { align-self: center; }
+.my-hours-shift-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+.my-hours-shift-btn:hover { background: #f8fafc; }
+.my-hours-shift-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+.my-hours-shifts-empty {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 18px;
+  font-size: 14px;
+  color: #475569;
+  text-align: center;
+}
+.my-hours-toggle-all {
+  align-self: center;
+  margin: 4px auto 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.my-hours-toggle-all:hover {
+  background: #e2e8f0;
+}
+.my-hours-toggle-hint {
+  text-align: center;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Bottom action row */
+/* ============================================================
+   Phase 29D — Payroll Review acknowledgment block.
+   Renders under the My Hours summary tiles, above the shift list.
+   ============================================================ */
+.my-hours-review {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.my-hours-review-status { margin-bottom: 12px; }
+.my-hours-review-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.my-hours-review-chip.is-good    { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+.my-hours-review-chip.is-warn    { background: #fef3c7; color: #78350f; border: 1px solid #fcd34d; }
+.my-hours-review-chip.is-info    { background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+.my-hours-review-chip.is-pending { background: #ffffff; color: #475569; border: 1px solid #cbd5e1; }
+.my-hours-review-chip-icon { font-size: 14px; line-height: 1; }
+.my-hours-review-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.my-hours-review-btn {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.my-hours-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.my-hours-review-btn-good {
+  background: #047857;
+  color: #ffffff;
+  border-color: #047857;
+}
+.my-hours-review-btn-good:hover:not(:disabled)       { background: #065f46; border-color: #065f46; }
+.my-hours-review-btn-correction {
+  background: #ffffff;
+  color: #92400e;
+  border-color: #fbbf24;
+}
+.my-hours-review-btn-correction:hover:not(:disabled) { background: #fef3c7; }
+.my-hours-review-note {
+  margin: 10px 0 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.my-hours-foot {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.my-hours-request-btn {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 12px 22px;
+  border-radius: 10px;
+  background: #0b1220;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+}
+.my-hours-request-btn:hover { background: #1e293b; }
+.my-hours-request-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.my-hours-foot-sub {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ============================================================
+   Phase Employee Trust Layer — Time Adjustment modal
+   ============================================================ */
+.my-hours-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(11, 18, 32, 0.55);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.my-hours-modal-overlay[hidden] { display: none !important; }
+.my-hours-modal {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(11, 18, 32, 0.25);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.my-hours-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 24px 12px;
+}
+.my-hours-modal-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+.my-hours-modal-head h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #0b1220;
+}
+.my-hours-modal-sub {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0 0;
+}
+.my-hours-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.my-hours-modal-fields {
+  padding: 8px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.my-hours-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 540px) {
+  .my-hours-modal-grid { grid-template-columns: 1fr; }
+}
+.my-hours-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.my-hours-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+.my-hours-field-required { color: #b91c1c; font-weight: 600; }
+.my-hours-field-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.my-hours-modal input,
+.my-hours-modal select,
+.my-hours-modal textarea {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1220;
+}
+.my-hours-modal textarea { resize: vertical; }
+.my-hours-modal-status {
+  font-size: 13px;
+  color: #475569;
+  margin: 0;
+  min-height: 16px;
+}
+.my-hours-modal-status[data-tone="error"] { color: #b91c1c; }
+.my-hours-modal-status[data-tone="ok"]    { color: #166534; }
+.my-hours-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px 22px;
+  border-top: 1px solid #e2e8f0;
+}
+.my-hours-modal-cancel,
+.my-hours-modal-submit {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.my-hours-modal-cancel {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+.my-hours-modal-submit {
+  background: #0b1220;
+  color: #ffffff;
+  border: none;
+}
+.my-hours-modal-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Announcements section — cards rendered by team-hub.js. The placeholder
    empty-state styles below still exist for any future use; the new
@@ -3465,3 +4926,117 @@ body.is-signing-in .login-bg { display: block; }
   text-decoration: none;
   border-bottom: 1px dashed var(--pc-teal-100, #ccfbf1);
 }
+
+/* =============================================================================
+ * Today's Work — V6 empty-state diagnostic block
+ *
+ * Hidden by default. today-work.js unhides it ONLY for admins or when
+ * ?debug_work=1 is on the URL, AND fills it with the signals needed to
+ * triage why shifts didn't render (email, sync_date, tech mapping,
+ * rules errors). For normal techs on a real slow day, the calm
+ * "🧘 No work scheduled today" empty state remains.
+ * ============================================================================= */
+.team-hub-empty-diag {
+  margin-top: 16px;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pc-text-muted, #475569);
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.team-hub-empty-diag strong { color: var(--pc-text, #0f172a); font-weight: 800; }
+.team-hub-empty-diag-title {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #7a4a05;
+  margin-bottom: 6px;
+}
+.team-hub-empty-diag dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 0 0 8px;
+}
+.team-hub-empty-diag dt {
+  color: var(--pc-text-muted, #475569);
+  white-space: nowrap;
+}
+.team-hub-empty-diag dd {
+  margin: 0;
+  color: var(--pc-text, #0f172a);
+  word-break: break-word;
+}
+.team-hub-empty-diag-hint {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.15);
+  font-size: 12px;
+  color: var(--pc-text-muted, #475569);
+}
+.team-hub-empty-diag-bad {
+  background: rgba(227, 109, 109, 0.10);
+  border-color: rgba(227, 109, 109, 0.35);
+}
+.team-hub-empty-diag-bad .team-hub-empty-diag-title { color: #8a2a2a; }
+
+/* ==========================================================================
+   Assigned-shift summary card — replaces manual Visit Details when the
+   DCR opens from Today's Work with a confident shift handoff.
+   Pilot v20260526-shiftcontext.
+   ========================================================================== */
+
+.assigned-shift-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem 1.05rem 0.9rem;
+  border-left: 4px solid var(--pc-teal, #14b8a6);
+}
+
+.assigned-shift-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: #1f2937;
+}
+
+.assigned-shift-row .assigned-shift-icon {
+  flex: 0 0 1.25rem;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.assigned-shift-value {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+.assigned-shift-customer .assigned-shift-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.005em;
+}
+
+.assigned-shift-advanced-toggle {
+  margin-top: 0.4rem;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 0.3rem 0.1rem;
+  color: #475569;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.assigned-shift-advanced-toggle:hover { color: #0f172a; }

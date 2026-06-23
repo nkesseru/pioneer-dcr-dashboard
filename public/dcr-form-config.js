@@ -149,7 +149,12 @@
       { id: "event-cleanup",  label: "After-event cleanup" },
       { id: "supplies-issue", label: "Supplies / equipment issue" },
       { id: "access-delay",   label: "Access / lockout delay" },
-      { id: "training",       label: "Training another tech" }
+      { id: "training",       label: "Training another tech" },
+      // V6 pilot — supportive freeform option. Picking "other" reveals
+      // an optional note field on the form. The note is OPTIONAL — we
+      // don't gate submission on it. Goal is to surface scope creep
+      // early without making the tech feel interrogated.
+      { id: "other",          label: "Other — leave a note" }
     ],
     under_budget_due_to: [
       { id: "light-occupancy", label: "Light occupancy" },
@@ -157,6 +162,24 @@
       { id: "scope-reduced",   label: "Customer reduced scope" }
     ]
   };
+
+  // Phase 1e.2 — canonical option set for the "Did anything change with the
+  // building or scope?" prompt. Only surfaced when Pioneer Time Clock data
+  // shows the session exceeded budget_minutes by >15m. Framed as collaborative
+  // scope-change tracking (not blame). The order below intentionally puts
+  // building/access changes before "training" so the tech reads it as a
+  // scope conversation, not a performance question.
+  const OVER_BUDGET_CONTEXT_OPTIONS = [
+    { id: "heavier-clean",    label: "Heavier than normal cleaning" },
+    { id: "extra-mess",       label: "Extra trash or mess" },
+    { id: "customer-request", label: "Customer request" },
+    { id: "access-issue",     label: "Access/building issue" },
+    { id: "supplies-issue",   label: "Supplies/equipment issue" },
+    { id: "new-area-task",    label: "New area or task added" },
+    { id: "extra-care",       label: "Took extra care on problem area" },
+    { id: "training",         label: "Training/newer tech" },
+    { id: "other",            label: "Other" }
+  ];
 
   window.DCR_FORM_CONFIG = Object.freeze({
     customer_options_placeholders: CUSTOMER_OPTIONS_PLACEHOLDERS,
@@ -168,6 +191,7 @@
     experience_ratings:            EXPERIENCE_RATINGS,
     occupancy_options:             OCCUPANCY_OPTIONS,
     budget_reason_groups:          BUDGET_REASON_GROUPS,
+    over_budget_context_options:   OVER_BUDGET_CONTEXT_OPTIONS,
     max_photos:                    12
   });
 })();

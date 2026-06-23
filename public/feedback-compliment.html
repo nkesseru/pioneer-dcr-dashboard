@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Send a compliment · Pioneer Commercial Cleaning</title>
+  <link rel="stylesheet" href="/styles/feedback.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+  <main class="fb-page">
+    <div class="fb-brand-strip">
+      <a href="https://pioneer-dcr-hub.web.app" aria-label="Pioneer Commercial Cleaning">
+        <img src="/assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning" />
+      </a>
+      <span class="fb-eyebrow">Compliment</span>
+    </div>
+
+    <div class="fb-card">
+      <h1 class="fb-headline">Want to make their day?</h1>
+      <p class="fb-subhead">
+        Thanks for taking a second to recognize great work. It means a lot
+        to our team, and we’ll make sure your compliment gets shared.
+      </p>
+
+      <!-- Context strip — populated by JS once URL params parse. -->
+      <div id="fb-context" class="fb-context" style="display:none;"></div>
+
+      <form id="fb-form" novalidate>
+        <!-- Honeypot -->
+        <div class="fb-hp" aria-hidden="true">
+          <label>Website
+            <input type="text" name="_hp_website" tabindex="-1" autocomplete="off" />
+          </label>
+        </div>
+
+        <div class="fb-field">
+          <span class="fb-label">How would you rate this visit?</span>
+          <div class="fb-stars" role="radiogroup" aria-label="Star rating">
+            <button type="button" class="fb-star" data-value="1" aria-label="1 star">★</button>
+            <button type="button" class="fb-star" data-value="2" aria-label="2 stars">★</button>
+            <button type="button" class="fb-star" data-value="3" aria-label="3 stars">★</button>
+            <button type="button" class="fb-star" data-value="4" aria-label="4 stars">★</button>
+            <button type="button" class="fb-star" data-value="5" aria-label="5 stars">★</button>
+          </div>
+        </div>
+
+        <label class="fb-field">
+          <span class="fb-label">Your compliment <span class="fb-optional">(optional)</span></span>
+          <textarea class="fb-textarea" name="complimentText" maxlength="4000"
+                    placeholder="A quick note about what stood out — your words go straight to the team."></textarea>
+        </label>
+
+        <label class="fb-field">
+          <span class="fb-label">Your name <span class="fb-optional">(optional, for the thank-you)</span></span>
+          <input class="fb-input" type="text" name="customerName" maxlength="200" autocomplete="name" />
+        </label>
+
+        <label class="fb-field fb-checkbox-row">
+          <input type="checkbox" name="shareConsent" value="true" />
+          <span>
+            You can share my compliment publicly (with my first name only)
+            on Pioneer’s team and customer wins board.
+          </span>
+        </label>
+
+        <button id="fb-submit" type="submit" class="fb-submit fb-submit-teal">
+          Send Compliment
+        </button>
+
+        <div id="fb-result" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <p class="fb-footnote">
+      Pioneer Commercial Cleaning &middot;
+      <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+    </p>
+  </main>
+
+  <script src="/feedback-compliment.js"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

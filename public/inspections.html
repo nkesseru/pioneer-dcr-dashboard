@@ -13,8 +13,15 @@
   <link rel="stylesheet" href="styles/ui-chips.css" />
   <link rel="stylesheet" href="styles/ui-empty-states.css" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="inspections.css" />
+  <link rel="stylesheet" href="inspections.css?v=20260610-clock-prominent" />
   <link rel="stylesheet" href="styles/inspections-overrides.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
 </head>
 <body class="insp-body">
 
@@ -129,6 +136,21 @@
     <!-- ============ Authorized content ============ -->
     <div id="staff-auth-content" class="insp-content" hidden>
 
+      <!-- ========== Phase Timeclock Add-On — Inspection Clock (prominent)
+           Lives ABOVE both hub-view and intake-view so the on-the-clock
+           state is always visible. This is the "START HERE" surface. -->
+      <section class="insp-clock-hero" id="insp-clock-card"
+               data-state="idle" hidden>
+        <div class="insp-clock-hero-left">
+          <span class="insp-clock-hero-eyebrow" id="insp-clock-state-label">Not Clocked In</span>
+          <span class="insp-clock-hero-timer" id="insp-clock-status">Tap Start to begin paid inspection time.</span>
+        </div>
+        <button type="button" class="insp-clock-hero-btn" id="insp-clock-toggle">
+          <span aria-hidden="true">▶</span>&nbsp;Start Inspection
+        </button>
+        <p class="insp-clock-hero-err" id="insp-clock-err" hidden role="alert"></p>
+      </section>
+
       <!-- =============================================
            HUB VIEW — default landing.
              • Pioneer Quality Score (giant card)
@@ -209,6 +231,62 @@
         <!-- Recent inspections — last 5. Each card expands to a
              detail modal. Score < 3 shows the "Areas needing
              attention" broad-category callout (no per-task blame). -->
+        <!-- Phase Timeclock Add-On — clock card moved ABOVE both views;
+             see insp-clock-hero at the top of #staff-auth-content. -->
+
+        <!-- ========== Phase Inspection 3 — Health Dashboard ========== -->
+        <section class="insp-card insp-health-card" id="insp-health-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">✓</span>
+            <div>
+              <h2 class="insp-step-title">Inspection Health</h2>
+              <p class="insp-step-sub">Every customer gets an inspection every 60 days.</p>
+            </div>
+          </header>
+          <div class="insp-health-grid" id="insp-health-grid">
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-total">—</span><span class="insp-health-label">Total customers</span></div>
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-assigned">—</span><span class="insp-health-label">Assigned</span></div>
+            <div class="insp-health-tile"><span class="insp-health-num" id="insp-h-completed">—</span><span class="insp-health-label">Completed (last 60d)</span></div>
+            <div class="insp-health-tile is-warning"><span class="insp-health-num" id="insp-h-overdue">—</span><span class="insp-health-label">Overdue</span></div>
+            <div class="insp-health-tile is-feature"><span class="insp-health-num" id="insp-h-pct">—</span><span class="insp-health-label">Completion rate</span></div>
+          </div>
+        </section>
+
+        <!-- ========== Phase Inspection 3 — My Inspector Queue ========== -->
+        <section class="insp-card insp-queue-card" id="insp-queue-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">→</span>
+            <div>
+              <h2 class="insp-step-title">My Assigned Inspections</h2>
+              <p class="insp-step-sub">Customers waiting on you.</p>
+            </div>
+          </header>
+          <div class="insp-queue-list" id="insp-queue-list">
+            <p class="insp-recent-status">Nothing assigned to you right now.</p>
+          </div>
+        </section>
+
+        <!-- ========== Phase Inspection 3 — Customer Registry ========== -->
+        <section class="insp-card insp-registry-card" id="insp-registry-card" hidden>
+          <header class="insp-step-head">
+            <span class="insp-step-num">⬢</span>
+            <div>
+              <h2 class="insp-step-title">Customer Registry</h2>
+              <p class="insp-step-sub">Every customer + their inspection cadence.</p>
+            </div>
+          </header>
+          <div class="insp-registry-filters">
+            <button type="button" class="insp-reg-filter is-active" data-filter="all">All</button>
+            <button type="button" class="insp-reg-filter" data-filter="overdue">Overdue</button>
+            <button type="button" class="insp-reg-filter" data-filter="unassigned">Unassigned</button>
+            <button type="button" class="insp-reg-filter" data-filter="assigned">Assigned</button>
+            <button type="button" class="insp-reg-filter" data-filter="completed">Completed</button>
+          </div>
+          <div class="insp-registry-list" id="insp-registry-list">
+            <p class="insp-recent-status">Loading customers…</p>
+          </div>
+        </section>
+
         <section class="insp-card insp-recent-card">
           <header class="insp-step-head">
             <span class="insp-step-num">★</span>
@@ -362,13 +440,13 @@
         <header class="insp-step-head">
           <span class="insp-step-num">2</span>
           <div>
-            <h2 class="insp-step-title">Score each area</h2>
-            <p class="insp-step-sub">Swipe or tap. Default is 3 (Acceptable). Notes optional.</p>
+            <h2 class="insp-step-title">Evaluate each item</h2>
+            <p class="insp-step-sub">Mark each item Pass, Great, Fail, or N/A. Fails need a comment.</p>
           </div>
         </header>
 
-        <!-- Areas list — populated by inspections.js so the slugs +
-             labels stay in one source of truth. -->
+        <!-- Sections + items rendered by inspections.js so the
+             template definitions stay in one source of truth. -->
         <div class="insp-areas" id="insp-areas"></div>
       </section>
 
@@ -557,6 +635,8 @@
   <script src="firebase-config.js"></script>
   <script src="staff-auth.js"></script>
   <script src="info-tip.js"></script>
-  <script src="inspections.js"></script>
+  <script src="non-service-clock.js?v=20260610-clock-prominent"></script>
+  <script src="inspections.js?v=20260610-clock-prominent"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
 </body>
 </html>

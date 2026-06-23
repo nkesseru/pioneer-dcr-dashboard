@@ -15,11 +15,31 @@
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+
+// Native DCR email pipeline (Phase 1 — replaces the Zapier-based DCR
+// email path). All helpers + handler logic live in ./dcrEmail; this file
+// only declares the secrets + wraps it in an onRequest endpoint at the
+// bottom of the file (search "generateAndSendDcrEmailV1").
+const dcrEmail = require("./dcrEmail");
+const ghlHiringSync = require("./ghlHiringSync");
+const twilioMessaging = require("./twilioMessaging");
+const qboAuth = require("./qboAuth");
+const qboApi  = require("./qboApi");
+const customerEconomics = require("./customerEconomics");
+// Phase 31A — submitDcrV1 idempotency guard.
+// enforceIdempotency reads dcr_submissions/{submission_id} BEFORE any
+// writes/emails. If a prior submission with the same id exists, returns
+// a cached receipt so retries don't fire duplicate customer emails,
+// Zapier hooks, or work-session writebacks. Pure read. Backward-compatible
+// with pre-Phase-31 clients that never retry (the read only matches when
+// the queue worker replays a previously-accepted submission_id).
+const submitDcrIdempotency = require("./submitDcrV1-idempotency");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -192,15 +212,57 @@ const TECHS_COLLECTION     = "cleaning_techs";
 const ISSUES_COLLECTION    = "dcr_issues";
 const ZAPIER_TIMEOUT_MS = 10000;
 
-// Mirror of the client-side ALLOWED_ADMIN_EMAILS in public/admin.js. Server-
-// side authoritative copy — used by verifyStaffOrReject() + whoAmIV1.
-// Keep in sync with public/admin.js + firestore.rules → isPioneerAdmin().
+// Where Firebase sends users AFTER they complete a password-reset
+// link. Without this `actionCodeSettings.url`, Firebase shows its
+// stock "password updated" page with a dead "Continue" button — the
+// exact dead-end Makaila hit during pilot prep. Pointing the
+// continueUrl at /login.html means: tech clicks reset link → sets
+// new password → Firebase redirects → /login.html → tech taps Sign
+// In → lands on Team Hub. Single canonical entry point. Must be
+// registered as an Authorized domain in Firebase Auth settings
+// (pioneer-dcr-hub.web.app already is).
+const INVITE_CONTINUE_URL = "https://pioneer-dcr-hub.web.app/login.html";
+const INVITE_ACTION_CODE_SETTINGS = {
+  url:               INVITE_CONTINUE_URL,
+  handleCodeInApp:   false   // browser-based reset; no app intent capture
+};
+
+// Role hierarchy (mirror of firestore.rules and public/staff-auth.js).
+// Hierarchical: owner > executive > admin > tech. Higher roles inherit
+// all lower-role capabilities.
+//   owner       — full access incl. pay-rate + financial data.
+//   executive   — CEO Mission Control + (future) Financial Pulse.
+//   admin       — Office Manager Mission Control + admin CRUD.
+//   tech        — operational surfaces only.
+//
+// Keep these three lists in sync with the matching consts in
+// public/staff-auth.js and the helpers in firestore.rules.
+const ALLOWED_OWNER_EMAILS = [
+  "nick@pioneercomclean.com",
+  "april@pioneercomclean.com"
+];
+const ALLOWED_EXECUTIVE_EMAILS = [
+  "april@pioneercomclean.com"
+];
 const ALLOWED_ADMIN_EMAILS = [
   "nick@pioneercomclean.com",
   "april@pioneercomclean.com",
   "kirby@pioneercomclean.com",
   "mgies@pioneercomclean.com"
 ];
+
+function roleForEmail(email) {
+  const lc = String(email || "").toLowerCase().trim();
+  if (!lc) return null;
+  if (ALLOWED_OWNER_EMAILS.indexOf(lc) >= 0)     return "owner";
+  if (ALLOWED_EXECUTIVE_EMAILS.indexOf(lc) >= 0) return "executive";
+  if (ALLOWED_ADMIN_EMAILS.indexOf(lc) >= 0)     return "admin";
+  return null;
+}
+
+function emailHasOwnerAccess(email)     { const r = roleForEmail(email); return r === "owner"; }
+function emailHasExecutiveAccess(email) { const r = roleForEmail(email); return r === "owner" || r === "executive"; }
+function emailHasAdminAccess(email)     { const r = roleForEmail(email); return r === "owner" || r === "executive" || r === "admin"; }
 
 /* ----------------------------- Staff auth (shared helper) ----------------------------- */
 
@@ -630,7 +692,13 @@ exports.createCleaningTechLoginV1 = onRequest({ cors: false, timeoutSeconds: 30 
   let resetLinkErrorCode = null;
   if (sendReset) {
     try {
-      resetLink = await admin.auth().generatePasswordResetLink(email);
+      // V2 invite flow: pass actionCodeSettings so Firebase returns
+      // the tech to /login.html after they set their password.
+      // Without this, the user lands on Firebase's stock success page
+      // with no path back into PioneerOps (the bug Makaila hit).
+      resetLink = await admin.auth().generatePasswordResetLink(
+        email, INVITE_ACTION_CODE_SETTINGS
+      );
     } catch (err) {
       // Non-fatal — the cleaning_techs doc still gets written, and the
       // admin client will also try sendPasswordResetEmail() so the tech
@@ -843,9 +911,13 @@ exports.createAdminLoginV1 = onRequest({ cors: false, timeoutSeconds: 30 }, asyn
 
   // Generate a backup reset link (server-side). Non-fatal — client
   // will also call sendPasswordResetEmail() from Firebase Web SDK.
+  // actionCodeSettings.url ensures Firebase sends the new admin back
+  // to /login.html after they set their password.
   let resetLink = null;
   try {
-    resetLink = await admin.auth().generatePasswordResetLink(email);
+    resetLink = await admin.auth().generatePasswordResetLink(
+      email, INVITE_ACTION_CODE_SETTINGS
+    );
   } catch (err) {
     logger.warn("createAdminLoginV1: generatePasswordResetLink failed (non-fatal)", {
       email: email, code: err && err.code, message: err && err.message
@@ -952,33 +1024,113 @@ exports.sendPasswordResetV1 = onRequest({ cors: false, timeoutSeconds: 20 }, asy
     return;
   }
 
-  // Confirm an Auth user exists for the email. If not, we still return
-  // 200 ok so the admin can't enumerate which emails have accounts via
-  // this endpoint — but we log the no-op so the admin can check logs
-  // if the resend didn't appear in the inbox.
+  // Look up the Firebase Auth user. If none exists, auto-create one
+  // (V6 — pilot-readiness). The previous "no_auth_user → noop" branch
+  // forced admins to manually provision Auth users via a separate
+  // flow before they could send an invite. That added friction with
+  // no security gain (this endpoint is already admin-gated), and it
+  // failed the Send invite button for every tech whose
+  // cleaning_techs/{slug} doc was seeded without a corresponding
+  // Auth user — which was the case for Jared and every cleaning
+  // tech the office added through the roster pre-normalization.
+  //
+  // Auto-create rules:
+  //   • emailVerified: false (the recipient verifies via the reset
+  //     link they're about to receive)
+  //   • disabled: false
+  //   • displayName: pulled from the cleaning_techs doc if we can
+  //     find one matching this email; otherwise omitted
+  // If createUser fails with auth/email-already-exists (rare race
+  // condition), we re-fetch via getUserByEmail and proceed.
   let authUser = null;
+  let createdNewAuthUser = false;
   try {
     authUser = await admin.auth().getUserByEmail(email);
   } catch (err) {
     const code = (err && err.code) || (err && err.errorInfo && err.errorInfo.code) || "";
-    if (code === "auth/user-not-found") {
-      logger.info("sendPasswordResetV1: no Auth user for email (no-op)", {
-        by: staff.email, email_prefix: email.slice(0, 3)
+    if (code !== "auth/user-not-found") {
+      logger.error("sendPasswordResetV1: getUserByEmail failed", {
+        email_prefix: email.slice(0, 3), code: code
       });
-      res.status(200).json({ ok: true, sent: false, reason: "no_auth_user" });
+      res.status(500).json({ ok: false, error: "Lookup failed (" + (code || "unknown") + ")." });
       return;
     }
-    logger.error("sendPasswordResetV1: getUserByEmail failed", {
-      email_prefix: email.slice(0, 3), code: code
-    });
-    res.status(500).json({ ok: false, error: "Lookup failed (" + (code || "unknown") + ")." });
-    return;
+    // Auto-create branch. Try to find a displayName from the
+    // matching cleaning_techs doc so the new Auth user's profile is
+    // populated. Missing display_name is non-blocking.
+    let displayName = "";
+    try {
+      const techQuery = await db.collection(TECHS_COLLECTION)
+        .where("email", "==", email).limit(1).get();
+      if (!techQuery.empty) {
+        const td = techQuery.docs[0].data() || {};
+        displayName = String(td.display_name || td.full_name || "").trim();
+      }
+    } catch (_e) { /* tolerated — fall back to anonymous create */ }
+
+    try {
+      authUser = await admin.auth().createUser({
+        email:          email,
+        emailVerified:  false,
+        disabled:       false,
+        displayName:    displayName || undefined
+      });
+      createdNewAuthUser = true;
+      logger.info("sendPasswordResetV1: created new Auth user for invite", {
+        by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid,
+        display_name_used: !!displayName
+      });
+    } catch (createErr) {
+      const cCode = (createErr && createErr.code) ||
+                    (createErr && createErr.errorInfo && createErr.errorInfo.code) || "";
+      // Race condition: an Auth user appeared between the lookup and
+      // the create. Re-fetch and continue.
+      if (cCode === "auth/email-already-exists") {
+        try {
+          authUser = await admin.auth().getUserByEmail(email);
+          logger.info("sendPasswordResetV1: createUser raced — re-fetched existing user", {
+            email_prefix: email.slice(0, 3), uid: authUser.uid
+          });
+        } catch (refetchErr) {
+          logger.error("sendPasswordResetV1: createUser race + refetch failed", {
+            email_prefix: email.slice(0, 3),
+            create_code: cCode,
+            refetch_code: refetchErr && refetchErr.code
+          });
+          await stampTechInviteError(db, email, "create_then_refetch_failed: " + cCode);
+          res.status(500).json({
+            ok: false, code: "create_user_failed",
+            error: "Couldn't create or re-fetch the Auth user (" + cCode + ")."
+          });
+          return;
+        }
+      } else {
+        logger.error("sendPasswordResetV1: createUser failed", {
+          email_prefix: email.slice(0, 3),
+          code: cCode,
+          message: createErr && createErr.message
+        });
+        await stampTechInviteError(db, email,
+          "create_auth_user_failed: " + (cCode || (createErr && createErr.message) || "unknown"));
+        res.status(500).json({
+          ok:    false,
+          code:  "create_user_failed",
+          error: "Couldn't create Firebase Auth user (" + (cCode || "unknown") + ")."
+        });
+        return;
+      }
+    }
   }
 
-  // Generate a reset link.
+  // Generate a reset link. actionCodeSettings.url ensures Firebase
+  // sends the tech back to /login.html after they set their password
+  // — without it, they hit Firebase's stock success page with no
+  // path back into PioneerOps. (Pilot blocker fix.)
   let resetLink = null;
   try {
-    resetLink = await admin.auth().generatePasswordResetLink(email);
+    resetLink = await admin.auth().generatePasswordResetLink(
+      email, INVITE_ACTION_CODE_SETTINGS
+    );
   } catch (err) {
     logger.error("sendPasswordResetV1: generatePasswordResetLink failed", {
       email_prefix: email.slice(0, 3), code: err && err.code
@@ -1011,27 +1163,78 @@ exports.sendPasswordResetV1 = onRequest({ cors: false, timeoutSeconds: 20 }, asy
       .limit(1)
       .get();
     if (!techSnap.empty) {
+      // V6 pilot — write both legacy snake_case AND new camelCase
+      // fields so existing code paths keep working AND the new admin
+      // UI can drive the "Send invite" vs "Reinvite" button label
+      // off `inviteSentAt`. `inviteStatus` is set to "sent" here;
+      // future flows can flip it to "accepted" when the recipient
+      // signs in for the first time.
       await techSnap.docs[0].ref.update({
         last_invite_sent_at: sts,
         updated_at:          sts,
-        updated_by:          staff.email
+        updated_by:          staff.email,
+        // ---- V6 invite fields ----
+        inviteSentAt:        sts,
+        inviteSentBy:        staff.email,
+        inviteEmail:         email,
+        inviteStatus:        "sent",
+        inviteLastError:     null,
+        // V6 — Firebase Auth uid, both shapes so any reader keeps
+        // working. Set whether the auth user was created just now or
+        // already existed.
+        firebaseUid:         authUser.uid,
+        firebase_auth_uid:   authUser.uid
+      });
+      logger.info("sendPasswordResetV1: tech invite stamped", {
+        tech_slug: techSnap.docs[0].id,
+        email_prefix: email.slice(0, 3),
+        by: staff.email
       });
     }
   } catch (err) {
     logger.warn("sendPasswordResetV1: tech doc stamp failed", { error: err && err.message });
+    // Best-effort error stamp so the admin UI can surface "last invite
+    // attempt failed" for triage. Soft-fail if even this fails.
+    try {
+      const techSnap = await db.collection(TECHS_COLLECTION)
+        .where("email", "==", email).limit(1).get();
+      if (!techSnap.empty) {
+        await techSnap.docs[0].ref.update({
+          inviteLastError: String(err && err.message || "unknown error"),
+          inviteStatus:    "error"
+        });
+      }
+    } catch (_innerErr) { /* swallow */ }
   }
 
   logger.info("sendPasswordResetV1 ok", {
-    by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid
+    by: staff.email, email_prefix: email.slice(0, 3), uid: authUser.uid,
+    created_auth_user: createdNewAuthUser
   });
 
   res.status(200).json({
-    ok:         true,
-    sent:       true,
-    uid:        authUser.uid,
-    reset_link: resetLink   // backup link if email delivery hiccups
+    ok:                 true,
+    sent:               true,
+    uid:                authUser.uid,
+    created_auth_user:  createdNewAuthUser,
+    reset_link:         resetLink   // backup link if email delivery hiccups
   });
 });
+
+// V6 helper — stamp inviteStatus:"error" + inviteLastError onto the
+// matching cleaning_techs doc when an invite attempt fails before we
+// reach the success-path tech-doc update. Soft-fails its own write.
+async function stampTechInviteError(db, email, reason) {
+  try {
+    const tq = await db.collection(TECHS_COLLECTION)
+      .where("email", "==", email).limit(1).get();
+    if (tq.empty) return;
+    await tq.docs[0].ref.update({
+      inviteStatus:    "error",
+      inviteLastError: String(reason || "unknown")
+    });
+  } catch (_e) { /* swallow */ }
+}
 
 /* ----------------------------- deleteCleaningTechV1 -----------------------------
    Admin-only HARD DELETE for a cleaning_tech doc.
@@ -1447,6 +1650,11 @@ exports.submitSupplyStationOrderV1 = onRequest({ cors: false, timeoutSeconds: 20
   const priority       = String(body.priority || "normal").trim().toLowerCase();
   const note           = String(body.note || "").trim();
   const customerSlug   = String(body.customer_slug || "").trim().toLowerCase();
+  // V6 pilot — accept customer_name + location_name so the saved
+  // supply_requests doc carries human-readable strings the admin UI
+  // can render without re-resolving the slug. Trimmed + capped.
+  const customerName   = String(body.customer_name || "").trim().slice(0, 200);
+  const locationName   = String(body.location_name || "").trim().slice(0, 200);
   let   categoriesRaw  = Array.isArray(body.categories) ? body.categories : [];
   categoriesRaw = categoriesRaw
     .map(function (c) { return String(c || "").trim(); })
@@ -1507,9 +1715,12 @@ exports.submitSupplyStationOrderV1 = onRequest({ cors: false, timeoutSeconds: 20
     note:               note,
     // Customer-shape fields kept empty for unified queries; admin UI
     // hides blanks for supply_station rows.
+    // V6 pilot — customer_name + location_name now flow through from
+    // the picker on supply-station.html. Empty strings remain valid
+    // for "no specific customer" (office-wide restock).
     customer_slug:      customerSlug,
-    customer_name:      "",
-    location_name:      "",
+    customer_name:      customerName,
+    location_name:      locationName,
     clean_date:         "",
     // Shared fields:
     requested_items:    requestedItems,
@@ -2397,24 +2608,35 @@ exports.techHubViewV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (re
         const fobCodes             = cleanStringArray(s.fobCodes);   // future bucket; empty today
         const keyNotes             = cleanStringArray(s.keyFobNotes); // seed bucket name
         const securityInstructions = cleanStringArray(s.secureInstructions);
+        // Phase 1g additions — admin-editable buckets, tech-visible. The
+        // admin-only buckets (emergencyContacts, alarmCompanyNotes,
+        // rawDeputyNotes) are EXPLICITLY NOT forwarded.
+        const lockboxCodes         = cleanStringArray(s.lockboxCodes);
+        const disarmInstructions   = cleanStringArray(s.disarmInstructions);
+        const armInstructions      = cleanStringArray(s.armInstructions);
         const hasInfo = !!(
           alarmCodes.length || doorCodes.length || gateCodes.length ||
-          fobCodes.length || keyNotes.length || securityInstructions.length
+          fobCodes.length || keyNotes.length || securityInstructions.length ||
+          lockboxCodes.length || disarmInstructions.length || armInstructions.length
         );
         customer.securityInfo = {
           hasInfo:              hasInfo,
           alarmCodes:           alarmCodes,
+          disarmInstructions:   disarmInstructions,
           doorCodes:            doorCodes,
           gateCodes:            gateCodes,
+          lockboxCodes:         lockboxCodes,
           fobCodes:             fobCodes,
           keyNotes:             keyNotes,
+          armInstructions:      armInstructions,
           securityInstructions: securityInstructions
         };
       } else {
         customer.securityInfo = {
           hasInfo: false,
-          alarmCodes: [], doorCodes: [], gateCodes: [],
-          fobCodes: [], keyNotes: [], securityInstructions: []
+          alarmCodes: [], disarmInstructions: [], doorCodes: [], gateCodes: [],
+          lockboxCodes: [], fobCodes: [], keyNotes: [], armInstructions: [],
+          securityInstructions: []
         };
       }
     }
@@ -2712,7 +2934,24 @@ exports.techHubViewV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (re
 // `cors: false` tells Functions v2 not to attach its own CORS middleware —
 // we set the headers ourselves so the same headers go out on every response,
 // including 4xx/5xx errors and the OPTIONS preflight.
-exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req, res) => {
+// Phase 32 — secrets needed by the submitDcrV1 native-email auto-send
+// hook. Declared here so the onRequest({ secrets: [...] }) binding below
+// can reference them at module-load time (defineSecret must run before
+// the onRequest call that lists it). Same const names are reused later
+// by generateAndSendDcrEmailV1 — defineSecret is single-call-per-name,
+// so do NOT re-declare further down.
+const OPENAI_API_KEY             = defineSecret("OPENAI_API_KEY");
+const GMAIL_SENDER_EMAIL         = defineSecret("GMAIL_SENDER_EMAIL");
+const GMAIL_SERVICE_ACCOUNT_KEY  = defineSecret("GMAIL_SERVICE_ACCOUNT_KEY");
+const KIRBY_ALERT_EMAIL          = defineSecret("KIRBY_ALERT_EMAIL");
+const APRIL_ALERT_EMAIL          = defineSecret("APRIL_ALERT_EMAIL");
+
+exports.submitDcrV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120,                                         // bumped from 60 to absorb the OpenAI + Gmail leg
+  secrets: [OPENAI_API_KEY, GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY,
+            KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL]
+}, async (req, res) => {
   // ---- CORS: set on every response, before any branching ----
   res.set("Access-Control-Allow-Origin",  "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -2781,6 +3020,38 @@ exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req,
   }
 
   const submissionId = payload.submission_id;
+
+  // Phase 31A — Idempotency guard. If this submission_id was already
+  // accepted (e.g., the queue worker is retrying a request whose 200
+  // response was lost mid-flight), return the cached receipt without
+  // re-running ANY side effects: no second email, no second Zapier
+  // ping, no second work-session writeback. Pure read against
+  // dcr_submissions/{submission_id}; falls through on miss.
+  //
+  // The cached receipt response shape includes `already_submitted: true`
+  // so the client can distinguish a fresh accept from a replay accept.
+  // The web client treats both as success (calls onSuccess()).
+  try {
+    const cachedReceipt = await submitDcrIdempotency.enforceIdempotency({
+      db:           db,
+      admin:        admin,
+      logger:       logger,
+      collection:   FIRESTORE_COLLECTION,
+      submissionId: submissionId,
+      staff:        staff
+    });
+    if (cachedReceipt) {
+      return res.status(200).json(cachedReceipt);
+    }
+  } catch (err) {
+    // Defensive: idempotency check is best-effort. A failure here must
+    // not block a legitimate first submission. The helper already swallows
+    // Firestore read errors; this catch is the belt-and-suspenders.
+    logger.warn("submitDcrV1: idempotency guard threw (proceeding)", {
+      submission_id: submissionId,
+      error:         err && err.message
+    });
+  }
 
   const doc = {
     ...payload,
@@ -2921,67 +3192,223 @@ exports.submitDcrV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req,
     }
   }
 
+  // ---- Pioneer Time Clock writeback (Phase 1b.4) ----
+  //
+  // When the DCR was initiated from the Pioneer Time Clock surface on
+  // /work, the form carries pioneer_assignment_id (the
+  // service_assignments doc id) and pioneer_service_session_id (the
+  // most-recent pioneer_service_sessions doc id the tech finished
+  // from). These are namespace-disjoint from the Deputy back-write
+  // above (pioneer_session_id / pioneer_work_sessions) so the two
+  // flows never collide.
+  //
+  // Three writes, all best-effort:
+  //   1. dcr_submissions already carries pioneer_assignment_id via the
+  //      payload spread (line ~2957), so no explicit write needed
+  //      here — the field is on the doc.
+  //   2. Back-stamp dcr_submission_id onto the linked
+  //      pioneer_service_sessions doc (the "last session for this
+  //      assignment").
+  //   3. Stamp dcr_submitted=true + dcr_submission_id +
+  //      dcr_submitted_at onto the service_assignments doc — gives
+  //      service-clock.js a fast denormalized read for the UI's "DCR
+  //      Submitted" chip without a second query.
+  //
+  // Soft-fail throughout: DCR submission already succeeded by this
+  // point; back-writes are operational ergonomics only.
+  const pioneerAssignmentId     = String((payload && payload.pioneer_assignment_id)     || "").trim();
+  const pioneerServiceSessionId = String((payload && payload.pioneer_service_session_id) || "").trim();
+  // Phase 29F-ticket1 (2026-06-17) — session and assignment back-writes
+  // now run INDEPENDENTLY. Previously both were nested inside
+  // `if (pioneerAssignmentId)`, which meant a DCR submitted with a session
+  // id but no assignment id (legacy Deputy handoff, direct URL, customer-
+  // slug-only bookmark) skipped the session back-stamp entirely. Result
+  // was orphan DCRs that left Mission Control's session-side check
+  // forever flagging "DCR Missing" while Yesterday's Work's
+  // dcr-side check rendered the DCR. Now each block is gated on its own
+  // id only, so either or both can fire as the payload allows.
+  // 2. session back-write (only when a session id was supplied).
+  // Phase 2B — Also stamp dcr_id + dcr_status so Phase 28A's
+  // approveGatePasses() (which reads s.dcr_id OR s.dcr_status ===
+  // "submitted") will recognize the DCR as complete. Without this,
+  // sessions remained DCR Pending forever even after submit, and the
+  // payroll Verification Layer blocked exports. merge:true + last-
+  // write-wins on serverTimestamp() means a later DCR resubmission
+  // (newest submission) wins primary status, per Phase 2B spec #2.
+  if (pioneerServiceSessionId) {
+    try {
+      await db.collection("pioneer_service_sessions").doc(pioneerServiceSessionId).set({
+        dcr_id:            submissionId,
+        dcr_submission_id: submissionId,
+        dcr_status:        "submitted",
+        dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
+        updated_at:        admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      logger.info("submitDcrV1 pioneer_service_sessions writeback ok", {
+        submission_id:              submissionId,
+        pioneer_assignment_id:      pioneerAssignmentId || null,
+        pioneer_service_session_id: pioneerServiceSessionId
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 pioneer_service_sessions writeback failed (non-fatal)", {
+        submission_id:              submissionId,
+        pioneer_service_session_id: pioneerServiceSessionId,
+        error:                      err && err.message
+      });
+    }
+  }
+  // 3. service_assignments denormalized write — admin still owns the
+  //    .status field; we only set the DCR-completion signals.
+  if (pioneerAssignmentId) {
+    try {
+      await db.collection("service_assignments").doc(pioneerAssignmentId).set({
+        dcr_submitted:     true,
+        dcr_submission_id: submissionId,
+        dcr_submitted_at:  admin.firestore.FieldValue.serverTimestamp(),
+        updated_at:        admin.firestore.FieldValue.serverTimestamp(),
+        updated_by:        doc.submitted_by_email || "submitDcrV1"
+      }, { merge: true });
+      logger.info("submitDcrV1 service_assignments writeback ok", {
+        submission_id:         submissionId,
+        pioneer_assignment_id: pioneerAssignmentId
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 service_assignments writeback failed (non-fatal)", {
+        submission_id:         submissionId,
+        pioneer_assignment_id: pioneerAssignmentId,
+        error:                 err && err.message
+      });
+    }
+  }
+
   // Best-effort: create a supply_requests doc if the DCR asked for supplies.
   // Failure here is logged but never blocks the success response — the DCR is
   // already saved by the time we get here, and admins can manually create the
   // request from the office if needed.
   await maybeCreateSupplyRequest(doc, submissionId);
 
-  // ---- Zapier (best-effort, never blocks the success response) ----
-  // Read URL at request time (not module load) so deploys without the env var
-  // still work and a redeploy with the var picks it up immediately.
-  const zapierUrl = (process.env.ZAPIER_DCR_WEBHOOK_URL || "").trim();
-  const zapierPayload = buildZapierPayload(doc, submissionId);
-  // Minimal verification log — confirms (a) the array shape Zapier
-  // receives and (b) the photo count exposed via the new flat fields.
-  // Keeps logs scannable without dumping URLs (those are already
-  // available via Cloud Storage if a triage needs them).
-  logger.info("submitDcrV1 zapier payload shape", {
-    submission_id:      submissionId,
-    photo_count:        zapierPayload.photo_count,
-    photo_urls_is_array: Array.isArray(zapierPayload.photo_urls),
-    flat_field_count:   Object.keys(zapierPayload)
-                          .filter(function (k) { return /^photo_url_\d+$/.test(k); })
-                          .length
-  });
-  const zapierResult  = await sendToZapier(zapierUrl, zapierPayload);
-
-  // Persist the Zapier outcome on the doc. Best-effort — if the update itself
-  // fails we still return success to the browser.
+  // ---- Phase 32: Native DCR email auto-send (replaces Zapier as primary) ----
+  // Fires after the DCR doc is written. Wrapped in try/catch so any
+  // failure (Gmail outage, OpenAI hiccup, missing customer config) NEVER
+  // blocks the tech's success response. Audit + native_email status are
+  // stamped on the dcr_submissions doc by the helper.
+  let nativeEmailResult = { status: "skipped", reason: "not_invoked", code: "not_invoked" };
   try {
-    await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
-      zapier:                       zapierResult,
-      "delivery.zapier_sent":       zapierResult.status === "sent",
-      "delivery.zapier_sent_at":    zapierResult.sent_at,
-      "delivery.zapier_attempts":   zapierResult.attempted ? 1 : 0,
-      "delivery.last_error":        zapierResult.error,
-      updated_at:                   admin.firestore.FieldValue.serverTimestamp()
+    nativeEmailResult = await dcrEmail.sendNativeDcrEmailForSubmission({
+      admin:                  admin,
+      db:                     db,
+      logger:                 logger,
+      dcrId:                  submissionId,
+      invokedBy:              "submitDcrV1",
+      forceSend:              false,
+      dryRun:                 false,
+      openaiApiKey:           OPENAI_API_KEY.value(),
+      gmailSenderEmail:       GMAIL_SENDER_EMAIL.value(),
+      gmailServiceAccountKey: GMAIL_SERVICE_ACCOUNT_KEY.value(),
+      kirbyAlertEmail:        KIRBY_ALERT_EMAIL.value(),
+      aprilAlertEmail:        APRIL_ALERT_EMAIL.value()
     });
+    if (nativeEmailResult.status === "sent") {
+      logger.info("submitDcrV1 native email sent", {
+        submission_id: submissionId,
+        recipient:     nativeEmailResult.recipient,
+        messageId:     nativeEmailResult.messageId
+      });
+    } else if (nativeEmailResult.status === "skipped") {
+      logger.info("submitDcrV1 native email skipped", {
+        submission_id: submissionId,
+        reason:        nativeEmailResult.reason,
+        code:          nativeEmailResult.code
+      });
+    } else {
+      logger.warn("submitDcrV1 native email failed", {
+        submission_id: submissionId,
+        reason:        nativeEmailResult.reason,
+        code:          nativeEmailResult.code
+      });
+    }
   } catch (err) {
-    logger.error("submitDcrV1 firestore zapier-status update failed", {
-      error: err.message,
+    // Swallow — DCR submit must succeed even if the email path explodes.
+    logger.error("submitDcrV1 native email path threw (swallowed)", {
       submission_id: submissionId,
-      zapier_status: zapierResult.status
+      error:         err && err.message,
+      stack:         err && err.stack
     });
+    nativeEmailResult = { status: "failed", reason: (err && err.message) || "unknown error", code: "hook_threw" };
   }
 
-  if (zapierResult.status === "failed") {
-    logger.warn("Zapier delivery failed", {
-      submission_id: submissionId,
-      status_code: zapierResult.status_code,
-      error: zapierResult.error
+  // ---- Zapier (Phase 32: OFF by default; opt-in via env flag) ----
+  // The Zap on the Zapier side was disabled around 2026-06-03, returning
+  // HTTP 404 "please unsubscribe me!" on every POST. Native pipeline above
+  // is the primary delivery path now. Leave the code intact and gated so
+  // we can re-enable as fallback if the native path ever needs an outage
+  // backup — set USE_ZAPIER_DCR_FALLBACK=true in the function env.
+  const zapierFallbackEnabled = String(process.env.USE_ZAPIER_DCR_FALLBACK || "").toLowerCase() === "true";
+  let zapierResult = {
+    attempted:   false,
+    status:      "disabled_native_cutover",
+    status_code: null,
+    error:       null,
+    sent_at:     null
+  };
+  if (zapierFallbackEnabled) {
+    const zapierUrl = (process.env.ZAPIER_DCR_WEBHOOK_URL || "").trim();
+    const zapierPayload = buildZapierPayload(doc, submissionId);
+    logger.info("submitDcrV1 zapier payload shape (fallback mode)", {
+      submission_id:      submissionId,
+      photo_count:        zapierPayload.photo_count,
+      photo_urls_is_array: Array.isArray(zapierPayload.photo_urls)
     });
-  } else if (zapierResult.status === "sent") {
-    logger.info("Zapier delivery succeeded", {
-      submission_id: submissionId,
-      status_code: zapierResult.status_code
-    });
+    zapierResult = await sendToZapier(zapierUrl, zapierPayload);
+    try {
+      await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
+        zapier:                       zapierResult,
+        "delivery.zapier_sent":       zapierResult.status === "sent",
+        "delivery.zapier_sent_at":    zapierResult.sent_at,
+        "delivery.zapier_attempts":   zapierResult.attempted ? 1 : 0,
+        "delivery.last_error":        zapierResult.error,
+        updated_at:                   admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (err) {
+      logger.error("submitDcrV1 firestore zapier-status update failed", {
+        error: err.message, submission_id: submissionId, zapier_status: zapierResult.status
+      });
+    }
+    if (zapierResult.status === "failed") {
+      logger.warn("Zapier delivery failed", {
+        submission_id: submissionId, status_code: zapierResult.status_code, error: zapierResult.error
+      });
+    } else if (zapierResult.status === "sent") {
+      logger.info("Zapier delivery succeeded", {
+        submission_id: submissionId, status_code: zapierResult.status_code
+      });
+    }
+  } else {
+    // Stamp the cutover state on the doc once so admin UIs can show
+    // "disabled — native cutover" instead of stale "Zapier failed".
+    try {
+      await db.collection(FIRESTORE_COLLECTION).doc(submissionId).update({
+        zapier:     zapierResult,                                                                                      // { status: "disabled_native_cutover", ... }
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (err) {
+      logger.warn("submitDcrV1 firestore zapier-cutover stamp failed (non-fatal)", {
+        error: err.message, submission_id: submissionId
+      });
+    }
   }
 
   return res.status(200).json({
-    ok: true,
+    ok:            true,
     submission_id: submissionId,
-    zapier: zapierResult
+    native_email:  {
+      status:     nativeEmailResult.status,
+      reason:     nativeEmailResult.reason,
+      code:       nativeEmailResult.code,
+      recipient:  nativeEmailResult.recipient,
+      messageId:  nativeEmailResult.messageId
+    },
+    zapier:        zapierResult
   });
 });
 
@@ -3911,6 +4338,99 @@ async function syncDeputyShiftsCore(opts) {
     }
   });
 
+  // V20260614 — Two-pass tech-match bridging across rosters in a single
+  // sync run.
+  //
+  // Background: techMatch is resolved per-roster via 3 fallbacks
+  // (Deputy ID → Deputy email → normalized display name). When a tech
+  // has multiple shifts in a day and Deputy's data is inconsistent
+  // across those rosters (e.g. Employee=null on some, different email
+  // casing on others), some rosters resolve and some don't. The
+  // unresolved ones get stamped with the Deputy raw email which then
+  // mismatches the tech's Pioneer auth email on the read side. Result:
+  // partial-display bug — tech sees one shift instead of three.
+  //
+  // Fix: pass 1 collects every successful match keyed by ALL of the
+  // matched roster's identifiers (deputy ID, deputy email, name) AND
+  // the techMatch's own canonical identifiers (email, display name).
+  // Pass 2 then retries every unmatched roster against this enriched
+  // bridge index. If ANY one of a tech's rosters resolves in pass 1,
+  // ALL of that tech's rosters in this run resolve.
+  const rosterMatches    = new Map(); // shiftId(string) → techMatch | null
+  const bridgeByDeputyId = {};
+  const bridgeByEmail    = {};
+  const bridgeByNameKey  = {};
+
+  // Pass 1 — per-roster static lookup; populate bridge keys on hit.
+  for (const roster of rosters) {
+    const rosterIdKey   = String(roster.Id);
+    if (!rosterIdKey || rosterIdKey === "undefined") continue;
+    const emp           = roster.EmployeeObject || {};
+    const employeeIdRaw = roster.Employee;
+    const employeeEmail = String(emp.Email || emp.email || "").toLowerCase().trim();
+    const employeeName  = emp.DisplayName || emp.Name || "";
+    const employeeNameKey = normalizeKey(employeeName);
+
+    let techMatch = null;
+    if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
+      techMatch = techsByDeputyId[String(employeeIdRaw)];
+    } else if (employeeEmail && techsByEmail[employeeEmail]) {
+      techMatch = techsByEmail[employeeEmail];
+    } else if (employeeNameKey && techsByNameKey[employeeNameKey]) {
+      techMatch = techsByNameKey[employeeNameKey];
+    }
+
+    rosterMatches.set(rosterIdKey, techMatch);
+
+    if (techMatch) {
+      // Register by this roster's keys (so future rosters with matching
+      // keys hit fast) AND by the techMatch's own canonical identifiers
+      // (so a roster that shares ONLY the canonical name still bridges
+      // even if its Deputy ID and email are missing/mismatched).
+      if (employeeIdRaw != null) bridgeByDeputyId[String(employeeIdRaw)] = techMatch;
+      if (employeeEmail)         bridgeByEmail[employeeEmail]            = techMatch;
+      if (employeeNameKey)       bridgeByNameKey[employeeNameKey]        = techMatch;
+      if (techMatch.email)       bridgeByEmail[techMatch.email]          = techMatch;
+      const techNameKey = normalizeKey(techMatch.display_name);
+      if (techNameKey)           bridgeByNameKey[techNameKey]            = techMatch;
+    }
+  }
+
+  // Pass 2 — re-attempt unmatched rosters via the enriched bridge.
+  let bridgedCount = 0;
+  for (const roster of rosters) {
+    const rosterIdKey = String(roster.Id);
+    if (!rosterIdKey || rosterIdKey === "undefined") continue;
+    if (rosterMatches.get(rosterIdKey)) continue;
+
+    const emp           = roster.EmployeeObject || {};
+    const employeeIdRaw = roster.Employee;
+    const employeeEmail = String(emp.Email || emp.email || "").toLowerCase().trim();
+    const employeeName  = emp.DisplayName || emp.Name || "";
+    const employeeNameKey = normalizeKey(employeeName);
+
+    let techMatch = null;
+    if (employeeIdRaw != null && bridgeByDeputyId[String(employeeIdRaw)]) {
+      techMatch = bridgeByDeputyId[String(employeeIdRaw)];
+    } else if (employeeEmail && bridgeByEmail[employeeEmail]) {
+      techMatch = bridgeByEmail[employeeEmail];
+    } else if (employeeNameKey && bridgeByNameKey[employeeNameKey]) {
+      techMatch = bridgeByNameKey[employeeNameKey];
+    }
+
+    if (techMatch) {
+      rosterMatches.set(rosterIdKey, techMatch);
+      bridgedCount += 1;
+    }
+  }
+
+  logger.info("syncDeputyShifts bridge pass result", {
+    sync_date:               syncDate,
+    total_rosters:           rosters.length,
+    bridged_after_pass1:     bridgedCount,
+    unmatched_after_bridge:  Array.from(rosterMatches.values()).filter(function (m) { return !m; }).length
+  });
+
   // Upsert each roster.
   const seenIds = new Set();
   let unmappedEmployees = 0;
@@ -3929,14 +4449,20 @@ async function syncDeputyShiftsCore(opts) {
     const employeeDisplay  = emp.DisplayName || emp.Name || "";
     const employeeIdRaw    = roster.Employee;
 
-    let techMatch = null;
-    if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
-      techMatch = techsByDeputyId[String(employeeIdRaw)];
-    } else if (employeeEmailRaw && techsByEmail[employeeEmailRaw]) {
-      techMatch = techsByEmail[employeeEmailRaw];
-    } else {
-      const nameKey = normalizeKey(employeeDisplay);
-      if (nameKey && techsByNameKey[nameKey]) techMatch = techsByNameKey[nameKey];
+    // V20260614 — Use the two-pass bridge result. Falls back to the
+    // original inline 3-arm lookup ONLY if rosterMatches somehow doesn't
+    // have an entry for this shiftId (defensive — shouldn't happen).
+    let techMatch = rosterMatches.get(shiftId);
+    if (techMatch === undefined) {
+      techMatch = null;
+      if (employeeIdRaw != null && techsByDeputyId[String(employeeIdRaw)]) {
+        techMatch = techsByDeputyId[String(employeeIdRaw)];
+      } else if (employeeEmailRaw && techsByEmail[employeeEmailRaw]) {
+        techMatch = techsByEmail[employeeEmailRaw];
+      } else {
+        const nameKey = normalizeKey(employeeDisplay);
+        if (nameKey && techsByNameKey[nameKey]) techMatch = techsByNameKey[nameKey];
+      }
     }
     if (!techMatch) unmappedEmployees += 1;
 
@@ -4415,6 +4941,159 @@ exports.refreshDeputyShiftsV1 = onRequest({
   }
 });
 
+/* ----------------------------- refreshDeputyShiftsRangeV1 -----------------------------
+   Admin-only HTTPS endpoint. Loops `syncDeputyShiftsCore` once per
+   calendar day in an inclusive [start_date, end_date] Pacific range so
+   the publish-snapshot flow can populate the 7/14/21-day horizon
+   without an admin clicking through `refreshDeputyShiftsV1` per day.
+
+   Bounds (defensive):
+     • Range size capped at 31 days. Anything larger 400s — the
+       Deputy API is per-day, so unbounded ranges = unbounded fan-out.
+     • Each date must be within ±60 days of today (mirrors the
+       single-date guard in refreshDeputyShiftsV1).
+     • Per-day errors are caught and recorded in the response; one
+       bad day does NOT abort the rest. This matches the
+       fault-tolerance of the scheduled sync.
+
+   Phase 2 TODO:
+     • parallelize per-day calls with a small concurrency cap (3-4)
+       once we have evidence the Deputy API tolerates it. Today this
+       runs strictly sequentially to keep the rate predictable.
+     • move this loop into a callable Cloud Scheduler job that
+       re-runs nightly (auto-publish on a fixed schedule rather than
+       admin-triggered). */
+exports.refreshDeputyShiftsRangeV1 = onRequest({
+  cors:           false,
+  // 31 days × ~2s/day worst-case ≈ 62s headroom; bump to 300 for
+  // safety since Deputy occasionally serves slow.
+  timeoutSeconds: 300,
+  secrets:        [DEPUTY_CLIENT_ID, DEPUTY_CLIENT_SECRET, DEPUTY_INSTALL_URL, DEPUTY_ACCESS_TOKEN]
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshDeputyShiftsRangeV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const rawStart = String(body.start_date || "").trim();
+  const rawEnd   = String(body.end_date   || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawStart) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) {
+    res.status(400).json({
+      ok: false,
+      error: "start_date and end_date are required in YYYY-MM-DD format."
+    });
+    return;
+  }
+  const todayMs = new Date(deputyTodayLocalDate() + "T00:00:00Z").getTime();
+  const startMs = new Date(rawStart + "T00:00:00Z").getTime();
+  const endMs   = new Date(rawEnd   + "T00:00:00Z").getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+    res.status(400).json({ ok: false, error: "start_date/end_date are not real calendar dates." });
+    return;
+  }
+  if (endMs < startMs) {
+    res.status(400).json({ ok: false, error: "end_date must be on or after start_date." });
+    return;
+  }
+  const rangeDays = Math.round((endMs - startMs) / 86400000) + 1;
+  if (rangeDays > 31) {
+    res.status(400).json({
+      ok: false,
+      error: "Range too large (" + rangeDays + " days). Max 31."
+    });
+    return;
+  }
+  for (const ms of [startMs, endMs]) {
+    const diffDays = Math.abs(ms - todayMs) / 86400000;
+    if (diffDays > 60) {
+      res.status(400).json({
+        ok: false,
+        error: "start_date / end_date must each be within 60 days of today."
+      });
+      return;
+    }
+  }
+
+  const perDay = [];
+  let aggregateUpserted = 0;
+  let aggregateCancelled = 0;
+  let aggregateUnmappedE = 0;
+  let aggregateUnmappedC = 0;
+  let failuresCount = 0;
+
+  for (let cursor = startMs; cursor <= endMs; cursor += 86400000) {
+    const isoDay = new Date(cursor).toISOString().slice(0, 10);
+    try {
+      const result = await syncDeputyShiftsCore({
+        invokedBy: "admin:range:" + staff.email,
+        syncDate:  isoDay
+      });
+      aggregateUpserted  += (result.upserted_count   || 0);
+      aggregateCancelled += (result.cancelled_count  || 0);
+      aggregateUnmappedE += Array.isArray(result.unmapped_employees) ? result.unmapped_employees.length : 0;
+      aggregateUnmappedC += Array.isArray(result.unmapped_customers) ? result.unmapped_customers.length : 0;
+      perDay.push({
+        sync_date:       isoDay,
+        ok:              true,
+        upserted_count:  result.upserted_count   || 0,
+        cancelled_count: result.cancelled_count  || 0,
+        fetched_count:   result.fetched_count    || 0,
+        duration_ms:     result.duration_ms      || 0
+      });
+    } catch (err) {
+      failuresCount += 1;
+      perDay.push({
+        sync_date: isoDay,
+        ok:        false,
+        error:     (err && err.message) || String(err)
+      });
+      logger.warn("refreshDeputyShiftsRangeV1 day failed (continuing)", {
+        sync_date: isoDay, error: err && err.message
+      });
+    }
+  }
+
+  logger.info("refreshDeputyShiftsRangeV1 ok", {
+    start_date: rawStart, end_date: rawEnd, days: rangeDays,
+    upserted: aggregateUpserted, cancelled: aggregateCancelled,
+    failures: failuresCount, caller: staff.email
+  });
+
+  res.status(200).json({
+    ok:                true,
+    start_date:        rawStart,
+    end_date:          rawEnd,
+    days:              rangeDays,
+    aggregate: {
+      upserted_count:        aggregateUpserted,
+      cancelled_count:       aggregateCancelled,
+      unmapped_employees:    aggregateUnmappedE,
+      unmapped_customers:    aggregateUnmappedC,
+      failed_days:           failuresCount
+    },
+    per_day: perDay
+  });
+});
+
 /* ====================================================================
  * seedPilotCustomerAliasesV1 — one-shot admin endpoint that populates
  * /customer_aliases with the curated Pioneer pilot alias list. The
@@ -4458,6 +5137,2705 @@ const PILOT_ALIAS_SEED = [
   { code: "HORM",    customer_name: "Hormann Door",                       extras: ["hormanndoor"] },
   { code: "HC PROP", customer_name: "High Country Property Management",   extras: ["highcountryproperty", "highcountrypm", "highcountrypropertymanagement"] }
 ];
+
+/* ============================================================================
+   Phase 2A.1 — Deputy → Pioneer service_assignments bridge.
+   ============================================================================
+
+   Reads deputy_shift_cache for a date range and creates/updates matching
+   service_assignments docs so Pioneer Time Clock has cards to render
+   without manual seeding.
+
+   See firestore.rules:1090-1095 — service_assignments writes are admin-only
+   from clients; Admin SDK bypasses, so this function writes them. No rule
+   change required for Phase 2A.
+
+   IMPORTANT idempotency rules (mirrored from the plan):
+     • doc id = "sa_deputy__" + shift_id (deterministic, unique per Deputy
+       roster id; handles split shifts on same day for same customer).
+       Falls back to "sa__" + sync_date + "__" + tech_slug + "__" + customer_slug
+       only when shift_id is missing.
+     • staff_uid resolved via admin.auth().getUserByEmail() — shift SKIPPED
+       if email->uid lookup fails (tech hasn't signed in yet).
+     • customer_slug empty → SKIP.
+     • Existing assignment in {in_progress, paused, dcr_pending, completed}
+       → REFRESH safe mapping fields ONLY; never touch status / session_id /
+       dcr_submission_id / created_at / assigned_by.
+     • Cross-check pioneer_service_sessions for live/completed sessions
+       before any status change (belt + suspenders).
+     • Deputy cancellation → mark assignment status "canceled_by_deputy"
+       ONLY if no Pioneer work has started. NEVER delete.
+============================================================================ */
+
+const BRIDGE_SOURCE_TAG       = "deputy_bridge_v1";
+const BRIDGE_DOC_ID_PREFIX    = "sa_deputy__";
+const BRIDGE_LATE_STATUSES    = ["in_progress", "paused", "dcr_pending", "completed"];
+const BRIDGE_AVAILABLE_GRACE_HOURS = 6;   // grace window after end_time
+
+function bridgePacificWeekday(date) {
+  // 0=Sunday … 6=Saturday — computed via en-US Intl with TZ override.
+  try {
+    const wk = new Intl.DateTimeFormat("en-US", {
+      timeZone: DEPUTY_SYNC_TIMEZONE, weekday: "short"
+    }).format(date);
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return map[wk];
+  } catch (_e) { return null; }
+}
+
+function bridgeIsoForPacificDateAt17(yyyyMmDd) {
+  // Returns an ISO 8601 string representing 17:00 Pacific on the given
+  // date. PST = -08:00; PDT = -07:00. Derive offset by formatting a test
+  // date in Pacific and inspecting the result minutes vs UTC.
+  const probe = new Date(yyyyMmDd + "T12:00:00Z");
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: DEPUTY_SYNC_TIMEZONE, hour: "2-digit", hour12: false
+  });
+  // Pacific hour at UTC noon: 04 (PST) or 05 (PDT). Offset = 12 - hour.
+  const pacificHour = parseInt(fmt.format(probe), 10);
+  const offsetHours = 12 - pacificHour;   // 8 (PST) or 7 (PDT)
+  const sign = "-";
+  const hh = String(Math.abs(offsetHours)).padStart(2, "0");
+  return yyyyMmDd + "T17:00:00" + sign + hh + ":00";
+}
+
+function bridgeAddDays(yyyyMmDd, days) {
+  const base = new Date(yyyyMmDd + "T12:00:00Z");
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+// Compute available_from per the customer's flex_start_policy. Defaults
+// to start_time (no flex). The supported policy values are:
+//   • "sun_to_fri_evening"     — Sunday work available from prior Fri 17:00 PT
+//   • "weekend_to_thu_evening" — Sat/Sun work available from prior Thu 17:00 PT
+//   • null / absent            — no flex
+function bridgeComputeAvailableFrom(startTime, syncDate, flexPolicy) {
+  if (!flexPolicy || !startTime) return startTime || null;
+  let dt;
+  try { dt = startTime.toDate ? startTime.toDate() : new Date(startTime); }
+  catch (_e) { return startTime; }
+  const wk = bridgePacificWeekday(dt);
+  if (wk == null) return startTime;
+  if (flexPolicy === "sun_to_fri_evening" && wk === 0) {
+    const iso = bridgeIsoForPacificDateAt17(bridgeAddDays(syncDate, -2));
+    return admin.firestore.Timestamp.fromDate(new Date(iso));
+  }
+  if (flexPolicy === "weekend_to_thu_evening" && (wk === 0 || wk === 6)) {
+    const offset = (wk === 0) ? -3 : -2;   // Sun→Thu = 3 days back; Sat→Thu = 2
+    const iso = bridgeIsoForPacificDateAt17(bridgeAddDays(syncDate, offset));
+    return admin.firestore.Timestamp.fromDate(new Date(iso));
+  }
+  return startTime;
+}
+
+function bridgeComputeAvailableUntil(endTime) {
+  if (!endTime) return null;
+  let dt;
+  try { dt = endTime.toDate ? endTime.toDate() : new Date(endTime); }
+  catch (_e) { return endTime; }
+  const ms = dt.getTime() + BRIDGE_AVAILABLE_GRACE_HOURS * 3600 * 1000;
+  return admin.firestore.Timestamp.fromMillis(ms);
+}
+
+function bridgeMakeAssignmentId(shift) {
+  const sid = shift.shift_id;
+  if (sid !== undefined && sid !== null && String(sid).length > 0 && Number(sid) !== 0) {
+    return BRIDGE_DOC_ID_PREFIX + String(sid);
+  }
+  // Fallback per Phase 2A spec — only fires if shift_id is missing/0.
+  // Uses tech slug (NOT uid) so the id stays human-debuggable.
+  const techKey = String(shift.employee_slug || shift.employee_email || "unknown_tech")
+    .toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  const custKey = String(shift.customer_slug || "unknown_customer")
+    .toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return "sa__" + shift.sync_date + "__" + techKey + "__" + custKey;
+}
+
+async function bridgeResolveUid(email, cache) {
+  if (!email) return null;
+  const key = String(email).toLowerCase().trim();
+  if (!key) return null;
+  if (cache[key] !== undefined) return cache[key];
+  try {
+    const user = await admin.auth().getUserByEmail(key);
+    cache[key] = user.uid;
+    return user.uid;
+  } catch (_e) {
+    cache[key] = null;
+    return null;
+  }
+}
+
+async function bridgeHasLiveOrCompletedSession(db, assignmentId) {
+  try {
+    const snap = await db.collection("pioneer_service_sessions")
+      .where("assignment_id", "==", assignmentId)
+      .where("status", "in", BRIDGE_LATE_STATUSES)
+      .limit(1)
+      .get();
+    return !snap.empty;
+  } catch (_e) {
+    // Index missing or transient error — be safe and assume sessions
+    // exist; the caller will route to "skip status overwrite" path.
+    return true;
+  }
+}
+
+async function bridgeCore(opts) {
+  const dryRun     = !!opts.dryRun;
+  const startDate  = (typeof opts.syncDate === "string" && opts.syncDate)
+                       || deputyTodayLocalDate();
+  const daysForward = Math.max(0, Math.min(30, Number(opts.daysForward) || 0));
+  const dates = [];
+  for (let i = 0; i <= daysForward; i++) dates.push(bridgeAddDays(startDate, i));
+
+  const db = admin.firestore();
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const uidCache = {};
+  const custCache = {};
+
+  const report = {
+    dry_run:           dryRun,
+    invoked_by:        String(opts.invokedBy || "manual"),
+    dates:             dates,
+    shifts_seen:       0,
+    created:           0,
+    updated_assigned:  0,
+    refreshed_late:    0,
+    cancelled:         0,
+    skipped: {
+      customer_unresolved: 0,
+      uid_unresolved:      0,
+      no_email:            0,
+      protected_session:   0,
+      cancelled_no_doc:    0,
+      cancelled_locked:    0,
+      no_change_needed:    0
+    },
+    errors:            []
+  };
+  // Optional per-shift detail when dry_run is on — caps at 50 to keep
+  // the response small.
+  const details = dryRun ? [] : null;
+  function pushDetail(shiftId, action, reason) {
+    if (!details || details.length >= 50) return;
+    details.push({ shift_id: shiftId, action: action, reason: reason || null });
+  }
+
+  for (const date of dates) {
+    let shifts = [];
+    try {
+      const snap = await db.collection("deputy_shift_cache")
+        .where("sync_date", "==", date)
+        .get();
+      shifts = snap.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data() || {});
+      });
+    } catch (err) {
+      report.errors.push({ stage: "load_deputy_cache", date: date, msg: err.message });
+      continue;
+    }
+    report.shifts_seen += shifts.length;
+
+    for (const shift of shifts) {
+      const shiftIdStr = String(shift.shift_id || shift.id || "");
+      const deputyCancelled = String(shift.status || "") === "cancelled";
+
+      // Skip — customer mapping unresolved.
+      if (!shift.customer_slug) {
+        if (deputyCancelled) {
+          // Nothing to do; no doc would exist.
+          report.skipped.customer_unresolved += 1;
+          pushDetail(shiftIdStr, "skip", "customer_unresolved+cancelled");
+        } else {
+          report.skipped.customer_unresolved += 1;
+          pushDetail(shiftIdStr, "skip", "customer_unresolved");
+        }
+        continue;
+      }
+      // Skip — no email to resolve.
+      if (!shift.employee_email) {
+        report.skipped.no_email += 1;
+        pushDetail(shiftIdStr, "skip", "no_email");
+        continue;
+      }
+
+      const assignmentId = bridgeMakeAssignmentId(shift);
+      const assignmentRef = db.collection("service_assignments").doc(assignmentId);
+      let existingSnap;
+      try {
+        existingSnap = await assignmentRef.get();
+      } catch (err) {
+        report.errors.push({ stage: "load_existing", shift_id: shiftIdStr, msg: err.message });
+        continue;
+      }
+
+      // Cancellation handling.
+      if (deputyCancelled) {
+        if (!existingSnap.exists) {
+          report.skipped.cancelled_no_doc += 1;
+          pushDetail(shiftIdStr, "skip", "cancelled_no_doc");
+          continue;
+        }
+        const existingData = existingSnap.data() || {};
+        const lateStatus = BRIDGE_LATE_STATUSES.indexOf(existingData.status || "") >= 0;
+        const hasLive = await bridgeHasLiveOrCompletedSession(db, assignmentId);
+        if (lateStatus || hasLive) {
+          report.skipped.cancelled_locked += 1;
+          pushDetail(shiftIdStr, "skip", "cancelled_locked");
+          continue;
+        }
+        // Mark cancelled; never delete.
+        if (!dryRun) {
+          try {
+            await assignmentRef.update({
+              status:             "canceled_by_deputy",
+              status_changed_at:  sts,
+              status_changed_by:  BRIDGE_SOURCE_TAG,
+              updated_at:         sts,
+              updated_by:         BRIDGE_SOURCE_TAG
+            });
+          } catch (err) {
+            report.errors.push({ stage: "mark_cancelled", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.cancelled += 1;
+        pushDetail(shiftIdStr, "cancel", null);
+        continue;
+      }
+
+      // Resolve staff_uid.
+      const staff_uid = await bridgeResolveUid(shift.employee_email, uidCache);
+      if (!staff_uid) {
+        report.skipped.uid_unresolved += 1;
+        pushDetail(shiftIdStr, "skip", "uid_unresolved");
+        continue;
+      }
+
+      // Load customer for flex_start_policy + service_budget_minutes.
+      let customer = custCache[shift.customer_slug];
+      if (customer === undefined) {
+        try {
+          const cSnap = await db.collection("customers").doc(shift.customer_slug).get();
+          customer = cSnap.exists ? (cSnap.data() || {}) : null;
+        } catch (_e) { customer = null; }
+        custCache[shift.customer_slug] = customer;
+      }
+
+      const flexPolicy = (customer && customer.flex_start_policy) || null;
+      const budgetMin  = (customer && typeof customer.service_budget_minutes === "number")
+                          ? customer.service_budget_minutes
+                          : null;
+
+      // Build the mapping fields. Time math uses the cache's Timestamps
+      // as-is — they're already correct UTC moments.
+      const startTime = shift.start_time || null;
+      const endTime   = shift.end_time   || null;
+      let estimatedMin = null;
+      if (startTime && endTime) {
+        const sMs = startTime.toMillis ? startTime.toMillis() : new Date(startTime).getTime();
+        const eMs = endTime.toMillis   ? endTime.toMillis()   : new Date(endTime).getTime();
+        if (Number.isFinite(sMs) && Number.isFinite(eMs) && eMs > sMs) {
+          estimatedMin = Math.round((eMs - sMs) / 60000);
+        }
+      }
+      if (estimatedMin == null) estimatedMin = 90;
+
+      const availableFrom  = bridgeComputeAvailableFrom(startTime, date, flexPolicy);
+      const availableUntil = bridgeComputeAvailableUntil(endTime);
+
+      const mappingFields = {
+        service_date:          date,
+        staff_uid:             staff_uid,
+        staff_email:           String(shift.employee_email || "").toLowerCase().trim(),
+        staff_display_name:    shift.employee_display_name || "",
+        customer_id:           shift.customer_slug,
+        customer_name:         shift.customer_name || "",
+        location_id:           null,
+        location_name:         null,
+        location_address:      null,
+        location_lat:          null,
+        location_lon:          null,
+        location_geofence_radius_m: null,
+        service_window_start:  startTime,
+        service_deadline:      endTime,
+        estimated_minutes:     estimatedMin,
+        budget_minutes:        budgetMin,
+        allows_flex_start:     true,
+        available_from:        availableFrom,
+        available_until:       availableUntil,
+        schedule_policy:       flexPolicy,
+        deputy_shift_id:       Number(shift.shift_id) || null,
+        source:                "deputy_bridge",
+        updated_at:            sts,
+        updated_by:            BRIDGE_SOURCE_TAG
+      };
+
+      // CREATE path.
+      if (!existingSnap.exists) {
+        const payload = Object.assign({}, mappingFields, {
+          assignment_id:      assignmentId,
+          status:             "assigned",
+          status_changed_at:  sts,
+          status_changed_by:  BRIDGE_SOURCE_TAG,
+          session_id:         null,
+          dcr_submission_id:  null,
+          created_at:         sts,
+          created_by:         BRIDGE_SOURCE_TAG,
+          assigned_by:        BRIDGE_SOURCE_TAG,
+          notes:              "Auto-created from Deputy shift " + shiftIdStr
+        });
+        if (!dryRun) {
+          try { await assignmentRef.set(payload); }
+          catch (err) {
+            report.errors.push({ stage: "create", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.created += 1;
+        pushDetail(shiftIdStr, "create", null);
+        continue;
+      }
+
+      // UPDATE paths.
+      const existing = existingSnap.data() || {};
+      const existingStatus = String(existing.status || "");
+      const lateStatus = BRIDGE_LATE_STATUSES.indexOf(existingStatus) >= 0;
+      const hasLive = lateStatus
+        ? true
+        : await bridgeHasLiveOrCompletedSession(db, assignmentId);
+
+      if (lateStatus || hasLive) {
+        // REFRESH SAFE FIELDS ONLY — never touch status / session_id /
+        // dcr_submission_id / created_at / assigned_by.
+        const safe = Object.assign({}, mappingFields);
+        delete safe.staff_uid;   // never change tech mid-stream — sessions
+                                 // reference this assignment by id, staff
+                                 // identity must remain stable
+        delete safe.service_date;
+        if (!dryRun) {
+          try { await assignmentRef.update(safe); }
+          catch (err) {
+            report.errors.push({ stage: "update_late", shift_id: shiftIdStr, msg: err.message });
+            continue;
+          }
+        }
+        report.refreshed_late += 1;
+        pushDetail(shiftIdStr, "refresh_late", null);
+        continue;
+      }
+
+      // Full mapping update — assignment is "assigned" (or
+      // "canceled_by_deputy" being re-armed).
+      const patch = Object.assign({}, mappingFields, {
+        status:             "assigned",
+        status_changed_at:  (existingStatus === "assigned") ? (existing.status_changed_at || sts) : sts,
+        status_changed_by:  (existingStatus === "assigned") ? (existing.status_changed_by || BRIDGE_SOURCE_TAG) : BRIDGE_SOURCE_TAG
+      });
+      if (!dryRun) {
+        try { await assignmentRef.update(patch); }
+        catch (err) {
+          report.errors.push({ stage: "update_assigned", shift_id: shiftIdStr, msg: err.message });
+          continue;
+        }
+      }
+      report.updated_assigned += 1;
+      pushDetail(shiftIdStr, "update_assigned", null);
+    }
+  }
+
+  if (details) report.details = details;
+  return report;
+}
+
+/* --- HTTPS twin: admin-only "Refresh Pioneer Time Clock from Deputy" --- */
+/* --------------- bridgeDeputyToServiceAssignmentsV1 (Phase 2A.2) ---------------
+ *
+ * Scheduled twin of refreshServiceAssignmentsFromDeputyV1. Calls the
+ * same bridgeCore() so logic stays single-sourced. Sequenced to run
+ * ~5 minutes after syncDeputyShiftsV1 (which schedules at :00/:10/…
+ * minutes); a :05/:15/… offset would be ideal but Cloud Scheduler doesn't
+ * guarantee phase relative to other jobs — what matters is that within
+ * any 10-min window the bridge runs after the sync that preceded it.
+ *
+ * Idempotency: bridgeCore uses a deterministic doc id
+ * `sa_deputy__<shift_id>`. On re-run:
+ *   • If the assignment doc is in a late status (in_progress / paused /
+ *     dcr_pending / completed), only safe mapping fields refresh; status,
+ *     session_id, dcr_submission_id, created_at, assigned_by are preserved.
+ *   • Live-session safety check: existence of a
+ *     pioneer_service_sessions doc in active/paused/dcr_pending/completed
+ *     blocks status overwrite.
+ *   • Deputy cancellation → status="canceled_by_deputy" only if no
+ *     Pioneer work has started. NEVER deletes.
+ *
+ * If skipped > 0, logs a warning with the per-reason counts so the
+ * office can triage uid_unresolved / no_email / customer_unresolved
+ * cases via Cloud Logging.
+ *
+ * Created by the Drew/Whittaker Sev-1 (2026-06-02). The manual
+ * refreshServiceAssignmentsFromDeputyV1 stays as an admin-triggered
+ * twin for on-demand backfills (e.g. after a mass tech onboarding).
+ */
+exports.bridgeDeputyToServiceAssignmentsV1 = onSchedule({
+  schedule:       "every 10 minutes",
+  timeZone:       DEPUTY_SYNC_TIMEZONE,
+  timeoutSeconds: 120
+}, async (event) => {
+  try {
+    const result = await bridgeCore({
+      invokedBy:   "scheduled",
+      daysForward: 1,
+      dryRun:      false
+    });
+    const skippedTotal =
+      (result.skipped.customer_unresolved || 0) +
+      (result.skipped.uid_unresolved      || 0) +
+      (result.skipped.no_email            || 0) +
+      (result.skipped.protected_session   || 0) +
+      (result.skipped.cancelled_no_doc    || 0) +
+      (result.skipped.cancelled_locked    || 0);
+
+    const summary = {
+      dates:            result.dates,
+      shifts_seen:      result.shifts_seen,
+      created:          result.created,
+      updated_assigned: result.updated_assigned,
+      refreshed_late:   result.refreshed_late,
+      cancelled:        result.cancelled,
+      skipped:          result.skipped,
+      errors_count:     (result.errors || []).length
+    };
+
+    if (skippedTotal > 0) {
+      logger.warn("bridgeDeputyToServiceAssignmentsV1 had skipped shifts", summary);
+    } else {
+      logger.info("bridgeDeputyToServiceAssignmentsV1 ok", summary);
+    }
+    if (result.errors && result.errors.length) {
+      logger.error("bridgeDeputyToServiceAssignmentsV1 surfaced errors", {
+        errors: result.errors.slice(0, 20)
+      });
+    }
+  } catch (err) {
+    logger.error("bridgeDeputyToServiceAssignmentsV1 failed", {
+      error: err && err.message,
+      stack: err && err.stack
+    });
+    throw err;   // surface to Cloud Functions for retry semantics
+  }
+});
+
+exports.refreshServiceAssignmentsFromDeputyV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshServiceAssignmentsFromDeputyV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+
+  // Validate sync_date (YYYY-MM-DD) within ±60 days of today.
+  let syncDate = null;
+  const raw = String(body.sync_date || "").trim();
+  if (raw) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      res.status(400).json({ ok: false, error: "sync_date must be YYYY-MM-DD." });
+      return;
+    }
+    const today = new Date(deputyTodayLocalDate() + "T00:00:00Z").getTime();
+    const target = new Date(raw + "T00:00:00Z").getTime();
+    if (Number.isNaN(target)) {
+      res.status(400).json({ ok: false, error: "sync_date is not a real calendar date." });
+      return;
+    }
+    const diffDays = Math.round((target - today) / (24 * 3600 * 1000));
+    if (diffDays < -60 || diffDays > 60) {
+      res.status(400).json({ ok: false, error: "sync_date must be within ±60 days of today." });
+      return;
+    }
+    syncDate = raw;
+  }
+
+  const daysForward = Math.max(0, Math.min(30, Number(body.days_forward) || 0));
+  const dryRun = !!body.dry_run;
+
+  try {
+    const report = await bridgeCore({
+      syncDate:    syncDate,
+      daysForward: daysForward,
+      dryRun:      dryRun,
+      invokedBy:   "admin:" + (staff.email || "")
+    });
+    logger.info("refreshServiceAssignmentsFromDeputyV1 ok", {
+      caller:           staff.email,
+      dates:            report.dates,
+      shifts_seen:      report.shifts_seen,
+      created:          report.created,
+      updated_assigned: report.updated_assigned,
+      refreshed_late:   report.refreshed_late,
+      cancelled:        report.cancelled,
+      dry_run:          report.dry_run
+    });
+    res.status(200).json({ ok: true, report: report });
+  } catch (err) {
+    logger.error("refreshServiceAssignmentsFromDeputyV1 failed", { error: err.message });
+    res.status(500).json({ ok: false, error: err.message || "bridge failed" });
+  }
+});
+
+/* ============================================================================
+   Phase 28D — Payroll CSV export + audit log
+   ============================================================================
+
+   exportPayrollCsvV1   — admin-only HTTPS POST. Validates readiness,
+                          queries approved sessions + sick entries,
+                          generates a CSV, uploads to Cloud Storage at
+                          payroll_exports/{export_id}/payroll-…csv,
+                          generates a 7-day signed URL, atomically writes
+                          payroll_exports/{export_id} + flips each
+                          included session's payroll_state to "exported"
+                          (locking the workweek for re-allocation).
+
+   voidPayrollExportV1  — admin-only HTTPS POST. Reverses an export:
+                          marks payroll_exports doc voided, reverts every
+                          included session back to "approved_for_payroll",
+                          clears export-lock fields. CSV file is NOT
+                          deleted (audit trail preserved).
+
+   Rules (firestore + storage):
+     • payroll_exports collection: admin read, no client write (Admin SDK
+       only).
+     • payroll_exports/<id>/<file>.csv in Storage: admin read, no write.
+
+   See also:
+     • Phase 28B engine refuses Approve/Unapprove when
+       `workweek_locked_by_export === true` on any session in the
+       (staff_uid, workweek_id) bucket — set here on export.
+============================================================================ */
+
+const PAYROLL_EXPORT_BUCKET = "pioneer-dcr-hub.firebasestorage.app";
+const PAYROLL_BATCH_CAP     = 400;                  // Firestore batch limit is 500; leave headroom
+const PAYROLL_URL_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days
+const PAYROLL_TZ            = "America/Los_Angeles";
+
+function payrollPacificClock(timestamp) {
+  if (!timestamp) return "";
+  try {
+    const ms = timestamp.toMillis ? timestamp.toMillis()
+             : (timestamp.seconds ? timestamp.seconds * 1000 : Number(timestamp));
+    if (!Number.isFinite(ms)) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: PAYROLL_TZ, hour: "2-digit", minute: "2-digit"
+    }).format(new Date(ms));
+  } catch (_e) { return ""; }
+}
+function payrollDecimalHours(minutes) {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes)) return "0.00";
+  return (minutes / 60).toFixed(2);
+}
+function payrollCsvCell(v) {
+  if (v == null) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function payrollCsvRow(arr) {
+  return arr.map(payrollCsvCell).join(",");
+}
+function payrollSessionNotes(s) {
+  const out = [];
+  if (s.force_closed_by_admin === true) {
+    out.push("force-closed" + (s.force_close_reason ? ": " + s.force_close_reason : ""));
+  }
+  const geoOffsiteIn  = (s.clock_in_geo_status  === "offsite");
+  const geoOffsiteOut = (s.clock_out_geo_status === "offsite");
+  if (geoOffsiteIn && geoOffsiteOut) out.push("geo offsite (in + out)");
+  else if (geoOffsiteIn)             out.push("geo offsite (in)");
+  else if (geoOffsiteOut)            out.push("geo offsite (out)");
+  const budget = (typeof s.budget_minutes === "number") ? s.budget_minutes : null;
+  if (budget != null && budget > 0 && typeof s.work_minutes === "number"
+      && s.work_minutes > budget + 15) {
+    out.push("over budget by " + (s.work_minutes - budget) + "m");
+  }
+  if (s.reviewed_by && s.reviewed_at) {
+    out.push("admin reviewed");
+  }
+  return out.join(" | ");
+}
+function payrollDcrStatus(s) {
+  if (s.dcr_status === "submitted") return "submitted";
+  if (s.dcr_id) return "submitted";
+  if (s.status === "dcr_pending") return "pending";
+  return "—";
+}
+function payrollGeoLabel(s) {
+  const inG  = s.clock_in_geo_status  || "—";
+  const outG = s.clock_out_geo_status || "—";
+  return inG + " / " + outG;
+}
+function payrollIsBlocker(s) {
+  // Mirrors tab-payroll.js computeBlockers semantics. Returns one of the
+  // 4 blocker keys, or null if clean. Used both for verification refusal
+  // and for the verification_snapshot stored on payroll_exports.
+  if (s.admin_removed === true) return null;
+  // Phase 29A — QA / test sessions never count as blockers. They are also
+  // already excluded from the exportable filter (payroll_state !==
+  // "approved_for_payroll"); this keeps the verification snapshot clean.
+  if (s.is_test === true || s.exclude_from_payroll_export === true) return null;
+  if (s.needs_review === true) return "needs_review";
+  if (s.status === "active" || s.status === "paused") return "active";
+  if (s.status === "completed" && !s.clock_out_at) return "missing_clockout";
+  // Phase Timeclock Add-On — DCR requirement applies only to cleaning
+  // labor. Inspection + supply-station sessions never produce a DCR, so
+  // they pass this gate. Absent labor_type defaults to cleaning for
+  // back-compat with every session written before the field existed.
+  const isCleaning = !s.labor_type || s.labor_type === "cleaning";
+  if (!isCleaning) return null;
+  const dcrSubmitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
+  if (s.status === "dcr_pending") return "dcr_pending";
+  if (s.status === "completed" && !dcrSubmitted) return "dcr_pending";
+  return null;
+}
+
+/* --------------- exportPayrollCsvV1 --------------- */
+
+exports.exportPayrollCsvV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("exportPayrollCsvV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const rangeStart  = String(body.range_start  || "").trim();
+  const rangeEnd    = String(body.range_end    || "").trim();
+  const periodLabel = String(body.period_label || "").trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart) || !/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)) {
+    res.status(400).json({ ok: false, error: "range_start and range_end must be YYYY-MM-DD." });
+    return;
+  }
+  if (rangeStart > rangeEnd) {
+    res.status(400).json({ ok: false, error: "range_end must be >= range_start." });
+    return;
+  }
+  const startMs = Date.parse(rangeStart + "T00:00:00Z");
+  const endMs   = Date.parse(rangeEnd   + "T00:00:00Z");
+  if (Math.round((endMs - startMs) / 86400000) + 1 > 31) {
+    res.status(400).json({ ok: false, error: "Range too wide — max 31 days." });
+    return;
+  }
+
+  const db  = admin.firestore();
+
+  try {
+    // ----- Phase 29E-B: LOCK_REQUIRED gate -----
+    // Only semi-monthly periods are exportable. Custom date ranges have
+    // no payroll_periods doc and therefore cannot be locked; refuse with
+    // a clear error. Then refuse if the period exists but is not locked.
+    const exportPeriod = payrollPeriodFromRange(rangeStart, rangeEnd);
+    if (!exportPeriod) {
+      res.status(412).json({
+        ok:    false,
+        error: "Custom date ranges are not supported. Pick a semi-monthly period (1–15 or 16–EOM) and Lock it first.",
+        code:  "PERIOD_NOT_SEMI_MONTHLY"
+      });
+      return;
+    }
+    const exportPeriodRef = db.collection("payroll_periods").doc(exportPeriod.period_id);
+    const exportPeriodSnap = await exportPeriodRef.get();
+    const exportPeriodDoc = exportPeriodSnap.exists ? (exportPeriodSnap.data() || {}) : null;
+    if (!exportPeriodDoc || exportPeriodDoc.lock_status !== "locked") {
+      res.status(412).json({
+        ok:    false,
+        error: "Period is not locked. Lock the period before exporting.",
+        code:  "LOCK_REQUIRED",
+        period_id: exportPeriod.period_id
+      });
+      return;
+    }
+
+    // ----- Concurrency guard: refuse if an active export covers this range -----
+    const activeSnap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .get();
+    const conflict = activeSnap.docs.find(function (d) {
+      const data = d.data() || {};
+      return data.range_start === rangeStart && data.range_end === rangeEnd;
+    });
+    if (conflict) {
+      res.status(409).json({
+        ok: false, error: "Export already exists for this range. Void it first to re-export.",
+        existing_export_id: conflict.id
+      });
+      return;
+    }
+
+    // ----- Server-side verification re-check -----
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", rangeStart)
+      .where("service_date", "<=", rangeEnd)
+      .get();
+    const allSessions = sessSnap.docs.map(function (d) {
+      return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+    });
+    const verification_snapshot = {
+      needs_review_count:     0,
+      active_count:           0,
+      dcr_pending_count:      0,
+      missing_clockout_count: 0
+    };
+    allSessions.forEach(function (s) {
+      const b = payrollIsBlocker(s);
+      if (b === "needs_review")     verification_snapshot.needs_review_count += 1;
+      if (b === "active")           verification_snapshot.active_count += 1;
+      if (b === "dcr_pending")      verification_snapshot.dcr_pending_count += 1;
+      if (b === "missing_clockout") verification_snapshot.missing_clockout_count += 1;
+    });
+    const totalBlockers = verification_snapshot.needs_review_count +
+                          verification_snapshot.active_count +
+                          verification_snapshot.dcr_pending_count +
+                          verification_snapshot.missing_clockout_count;
+    if (totalBlockers > 0) {
+      res.status(412).json({
+        ok: false,
+        error: "Payroll not ready — resolve blockers in Labor first.",
+        blockers: verification_snapshot
+      });
+      return;
+    }
+
+    // ----- Filter to exportable sessions -----
+    const exportable = allSessions.filter(function (s) {
+      if (s.admin_removed === true) return false;
+      if (s.payroll_state !== "approved_for_payroll") return false;
+      return true;
+    });
+
+    // ----- Query sick entries in range (used only) -----
+    const sickSnap = await db.collection("sick_leave_ledger")
+      .where("effective_date", ">=", rangeStart)
+      .where("effective_date", "<=", rangeEnd)
+      .get();
+    const sickEntries = sickSnap.docs
+      .map(function (d) { return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {}); })
+      .filter(function (e) { return e.entry_type === "used"; });
+
+    if (!exportable.length && !sickEntries.length) {
+      res.status(400).json({ ok: false, error: "Nothing to export — no approved sessions or sick entries in this range." });
+      return;
+    }
+
+    // ----- Build display-name map (cleaning_techs by uid) -----
+    const techSnap = await db.collection("cleaning_techs").get();
+    const techByUid   = {};
+    const techByEmail = {};
+    techSnap.docs.forEach(function (d) {
+      const t = Object.assign({ _id: d.id }, d.data() || {});
+      if (t.uid) techByUid[t.uid] = t;
+      if (t.email) techByEmail[String(t.email).toLowerCase()] = t;
+    });
+    function techDisplay(uid, email) {
+      const t = (uid && techByUid[uid]) || (email && techByEmail[String(email).toLowerCase()]);
+      if (t) return t.display_name || (((t.first_name || "") + " " + (t.last_name || "")).trim()) || t.email || "Tech";
+      return email || uid || "Tech";
+    }
+
+    // ----- Compute summary totals + per-employee aggregation -----
+    const employeesSet = new Set();
+    let totalRegularMin = 0, totalOvertimeMin = 0, totalSickMin = 0;
+    exportable.forEach(function (s) {
+      if (s.staff_uid) employeesSet.add(s.staff_uid);
+      totalRegularMin  += (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+      totalOvertimeMin += (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+    });
+    sickEntries.forEach(function (e) {
+      if (e.staff_uid) employeesSet.add(e.staff_uid);
+      totalSickMin += Math.abs(Number(e.minutes_delta) || 0);
+    });
+    const totalDriveMin = 0;  // Phase 28D: drive ships later
+    // Mutable — Phase 29 rebucketing below may shift the reg/ot split when any
+    // session carries has_approved_time_adjustment. Recomputed after the
+    // rebucketing pass.
+    let totalPaidMin = totalRegularMin + totalOvertimeMin + totalDriveMin + totalSickMin;
+
+    // ----- Phase 29 — load any approved time-adjustment requests overlapping
+    // this range so we can show audit columns (reason / approved by / approved
+    // at) for sessions that carry has_approved_time_adjustment === true. Single
+    // range query; map by request id.
+    const adjMap = {};
+    try {
+      const adjSnap = await db.collection("time_adjustment_requests")
+        .where("shift_date", ">=", rangeStart)
+        .where("shift_date", "<=", rangeEnd)
+        .get();
+      adjSnap.docs.forEach(function (d) {
+        const r = d.data() || {};
+        if (r.status !== "approved") return;
+        adjMap[d.id] = r;
+      });
+    } catch (err) {
+      logger.warn("exportPayrollCsvV1: time_adjustment_requests lookup failed (non-fatal)", {
+        error: err && err.message
+      });
+    }
+
+    // ----- Phase 29 — Re-bucket regular vs overtime per workweek when any
+    // session in that bucket carries an approved time adjustment. Sessions
+    // without adjustments keep their stored regular_minutes / overtime_minutes
+    // from the Labor OT engine; adjusted sessions contribute effective_minutes
+    // and the entire workweek is re-split at the 40h cap so the export sums
+    // line up with what the office expects to pay.
+    function workweekIdForDate(yyyymmdd) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ""))) return "";
+      const dt = new Date(yyyymmdd + "T12:00:00Z");
+      const dow = dt.getUTCDay();   // 0 = Sunday (workweek start)
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      return dt.toISOString().slice(0, 10);
+    }
+    function sessionStartMs(s) {
+      if (s.has_approved_time_adjustment === true && s.effective_clock_in
+          && s.effective_clock_in.toMillis) {
+        return s.effective_clock_in.toMillis();
+      }
+      if (s.clock_in_at && s.clock_in_at.toMillis) return s.clock_in_at.toMillis();
+      return 0;
+    }
+    function sessionPayMinutes(s) {
+      if (s.has_approved_time_adjustment === true && typeof s.effective_minutes === "number") {
+        return s.effective_minutes;
+      }
+      const reg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+      const ot  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+      return reg + ot;
+    }
+    const REG_CAP_MIN = 2400;   // 40h × 60m — must match Labor Review WEEKLY_REGULAR_CAP_MINUTES.
+    const wwBuckets = {};
+    exportable.forEach(function (s) {
+      const ww  = workweekIdForDate(String(s.service_date || ""));
+      const key = (s.staff_uid || ("email:" + (s.staff_email || ""))) + "|" + ww;
+      if (!wwBuckets[key]) wwBuckets[key] = { sessions: [], adjusted: false };
+      wwBuckets[key].sessions.push(s);
+      if (s.has_approved_time_adjustment === true) wwBuckets[key].adjusted = true;
+    });
+    let rebucketDeltaMin = 0;
+    Object.keys(wwBuckets).forEach(function (key) {
+      const b = wwBuckets[key];
+      if (!b.adjusted) return;   // unchanged — keep OT engine's stored split
+      b.sessions.sort(function (a, c) { return sessionStartMs(a) - sessionStartMs(c); });
+      let regBudget = REG_CAP_MIN;
+      b.sessions.forEach(function (s) {
+        const mins = Math.max(0, sessionPayMinutes(s));
+        const reg  = Math.min(mins, Math.max(regBudget, 0));
+        const ot   = Math.max(0, mins - reg);
+        regBudget -= reg;
+        // Delta for the running totals: (new reg + new ot) − (stored reg + stored ot).
+        const priorReg = (typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0;
+        const priorOt  = (typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0;
+        rebucketDeltaMin += (reg + ot) - (priorReg + priorOt);
+        // Track the reg/ot split shift so the summary line reflects the adjustment.
+        totalRegularMin  += (reg - priorReg);
+        totalOvertimeMin += (ot  - priorOt);
+        s._export_regular_minutes  = reg;
+        s._export_overtime_minutes = ot;
+      });
+    });
+    if (rebucketDeltaMin !== 0) {
+      totalPaidMin += rebucketDeltaMin;
+      logger.info("exportPayrollCsvV1: Phase 29 rebucketing applied", {
+        rebucket_delta_minutes: rebucketDeltaMin,
+        total_regular_after:    totalRegularMin,
+        total_overtime_after:   totalOvertimeMin,
+        total_paid_after:       totalPaidMin
+      });
+    }
+
+    // ----- Build CSV (3 sections) -----
+    const sessionHeader = [
+      "Employee Name","Employee Email","Employee ID","Pay Period","Service Date",
+      "Customer","Location","Clock In","Clock Out",
+      "Regular Hours","Overtime Hours","Drive Hours","Sick Hours","Total Paid Hours",
+      "Payroll State","Needs Review","DCR Status","Geo Status","Notes",
+      // Phase 29 — adjustment audit columns. Empty for non-adjusted rows.
+      "Time Adjusted?","Original Clock In","Original Clock Out",
+      "Adjustment Minutes","Adjustment Reason","Approved By","Approved At"
+    ];
+    // Sort sessions by employee name then service_date then effective start
+    // (or original start when not adjusted).
+    exportable.sort(function (a, b) {
+      const an = techDisplay(a.staff_uid, a.staff_email);
+      const bn = techDisplay(b.staff_uid, b.staff_email);
+      const cn = an.localeCompare(bn);
+      if (cn !== 0) return cn;
+      const da = String(a.service_date || "");
+      const db_ = String(b.service_date || "");
+      if (da !== db_) return da.localeCompare(db_);
+      return sessionStartMs(a) - sessionStartMs(b);
+    });
+    const sessionRows = exportable.map(function (s) {
+      const adjusted = (s.has_approved_time_adjustment === true);
+      const reg = (typeof s._export_regular_minutes  === "number")
+        ? s._export_regular_minutes
+        : ((typeof s.regular_minutes  === "number") ? s.regular_minutes  : 0);
+      const ot  = (typeof s._export_overtime_minutes === "number")
+        ? s._export_overtime_minutes
+        : ((typeof s.overtime_minutes === "number") ? s.overtime_minutes : 0);
+      const sessionTotal = reg + ot;  // drive=0, sick=0 on session row
+      const clockInTs  = adjusted ? s.effective_clock_in  : s.clock_in_at;
+      const clockOutTs = adjusted ? s.effective_clock_out : s.clock_out_at;
+
+      // Phase 29 audit columns — only populated when adjusted.
+      let adjReason = "", adjApprovedBy = "", adjApprovedAt = "", adjDeltaStr = "";
+      if (adjusted) {
+        const r = adjMap[s.time_adjustment_request_id] || {};
+        adjReason     = r.reason || "";
+        adjApprovedBy = r.reviewed_by_name || "";
+        adjApprovedAt = (r.reviewed_at && r.reviewed_at.toMillis)
+          ? new Intl.DateTimeFormat("en-US", {
+              timeZone: PAYROLL_TZ,
+              year: "numeric", month: "short", day: "numeric",
+              hour: "numeric", minute: "2-digit"
+            }).format(new Date(r.reviewed_at.toMillis()))
+          : "";
+        const eff = (typeof s.effective_minutes === "number")
+          ? s.effective_minutes
+          : sessionTotal;
+        const orig = (typeof s.work_minutes === "number") ? s.work_minutes : null;
+        adjDeltaStr = (orig != null) ? String(eff - orig) : String(eff);
+      }
+
+      return payrollCsvRow([
+        techDisplay(s.staff_uid, s.staff_email),
+        s.staff_email || "",
+        s.staff_uid || "",
+        periodLabel,
+        s.service_date || "",
+        s.customer_name || s.customer_id || "",
+        s.location_address || s.location_id || "",
+        payrollPacificClock(clockInTs),
+        payrollPacificClock(clockOutTs),
+        payrollDecimalHours(reg),
+        payrollDecimalHours(ot),
+        "0.00",
+        "0.00",
+        payrollDecimalHours(sessionTotal),
+        "exported",
+        (s.needs_review === true) ? "true" : "false",
+        payrollDcrStatus(s),
+        payrollGeoLabel(s),
+        payrollSessionNotes(s),
+        adjusted ? "yes" : "no",
+        adjusted ? payrollPacificClock(s.clock_in_at)  : "",
+        adjusted ? payrollPacificClock(s.clock_out_at) : "",
+        adjDeltaStr,
+        adjReason,
+        adjApprovedBy,
+        adjApprovedAt
+      ]);
+    });
+
+    const sickHeader = [
+      "Employee Name","Employee Email","Employee ID","Pay Period","Date",
+      "Type","Sick Hours","Total Paid Hours","Notes"
+    ];
+    sickEntries.sort(function (a, b) {
+      const an = techDisplay(a.staff_uid, a.staff_email);
+      const bn = techDisplay(b.staff_uid, b.staff_email);
+      const cn = an.localeCompare(bn);
+      if (cn !== 0) return cn;
+      return String(a.effective_date || "").localeCompare(String(b.effective_date || ""));
+    });
+    const sickRows = sickEntries.map(function (e) {
+      const min = Math.abs(Number(e.minutes_delta) || 0);
+      return payrollCsvRow([
+        techDisplay(e.staff_uid, e.staff_email),
+        e.staff_email || "",
+        e.staff_uid || "",
+        periodLabel,
+        e.effective_date || "",
+        "Sick Leave",
+        payrollDecimalHours(min),
+        payrollDecimalHours(min),
+        e.reason || ""
+      ]);
+    });
+
+    const generatedAtPT = new Intl.DateTimeFormat("en-US", {
+      timeZone: PAYROLL_TZ,
+      year: "numeric", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit"
+    }).format(new Date());
+
+    // Pre-allocate the export_id NOW so we can stamp it into the CSV summary.
+    const epochMs = Date.now();
+    const exportId = "payroll_export__" + rangeStart + "__" + rangeEnd + "__" + epochMs;
+
+    const summaryRows = [
+      payrollCsvRow(["Metric", "Value"]),
+      payrollCsvRow(["Period", periodLabel]),
+      payrollCsvRow(["Range Start", rangeStart]),
+      payrollCsvRow(["Range End",   rangeEnd]),
+      payrollCsvRow(["Total Employees",   String(employeesSet.size)]),
+      payrollCsvRow(["Total Work Sessions", String(exportable.length)]),
+      payrollCsvRow(["Total Sick Entries",  String(sickEntries.length)]),
+      payrollCsvRow(["Total Regular Hours",  payrollDecimalHours(totalRegularMin)]),
+      payrollCsvRow(["Total Overtime Hours", payrollDecimalHours(totalOvertimeMin)]),
+      payrollCsvRow(["Total Drive Hours",    payrollDecimalHours(totalDriveMin)]),
+      payrollCsvRow(["Total Sick Hours",     payrollDecimalHours(totalSickMin)]),
+      payrollCsvRow(["Grand Total Paid Hours", payrollDecimalHours(totalPaidMin)]),
+      payrollCsvRow(["Generated By", staff.email || ""]),
+      payrollCsvRow(["Generated At", generatedAtPT + " PT"]),
+      payrollCsvRow(["Export ID",    exportId])
+    ];
+
+    const csv =
+      "=== WORK SESSIONS ===\n" +
+      payrollCsvRow(sessionHeader) + "\n" +
+      sessionRows.join("\n") + "\n" +
+      "\n" +
+      "=== SICK LEAVE ===\n" +
+      payrollCsvRow(sickHeader) + "\n" +
+      sickRows.join("\n") + "\n" +
+      "\n" +
+      "=== TOTALS ===\n" +
+      summaryRows.join("\n") + "\n";
+
+    // ----- Upload CSV to Cloud Storage -----
+    // Phase 28D revision (v3) — Storage token URLs abandoned after two
+    // metadata-persistence attempts couldn't be made reliable in the
+    // function runtime. The download path is now an authenticated
+    // streaming endpoint (downloadPayrollExportCsvV1) that verifies the
+    // admin ID token and streams the CSV server-side. The Storage
+    // object stays plain — no customMetadata token, no public URL.
+    const storagePath = "payroll_exports/" + exportId + "/payroll-" +
+                        rangeStart + "-to-" + rangeEnd + ".csv";
+    const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
+    const file   = bucket.file(storagePath);
+    await file.save(Buffer.from(csv, "utf8"), {
+      metadata: { contentType: "text/csv; charset=utf-8" }
+    });
+    const downloadUrl = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/" +
+                        "downloadPayrollExportCsvV1?export_id=" + encodeURIComponent(exportId);
+
+    // ----- Atomic batch: payroll_exports doc + per-session updates -----
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin" };
+
+    const includedSessionIds   = exportable.map(function (s) { return s._id; });
+    const includedSickEntryIds = sickEntries.map(function (e) { return e._id; });
+
+    const exportRef = db.collection("payroll_exports").doc(exportId);
+    const docPayload = {
+      export_id:               exportId,
+      range_start:             rangeStart,
+      range_end:               rangeEnd,
+      period_label:            periodLabel,
+      status:                  "active",
+      generated_by:            actor,
+      generated_by_email:      staff.email || "",
+      generated_at:            sts,
+      employee_count:          employeesSet.size,
+      session_count:           exportable.length,
+      sick_entry_count:        sickEntries.length,
+      regular_hours_total:     Number(payrollDecimalHours(totalRegularMin)),
+      overtime_hours_total:    Number(payrollDecimalHours(totalOvertimeMin)),
+      drive_hours_total:       Number(payrollDecimalHours(totalDriveMin)),
+      sick_hours_total:        Number(payrollDecimalHours(totalSickMin)),
+      total_paid_hours:        Number(payrollDecimalHours(totalPaidMin)),
+      storage_path:            storagePath,
+      // Phase 28D revision — download_url uses the Firebase Storage
+      // download-token pattern (no signBlob IAM dependency). signed_url
+      // kept as null for back-compat with the field name; UI prefers
+      // download_url when present. The token in download_url IS the
+      // secret — payroll_exports is admin-read-only by firestore.rules.
+      download_url:            downloadUrl,
+      signed_url:              null,
+      signed_url_expires_at:   null,
+      included_session_ids:    includedSessionIds,
+      included_sick_entry_ids: includedSickEntryIds,
+      verification_snapshot:   verification_snapshot
+    };
+
+    // Write payroll_exports doc first.
+    await exportRef.set(docPayload);
+
+    // Flip each session in capped batches (Firestore limit 500/batch).
+    for (let i = 0; i < exportable.length; i += PAYROLL_BATCH_CAP) {
+      const slice = exportable.slice(i, i + PAYROLL_BATCH_CAP);
+      const batch = db.batch();
+      slice.forEach(function (s) {
+        batch.update(s._ref, {
+          payroll_state:             "exported",
+          payroll_export_id:         exportId,
+          exported_at:               sts,
+          exported_by:               actor,
+          workweek_locked_by_export: true,
+          payroll_state_changed_at:  sts,
+          payroll_state_changed_by:  actor
+        });
+      });
+      await batch.commit();
+    }
+
+    logger.info("exportPayrollCsvV1 ok", {
+      caller:           staff.email,
+      export_id:        exportId,
+      range_start:      rangeStart,
+      range_end:        rangeEnd,
+      session_count:    exportable.length,
+      sick_entry_count: sickEntries.length,
+      employee_count:   employeesSet.size
+    });
+
+    res.status(200).json({
+      ok: true,
+      export_id:    exportId,
+      download_url: downloadUrl,
+      signed_url:   null,            // Phase 28D revision — kept for client back-compat
+      storage_path: storagePath,
+      summary: {
+        period_label:         periodLabel,
+        employee_count:       employeesSet.size,
+        session_count:        exportable.length,
+        sick_entry_count:     sickEntries.length,
+        regular_hours_total:  docPayload.regular_hours_total,
+        overtime_hours_total: docPayload.overtime_hours_total,
+        sick_hours_total:     docPayload.sick_hours_total,
+        total_paid_hours:     docPayload.total_paid_hours
+      }
+    });
+  } catch (err) {
+    logger.error("exportPayrollCsvV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Export failed" });
+  }
+});
+
+/* --------------- voidPayrollExportV1 --------------- */
+
+exports.voidPayrollExportV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const exportId   = String(body.export_id   || "").trim();
+  const voidReason = String(body.void_reason || "").trim();
+  if (!exportId) {
+    res.status(400).json({ ok: false, error: "export_id is required." });
+    return;
+  }
+  if (voidReason.length < 5) {
+    res.status(400).json({ ok: false, error: "void_reason must be at least 5 characters." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    const exportRef = db.collection("payroll_exports").doc(exportId);
+    const snap = await exportRef.get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, error: "Export not found." });
+      return;
+    }
+    const data = snap.data() || {};
+    if (data.status === "voided") {
+      res.status(409).json({ ok: false, error: "Export is already voided." });
+      return;
+    }
+
+    const sessionIds = Array.isArray(data.included_session_ids) ? data.included_session_ids : [];
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin" };
+
+    // Update payroll_exports doc first.
+    await exportRef.update({
+      status:          "voided",
+      voided_by:       actor,
+      voided_by_email: staff.email || "",
+      voided_at:       sts,
+      void_reason:     voidReason
+    });
+
+    // Revert sessions in capped batches.
+    for (let i = 0; i < sessionIds.length; i += PAYROLL_BATCH_CAP) {
+      const slice = sessionIds.slice(i, i + PAYROLL_BATCH_CAP);
+      const batch = db.batch();
+      slice.forEach(function (sid) {
+        const ref = db.collection("pioneer_service_sessions").doc(sid);
+        batch.update(ref, {
+          payroll_state:             "approved_for_payroll",
+          payroll_export_id:         admin.firestore.FieldValue.delete(),
+          exported_at:               admin.firestore.FieldValue.delete(),
+          exported_by:               admin.firestore.FieldValue.delete(),
+          workweek_locked_by_export: admin.firestore.FieldValue.delete(),
+          payroll_state_changed_at:  sts,
+          payroll_state_changed_by:  actor
+        });
+      });
+      await batch.commit();
+    }
+
+    logger.info("voidPayrollExportV1 ok", {
+      caller:        staff.email,
+      export_id:     exportId,
+      session_count: sessionIds.length
+    });
+    res.status(200).json({ ok: true, export_id: exportId, sessions_reverted: sessionIds.length });
+  } catch (err) {
+    logger.error("voidPayrollExportV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Void failed" });
+  }
+});
+
+/* ============================================================================
+   Phase 29E-B — Payroll Period Lock workflow.
+   ============================================================================
+
+   lockPayrollPeriodV1   — admin-only HTTPS POST. Validates the period is
+                           Ready (0 blockers + >=1 approved session),
+                           sweeps payroll_review_acknowledgments to
+                           auto-finalize any unreviewed techs, and writes
+                           payroll_periods/{period_id} with lock_status
+                           "locked" + snapshot + appended lock_history.
+
+   unlockPayrollPeriodV1 — admin-only HTTPS POST. Refuses if any session
+                           in the period is in exported state OR an
+                           active payroll_exports doc covers the period.
+                           Deletes the auto_finalized ack docs created
+                           at lock time, clears lock_* fields, appends
+                           lock_history.
+
+   Both functions write payroll_periods via the Admin SDK and therefore
+   bypass the (Phase 29E-B) firestore.rules tightening that denies
+   client writes on this collection.
+
+   Period identifier: semi-monthly only ("YYYY-MM-A" for days 1-15,
+   "YYYY-MM-B" for days 16-EOM). Custom date ranges have no period_id
+   and cannot be locked — exportPayrollCsvV1's LOCK_REQUIRED gate
+   refuses them.
+
+   No CSV column changes. No payroll hour math changes. The lock is
+   purely a workflow commitment + auto-finalize sweep + audit log.
+============================================================================ */
+
+// Lazy: only computed when needed. Mirrors public/admin/_utils.js
+// getSemiMonthlyPeriod() exactly so admin UI + backend always agree.
+function payrollSemiMonthlyPeriodFor(yyyymmdd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(yyyymmdd || ""))) return null;
+  const parts = yyyymmdd.split("-").map(function (v) { return parseInt(v, 10); });
+  const y = parts[0], m = parts[1], d = parts[2];
+  const mm = String(m).padStart(2, "0");
+  if (d <= 15) {
+    return {
+      period_id:  y + "-" + mm + "-A",
+      half:       "A",
+      month:      mm,
+      year:       String(y),
+      start_date: y + "-" + mm + "-01",
+      end_date:   y + "-" + mm + "-15"
+    };
+  }
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    period_id:  y + "-" + mm + "-B",
+    half:       "B",
+    month:      mm,
+    year:       String(y),
+    start_date: y + "-" + mm + "-16",
+    end_date:   y + "-" + mm + "-" + String(lastDay).padStart(2, "0")
+  };
+}
+// Period derived from a range. Returns null if the range doesn't EXACTLY
+// match a known semi-monthly period — that's how we refuse custom
+// ranges from Lock/Unlock/Export-gated flows.
+function payrollPeriodFromRange(rangeStart, rangeEnd) {
+  const p = payrollSemiMonthlyPeriodFor(rangeStart);
+  if (!p) return null;
+  if (p.start_date !== rangeStart) return null;
+  if (p.end_date   !== rangeEnd)   return null;
+  return p;
+}
+
+/* --------------- lockPayrollPeriodV1 --------------- */
+exports.lockPayrollPeriodV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60,
+  invoker:        "public"
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("lockPayrollPeriodV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const periodId = String(body.period_id || "").trim();
+  if (!/^\d{4}-\d{2}-(A|B)$/.test(periodId)) {
+    res.status(400).json({ ok: false, error: "period_id must be YYYY-MM-A or YYYY-MM-B." });
+    return;
+  }
+  // Derive start/end from period_id so client can't fabricate a range.
+  const probeYmd = periodId.endsWith("-A")
+    ? (periodId.slice(0, 7) + "-01")
+    : (periodId.slice(0, 7) + "-20");
+  const period = payrollSemiMonthlyPeriodFor(probeYmd);
+  if (!period || period.period_id !== periodId) {
+    res.status(400).json({ ok: false, error: "Couldn't resolve period from period_id." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    // ----- Server-side Ready check (mirrors UI banner gate) -----
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", period.start_date)
+      .where("service_date", "<=", period.end_date)
+      .get();
+    const allSessions = sessSnap.docs.map(function (d) {
+      return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+    });
+    const verification_snapshot = {
+      needs_review_count: 0, active_count: 0,
+      dcr_pending_count: 0,  missing_clockout_count: 0
+    };
+    allSessions.forEach(function (s) {
+      const b = payrollIsBlocker(s);
+      if (b === "needs_review")     verification_snapshot.needs_review_count    += 1;
+      if (b === "active")           verification_snapshot.active_count           += 1;
+      if (b === "dcr_pending")      verification_snapshot.dcr_pending_count      += 1;
+      if (b === "missing_clockout") verification_snapshot.missing_clockout_count += 1;
+    });
+    const totalBlockers = verification_snapshot.needs_review_count +
+                          verification_snapshot.active_count +
+                          verification_snapshot.dcr_pending_count +
+                          verification_snapshot.missing_clockout_count;
+    if (totalBlockers > 0) {
+      res.status(412).json({
+        ok: false,
+        error: "Period is not Ready — resolve blockers in Labor first.",
+        blockers: verification_snapshot
+      });
+      return;
+    }
+    const counted = allSessions.filter(function (s) {
+      if (s.admin_removed === true) return false;
+      if (s.is_test === true || s.exclude_from_payroll_export === true) return false;
+      return true;
+    });
+    const approved = counted.filter(function (s) {
+      return s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported";
+    });
+    if (approved.length === 0) {
+      res.status(412).json({
+        ok: false,
+        error: "No approved sessions in this period. Approve in Labor first."
+      });
+      return;
+    }
+
+    // ----- Period doc preflight: refuse if already locked -----
+    const periodRef = db.collection("payroll_periods").doc(periodId);
+    const periodSnap = await periodRef.get();
+    const periodDoc = periodSnap.exists ? (periodSnap.data() || {}) : null;
+    if (periodDoc && periodDoc.lock_status === "locked") {
+      res.status(409).json({ ok: false, error: "Period is already locked." });
+      return;
+    }
+
+    // ----- Auto-finalize ack sweep -----
+    // Universe = distinct staff_uid across counted (non-archived,
+    // non-QA) sessions. Tech with no doc gets an auto_finalized ack.
+    const universeUids = new Set();
+    counted.forEach(function (s) { if (s.staff_uid) universeUids.add(s.staff_uid); });
+    const existingAcksSnap = await db.collection("payroll_review_acknowledgments")
+      .where("period_id", "==", periodId)
+      .get();
+    const existingByUid = {};
+    existingAcksSnap.docs.forEach(function (d) {
+      const a = d.data() || {};
+      if (a.staff_uid) existingByUid[a.staff_uid] = Object.assign({ _id: d.id }, a);
+    });
+    // techsByUid lookup so the ack doc has a friendly display name.
+    const techSnap = await db.collection("cleaning_techs").get();
+    const techByUid = {};
+    techSnap.docs.forEach(function (d) {
+      const t = d.data() || {};
+      if (t.uid) techByUid[t.uid] = t;
+    });
+    function techDisplayLocal(uid) {
+      const t = techByUid[uid];
+      if (!t) return uid || "Tech";
+      return t.display_name ||
+             ((t.first_name || "") + " " + (t.last_name || "")).trim() ||
+             t.email || uid || "Tech";
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin", email: staff.email || "" };
+
+    // Build the auto-finalize batch. Keep ack ids so unlock can reverse.
+    const autoFinalizedAckIds = [];
+    const ackBatchOps = [];
+    universeUids.forEach(function (uid) {
+      if (existingByUid[uid]) return;   // tech already acked manually
+      const ackId = periodId + "__" + uid;
+      const ackRef = db.collection("payroll_review_acknowledgments").doc(ackId);
+      const techEmail = (techByUid[uid] && techByUid[uid].email) || "";
+      const techName  = techDisplayLocal(uid);
+      ackBatchOps.push({
+        ref: ackRef,
+        payload: {
+          period_id:                periodId,
+          period_start_date:        period.start_date,
+          period_end_date:          period.end_date,
+          staff_uid:                uid,
+          staff_email:              techEmail,
+          staff_name:               techName,
+          status:                   "auto_finalized",
+          acknowledged_at:          sts,
+          hours_snapshot:           {
+            total_minutes:        0,         // not snapshotted at lock time; UI uses session reads
+            session_count:        0,
+            pending_adj_count:    0,
+            approved_adj_count:   0
+          },
+          auto_finalized_at:        sts,
+          auto_finalized_by_lock_period_id: periodId,
+          auto_finalized_by:        actor,
+          created_at:               sts,
+          updated_at:               sts
+        }
+      });
+      autoFinalizedAckIds.push(ackId);
+    });
+
+    // ----- Compose period doc payload -----
+    let reviewedCount = 0, correctionCount = 0;
+    Object.keys(existingByUid).forEach(function (uid) {
+      if (!universeUids.has(uid)) return;
+      const a = existingByUid[uid];
+      if (a.status === "looks_good")            reviewedCount   += 1;
+      else if (a.status === "correction_requested") correctionCount += 1;
+    });
+
+    const lockEntry = {
+      action:                  "locked",
+      at:                      sts,
+      by:                      actor,
+      session_count:           counted.length,
+      approved_count:          approved.length,
+      auto_finalized_count:    autoFinalizedAckIds.length
+    };
+
+    const periodPayload = {
+      period_id:                periodId,
+      period_label:             // Friendly label so service-clock.js etc. can read it
+                                (function () {
+                                  try {
+                                    const m = new Intl.DateTimeFormat("en-US", {
+                                      timeZone: PAYROLL_TZ, month: "short"
+                                    }).format(new Date(period.start_date + "T12:00:00Z"));
+                                    const yEnd = new Intl.DateTimeFormat("en-US", {
+                                      timeZone: PAYROLL_TZ, year: "numeric"
+                                    }).format(new Date(period.end_date + "T12:00:00Z"));
+                                    return m + " " +
+                                           parseInt(period.start_date.slice(8), 10) + "–" +
+                                           parseInt(period.end_date.slice(8),   10) + ", " + yEnd;
+                                  } catch (_e) { return periodId; }
+                                })(),
+      month:                    period.month,
+      half:                     period.half,
+      start_date:               period.start_date,
+      end_date:                 period.end_date,
+      lock_status:              "locked",
+      locked_at:                sts,
+      locked_by:                actor,
+      locked_state_snapshot: {
+        session_count:        counted.length,
+        approved_count:       approved.length,
+        exported_count:       counted.filter(function (s) { return s.payroll_state === "exported"; }).length,
+        employee_count:       universeUids.size,
+        reviewed_count:       reviewedCount,
+        correction_count:     correctionCount,
+        not_reviewed_count:   autoFinalizedAckIds.length,
+        auto_finalized_count: autoFinalizedAckIds.length,
+        auto_finalized_ack_ids: autoFinalizedAckIds
+      },
+      lock_history:             admin.firestore.FieldValue.arrayUnion(lockEntry),
+      updated_at:               sts
+    };
+
+    // ----- Atomic batch commit: acks + period doc -----
+    const batch = db.batch();
+    ackBatchOps.forEach(function (op) { batch.set(op.ref, op.payload, { merge: true }); });
+    batch.set(periodRef, periodPayload, { merge: true });
+    await batch.commit();
+
+    logger.info("lockPayrollPeriodV1 ok", {
+      caller:                 staff.email,
+      period_id:              periodId,
+      session_count:          counted.length,
+      approved_count:         approved.length,
+      auto_finalized_count:   autoFinalizedAckIds.length
+    });
+    res.status(200).json({
+      ok:                     true,
+      period_id:              periodId,
+      auto_finalized_count:   autoFinalizedAckIds.length,
+      auto_finalized_ack_ids: autoFinalizedAckIds,
+      locked_state_snapshot:  periodPayload.locked_state_snapshot
+    });
+  } catch (err) {
+    logger.error("lockPayrollPeriodV1 failed", { error: err && err.message, stack: err && err.stack });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Lock failed" });
+  }
+});
+
+/* --------------- unlockPayrollPeriodV1 --------------- */
+exports.unlockPayrollPeriodV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60,
+  invoker:        "public"
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("unlockPayrollPeriodV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const periodId = String(body.period_id || "").trim();
+  if (!/^\d{4}-\d{2}-(A|B)$/.test(periodId)) {
+    res.status(400).json({ ok: false, error: "period_id must be YYYY-MM-A or YYYY-MM-B." });
+    return;
+  }
+
+  const db = admin.firestore();
+  try {
+    const periodRef = db.collection("payroll_periods").doc(periodId);
+    const periodSnap = await periodRef.get();
+    if (!periodSnap.exists) {
+      res.status(404).json({ ok: false, error: "Period not found." });
+      return;
+    }
+    const periodDoc = periodSnap.data() || {};
+    if (periodDoc.lock_status !== "locked") {
+      res.status(409).json({ ok: false, error: "Period is not locked." });
+      return;
+    }
+
+    // ----- Refuse if an active export covers this period -----
+    const activeExportSnap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .where("range_start", "==", periodDoc.start_date)
+      .where("range_end",   "==", periodDoc.end_date)
+      .get();
+    if (!activeExportSnap.empty) {
+      res.status(409).json({
+        ok: false,
+        error: "Period has an active export. Void the export in Recent Exports first.",
+        active_export_id: activeExportSnap.docs[0].id
+      });
+      return;
+    }
+    // Also refuse if any session in the period is in exported state
+    // (paranoia — should be impossible if there's no active export, but
+    // covers edge cases like a stale doc).
+    const sessExpSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", periodDoc.start_date)
+      .where("service_date", "<=", periodDoc.end_date)
+      .where("payroll_state", "==", "exported")
+      .get();
+    if (!sessExpSnap.empty) {
+      res.status(409).json({
+        ok: false,
+        error: "Period has " + sessExpSnap.size + " exported session(s). Void the export first."
+      });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const actor = { uid: staff.uid || "", displayName: staff.email || "admin", email: staff.email || "" };
+
+    // ----- Reverse the auto-finalize sweep -----
+    const ackIds = (periodDoc.locked_state_snapshot &&
+                    Array.isArray(periodDoc.locked_state_snapshot.auto_finalized_ack_ids))
+                    ? periodDoc.locked_state_snapshot.auto_finalized_ack_ids
+                    : [];
+
+    const unlockEntry = {
+      action:               "unlocked",
+      at:                   sts,
+      by:                   actor,
+      reverted_ack_count:   ackIds.length
+    };
+
+    // ----- Atomic batch: delete auto_finalized acks + clear lock fields -----
+    const batch = db.batch();
+    ackIds.forEach(function (ackId) {
+      batch.delete(db.collection("payroll_review_acknowledgments").doc(ackId));
+    });
+    batch.update(periodRef, {
+      lock_status:              "unlocked",
+      locked_at:                admin.firestore.FieldValue.delete(),
+      locked_by:                admin.firestore.FieldValue.delete(),
+      locked_state_snapshot:    admin.firestore.FieldValue.delete(),
+      lock_history:             admin.firestore.FieldValue.arrayUnion(unlockEntry),
+      updated_at:               sts
+    });
+    await batch.commit();
+
+    logger.info("unlockPayrollPeriodV1 ok", {
+      caller:             staff.email,
+      period_id:          periodId,
+      reverted_ack_count: ackIds.length
+    });
+    res.status(200).json({
+      ok:                 true,
+      period_id:          periodId,
+      reverted_ack_count: ackIds.length
+    });
+  } catch (err) {
+    logger.error("unlockPayrollPeriodV1 failed", { error: err && err.message, stack: err && err.stack });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Unlock failed" });
+  }
+});
+
+/* --------------- downloadPayrollExportCsvV1 ---------------
+ *
+ * Authenticated streaming download of a payroll export's CSV. Replaces
+ * the Firebase Storage signed-URL / token-URL approaches that failed
+ * in this runtime. Admin gates exactly the same as the other 28D
+ * functions; downloads both active and voided exports (voided CSVs are
+ * the audit artifact and must remain accessible).
+ *
+ * The CSV is buffered via file.download() rather than piped via a
+ * read stream because Express on Cloud Functions Gen 2 doesn't always
+ * forward stream backpressure cleanly; a typical payroll CSV is a few
+ * MB so the buffer fits comfortably under the function memory cap.
+ */
+exports.downloadPayrollExportCsvV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.set("Access-Control-Expose-Headers", "Content-Disposition, Content-Type");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("downloadPayrollExportCsvV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const exportId = String(
+    (req.query && req.query.export_id) || (req.body && req.body.export_id) || ""
+  ).trim();
+  if (!exportId) {
+    res.status(400).json({ ok: false, error: "export_id is required." });
+    return;
+  }
+
+  try {
+    const db = admin.firestore();
+    const snap = await db.collection("payroll_exports").doc(exportId).get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, error: "Export not found." });
+      return;
+    }
+    const data = snap.data() || {};
+    if (data.status !== "active" && data.status !== "voided") {
+      res.status(409).json({ ok: false, error: "Export status is " + data.status });
+      return;
+    }
+    if (!data.storage_path) {
+      res.status(500).json({ ok: false, error: "Export has no storage_path." });
+      return;
+    }
+
+    const bucket = admin.storage().bucket(PAYROLL_EXPORT_BUCKET);
+    const file   = bucket.file(data.storage_path);
+    const [exists] = await file.exists();
+    if (!exists) {
+      logger.warn("downloadPayrollExportCsvV1 storage file missing", {
+        export_id: exportId, storage_path: data.storage_path
+      });
+      res.status(404).json({ ok: false, error: "CSV file is no longer in Storage." });
+      return;
+    }
+
+    const [buffer] = await file.download();
+    const filename = "payroll-" + (data.range_start || "unknown") +
+                     "-to-" + (data.range_end || "unknown") + ".csv";
+
+    logger.info("downloadPayrollExportCsvV1 served", {
+      caller:       staff.email,
+      export_id:    exportId,
+      storage_path: data.storage_path,
+      bytes:        buffer.length,
+      status:       data.status
+    });
+
+    res.set("Content-Type",        "text/csv; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="' + filename + '"');
+    res.set("Cache-Control",       "no-store");
+    res.status(200).send(buffer);
+  } catch (err) {
+    logger.error("downloadPayrollExportCsvV1 failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Download failed" });
+  }
+});
+
+/* ============================================================================
+ * Phase 29 — Payroll Exception Engine.
+ *
+ * Replaces the Slack-based payroll correction loop. Employees REQUEST time
+ * adjustments via createTimeAdjustmentRequestV1; admins approve / deny via
+ * approveTimeAdjustmentRequestV1 / denyTimeAdjustmentRequestV1.
+ *
+ * Critical invariants (per Phase 29 spec):
+ *   • Original clock data on the session is NEVER overwritten. Approved
+ *     effective times are stamped as new fields:
+ *       has_approved_time_adjustment, effective_clock_in, effective_clock_out,
+ *       effective_minutes, time_adjustment_request_id
+ *   • Active / paused sessions cannot be adjusted (would break clock state).
+ *   • Sessions whose workweek is locked for payroll are off-limits to this
+ *     flow — payroll_state in {approved_for_payroll, exported} or
+ *     workweek_locked_by_export === true. Admin must use the existing Labor
+ *     Review unlock path first.
+ *   • Approval mutates ONLY the four effective fields + time_adjustment_request_id
+ *     on the session. work_minutes / clock_in_at / clock_out_at / payroll_state
+ *     / DCR linkage are preserved. The payroll export re-buckets OT on the
+ *     fly when has_approved_time_adjustment is true.
+ *   • One pending request per (employee, assignment, session) — duplicates
+ *     are refused.
+ *   • Submission window: shift_date in {today PT, yesterday PT} OR shift_date
+ *     within the current semi-monthly pay period.
+ *
+ * Auth model:
+ *   • create — the assigned tech (or admin on their behalf). employees can
+ *     only submit for their own assignment.
+ *   • approve / deny — admin only.
+ *
+ * Audit trail:
+ *   • The request doc itself is append-only-shaped: original_clock_in/out and
+ *     original_minutes are snapshotted at submit time, never updated.
+ *   • reviewed_by_uid + reviewed_by_name + reviewed_at stamped on
+ *     approve/deny. denial_reason stamped on deny.
+ * ============================================================================ */
+
+const TIME_ADJUSTMENT_REASONS = [
+  "forgot_clock_in", "forgot_clock_out", "app_issue",
+  "phone_issue", "no_internet", "emergency", "other"
+];
+const TIME_ADJUSTMENT_TZ = "America/Los_Angeles";
+
+function payrollExceptionTodayPT() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ADJUSTMENT_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
+}
+function payrollExceptionAddDaysPT(yyyyMmDd, days) {
+  const dt = new Date(yyyyMmDd + "T12:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ADJUSTMENT_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(dt);
+}
+function payrollExceptionGetEndOfMonth(yyyyMmDd) {
+  const parts = String(yyyyMmDd).split("-");
+  const year  = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return parts[0] + "-" + parts[1] + "-" + String(lastDay).padStart(2, "0");
+}
+function payrollExceptionGetSemiMonthlyPeriod(yyyyMmDd) {
+  const parts = String(yyyyMmDd).split("-");
+  const year  = parts[0], month = parts[1];
+  const day   = parseInt(parts[2], 10);
+  const half  = (day <= 15) ? "A" : "B";
+  const start = (half === "A") ? (year + "-" + month + "-01") : (year + "-" + month + "-16");
+  const end   = (half === "A") ? (year + "-" + month + "-15") : payrollExceptionGetEndOfMonth(yyyyMmDd);
+  return { period_id: year + "-" + month + "-" + half, start_date: start, end_date: end };
+}
+
+// Resolves the tech display name + email from cleaning_techs by uid.
+// Used at submit time to denormalize so the admin pending list doesn't
+// require a second lookup.
+async function resolveTechIdentityByUid(uid) {
+  if (!uid) return { name: "", email: "" };
+  try {
+    const snap = await db.collection(TECHS_COLLECTION)
+      .where("uid", "==", uid)
+      .limit(1)
+      .get();
+    if (snap.empty) return { name: "", email: "" };
+    const t = snap.docs[0].data() || {};
+    const name = t.display_name
+      || (((t.first_name || "") + " " + (t.last_name || "")).trim())
+      || t.email || "";
+    return { name: name, email: t.email || "" };
+  } catch (err) {
+    logger.warn("resolveTechIdentityByUid failed (non-fatal)", { error: err && err.message, uid: uid });
+    return { name: "", email: "" };
+  }
+}
+
+/* --------------- createTimeAdjustmentRequestV1 --------------- */
+
+/* ============================================================================
+   V20260614 — waiveDcrV1
+   POST { assignment_id, service_session_id?, reason_code, reason_detail? }
+
+   Marks a completed pioneer_service_session as DCR-waived. Used by the
+   "No DCR Needed" button on /work.html when a tech / admin needs to
+   close a shift without sending a customer-facing DCR — test shifts,
+   accidental clock-ins, internal work, customers that don't require
+   a DCR.
+
+   Authorization: any signed-in cleaning_tech may waive their OWN
+   session. Admins may waive any session. The role gate matches the
+   spirit of design choice #2 from the planning round (techs can self-
+   serve; every waive is audit-logged and visible to admin).
+
+   Idempotent: re-waiving an already-waived session returns ok with
+   the existing audit. Submitting (a real DCR) and waiving are
+   mutually exclusive: if dcr_submission_id is already set on the
+   session, this endpoint refuses. (Admin can revoke the DCR
+   separately if they need to land here.)
+
+   Writes:
+     pioneer_service_sessions/{sid}:
+       dcr_status                    = "waived"
+       dcr_waived_at                 = serverTimestamp
+       dcr_waived_by_uid             = staff.uid
+       dcr_waived_by_email           = staff.email
+       dcr_waived_reason             = reason_code
+       dcr_waived_reason_detail      = reason_detail (or null)
+       dcr_customer_email_suppressed = true
+       updated_at                    = serverTimestamp
+     service_assignments/{aid} (denormalized convenience for admin view):
+       dcr_waived                    = true
+       dcr_waived_at                 = serverTimestamp
+       dcr_waived_reason             = reason_code
+       dcr_waived_session_id         = sid
+       updated_at                    = serverTimestamp
+
+   Returns:
+     { ok: true,
+       session_id, assignment_id,
+       dcr_status, dcr_waived_reason,
+       already_waived: boolean }
+   ============================================================================ */
+
+const WAIVE_DCR_REASONS = [
+  "test_shift",
+  "duplicate_clock_in",
+  "internal_work",
+  "customer_no_dcr",
+  "other"
+];
+
+exports.waiveDcrV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+
+  const body = req.body || {};
+  const assignmentId   = String(body.assignment_id      || "").trim();
+  const sessionIdInput = String(body.service_session_id || "").trim();
+  const reasonCode     = String(body.reason_code        || "").trim();
+  const reasonDetailIn = body.reason_detail == null
+                          ? ""
+                          : String(body.reason_detail).trim();
+
+  if (!assignmentId) {
+    res.status(400).json({ ok: false, error: "assignment_id is required." });
+    return;
+  }
+  if (WAIVE_DCR_REASONS.indexOf(reasonCode) < 0) {
+    res.status(400).json({
+      ok: false,
+      error: "reason_code must be one of: " + WAIVE_DCR_REASONS.join(", ")
+    });
+    return;
+  }
+  if (reasonCode === "other" && reasonDetailIn.length < 3) {
+    res.status(400).json({
+      ok: false,
+      error: "reason_detail (≥ 3 characters) is required when reason_code is 'other'."
+    });
+    return;
+  }
+  const reasonDetail = reasonDetailIn ? reasonDetailIn.slice(0, 240) : null;
+
+  try {
+    // Resolve the assignment + ownership gate.
+    const assignSnap = await db.collection("service_assignments").doc(assignmentId).get();
+    if (!assignSnap.exists) {
+      res.status(404).json({ ok: false, error: "Assignment not found." });
+      return;
+    }
+    const a = assignSnap.data() || {};
+    const isAdmin = staff.role === "admin";
+    if (!isAdmin && a.staff_uid !== staff.uid) {
+      res.status(403).json({
+        ok: false,
+        error: "You can only waive DCRs on your own assignments."
+      });
+      return;
+    }
+
+    // Resolve the session. Prefer the caller-supplied id; fall back to
+    // the latest completed session for this assignment owned by them.
+    let sessionRef = null;
+    let sessionSnap = null;
+    if (sessionIdInput) {
+      sessionRef = db.collection("pioneer_service_sessions").doc(sessionIdInput);
+      sessionSnap = await sessionRef.get();
+      if (!sessionSnap.exists) {
+        res.status(404).json({ ok: false, error: "Session not found." });
+        return;
+      }
+    } else {
+      const sessionQry = await db.collection("pioneer_service_sessions")
+        .where("assignment_id", "==", assignmentId)
+        .where("staff_uid",     "==", a.staff_uid)
+        .where("status",        "==", "completed")
+        .orderBy("clock_out_at", "desc")
+        .limit(1)
+        .get();
+      if (sessionQry.empty) {
+        res.status(404).json({
+          ok: false,
+          error: "No completed session on this assignment to waive."
+        });
+        return;
+      }
+      sessionRef  = sessionQry.docs[0].ref;
+      sessionSnap = sessionQry.docs[0];
+    }
+    const s = sessionSnap.data() || {};
+
+    // Cross-check: session belongs to the same assignment + owner.
+    if (s.assignment_id !== assignmentId) {
+      res.status(400).json({
+        ok: false,
+        error: "Session does not belong to this assignment."
+      });
+      return;
+    }
+    if (!isAdmin && s.staff_uid !== staff.uid) {
+      res.status(403).json({
+        ok: false,
+        error: "You can only waive DCRs on your own sessions."
+      });
+      return;
+    }
+
+    // Refuse waiving an actively-running session — clock out first.
+    if (s.status === "active") {
+      res.status(409).json({
+        ok: false,
+        error: "Clock out of this session before waiving its DCR."
+      });
+      return;
+    }
+
+    // If a real DCR was already submitted, refuse. Admin can revoke
+    // the DCR via a separate flow if they need to land here.
+    if (s.dcr_submission_id || s.dcr_status === "submitted") {
+      res.status(409).json({
+        ok: false,
+        error: "A DCR was already submitted for this session. Contact admin to revoke before waiving."
+      });
+      return;
+    }
+
+    // Idempotent re-waive — return ok with current audit shape.
+    if (s.dcr_status === "waived") {
+      res.json({
+        ok:                  true,
+        session_id:          sessionRef.id,
+        assignment_id:       assignmentId,
+        dcr_status:          "waived",
+        dcr_waived_reason:   s.dcr_waived_reason || null,
+        already_waived:      true
+      });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const sessionUpdate = {
+      dcr_status:                    "waived",
+      dcr_waived_at:                 sts,
+      dcr_waived_by_uid:             staff.uid,
+      dcr_waived_by_email:           String(staff.email || "").toLowerCase().trim(),
+      dcr_waived_reason:             reasonCode,
+      dcr_waived_reason_detail:      reasonDetail,
+      dcr_customer_email_suppressed: true,
+      updated_at:                    sts
+    };
+    const assignmentUpdate = {
+      dcr_waived:           true,
+      dcr_waived_at:        sts,
+      dcr_waived_reason:    reasonCode,
+      dcr_waived_session_id: sessionRef.id,
+      updated_at:           sts
+    };
+
+    await db.runTransaction(async (tx) => {
+      tx.set(sessionRef, sessionUpdate, { merge: true });
+      tx.set(assignSnap.ref, assignmentUpdate, { merge: true });
+    });
+
+    logger.info("waiveDcrV1 ok", {
+      assignment_id: assignmentId,
+      session_id:    sessionRef.id,
+      reason_code:   reasonCode,
+      by_uid:        staff.uid,
+      by_email:      staff.email,
+      is_admin:      isAdmin
+    });
+
+    res.json({
+      ok:                  true,
+      session_id:          sessionRef.id,
+      assignment_id:       assignmentId,
+      dcr_status:          "waived",
+      dcr_waived_reason:   reasonCode,
+      already_waived:      false
+    });
+  } catch (err) {
+    logger.error("waiveDcrV1 crashed", {
+      error: err && err.message, code: err && err.code,
+      assignment_id: assignmentId
+    });
+    res.status(500).json({ ok: false, error: "waiveDcrV1 crashed: " + (err && err.message) });
+  }
+});
+
+/* ============================================================================
+   V20260614 — listWaivedDcrsV1
+   GET (or POST with optional body { limit?, since_iso?, customer_slug? })
+
+   Admin-only audit endpoint. Returns the most recent DCR waivers
+   recorded by waiveDcrV1, oldest-first within the window. Drives the
+   future admin "Waived DCRs" tab. For today, admin operators can hit
+   this endpoint with their Firebase Auth bearer token to see the
+   exception list:
+
+     curl -X POST https://us-central1-…/listWaivedDcrsV1 \
+       -H "Authorization: Bearer <id_token>" \
+       -H "Content-Type: application/json" \
+       -d '{ "limit": 50 }'
+
+   Until the tab UI is wired (TODO: public/admin/tab-dcr-waivers.js),
+   this is the source of truth for the "visible in admin" guardrail.
+
+   Query mechanics: reads pioneer_service_sessions where
+     dcr_status == "waived"
+   ordered by dcr_waived_at desc. Requires a small composite index
+   added in firestore.indexes.json in this commit.
+
+   Returns:
+     { ok: true,
+       count: number,
+       waivers: [
+         { session_id, assignment_id, staff_uid, staff_email,
+           customer_slug, customer_name, service_date,
+           dcr_waived_at_iso, dcr_waived_by_uid, dcr_waived_by_email,
+           dcr_waived_reason, dcr_waived_reason_detail,
+           paid_minutes, clock_in_at_iso, clock_out_at_iso } ] }
+   ============================================================================ */
+
+exports.listWaivedDcrsV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = (req.method === "POST" ? (req.body || {}) : (req.query || {}));
+  const limitIn = Number(body.limit);
+  const limit   = Number.isFinite(limitIn) && limitIn > 0 && limitIn <= 500
+                    ? Math.floor(limitIn) : 50;
+  const sinceIso = String(body.since_iso || "").trim();
+  const filterCustomerSlug = String(body.customer_slug || "").trim();
+
+  try {
+    let q = db.collection("pioneer_service_sessions")
+      .where("dcr_status", "==", "waived")
+      .orderBy("dcr_waived_at", "desc")
+      .limit(limit);
+    if (sinceIso) {
+      const sinceMs = Date.parse(sinceIso);
+      if (Number.isFinite(sinceMs)) {
+        q = q.where("dcr_waived_at", ">=", admin.firestore.Timestamp.fromMillis(sinceMs));
+      }
+    }
+    const snap = await q.get();
+
+    function tsIso(ts) {
+      if (!ts) return null;
+      if (typeof ts.toDate === "function") {
+        try { return ts.toDate().toISOString(); } catch (_e) {}
+      }
+      if (typeof ts.seconds === "number") {
+        return new Date(ts.seconds * 1000).toISOString();
+      }
+      return null;
+    }
+
+    const waivers = [];
+    snap.docs.forEach(function (d) {
+      const s = d.data() || {};
+      if (filterCustomerSlug && String(s.customer_slug || "") !== filterCustomerSlug) return;
+      waivers.push({
+        session_id:               d.id,
+        assignment_id:            s.assignment_id || null,
+        staff_uid:                s.staff_uid || null,
+        staff_email:              s.staff_email || null,
+        customer_slug:            s.customer_slug || null,
+        customer_name:            s.customer_name || null,
+        service_date:             s.service_date || null,
+        dcr_waived_at_iso:        tsIso(s.dcr_waived_at),
+        dcr_waived_by_uid:        s.dcr_waived_by_uid || null,
+        dcr_waived_by_email:      s.dcr_waived_by_email || null,
+        dcr_waived_reason:        s.dcr_waived_reason || null,
+        dcr_waived_reason_detail: s.dcr_waived_reason_detail || null,
+        paid_minutes:             (typeof s.paid_minutes === "number") ? s.paid_minutes : null,
+        clock_in_at_iso:          tsIso(s.clock_in_at),
+        clock_out_at_iso:         tsIso(s.clock_out_at)
+      });
+    });
+
+    res.json({ ok: true, count: waivers.length, waivers: waivers });
+  } catch (err) {
+    logger.error("listWaivedDcrsV1 crashed", {
+      error: err && err.message, code: err && err.code,
+      caller_email: staff.email
+    });
+    // Composite index not built yet — surface a friendly hint.
+    if (err && err.code === "failed-precondition") {
+      res.status(503).json({
+        ok: false,
+        error: "Composite index still building or missing: pioneer_service_sessions (dcr_status asc, dcr_waived_at desc). Add it to firestore.indexes.json + firebase deploy --only firestore:indexes."
+      });
+      return;
+    }
+    res.status(500).json({ ok: false, error: "listWaivedDcrsV1 crashed: " + (err && err.message) });
+  }
+});
+
+exports.createTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+
+  const body = req.body || {};
+  const assignmentId         = String(body.assignment_id       || "").trim();
+  const serviceSessionId     = String(body.service_session_id  || "").trim();
+  const requestedClockInRaw  = String(body.requested_clock_in  || "").trim();
+  const requestedClockOutRaw = String(body.requested_clock_out || "").trim();
+  const reason               = String(body.reason              || "").trim();
+  const notes                = String(body.notes               || "").trim();
+
+  if (!assignmentId)     { res.status(400).json({ ok: false, error: "assignment_id is required." });     return; }
+  if (!serviceSessionId) { res.status(400).json({ ok: false, error: "service_session_id is required — only sessions with a clock-in/out can be adjusted." }); return; }
+  if (!notes)            { res.status(400).json({ ok: false, error: "notes is required." });             return; }
+  if (TIME_ADJUSTMENT_REASONS.indexOf(reason) < 0) {
+    res.status(400).json({ ok: false, error: "reason must be one of: " + TIME_ADJUSTMENT_REASONS.join(", ") });
+    return;
+  }
+
+  const reqInMs  = Date.parse(requestedClockInRaw);
+  const reqOutMs = Date.parse(requestedClockOutRaw);
+  if (!Number.isFinite(reqInMs) || !Number.isFinite(reqOutMs)) {
+    res.status(400).json({ ok: false, error: "requested_clock_in and requested_clock_out must be ISO timestamps." });
+    return;
+  }
+  if (reqOutMs <= reqInMs) {
+    res.status(400).json({ ok: false, error: "requested_clock_out must be after requested_clock_in." });
+    return;
+  }
+  const requestedMinutes = Math.round((reqOutMs - reqInMs) / 60000);
+  if (requestedMinutes > 24 * 60) {
+    res.status(400).json({ ok: false, error: "Requested span longer than 24 hours is not allowed." });
+    return;
+  }
+
+  try {
+    const assignSnap = await db.collection("service_assignments").doc(assignmentId).get();
+    if (!assignSnap.exists) {
+      res.status(404).json({ ok: false, error: "Assignment not found." });
+      return;
+    }
+    const a = assignSnap.data() || {};
+
+    // Employees may only submit for their own assignment. Admins may submit on
+    // behalf of any tech.
+    if (staff.role !== "admin" && a.staff_uid !== staff.uid) {
+      res.status(403).json({ ok: false, error: "You can only adjust your own shifts." });
+      return;
+    }
+
+    const sessRef = db.collection("pioneer_service_sessions").doc(serviceSessionId);
+    const sessSnap = await sessRef.get();
+    if (!sessSnap.exists) {
+      res.status(404).json({ ok: false, error: "Session not found." });
+      return;
+    }
+    const s = sessSnap.data() || {};
+    if (s.assignment_id !== assignmentId) {
+      res.status(400).json({ ok: false, error: "Session does not belong to that assignment." });
+      return;
+    }
+    if (s.status === "active" || s.status === "paused") {
+      res.status(409).json({ ok: false, error: "Clock out of this shift before requesting an adjustment." });
+      return;
+    }
+    if (s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported"
+        || s.workweek_locked_by_export === true) {
+      res.status(409).json({
+        ok:    false,
+        error: "This shift is already in a locked payroll period — contact admin for an override."
+      });
+      return;
+    }
+
+    const shiftDate = String(s.service_date || a.service_date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) {
+      res.status(400).json({ ok: false, error: "Shift date missing or malformed on this session." });
+      return;
+    }
+
+    // Window: today, yesterday, OR within current semi-monthly pay period.
+    // Union of the two halves; "yesterday" matters at the period boundary
+    // (e.g. today is the 16th, yesterday is the 15th of the previous period).
+    const todayPT     = payrollExceptionTodayPT();
+    const yesterdayPT = payrollExceptionAddDaysPT(todayPT, -1);
+    const period      = payrollExceptionGetSemiMonthlyPeriod(todayPT);
+    const allowedStart = (yesterdayPT < period.start_date) ? yesterdayPT : period.start_date;
+    const allowedEnd   = todayPT;
+    if (shiftDate < allowedStart || shiftDate > allowedEnd) {
+      res.status(400).json({
+        ok:    false,
+        error: "Shift is outside the allowed window (today, yesterday, or current pay period "
+               + period.start_date + " → " + period.end_date + ")."
+      });
+      return;
+    }
+
+    // Duplicate-pending check. Single equality query on assignment + status
+    // (no composite index needed: this collection won't have many rows per
+    // assignment, so client-side staff_uid filter is fine).
+    const dupSnap = await db.collection("time_adjustment_requests")
+      .where("assignment_id", "==", assignmentId)
+      .where("status",        "==", "pending")
+      .limit(20)
+      .get();
+    const dup = dupSnap.docs.find(function (d) {
+      const r = d.data() || {};
+      return r.employee_uid === a.staff_uid && r.service_session_id === serviceSessionId;
+    });
+    if (dup) {
+      res.status(409).json({
+        ok:    false,
+        error: "A pending request already exists for this shift.",
+        existing_request_id: dup.id
+      });
+      return;
+    }
+
+    // Compute originals + delta.
+    const origInMs  = (s.clock_in_at  && s.clock_in_at.toMillis)  ? s.clock_in_at.toMillis()  : null;
+    const origOutMs = (s.clock_out_at && s.clock_out_at.toMillis) ? s.clock_out_at.toMillis() : null;
+    const originalMinutes = (typeof s.work_minutes === "number")
+      ? s.work_minutes
+      : (origInMs != null && origOutMs != null ? Math.round((origOutMs - origInMs) / 60000) : null);
+    const deltaMinutes = (originalMinutes != null)
+      ? (requestedMinutes - originalMinutes)
+      : requestedMinutes;
+
+    const tech = await resolveTechIdentityByUid(a.staff_uid);
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const docRef = db.collection("time_adjustment_requests").doc();
+    await docRef.set({
+      assignment_id:         assignmentId,
+      service_session_id:    serviceSessionId,
+      employee_uid:          a.staff_uid,
+      employee_name:         tech.name || a.staff_display_name || "",
+      employee_email:        tech.email || "",
+      customer_name:         s.customer_name || a.customer_name || "",
+      location_name:         s.location_address || a.location_name || a.location_id || "",
+      shift_date:            shiftDate,
+      status:                "pending",
+      original_clock_in:     s.clock_in_at  || null,
+      original_clock_out:    s.clock_out_at || null,
+      requested_clock_in:    admin.firestore.Timestamp.fromMillis(reqInMs),
+      requested_clock_out:   admin.firestore.Timestamp.fromMillis(reqOutMs),
+      original_minutes:      originalMinutes,
+      requested_minutes:     requestedMinutes,
+      delta_minutes:         deltaMinutes,
+      reason:                reason,
+      notes:                 notes,
+      payroll_impact_cents:  null,   // pay rate not modeled yet (V1)
+      submitted_at:          sts,
+      submitted_by_uid:      staff.uid,
+      created_at:            sts,
+      updated_at:            sts
+    });
+
+    logger.info("time adjustment request created", {
+      request_id: docRef.id, employee_uid: a.staff_uid, assignment_id: assignmentId,
+      session_id: serviceSessionId, reason: reason, delta_minutes: deltaMinutes
+    });
+    res.status(200).json({ ok: true, request_id: docRef.id });
+  } catch (err) {
+    logger.error("createTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Create failed" });
+  }
+});
+
+/* --------------- approveTimeAdjustmentRequestV1 --------------- */
+
+exports.approveTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const requestId = String(body.request_id || "").trim();
+  if (!requestId) {
+    res.status(400).json({ ok: false, error: "request_id is required." });
+    return;
+  }
+
+  try {
+    const reqRef  = db.collection("time_adjustment_requests").doc(requestId);
+    const reqSnap = await reqRef.get();
+    if (!reqSnap.exists) {
+      res.status(404).json({ ok: false, error: "Request not found." });
+      return;
+    }
+    const r = reqSnap.data() || {};
+    if (r.status !== "pending") {
+      res.status(409).json({ ok: false, error: "Request is not pending (status: " + r.status + ")." });
+      return;
+    }
+
+    const sessRef  = db.collection("pioneer_service_sessions").doc(r.service_session_id);
+    const sessSnap = await sessRef.get();
+    if (!sessSnap.exists) {
+      res.status(404).json({ ok: false, error: "Session referenced by this request no longer exists." });
+      return;
+    }
+    const s = sessSnap.data() || {};
+    if (s.status === "active" || s.status === "paused") {
+      res.status(409).json({ ok: false, error: "Session is currently active/paused — cannot apply an adjustment." });
+      return;
+    }
+    if (s.payroll_state === "approved_for_payroll" || s.payroll_state === "exported"
+        || s.workweek_locked_by_export === true) {
+      res.status(409).json({
+        ok:    false,
+        error: "Session's workweek is locked for payroll. Unlock in Labor Review before approving."
+      });
+      return;
+    }
+
+    // Effective values come from the request (employee-stated). Defensive
+    // re-check — request fields were validated at create time but the
+    // session may have been edited since.
+    const effectiveIn  = r.requested_clock_in;
+    const effectiveOut = r.requested_clock_out;
+    if (!effectiveIn || !effectiveOut || typeof effectiveIn.toMillis !== "function") {
+      res.status(400).json({ ok: false, error: "Request is missing requested clock timestamps." });
+      return;
+    }
+    const effectiveMinutes = Math.round((effectiveOut.toMillis() - effectiveIn.toMillis()) / 60000);
+    const finalDeltaMinutes = (typeof s.work_minutes === "number")
+      ? (effectiveMinutes - s.work_minutes)
+      : effectiveMinutes;
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const reviewerName = (staff.tech && staff.tech.display_name) || staff.email || "Admin";
+
+    const batch = db.batch();
+    batch.update(reqRef, {
+      status:                "approved",
+      reviewed_by_uid:       staff.uid,
+      reviewed_by_name:      reviewerName,
+      reviewed_at:           sts,
+      effective_clock_in:    effectiveIn,
+      effective_clock_out:   effectiveOut,
+      effective_minutes:     effectiveMinutes,
+      delta_minutes:         finalDeltaMinutes,
+      updated_at:            sts
+    });
+    batch.update(sessRef, {
+      has_approved_time_adjustment: true,
+      effective_clock_in:           effectiveIn,
+      effective_clock_out:          effectiveOut,
+      effective_minutes:            effectiveMinutes,
+      time_adjustment_request_id:   requestId,
+      updated_at:                   sts
+    });
+    await batch.commit();
+
+    logger.info("time adjustment approved", {
+      request_id: requestId, session_id: r.service_session_id,
+      employee_uid: r.employee_uid, reviewer_uid: staff.uid,
+      effective_minutes: effectiveMinutes, final_delta_minutes: finalDeltaMinutes
+    });
+    res.status(200).json({ ok: true, request_id: requestId, effective_minutes: effectiveMinutes });
+  } catch (err) {
+    logger.error("approveTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack, request_id: requestId
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Approve failed" });
+  }
+});
+
+/* --------------- denyTimeAdjustmentRequestV1 --------------- */
+
+exports.denyTimeAdjustmentRequestV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const requestId    = String(body.request_id    || "").trim();
+  const denialReason = String(body.denial_reason || "").trim();
+  if (!requestId)    { res.status(400).json({ ok: false, error: "request_id is required." });    return; }
+  if (!denialReason) { res.status(400).json({ ok: false, error: "denial_reason is required." }); return; }
+
+  try {
+    const reqRef  = db.collection("time_adjustment_requests").doc(requestId);
+    const reqSnap = await reqRef.get();
+    if (!reqSnap.exists) {
+      res.status(404).json({ ok: false, error: "Request not found." });
+      return;
+    }
+    const r = reqSnap.data() || {};
+    if (r.status !== "pending") {
+      res.status(409).json({ ok: false, error: "Request is not pending (status: " + r.status + ")." });
+      return;
+    }
+
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const reviewerName = (staff.tech && staff.tech.display_name) || staff.email || "Admin";
+
+    await reqRef.update({
+      status:            "denied",
+      denial_reason:     denialReason,
+      reviewed_by_uid:   staff.uid,
+      reviewed_by_name:  reviewerName,
+      reviewed_at:       sts,
+      updated_at:        sts
+    });
+
+    logger.info("time adjustment denied", {
+      request_id: requestId, employee_uid: r.employee_uid,
+      reviewer_uid: staff.uid, denial_reason: denialReason
+    });
+    res.status(200).json({ ok: true, request_id: requestId });
+  } catch (err) {
+    logger.error("denyTimeAdjustmentRequestV1 failed", {
+      error: err && err.message, stack: err && err.stack, request_id: requestId
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Deny failed" });
+  }
+});
 
 exports.seedPilotCustomerAliasesV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
   res.set("Access-Control-Allow-Origin",  "*");
@@ -4972,3 +8350,2399 @@ exports.deputyApiDiagnosticV1 = onRequest({
     raw:             capped
   });
 });
+
+/* ===========================================================================
+   generateAndSendDcrEmailV1 — PioneerOps native DCR customer email
+   ===========================================================================
+   First-goal scope: one working DCR email for one test DCR. Replaces the
+   Zapier path for the customer-facing report; Zapier is NOT touched here.
+
+   Endpoint:
+     POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/generateAndSendDcrEmailV1
+     Body: { "dcrId": "<dcr_submissions doc id>",
+             "customerId": "<customers doc id, usually the slug>" }
+     Header: Authorization: Bearer <signed-in admin user's ID token>
+
+   Auth:
+     Admin only. Reuses verifyStaffOrReject() + staff.isAdmin.
+
+   Required secrets (set BEFORE deploy):
+     OPENAI_API_KEY             — OpenAI API key (gpt-4o-mini)
+     GMAIL_SENDER_EMAIL         — Pioneer Workspace sender, e.g.
+                                   info@pioneercomclean.com
+     GMAIL_SERVICE_ACCOUNT_KEY  — JSON-encoded service-account key WITH
+                                   domain-wide delegation configured for
+                                   scope https://www.googleapis.com/auth/gmail.send
+                                   in Workspace Admin → Security → API Controls.
+
+   All business logic lives in functions/dcrEmail.js. This block just
+   binds the (already-declared above) secrets to the onRequest endpoint.
+
+   Phase 32 moved these defineSecret calls above submitDcrV1 so the
+   auto-send hook can also bind them. The const names below are still in
+   scope here. =================================================== */
+
+exports.generateAndSendDcrEmailV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 60,
+    secrets: [OPENAI_API_KEY, GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY, KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL]
+  },
+  dcrEmail.buildHttpHandler({
+    admin:                     admin,
+    db:                        db,
+    logger:                    logger,
+    OPENAI_API_KEY:            OPENAI_API_KEY,
+    GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+    GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+    KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+    APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL,
+    verifyStaffOrReject:       verifyStaffOrReject
+  })
+);
+
+/* =================================================================
+   getDcrEmailReadinessV1 — admin pre-send readiness check.
+
+   POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/getDcrEmailReadinessV1
+     Header: Authorization: Bearer <admin Firebase ID token>
+     Body:   { dcrId, mode?: "send" | "resend" }
+
+   Returns the same structured shape as dcrEmail.getDcrEmailReadiness:
+     { ready, blockers, warnings, resolved }
+
+   The admin UI calls this BEFORE rendering the Send button. The
+   send endpoint itself re-runs the same check (defense in depth) so
+   even an admin can't bypass it from a hand-crafted curl.
+   ================================================================= */
+exports.getDcrEmailReadinessV1 = onRequest(
+  { cors: false, timeoutSeconds: 30 },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Access-Control-Max-Age",       "3600");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "POST only" }); return;
+    }
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (!staff.isAdmin) {
+      res.status(403).json({ ok: false, error: "Admin only" }); return;
+    }
+    const dcrId = String((req.body && req.body.dcrId) || "").trim();
+    const mode  = String((req.body && req.body.mode)  || "send").trim();
+    if (!dcrId) {
+      res.status(400).json({ ok: false, error: "dcrId is required" }); return;
+    }
+    try {
+      const readiness = await dcrEmail.getDcrEmailReadiness({
+        db: db, logger: logger, dcrId: dcrId, mode: mode
+      });
+      res.json(Object.assign({ ok: true }, readiness));
+    } catch (err) {
+      const msg = String(err && err.message || err);
+      logger.error("[dcr-email-readiness] handler error", { dcrId, error: msg });
+      res.status(500).json({ ok: false, error: msg });
+    }
+  }
+);
+
+/* =================================================================
+   submitFeedbackV1 — PUBLIC customer feedback intake
+
+   POST https://us-central1-pioneer-dcr-hub.cloudfunctions.net/submitFeedbackV1
+     Body (compliment): {
+       type: "compliment",
+       dcrId, customerId, techId,
+       rating, complimentText, customerName, shareConsent
+     }
+     Body (complaint): {
+       type: "complaint",
+       dcrId, customerId, techId,
+       category, details, urgency,
+       contactName, contactEmail, contactPhone,
+       photos: [{ name, contentType, base64 }]    // optional, max 3
+     }
+     No Authorization header — public endpoint linked from customer emails.
+
+   Auth model:
+     PUBLIC. Customers click links from the DCR email and submit
+     anonymously. Defenses: strict body validation, length caps,
+     enum whitelists, honeypot field. Rate-limiting is a TODO once
+     real traffic shows up — the abuse surface today is tiny.
+
+   Required secrets (set BEFORE deploy):
+     GMAIL_SENDER_EMAIL         — reused from generateAndSendDcrEmailV1.
+     GMAIL_SERVICE_ACCOUNT_KEY  — reused (Workspace domain-wide delegation).
+     KIRBY_ALERT_EMAIL          — office manager destination address.
+     APRIL_ALERT_EMAIL          — manager destination address.
+   ================================================================= */
+const feedback = require("./feedback");
+// KIRBY_ALERT_EMAIL + APRIL_ALERT_EMAIL are declared at the top of the
+// DCR-email block (see ~line 5012) so generateAndSendDcrEmailV1 can
+// reach them. defineSecret() can only be called once per name — the
+// shared bindings flow into both endpoints from there.
+
+exports.submitFeedbackV1 = onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 60,
+    // Bumped to accommodate up to 3 × ~2MB base64-encoded photos.
+    memory: "512MiB",
+    secrets: [
+      GMAIL_SENDER_EMAIL,
+      GMAIL_SERVICE_ACCOUNT_KEY,
+      KIRBY_ALERT_EMAIL,
+      APRIL_ALERT_EMAIL
+    ]
+  },
+  feedback.buildHttpHandler({
+    admin:                     admin,
+    db:                        db,
+    logger:                    logger,
+    GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+    GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+    KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+    APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+  })
+);
+
+/* =================================================================
+   uploadTechMediaV1 — admin photo / signature manager
+
+   POST .../uploadTechMediaV1
+     Header: Authorization: Bearer <admin Firebase ID token>
+     Body (upload):   { techId, kind: "photo"|"signature",
+                        filename, contentType, base64 }
+     Body (clear):    { techId, kind: "photo"|"signature", clear: true }
+     Body (active):   { techId, action: "setActive", active: <bool> }
+
+   Auth:
+     Admin only (verifyStaffOrReject + staff.isAdmin).
+
+   Storage paths:
+     tech-photos/{techId}/{timestamp}-{filename}
+     tech-signatures/{techId}/{timestamp}-{filename}
+
+   No new secrets.
+   ================================================================= */
+const techMediaUpload = require("./techMediaUpload");
+
+exports.uploadTechMediaV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 60,
+    // 256MiB is fine for a 5MB photo round-trip; bumped over the
+    // default 256 default because base64-decoding stays in memory.
+    memory: "512MiB"
+  },
+  techMediaUpload.buildHttpHandler({
+    admin:                admin,
+    db:                   db,
+    logger:               logger,
+    verifyStaffOrReject:  verifyStaffOrReject
+  })
+);
+
+/* ============================================================================
+   Attendance email triggers
+   ============================================================================
+   Two trigger pairs:
+     • onCallOutCreated         → email Kirby + April (urgent)
+     • onTimeOffRequestCreated  → email Kirby + April (informational)
+     • onCallOutUpdated         → email tech on acknowledged / resolved
+     • onTimeOffRequestUpdated  → email tech on approved / denied
+   Update triggers ignore everything except `status` transitions to avoid
+   noisy resends when an admin adds a coverage note without flipping
+   state. Body of the email is built in functions/attendanceEmails.js.
+
+   Secrets reused (already declared above for DCR email + feedback):
+     GMAIL_SENDER_EMAIL, GMAIL_SERVICE_ACCOUNT_KEY,
+     KIRBY_ALERT_EMAIL, APRIL_ALERT_EMAIL
+   ========================================================================= */
+const attendanceEmails = require("./attendanceEmails");
+
+const ATTENDANCE_EMAIL_SECRETS = [
+  GMAIL_SENDER_EMAIL,
+  GMAIL_SERVICE_ACCOUNT_KEY,
+  KIRBY_ALERT_EMAIL,
+  APRIL_ALERT_EMAIL
+];
+
+exports.onCallOutCreatedV1 = onDocumentCreated(
+  { document: "call_outs/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleCallOutCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onCallOutCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onTimeOffRequestCreatedV1 = onDocumentCreated(
+  { document: "time_off_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleTimeOffRequestCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onTimeOffRequestCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onCallOutUpdatedV1 = onDocumentUpdated(
+  { document: "call_outs/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleCallOutUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onCallOutUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onTimeOffRequestUpdatedV1 = onDocumentUpdated(
+  { document: "time_off_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleTimeOffRequestUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onTimeOffRequestUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onOpenShiftCreatedV1 = onDocumentCreated(
+  { document: "open_shift_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleOpenShiftCreated({
+        snapshot: event.data,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onOpenShiftCreatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+exports.onOpenShiftUpdatedV1 = onDocumentUpdated(
+  { document: "open_shift_requests/{id}", secrets: ATTENDANCE_EMAIL_SECRETS, timeoutSeconds: 60 },
+  async (event) => {
+    try {
+      await attendanceEmails.handleOpenShiftUpdated({
+        before: event.data && event.data.before,
+        after:  event.data && event.data.after,
+        secrets: {
+          GMAIL_SENDER_EMAIL:        GMAIL_SENDER_EMAIL,
+          GMAIL_SERVICE_ACCOUNT_KEY: GMAIL_SERVICE_ACCOUNT_KEY,
+          KIRBY_ALERT_EMAIL:         KIRBY_ALERT_EMAIL,
+          APRIL_ALERT_EMAIL:         APRIL_ALERT_EMAIL
+        },
+        logger: logger
+      });
+    } catch (err) {
+      logger.error("onOpenShiftUpdatedV1 failed", { error: err && err.message });
+    }
+  }
+);
+
+/* ----------------------------- pilotReadinessCheckV1 ----------------------------- */
+
+// Admin-only readiness audit. Walks every active cleaning_tech and runs
+// structural checks (auth user · cleaning_techs record · Deputy mapping ·
+// permission preconditions · customer mapping · pending announcements).
+// No writes, no test docs — pure read pipeline. Returns the engine's
+// JSON envelope { generated_at, summary, techs }.
+//
+// Same engine powers `node scripts/pilot-readiness-check.js`, so the
+// admin panel and the terminal report stay in sync by construction.
+const pilotReadinessEngine = require("./pilotReadinessEngine");
+const dcrReportModule      = require("./dcrReport");
+
+exports.pilotReadinessCheckV1 = onRequest({ cors: false, timeoutSeconds: 60 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (!staff.isAdmin) {
+    res.status(403).json({ ok: false, error: "Admin-only endpoint." });
+    return;
+  }
+
+  // Optional query params (debug): ?tech_slug=foo or ?limit=N.
+  const techSlug = (req.query && req.query.tech_slug) ? String(req.query.tech_slug) : null;
+  const limitRaw = (req.query && req.query.limit) ? Number(req.query.limit) : 0;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
+
+  try {
+    const report = await pilotReadinessEngine.runReadinessForTechs(admin, {
+      techSlug: techSlug,
+      limit:    limit
+    });
+    res.status(200).json({ ok: true, report: report });
+  } catch (err) {
+    logger.error("pilotReadinessCheckV1 failed", {
+      caller: staff.email, code: err && err.code, message: err && err.message
+    });
+    res.status(500).json({
+      ok:    false,
+      error: "Readiness check failed. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});
+
+/* ----------------------------- getDcrReportByTokenV1 ----------------------------- */
+
+// PUBLIC endpoint — the customer-facing DCR report page calls this with
+// `?t=<rawToken>`. Token is hashed server-side and looked up in
+// dcr_report_tokens; no Firebase Auth required (the token IS the auth).
+//
+// Returns a customer-safe payload (no internal notes, no admin fields).
+// Bumps view counters on both the token doc and the source DCR.
+exports.getDcrReportByTokenV1 = onRequest({ cors: false, timeoutSeconds: 20 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Cache-Control",                 "no-store");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "GET") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const rawToken = String((req.query && req.query.t) || "").trim();
+  if (!rawToken) {
+    res.status(400).json({ ok: false, code: "missing_token", error: "Token required." });
+    return;
+  }
+
+  try {
+    const out = await dcrReportModule.getDcrReportByToken({
+      admin: admin, db: db, rawToken: rawToken
+    });
+    if (!out.ok) {
+      // 404 for missing/invalid token; 500 for unexpected internal failure.
+      const status = (out.code === "token_not_found" || out.code === "dcr_not_found" || out.code === "token_orphan" || out.code === "bad_token") ? 404 : 500;
+      res.status(status).json(out);
+      return;
+    }
+    res.status(200).json(out);
+  } catch (err) {
+    logger.error("getDcrReportByTokenV1 failed", {
+      code: err && err.code, message: err && err.message
+    });
+    res.status(500).json({
+      ok: false,
+      error: "Report lookup failed. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});
+
+/* ----------------------------- Pioneer SOS dispatch -----------------------------
+
+  When the client writes a new emergency_events/{id} doc, this trigger
+  fans out SMS notifications to April, Kirby, and (optionally) Nick via
+  Twilio, then stamps `notified` + `notificationStatus` back onto the doc.
+
+  Honors the spec: "Do not fake SMS success." When TWILIO_* secrets are
+  missing, we write notificationStatus = "sms_provider_missing" and
+  leave each recipient as false so the UI surfaces the manual-call
+  fallback.
+
+  Phone numbers come from `pioneer_config/emergency_contacts`:
+    { april: "+1...", kirby: "+1...", nick: "+1..." }
+  The April number falls back to the spec default (+15098283335) when
+  the config doc is missing.
+
+  Severity-specific copy:
+    help_needed → "PIONEER HELP NEEDED"
+    critical    → "🚨 PIONEER SOS EMERGENCY"
+*/
+
+const TWILIO_ACCOUNT_SID = defineSecret("TWILIO_ACCOUNT_SID");
+const TWILIO_AUTH_TOKEN  = defineSecret("TWILIO_AUTH_TOKEN");
+const TWILIO_FROM_NUMBER = defineSecret("TWILIO_FROM_NUMBER");
+
+const APRIL_DEFAULT_PHONE = "+15098283335";
+
+function safeReadSecret(s) {
+  try { return s && s.value ? s.value() : ""; }
+  catch (_e) { return ""; }
+}
+
+function formatSosBody(severity, data) {
+  const techName  = data.techName || data.createdByEmail || "(unknown tech)";
+  const customer  = data.customerName || data.locationName || "(no shift in progress)";
+  const address   = data.address || "";
+  const details   = (data.details || "").trim();
+  const ts        = data.createdAt && data.createdAt.toDate
+                      ? data.createdAt.toDate().toISOString()
+                      : new Date().toISOString();
+  const geo       = data.geolocation;
+  const geoLine   = (geo && geo.lat != null && geo.lng != null)
+                      ? ("\nLoc: https://maps.google.com/?q=" + geo.lat + "," + geo.lng)
+                      : "";
+
+  if (severity === "critical") {
+    return [
+      "🚨 PIONEER SOS EMERGENCY",
+      techName,
+      customer,
+      address ? ("Address: " + address) : "",
+      "Triggered emergency alert.",
+      details ? ("Note: " + details) : "",
+      "Time: " + ts,
+      "Call/check immediately." + geoLine
+    ].filter(Boolean).join("\n");
+  }
+  // help_needed
+  return [
+    "PIONEER HELP NEEDED",
+    techName,
+    customer,
+    address ? ("Address: " + address) : "",
+    "Issue: " + (details || "(no details)"),
+    "Time: " + ts + geoLine
+  ].filter(Boolean).join("\n");
+}
+
+async function sendTwilioSms({ accountSid, authToken, fromNumber, toNumber, body, logger }) {
+  const url = "https://api.twilio.com/2010-04-01/Accounts/" + accountSid + "/Messages.json";
+  const credentials = Buffer.from(accountSid + ":" + authToken).toString("base64");
+  const params = new URLSearchParams();
+  params.set("From", fromNumber);
+  params.set("To",   toNumber);
+  params.set("Body", body);
+  let res, txt;
+  try {
+    res = await fetch(url, {
+      method:  "POST",
+      headers: {
+        "Authorization": "Basic " + credentials,
+        "Content-Type":  "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    txt = await res.text();
+  } catch (e) {
+    logger.warn("[sos] twilio fetch threw", { error: e && e.message });
+    return { ok: false, error: e && e.message };
+  }
+  if (!res.ok) {
+    logger.warn("[sos] twilio rejected", { status: res.status, body: txt.slice(0, 400) });
+    return { ok: false, error: "HTTP " + res.status, body: txt.slice(0, 400) };
+  }
+  return { ok: true };
+}
+
+exports.onEmergencyCreatedV1 = onDocumentCreated(
+  {
+    document:       "emergency_events/{id}",
+    timeoutSeconds: 60,
+    secrets:        [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER]
+  },
+  async (event) => {
+    const snap = event && event.data;
+    if (!snap || !snap.exists) return;
+    const data = snap.data() || {};
+    const docRef = snap.ref;
+
+    // ---- 1. Resolve recipient phone numbers ----
+    let contacts = {};
+    try {
+      const cfg = await db.collection("pioneer_config").doc("emergency_contacts").get();
+      if (cfg.exists) contacts = cfg.data() || {};
+    } catch (e) {
+      logger.warn("[sos] failed to read pioneer_config/emergency_contacts", { error: e && e.message });
+    }
+    const aprilPhone = String(contacts.april || APRIL_DEFAULT_PHONE).trim();
+    const kirbyPhone = String(contacts.kirby || "").trim();
+    const nickPhone  = String(contacts.nick  || "").trim();
+
+    // ---- 2. Check SMS provider readiness ----
+    const sid   = safeReadSecret(TWILIO_ACCOUNT_SID);
+    const tok   = safeReadSecret(TWILIO_AUTH_TOKEN);
+    const from  = safeReadSecret(TWILIO_FROM_NUMBER);
+    const providerReady = !!(sid && tok && from);
+
+    const notified = { april: false, kirby: false, nick: false };
+    let   anyFailure = false;
+    let   anySuccess = false;
+    const errors    = [];
+
+    if (!providerReady) {
+      logger.warn("[sos] TWILIO_* secrets not all set — leaving notificationStatus=sms_provider_missing", {
+        eventId:    snap.id,
+        severity:   data.severity,
+        techEmail:  data.createdByEmail,
+        hasSid:     !!sid,
+        hasToken:   !!tok,
+        hasFrom:    !!from
+      });
+      await docRef.set({
+        notified:           notified,
+        notificationStatus: "sms_provider_missing",
+        notificationError:  "TWILIO_* secrets not configured. Set via `firebase functions:secrets:set` to enable SMS dispatch.",
+        notificationAt:     admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      return;
+    }
+
+    // ---- 3. Build the SMS body + dispatch ----
+    const body = formatSosBody(data.severity, data);
+    logger.info("[sos] dispatching", {
+      eventId: snap.id, severity: data.severity, techEmail: data.createdByEmail,
+      recipients: [
+        aprilPhone ? "april" : null,
+        kirbyPhone ? "kirby" : null,
+        nickPhone  ? "nick"  : null
+      ].filter(Boolean)
+    });
+
+    const targets = [
+      { key: "april", to: aprilPhone },
+      { key: "kirby", to: kirbyPhone },
+      { key: "nick",  to: nickPhone  }
+    ];
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (!t.to) {
+        // No number configured for this recipient — neither success nor
+        // failure. Just leave notified[key] = false. The admin UI can
+        // surface "(no number configured)" if useful.
+        continue;
+      }
+      const result = await sendTwilioSms({
+        accountSid: sid,
+        authToken:  tok,
+        fromNumber: from,
+        toNumber:   t.to,
+        body:       body,
+        logger:     logger
+      });
+      if (result.ok) {
+        notified[t.key] = true;
+        anySuccess = true;
+      } else {
+        anyFailure = true;
+        errors.push(t.key + ": " + (result.error || "unknown"));
+      }
+    }
+
+    let status;
+    if (anySuccess && !anyFailure) status = "sent";
+    else if (anySuccess && anyFailure) status = "partial";
+    else status = "failed";
+
+    await docRef.set({
+      notified:           notified,
+      notificationStatus: status,
+      notificationError:  errors.length ? errors.join(" | ") : null,
+      notificationAt:     admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    logger.info("[sos] dispatch result", { eventId: snap.id, status: status, notified: notified });
+  }
+);
+
+/* ----------------------------- setTechAuthDisabledV1 -----------------------------
+   Admin-only. Disable / re-enable a tech's Firebase Auth user AND
+   revoke their refresh tokens so any active PWA / browser session is
+   forced to re-authenticate (and immediately fail) on next token
+   refresh. Used by the cleaning-tech archive flow.
+
+   Body: { email: string, disabled: boolean }
+   Auth: admin Bearer token.
+   Effects:
+     • admin.auth().updateUser(uid, { disabled })
+     • disabled === true → admin.auth().revokeRefreshTokens(uid)
+     • idempotent — already-disabled user updates harmlessly
+*/
+exports.setTechAuthDisabledV1 = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (!staff.isAdmin) {
+    res.status(403).json({ ok: false, error: "Admin-only endpoint." });
+    return;
+  }
+  const body  = req.body || {};
+  const email = String(body.email || "").toLowerCase().trim();
+  const disabled = !!body.disabled;
+  if (!email) {
+    res.status(400).json({ ok: false, error: "email required" });
+    return;
+  }
+  try {
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().updateUser(user.uid, { disabled: disabled });
+    if (disabled) {
+      // Force-invalidate any active session. The client's next ID-token
+      // refresh (within ~1h) will fail; STAFF_AUTH then routes to denied.
+      await admin.auth().revokeRefreshTokens(user.uid);
+    }
+    logger.info("[archive] setTechAuthDisabled", {
+      caller: staff.email, target: email, uid: user.uid, disabled: disabled
+    });
+    res.status(200).json({ ok: true, uid: user.uid, disabled: disabled });
+  } catch (err) {
+    const notFound = err && err.code === "auth/user-not-found";
+    logger.warn("[archive] setTechAuthDisabled failed", {
+      caller: staff.email, target: email, code: err && err.code, error: err && err.message
+    });
+    if (notFound) {
+      // The tech has no auth user. Not a bug — treat as success because
+      // there's nothing to disable.
+      res.status(200).json({ ok: true, code: "user_not_found", note: "no auth user existed for this email" });
+      return;
+    }
+    res.status(500).json({
+      ok: false,
+      error: "Couldn't update auth user. " + ((err && err.message) || "unknown"),
+      code:  (err && err.code) || null
+    });
+  }
+});
+
+/* ============================================================================
+ * Phase 2A.2 — GHL Hiring Sync (Applicant Tracking pipeline → Firestore)
+ *
+ * Two endpoints share a single core in ./ghlHiringSync:
+ *   • syncGhlHiringV1     — scheduled, daily at 06:30 PT (post-overnight,
+ *                           pre-business-hours so the /manager card opens
+ *                           with fresh data).
+ *   • refreshGhlHiringV1  — admin POST, runs the same sync on demand
+ *                           (powers a future "Sync GHL Now" button + the
+ *                           local test script).
+ *
+ * Token lives in the GHL_PRIVATE_INTEGRATION_TOKEN secret. Never returned
+ * to the client; never logged. If the secret is unset both endpoints
+ * short-circuit with skipped:true so the scheduler stays green during the
+ * first deploy.
+ *
+ * Setup (one-time, Nick):
+ *   firebase functions:secrets:set GHL_PRIVATE_INTEGRATION_TOKEN
+ *   firebase deploy --only functions:syncGhlHiringV1,functions:refreshGhlHiringV1
+ *
+ * Manual local run (uses serviceAccountKey + env var):
+ *   GHL_PRIVATE_INTEGRATION_TOKEN=... node scripts/run-ghl-hiring-sync.js
+ * ========================================================================== */
+
+const GHL_PRIVATE_INTEGRATION_TOKEN = defineSecret("GHL_PRIVATE_INTEGRATION_TOKEN");
+
+exports.syncGhlHiringV1 = onSchedule({
+  schedule:       "30 6 * * *",            // 06:30 daily
+  timeZone:       "America/Los_Angeles",
+  timeoutSeconds: 120,
+  secrets:        [GHL_PRIVATE_INTEGRATION_TOKEN]
+}, async (event) => {
+  try {
+    const token = GHL_PRIVATE_INTEGRATION_TOKEN.value();
+    const result = await ghlHiringSync.runSync({
+      token:     token,
+      db:        db,
+      invokedBy: "scheduled"
+    });
+    if (result.skipped) {
+      logger.warn("[ghlSync] scheduled run skipped", { reason: result.reason });
+    } else {
+      logger.info("[ghlSync] scheduled run ok", result);
+    }
+  } catch (err) {
+    logger.error("[ghlSync] scheduled run failed", { error: err && err.message });
+  }
+});
+
+exports.refreshGhlHiringV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 120,
+  secrets:        [GHL_PRIVATE_INTEGRATION_TOKEN]
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("refreshGhlHiringV1: non-admin attempt", {
+      caller_email: staff.email, caller_role: staff.role
+    });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  try {
+    const token = GHL_PRIVATE_INTEGRATION_TOKEN.value();
+    const result = await ghlHiringSync.runSync({
+      token:     token,
+      db:        db,
+      invokedBy: "manual:" + staff.email
+    });
+    if (result.skipped) {
+      res.status(503).json({
+        ok: false,
+        error: "GHL token not configured. Set GHL_PRIVATE_INTEGRATION_TOKEN secret.",
+        reason: result.reason
+      });
+      return;
+    }
+    res.json({ ok: true, result: result });
+  } catch (err) {
+    logger.error("[ghlSync] manual run failed", {
+      caller: staff.email, error: err && err.message
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "unknown" });
+  }
+});
+
+/* ============================================================================
+ * Phase Inspection 3 — onInspectionCreatedV1
+ *
+ * Fires when an admin submits a new inspection. Updates the matching
+ * customer_inspection_state doc so the registry, /inspections Health
+ * panel, and CEO rollup all see "completed" for this cycle without
+ * waiting for a manual write.
+ *
+ *   - last_inspection_id / last_inspection_date / last_inspector_*
+ *     captured from the inspection doc
+ *   - due_date = inspection_date + inspection_cadence_days (default 60)
+ *   - assignment fields cleared (the cycle is closed)
+ *   - inspection_cadence_days preserved if already set on the state doc
+ *     (some customers may have a faster cadence override later)
+ *
+ * Soft-fails on missing customer_slug or write errors; the inspection
+ * doc itself is the source of truth and stays committed regardless.
+ * ========================================================================== */
+
+exports.onInspectionCreatedV1 = onDocumentCreated(
+  { document: "inspections/{inspectionId}", timeoutSeconds: 30 },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+      const data = snap.data() || {};
+      const customerSlug = String(data.customer_slug || "").trim();
+      if (!customerSlug) {
+        logger.warn("[inspection-state] inspection without customer_slug — skipping", {
+          inspection_id: event.params.inspectionId
+        });
+        return;
+      }
+
+      // Default cadence; per-customer override is preserved if the
+      // state doc already has one (read-then-write to keep it idempotent
+      // for future cadence customization).
+      const stateRef = admin.firestore()
+        .collection("customer_inspection_state")
+        .doc(customerSlug);
+      const existing = await stateRef.get();
+      const cadence = (existing.exists && existing.data().inspection_cadence_days) || 60;
+
+      const inspectionDate = String(data.inspection_date || "").trim()
+        || new Date().toISOString().slice(0, 10);
+      const dueDate = computeDueDateYMD(inspectionDate, cadence);
+
+      const update = {
+        customer_slug:        customerSlug,
+        customer_name:        data.customer_name || (existing.exists ? existing.data().customer_name : "") || "",
+        inspection_cadence_days: cadence,
+        last_inspection_id:   event.params.inspectionId,
+        last_inspection_date: inspectionDate,
+        last_inspector_uid:   data.inspector_uid   || null,
+        last_inspector_name:  data.inspector_name  || null,
+        last_inspector_email: data.inspector_email || null,
+        // Cycle closed — clear assignment fields. Next cycle starts
+        // unassigned until an admin claims it.
+        assigned_to_uid:      null,
+        assigned_to_email:    null,
+        assigned_to_name:     null,
+        assigned_at:          null,
+        assigned_by_email:    null,
+        due_date:             dueDate,
+        updated_at:           admin.firestore.FieldValue.serverTimestamp()
+      };
+      if (!existing.exists) {
+        update.created_at = admin.firestore.FieldValue.serverTimestamp();
+      }
+      await stateRef.set(update, { merge: true });
+
+      logger.info("[inspection-state] updated", {
+        customer_slug: customerSlug,
+        last_inspection_date: inspectionDate,
+        due_date: dueDate
+      });
+    } catch (err) {
+      logger.error("[inspection-state] update failed", {
+        inspection_id: event.params && event.params.inspectionId,
+        error: err && err.message
+      });
+    }
+  }
+);
+
+// inspection_date + cadence days → YYYY-MM-DD (UTC math is fine for
+// date-only arithmetic; we never need sub-day precision here).
+function computeDueDateYMD(ymd, cadenceDays) {
+  const ms = Date.parse(ymd + "T00:00:00Z");
+  if (!Number.isFinite(ms)) return null;
+  const due = new Date(ms + cadenceDays * 86400000);
+  return due.toISOString().slice(0, 10);
+}
+
+/* ============================================================================
+ * Phase 3C — Twilio Transport Foundation
+ *
+ * Three Cloud Functions form the manual SMS transport layer for the
+ * Communication Threads system:
+ *
+ *   sendTwilioMessageV1       admin → tech outbound SMS, manual trigger only
+ *   twilioInboundWebhookV1    tech  → admin inbound SMS, posted by Twilio
+ *   twilioStatusCallbackV1    Twilio delivery status updates
+ *
+ * Hard constraints (from Phase 3C spec, enforced in code below):
+ *   • Manual send only — no automatic SMS, no broadcast, no mass text.
+ *   • No SMS from CEO action nudges yet.
+ *   • Twilio credentials live ONLY in Firebase Secrets — never logged or
+ *     surfaced to the client.
+ *   • Inbound from unknown phone numbers is dropped (not threaded) — this
+ *     prevents anonymous parties from creating threads + spamming admin.
+ *
+ * Secrets used (set via `firebase functions:secrets:set`):
+ *   TWILIO_ACCOUNT_SID            (shared with emergency SOS path above)
+ *   TWILIO_AUTH_TOKEN             (shared with emergency SOS path above)
+ *   TWILIO_MESSAGING_SERVICE_SID  (new — preferred over TWILIO_FROM_NUMBER
+ *                                  for the messaging service routing)
+ *   TWILIO_PHONE_NUMBER           (new — used for signature validation log
+ *                                  context; also a fallback "from" if the
+ *                                  messaging service SID is empty)
+ * ============================================================================ */
+
+const TWILIO_MESSAGING_SERVICE_SID = defineSecret("TWILIO_MESSAGING_SERVICE_SID");
+const TWILIO_PHONE_NUMBER          = defineSecret("TWILIO_PHONE_NUMBER");
+
+const TWILIO_INBOUND_URL = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/twilioInboundWebhookV1";
+const TWILIO_STATUS_URL  = "https://us-central1-pioneer-dcr-hub.cloudfunctions.net/twilioStatusCallbackV1";
+
+function trimPreviewServer(body) {
+  const s = String(body || "").replace(/\s+/g, " ").trim();
+  if (s.length <= 140) return s;
+  return s.slice(0, 137) + "…";
+}
+
+// Sentinel-safe FieldValue.serverTimestamp() shorthand. Used so the three
+// functions below don't sprout six copies of the same admin.firestore call.
+function fvNow() { return admin.firestore.FieldValue.serverTimestamp(); }
+
+/* --------------------- sendTwilioMessageV1 (admin) --------------------- */
+//
+// POST /sendTwilioMessageV1
+//   Authorization: Bearer <id-token>     (admin email required)
+//   { threadId, messageBody,
+//     recipientPhone?  — overrides phone resolution from thread participant
+//     recipientId?     — overrides participant lookup }
+//
+// Resolves the recipient phone, sends one SMS via Twilio Messaging Service,
+// then persists a communication_messages doc (channel=sms, direction=outbound)
+// and bumps the thread status to waiting_on_employee. On Twilio rejection,
+// persists a failed doc instead so the thread audit trail keeps the attempt.
+exports.sendTwilioMessageV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID, TWILIO_PHONE_NUMBER]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[twilio.send] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to send SMS." });
+      return;
+    }
+
+    const body = req.body || {};
+    const threadId    = String(body.threadId    || body.thread_id    || "").trim();
+    const messageBody = String(body.messageBody || body.message_body || body.body || "").trim();
+    const recipientPhoneRaw = body.recipientPhone || body.recipient_phone || "";
+    const recipientIdHint   = String(body.recipientId || body.recipient_id || "").toLowerCase().trim();
+
+    if (!threadId) {
+      res.status(400).json({ ok: false, error: "threadId is required." });
+      return;
+    }
+    if (!messageBody) {
+      res.status(400).json({ ok: false, error: "messageBody is required." });
+      return;
+    }
+    if (messageBody.length > 1600) {
+      // Twilio splits at 1600 chars across multiple segments; we cap here
+      // so a runaway paste from /manager can't accidentally fire 20 segments.
+      res.status(400).json({ ok: false, error: "messageBody too long (max 1600)." });
+      return;
+    }
+
+    let threadRef, threadSnap, threadData;
+    try {
+      threadRef  = db.collection("communication_threads").doc(threadId);
+      threadSnap = await threadRef.get();
+      if (!threadSnap.exists) {
+        res.status(404).json({ ok: false, error: "Thread not found." });
+        return;
+      }
+      threadData = threadSnap.data() || {};
+    } catch (e) {
+      logger.error("[twilio.send] thread load failed", { threadId, error: e && e.message });
+      res.status(500).json({ ok: false, error: "Failed to load thread." });
+      return;
+    }
+
+    if (threadData.status === "closed" || threadData.status === "resolved") {
+      res.status(409).json({ ok: false, error: "Cannot send SMS on a closed/resolved thread." });
+      return;
+    }
+
+    /* ---- Resolve recipient phone + identity ---- */
+    let toPhone = twilioMessaging.normalizePhone(recipientPhoneRaw);
+    let recipientEmail = "";
+    let recipientName  = "";
+
+    if (!toPhone) {
+      // Pick a participant. If recipientId hint was provided, prefer that
+      // participant; otherwise first non-admin/non-executive participant.
+      const participants = Array.isArray(threadData.participants) ? threadData.participants : [];
+      let target = null;
+      if (recipientIdHint) {
+        target = participants.find(function (p) {
+          return String(p.id || "").toLowerCase().trim() === recipientIdHint;
+        }) || null;
+      }
+      if (!target) {
+        target = participants.find(function (p) {
+          const t = String(p.type || "").toLowerCase();
+          return t === "tech" || t === "employee";
+        }) || null;
+      }
+      if (!target) {
+        res.status(400).json({ ok: false, error: "Could not identify a tech participant on this thread." });
+        return;
+      }
+      recipientEmail = String(target.id || "").toLowerCase().trim();
+      recipientName  = String(target.name || "");
+      try {
+        const lookup = await twilioMessaging.findTechPhoneByEmail(db, recipientEmail);
+        if (!lookup) {
+          res.status(400).json({
+            ok: false,
+            error: "No phone number on file for " + (recipientName || recipientEmail) + ". Update cleaning_techs.phone, then try again."
+          });
+          return;
+        }
+        toPhone = lookup.phone;
+        if (!recipientName && lookup.tech) {
+          recipientName = String(lookup.tech.display_name || lookup.tech.tech_display_name || "");
+        }
+      } catch (e) {
+        logger.error("[twilio.send] phone lookup failed", {
+          threadId, email: recipientEmail, error: e && e.message
+        });
+        res.status(500).json({ ok: false, error: "Failed to look up recipient phone." });
+        return;
+      }
+    }
+
+    /* ---- Send via Twilio ---- */
+    const messagingServiceSid = (TWILIO_MESSAGING_SERVICE_SID.value() || "").trim();
+    const fromNumber          = (TWILIO_PHONE_NUMBER.value() || "").trim();
+    if (!messagingServiceSid && !fromNumber) {
+      logger.error("[twilio.send] no messaging service sid OR phone number configured");
+      res.status(500).json({ ok: false, error: "Twilio transport not configured." });
+      return;
+    }
+
+    let client;
+    try {
+      client = twilioMessaging.getClient(TWILIO_ACCOUNT_SID.value(), TWILIO_AUTH_TOKEN.value());
+    } catch (e) {
+      logger.error("[twilio.send] client init failed", { error: e && e.message });
+      res.status(500).json({ ok: false, error: "Twilio client init failed." });
+      return;
+    }
+
+    const senderName = (staff.tech && staff.tech.display_name) || staff.email.split("@")[0];
+
+    let twilioRes = null;
+    let twilioErr = null;
+    try {
+      const createOpts = {
+        body: messageBody,
+        to:   toPhone,
+        statusCallback: TWILIO_STATUS_URL
+      };
+      if (messagingServiceSid) createOpts.messagingServiceSid = messagingServiceSid;
+      else                     createOpts.from = fromNumber;
+      twilioRes = await client.messages.create(createOpts);
+    } catch (e) {
+      twilioErr = e;
+    }
+
+    /* ---- Persist message + thread bump (atomic) ---- */
+    const msgRef = db.collection("communication_messages").doc();
+    const sts    = fvNow();
+    const successful = !twilioErr && twilioRes && twilioRes.sid;
+
+    const messageDoc = {
+      thread_id:      threadId,
+      category:       threadData.category || null,
+      channel:        "sms",
+      direction:      "outbound",
+      status:         successful ? "queued" : "failed",
+      sender_type:    "admin",
+      sender_id:      staff.email,
+      sender_name:    senderName,
+      recipient_type: "employee",
+      recipient_id:   recipientEmail,
+      recipient_name: recipientName,
+      body:           messageBody,
+      created_at:     sts,
+      deliver_after:  sts,
+      delivered_at:   null,
+      read_at:        null,
+      sms_phone:      toPhone,
+      sms_sid:        successful ? twilioRes.sid : null,
+      sms_error:      successful ? null : String((twilioErr && twilioErr.message) || "Twilio rejected the send").slice(0, 500)
+    };
+
+    try {
+      await db.runTransaction(async (tx) => {
+        tx.set(msgRef, messageDoc);
+        // Only bump the thread state on a successful send — a failed send
+        // shouldn't flip "waiting_on_management" to "waiting_on_employee".
+        if (successful) {
+          tx.update(threadRef, {
+            status:                 "waiting_on_employee",
+            updated_at:             sts,
+            last_message_at:        sts,
+            last_message_preview:   trimPreviewServer(messageBody),
+            last_message_direction: "outbound",
+            message_count:          admin.firestore.FieldValue.increment(1)
+          });
+        } else {
+          // Still bump updated_at + message_count so the failed attempt
+          // appears in the thread history. Status stays put.
+          tx.update(threadRef, {
+            updated_at:             sts,
+            last_message_at:        sts,
+            last_message_preview:   trimPreviewServer(messageBody),
+            last_message_direction: "outbound",
+            message_count:          admin.firestore.FieldValue.increment(1)
+          });
+        }
+      });
+    } catch (e) {
+      logger.error("[twilio.send] persist failed", { threadId, error: e && e.message });
+      // Twilio may have already sent the SMS — return success metadata so
+      // the admin sees the SID, but flag the persistence issue.
+      res.status(500).json({
+        ok: false,
+        error: "SMS may have sent, but the database write failed: " + (e && e.message),
+        sid:   successful ? twilioRes.sid : null
+      });
+      return;
+    }
+
+    if (!successful) {
+      logger.warn("[twilio.send] twilio rejected", {
+        threadId, to_redacted: twilioMessaging.redactPhone(toPhone),
+        error: twilioErr && twilioErr.message,
+        code:  twilioErr && twilioErr.code
+      });
+      res.status(502).json({
+        ok: false,
+        error: "Twilio rejected the send: " + (twilioErr && twilioErr.message),
+        code:  twilioErr && twilioErr.code,
+        messageId: msgRef.id
+      });
+      return;
+    }
+
+    logger.info("[twilio.send] ok", {
+      threadId, sid: twilioRes.sid,
+      to_redacted: twilioMessaging.redactPhone(toPhone),
+      sender: staff.email, bytes: messageBody.length
+    });
+    res.json({
+      ok: true,
+      sid: twilioRes.sid,
+      messageId: msgRef.id,
+      to_redacted: twilioMessaging.redactPhone(toPhone)
+    });
+  }
+);
+
+/* --------------------- twilioInboundWebhookV1 (public) --------------------- */
+//
+// POST /twilioInboundWebhookV1   (Twilio-form-encoded; X-Twilio-Signature)
+//
+// Matches the From number to an active cleaning_techs doc. If no match,
+// drops the message silently (200 OK + empty TwiML) — anonymous numbers
+// MUST NOT be allowed to create threads. If matched, finds the most-
+// recently-updated active thread for that tech, OR creates a new "general"
+// thread; then appends an inbound message and bumps thread status to
+// waiting_on_management.
+exports.twilioInboundWebhookV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [TWILIO_AUTH_TOKEN]
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    // Twilio posts application/x-www-form-urlencoded; firebase-functions v2
+    // parses it into req.body as an object.
+    const params = req.body || {};
+    const signature = req.get("X-Twilio-Signature") || "";
+
+    // Signature validation. We accept either signed (production) OR
+    // missing-header (manual curl during testing) but never wrong-signature.
+    const authToken = TWILIO_AUTH_TOKEN.value();
+    if (signature) {
+      const valid = twilioMessaging.validateSignature(authToken, signature, TWILIO_INBOUND_URL, params);
+      if (!valid) {
+        logger.warn("[twilio.inbound] invalid signature; refusing");
+        res.status(403).send("Invalid signature");
+        return;
+      }
+    } else {
+      logger.info("[twilio.inbound] no signature header (manual call?)");
+    }
+
+    const fromRaw   = params.From || "";
+    const bodyText  = String(params.Body || "").trim();
+    const sid       = String(params.MessageSid || "").trim();
+
+    if (!fromRaw || !sid) {
+      res.status(400).send("Missing From or MessageSid");
+      return;
+    }
+
+    const fromPhone = twilioMessaging.normalizePhone(fromRaw);
+    if (!fromPhone) {
+      logger.warn("[twilio.inbound] unparseable From", { from_redacted: twilioMessaging.redactPhone(fromRaw), sid });
+      res.set("Content-Type", "text/xml");
+      res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+      return;
+    }
+
+    let tech = null;
+    try {
+      tech = await twilioMessaging.findTechByPhone(db, fromPhone);
+    } catch (e) {
+      logger.error("[twilio.inbound] tech lookup failed", { error: e && e.message, sid });
+    }
+
+    if (!tech) {
+      // Unknown sender. Log + drop. Returning 200 + empty TwiML so Twilio
+      // doesn't retry; not creating a thread so anonymous parties can't
+      // generate workload for admin.
+      logger.warn("[twilio.inbound] unknown sender; dropping", {
+        from_redacted: twilioMessaging.redactPhone(fromPhone), sid
+      });
+      res.set("Content-Type", "text/xml");
+      res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+      return;
+    }
+
+    const techEmail = String(tech.email || "").toLowerCase().trim();
+    const techName  = String(tech.display_name || tech.tech_display_name || techEmail);
+
+    /* ---- Find or create thread ---- */
+    let threadId   = null;
+    let threadData = null;
+
+    try {
+      const candidates = await db.collection("communication_threads")
+        .where("participant_ids", "array-contains", techEmail)
+        .where("status", "in", ["open", "waiting_on_employee", "waiting_on_management"])
+        .limit(20).get();
+
+      if (!candidates.empty) {
+        let bestId = null;
+        let bestData = null;
+        let bestTs = -1;
+        candidates.forEach(function (d) {
+          const data = d.data() || {};
+          const ts = (data.updated_at && data.updated_at.toMillis && data.updated_at.toMillis()) || 0;
+          if (ts > bestTs) { bestTs = ts; bestId = d.id; bestData = data; }
+        });
+        threadId   = bestId;
+        threadData = bestData;
+      }
+    } catch (e) {
+      logger.error("[twilio.inbound] thread query failed", { error: e && e.message, sid });
+    }
+
+    if (!threadId) {
+      // Create a new general thread. Status starts at waiting_on_management
+      // — the inbound message IS the first message, and admin owes a reply.
+      const newRef = db.collection("communication_threads").doc();
+      const subject = bodyText
+        ? (bodyText.length > 80 ? bodyText.slice(0, 77) + "…" : bodyText)
+        : ("SMS from " + techName);
+      threadData = {
+        category:               "general",
+        status:                 "waiting_on_management",
+        priority:               "action_required",
+        message_type:           "general",
+        subject:                subject,
+        source_type:            "twilio_inbound",
+        source_id:              sid,
+        participants:           [{ type: "tech", id: techEmail, name: techName }],
+        participant_ids:        [techEmail],
+        created_by:             techEmail,
+        created_at:             fvNow(),
+        updated_at:             fvNow(),
+        closed_at:              null,
+        closed_by:              null,
+        last_message_at:        null,
+        last_message_preview:   null,
+        last_message_direction: null,
+        message_count:          0
+      };
+      try {
+        await newRef.set(threadData);
+        threadId = newRef.id;
+      } catch (e) {
+        logger.error("[twilio.inbound] thread create failed", { error: e && e.message, sid });
+        res.status(500).send("Internal error");
+        return;
+      }
+    }
+
+    /* ---- Append inbound message + bump thread ---- */
+    const msgRef    = db.collection("communication_messages").doc();
+    const threadRef = db.collection("communication_threads").doc(threadId);
+    const sts       = fvNow();
+    const messageDoc = {
+      thread_id:      threadId,
+      category:       threadData.category || "general",
+      channel:        "sms",
+      direction:      "inbound",
+      status:         "delivered",
+      sender_type:    "tech",
+      sender_id:      techEmail,
+      sender_name:    techName,
+      recipient_type: "admin",
+      recipient_id:   "",
+      recipient_name: "Pioneer Management",
+      body:           bodyText || "(empty SMS body)",
+      created_at:     sts,
+      deliver_after:  sts,
+      delivered_at:   sts,
+      read_at:        null,
+      sms_phone:      fromPhone,
+      sms_sid:        sid,
+      sms_error:      null
+    };
+
+    try {
+      await db.runTransaction(async (tx) => {
+        tx.set(msgRef, messageDoc);
+        tx.update(threadRef, {
+          status:                 "waiting_on_management",
+          updated_at:             sts,
+          last_message_at:        sts,
+          last_message_preview:   trimPreviewServer(bodyText || "(empty SMS body)"),
+          last_message_direction: "inbound",
+          message_count:          admin.firestore.FieldValue.increment(1)
+        });
+      });
+    } catch (e) {
+      logger.error("[twilio.inbound] persist failed", { error: e && e.message, sid });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    logger.info("[twilio.inbound] persisted", {
+      threadId, sid, tech: techEmail,
+      from_redacted: twilioMessaging.redactPhone(fromPhone),
+      bytes: bodyText.length
+    });
+
+    // Reply with empty TwiML so Twilio doesn't auto-send an SMS back.
+    res.set("Content-Type", "text/xml");
+    res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+  }
+);
+
+/* --------------------- twilioStatusCallbackV1 (public) --------------------- */
+//
+// POST /twilioStatusCallbackV1   (Twilio-form-encoded; X-Twilio-Signature)
+//
+// Looks up the communication_messages doc by sms_sid and updates its status.
+// Twilio fires this multiple times per send (queued → sent → delivered);
+// we always overwrite with the latest. Errors update sms_error.
+exports.twilioStatusCallbackV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 15,
+    secrets: [TWILIO_AUTH_TOKEN]
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    const params = req.body || {};
+    const signature = req.get("X-Twilio-Signature") || "";
+    const authToken = TWILIO_AUTH_TOKEN.value();
+    if (signature) {
+      const valid = twilioMessaging.validateSignature(authToken, signature, TWILIO_STATUS_URL, params);
+      if (!valid) {
+        logger.warn("[twilio.status] invalid signature; refusing");
+        res.status(403).send("Invalid signature");
+        return;
+      }
+    }
+
+    const sid          = String(params.MessageSid || "").trim();
+    const twilioStatus = String(params.MessageStatus || params.SmsStatus || "").trim().toLowerCase();
+    const errorCode    = String(params.ErrorCode || "").trim();
+    const errorMessage = String(params.ErrorMessage || "").trim();
+
+    if (!sid || !twilioStatus) {
+      res.status(400).send("Missing MessageSid or MessageStatus");
+      return;
+    }
+
+    let snap;
+    try {
+      snap = await db.collection("communication_messages")
+        .where("sms_sid", "==", sid)
+        .limit(1).get();
+    } catch (e) {
+      logger.error("[twilio.status] query failed", { error: e && e.message, sid });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    if (snap.empty) {
+      // Twilio may post status for a SID we never wrote (manual curl, race).
+      // Acknowledge so Twilio doesn't keep retrying.
+      logger.warn("[twilio.status] unknown sid", { sid, twilioStatus });
+      res.status(200).send("OK");
+      return;
+    }
+
+    /* Map Twilio MessageStatus → our MESSAGE_STATUS enum + side fields.
+       Twilio status flow: accepted → queued → sending → sent → delivered
+       (or → failed / undelivered at any step). We collapse all
+       pre-terminal states to 'queued'. */
+    let nextStatus = null;
+    let setDeliveredAt = false;
+    let setError = null;
+
+    switch (twilioStatus) {
+      case "accepted":
+      case "queued":
+      case "scheduled":
+      case "sending":
+      case "sent":
+        nextStatus = "queued";
+        break;
+      case "delivered":
+        nextStatus = "delivered";
+        setDeliveredAt = true;
+        break;
+      case "undelivered":
+      case "failed":
+        nextStatus = "failed";
+        setError = errorCode
+          ? ("[" + errorCode + "] " + (errorMessage || twilioStatus))
+          : (errorMessage || ("Twilio: " + twilioStatus));
+        break;
+      default:
+        // Unknown status — log + leave the doc alone rather than corrupt it.
+        logger.warn("[twilio.status] unmapped status", { sid, twilioStatus });
+        res.status(200).send("OK");
+        return;
+    }
+
+    const ref = snap.docs[0].ref;
+    const update = {
+      status:     nextStatus,
+      updated_at: fvNow()
+    };
+    if (setDeliveredAt) update.delivered_at = fvNow();
+    if (setError)       update.sms_error    = setError.slice(0, 500);
+
+    try {
+      await ref.update(update);
+    } catch (e) {
+      logger.error("[twilio.status] update failed", { sid, error: e && e.message });
+      res.status(500).send("Internal error");
+      return;
+    }
+
+    logger.info("[twilio.status] ok", { sid, twilioStatus, nextStatus });
+    res.status(200).send("OK");
+  }
+);
+
+/* ============================================================================
+ * Phase Customer Economics v1 — QuickBooks Online OAuth foundation
+ *
+ * Two HTTPS endpoints implement the OAuth 2 authorization-code flow:
+ *
+ *   quickbooksOAuthStartV1     admin-gated. Generates a CSRF state token,
+ *                              persists it (with 15-min TTL), and returns
+ *                              the Intuit authorize URL the admin should
+ *                              navigate to.
+ *
+ *   quickbooksOAuthCallbackV1  public (Intuit redirects here). Validates
+ *                              the state token, exchanges the authorization
+ *                              code for access + refresh tokens, and writes
+ *                              quickbooks_auth/connection. Returns a small
+ *                              HTML success page.
+ *
+ * Future sync functions call qboAuth.getValidAccessToken() — it auto-
+ * refreshes if the access_token is near expiry.
+ *
+ * Secrets:
+ *   QBO_CLIENT_ID
+ *   QBO_CLIENT_SECRET
+ *   QBO_REDIRECT_URI         (must EXACTLY match what's set in the Intuit
+ *                             Developer app's Redirect URIs list)
+ *   QBO_ENVIRONMENT          ("production" or "sandbox" — drives API base)
+ *
+ * Setup checklist (Intuit Developer Portal — Nick's side):
+ *   1. Register an app under https://developer.intuit.com/
+ *   2. Add the production scope: com.intuit.quickbooks.accounting
+ *   3. Add this redirect URI EXACTLY (no trailing slash):
+ *      https://us-central1-pioneer-dcr-hub.cloudfunctions.net/quickbooksOAuthCallbackV1
+ *   4. Copy the Client ID + Client Secret into Firebase Secrets.
+ *   5. Visit /manager → admin tool to trigger quickbooksOAuthStartV1
+ *      (or POST to the endpoint with a bearer token + open the returned
+ *       authorize URL in a browser).
+ * ============================================================================ */
+
+const QBO_CLIENT_ID     = defineSecret("QBO_CLIENT_ID");
+const QBO_CLIENT_SECRET = defineSecret("QBO_CLIENT_SECRET");
+const QBO_REDIRECT_URI  = defineSecret("QBO_REDIRECT_URI");
+const QBO_ENVIRONMENT   = defineSecret("QBO_ENVIRONMENT");
+
+exports.quickbooksOAuthStartV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 15,
+    secrets: [QBO_CLIENT_ID, QBO_REDIRECT_URI]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST" && req.method !== "GET") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[qbo.oauth.start] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to connect QuickBooks." });
+      return;
+    }
+
+    const clientId    = (QBO_CLIENT_ID.value()    || "").trim();
+    const redirectUri = (QBO_REDIRECT_URI.value() || "").trim();
+    if (!clientId)    { res.status(500).json({ ok: false, error: "QBO_CLIENT_ID secret is empty." });    return; }
+    if (!redirectUri) { res.status(500).json({ ok: false, error: "QBO_REDIRECT_URI secret is empty." }); return; }
+
+    try {
+      const state = qboAuth.generateState();
+      await qboAuth.storeState(state, staff.email);
+      const authorizeUrl = qboAuth.buildAuthorizeUrl({
+        clientId:    clientId,
+        redirectUri: redirectUri,
+        state:       state
+      });
+      logger.info("[qbo.oauth.start] state issued", { email: staff.email });
+      res.json({ ok: true, authorize_url: authorizeUrl, state: state });
+    } catch (err) {
+      logger.error("[qbo.oauth.start] failed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
+exports.quickbooksOAuthCallbackV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 30,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (req, res) => {
+    // Intuit redirects here with GET ?code=...&state=...&realmId=...
+    if (req.method !== "GET") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    const code    = String(req.query.code    || "").trim();
+    const state   = String(req.query.state   || "").trim();
+    const realmId = String(req.query.realmId || "").trim();
+    const errorParam = String(req.query.error || "").trim();
+
+    function htmlPage(title, body, status) {
+      res.set("Content-Type", "text/html; charset=utf-8");
+      res.status(status || 200).send(
+        '<!doctype html><meta charset="utf-8">' +
+        '<title>' + title + '</title>' +
+        '<style>body{font:14px/1.5 system-ui,sans-serif;max-width:560px;' +
+        'margin:60px auto;padding:0 20px;color:#1e293b}h1{font-size:20px;' +
+        'margin-bottom:12px}.ok{color:#15803d}.err{color:#b91c1c}' +
+        'code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style>' +
+        body
+      );
+    }
+
+    if (errorParam) {
+      logger.warn("[qbo.oauth.callback] intuit returned error", { error: errorParam });
+      return htmlPage(
+        "QuickBooks connection — error",
+        '<h1 class="err">QuickBooks rejected the connection</h1>' +
+        '<p>Intuit returned: <code>' + String(errorParam).replace(/[<>]/g, "") + '</code></p>' +
+        '<p>Try again from /manager.</p>',
+        400
+      );
+    }
+
+    if (!code || !state || !realmId) {
+      return htmlPage(
+        "QuickBooks connection — missing params",
+        '<h1 class="err">Missing OAuth parameters</h1>' +
+        '<p>Expected <code>code</code>, <code>state</code>, <code>realmId</code> in the redirect.</p>',
+        400
+      );
+    }
+
+    // Validate state token — defends against CSRF and old-tab replays.
+    let stateResult;
+    try {
+      stateResult = await qboAuth.consumeState(state);
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] state consume threw", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — error",
+        '<h1 class="err">Could not validate the OAuth state.</h1><p>Try again from /manager.</p>',
+        500
+      );
+    }
+    if (!stateResult.ok) {
+      logger.warn("[qbo.oauth.callback] invalid state", { reason: stateResult.reason });
+      return htmlPage(
+        "QuickBooks connection — invalid state",
+        '<h1 class="err">OAuth state invalid: ' + stateResult.reason + '</h1>' +
+        '<p>This handshake may have expired or been intercepted. Start a fresh connection from /manager.</p>',
+        400
+      );
+    }
+
+    const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+    const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+    const redirectUri  = (QBO_REDIRECT_URI.value()  || "").trim();
+    const environment  = ((QBO_ENVIRONMENT.value()  || "production") + "").toLowerCase().trim();
+    if (!clientId || !clientSecret || !redirectUri) {
+      return htmlPage(
+        "QuickBooks connection — server misconfigured",
+        '<h1 class="err">QBO secrets are missing.</h1>' +
+        '<p>Set <code>QBO_CLIENT_ID</code>, <code>QBO_CLIENT_SECRET</code>, and <code>QBO_REDIRECT_URI</code> via <code>firebase functions:secrets:set</code>.</p>',
+        500
+      );
+    }
+
+    let tokens;
+    try {
+      tokens = await qboAuth.exchangeCodeForTokens({
+        clientId:     clientId,
+        clientSecret: clientSecret,
+        code:         code,
+        redirectUri:  redirectUri
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] token exchange failed", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — token exchange failed",
+        '<h1 class="err">Intuit refused the token exchange.</h1>' +
+        '<p><code>' + String((err && err.message) || "unknown").slice(0, 200).replace(/[<>]/g, "") + '</code></p>' +
+        '<p>Verify the Redirect URI in the Intuit Developer app matches <code>' + redirectUri + '</code> exactly, then retry.</p>',
+        502
+      );
+    }
+
+    try {
+      await qboAuth.saveConnection({
+        realmId:      realmId,
+        tokens:       tokens,
+        environment:  environment,
+        connectedBy:  stateResult.created_by,
+        isInitial:    true
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.callback] connection persist failed", { error: err && err.message });
+      return htmlPage(
+        "QuickBooks connection — persist failed",
+        '<h1 class="err">Couldn\'t save the connection.</h1>' +
+        '<p>Tokens were issued by Intuit but the Firestore write failed. Check function logs.</p>',
+        500
+      );
+    }
+
+    logger.info("[qbo.oauth.callback] connected", {
+      realm_id: realmId, environment: environment, by: stateResult.created_by
+    });
+    return htmlPage(
+      "QuickBooks connected",
+      '<h1 class="ok">QuickBooks Online connected.</h1>' +
+      '<p>Realm ID: <code>' + realmId.replace(/[<>]/g, "") + '</code></p>' +
+      '<p>Environment: <code>' + environment + '</code></p>' +
+      '<p>You can close this tab. Customer Economics will start populating on the next sync.</p>'
+    );
+  }
+);
+
+/* ----------------------------- quickbooksOAuthDisconnectV1 -----------------------------
+ *
+ * Admin-only HTTPS POST. Closes the QuickBooks connection:
+ *   1. Reads the current connection doc (no-op if already disconnected).
+ *   2. Best-effort revokes the refresh_token at Intuit's revoke endpoint
+ *      (qboAuth.revokeRefreshToken). Non-fatal on failure — the local
+ *      mark always runs.
+ *   3. Calls qboAuth.markDisconnected(reason) which sets status:
+ *      "disconnected" + disconnect_reason + disconnected_at on both the
+ *      private auth doc AND the read-safe status doc.
+ *   4. Returns JSON { ok, status_before, intuit_revoke }.
+ *
+ * Audit trail preserved: existing tokens stay on the connection doc
+ * (status flips) so a future audit/forensics task can inspect what was
+ * connected when. Re-authorization overwrites with fresh tokens.
+ *
+ * Scope: this function performs NO QBO data writes. The only outbound
+ * call is the revoke endpoint, which Intuit treats as authorization
+ * management (not an accounting write).
+ * ------------------------------------------------------------------------ */
+exports.quickbooksOAuthDisconnectV1 = onRequest(
+  {
+    cors:           false,
+    timeoutSeconds: 30,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[qbo.oauth.disconnect] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required to disconnect QuickBooks." });
+      return;
+    }
+
+    const body   = req.body || {};
+    const reason = String(body.reason || "manual via /manager").trim() || "manual via /manager";
+
+    try {
+      const conn = await qboAuth.loadConnection();
+      const statusBefore = (conn && conn.status) || "never_connected";
+      if (!conn || statusBefore === "disconnected") {
+        // Idempotent — still mark + return so the UI can show "already
+        // disconnected" without retry contention.
+        await qboAuth.markDisconnected(reason + " (was: " + statusBefore + ")");
+        res.json({
+          ok:            true,
+          status_before: statusBefore,
+          intuit_revoke: { revoked: false, http_status: 0, message: "Skipped — no active token to revoke." },
+          message:       "Connection was already " + statusBefore + ". Local state cleared."
+        });
+        logger.info("[qbo.oauth.disconnect] no-op", { email: staff.email, statusBefore: statusBefore });
+        return;
+      }
+
+      const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+      const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+
+      const revoke = await qboAuth.revokeRefreshToken({
+        clientId:     clientId,
+        clientSecret: clientSecret,
+        refreshToken: conn.refresh_token
+      });
+
+      await qboAuth.markDisconnected(reason + " by " + (staff.email || "admin"));
+
+      logger.info("[qbo.oauth.disconnect] ok", {
+        email:           staff.email,
+        status_before:   statusBefore,
+        intuit_revoked:  revoke.revoked,
+        intuit_http:     revoke.http_status,
+        intuit_message:  revoke.message
+      });
+      res.json({
+        ok:            true,
+        status_before: statusBefore,
+        intuit_revoke: revoke,
+        message:       revoke.revoked
+                         ? "Disconnected. Token revoked at Intuit."
+                         : "Disconnected locally. Intuit revoke attempt: " + revoke.message
+      });
+    } catch (err) {
+      logger.error("[qbo.oauth.disconnect] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
+/* ============================================================================
+ * Phase Customer Economics v1 — Sync + Manual Refresh
+ *
+ * syncFinancialPulseV1     scheduled 07:00 PT daily. Pulls QB customers +
+ *                          invoices (last 30 days), pulls Pioneer cleaning
+ *                          sessions, computes RPLH, writes
+ *                          customer_economics/current + history doc.
+ *
+ * refreshFinancialPulseV1  admin-only HTTPS. Same sync core, run on demand.
+ *
+ * Fails soft when QuickBooks isn't connected — writes a snapshot with
+ * status: "not_connected" so the CEO card renders a "Connect QB" call-to-
+ * action instead of a stale dashboard.
+ * ============================================================================ */
+
+const ECONOMICS_CURRENT_DOC = "customer_economics/current";
+const ECONOMICS_HISTORY_COLL = "customer_economics_history";
+const ECONOMICS_TARGET_CONFIG = "pioneer_config/customer_economics";
+
+// YYYY-MM-DD in the America/Los_Angeles zone. Used as the history doc id
+// + period_end label. Stays stable across the calendar day even if the
+// sync runs multiple times.
+function pacificYmd(d) {
+  d = d || new Date();
+  // Use Intl with a fixed format; the resulting parts are { year, month, day }.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d);
+  const m = {};
+  parts.forEach(function (p) { m[p.type] = p.value; });
+  return m.year + "-" + m.month + "-" + m.day;
+}
+
+function addDaysYmd(ymd, deltaDays) {
+  const ms = Date.parse(ymd + "T12:00:00Z");
+  if (!Number.isFinite(ms)) return ymd;
+  const d = new Date(ms + deltaDays * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+async function readTargetRplh() {
+  try {
+    const snap = await db.doc(ECONOMICS_TARGET_CONFIG).get();
+    if (!snap.exists) return customerEconomics.FALLBACK_TARGET_RPLH;
+    const data = snap.data() || {};
+    const v = Number(data.target_rplh);
+    return (Number.isFinite(v) && v > 0) ? v : customerEconomics.FALLBACK_TARGET_RPLH;
+  } catch (_e) {
+    return customerEconomics.FALLBACK_TARGET_RPLH;
+  }
+}
+
+async function readAliasDocs() {
+  try {
+    const snap = await db.collection("customer_aliases").get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (_e) {
+    return [];
+  }
+}
+
+async function readPioneerSessionsInWindow(periodStartYmd, periodEndYmd) {
+  // pioneer_service_sessions stored clock_out_at as a Timestamp. Query
+  // by clock_out_at within window, status=completed. Labor-type filtering
+  // happens client-side in aggregateLaborByCustomer (cleaning only).
+  const startTs = admin.firestore.Timestamp.fromMillis(Date.parse(periodStartYmd + "T00:00:00Z"));
+  const endTs   = admin.firestore.Timestamp.fromMillis(Date.parse(periodEndYmd   + "T23:59:59Z"));
+  try {
+    const snap = await db.collection("pioneer_service_sessions")
+      .where("status", "==", "completed")
+      .where("clock_out_at", ">=", startTs)
+      .where("clock_out_at", "<=", endTs)
+      .get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (err) {
+    logger.warn("[economics] pioneer_service_sessions query failed; trying fallback range scan", {
+      error: err && err.message
+    });
+    // If the composite index is missing, fall back to a simpler query
+    // and filter client-side. Slower, but never blocks the sync.
+    try {
+      const snap = await db.collection("pioneer_service_sessions")
+        .where("status", "==", "completed")
+        .limit(5000).get();
+      const startMs = startTs.toMillis();
+      const endMs   = endTs.toMillis();
+      return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+        .filter(function (s) {
+          const co = s.clock_out_at && s.clock_out_at.toMillis ? s.clock_out_at.toMillis() : 0;
+          return co >= startMs && co <= endMs;
+        });
+    } catch (err2) {
+      logger.error("[economics] pioneer_service_sessions fallback also failed", { error: err2 && err2.message });
+      return [];
+    }
+  }
+}
+
+// Build a "not connected" snapshot — shipped on every sync when OAuth
+// is missing, so the CEO card renders a clear call-to-action.
+function buildNotConnectedSnapshot(reason) {
+  const ymd = pacificYmd(new Date());
+  return {
+    snapshot_date: ymd,
+    period:        "trailing_30d",
+    period_start:  addDaysYmd(ymd, -30),
+    period_end:    ymd,
+    status:        "not_connected",
+    error_message: String(reason || "QuickBooks not connected. Connect from /manager."),
+    label:         "Customer Economics",
+    subtitle:      "Revenue Per Labor Hour",
+    disclosure:    "Not profitability. Overhead allocation not included.",
+    target_rplh:   customerEconomics.FALLBACK_TARGET_RPLH,
+    company: null,
+    top_customers: [],
+    bottom_customers: [],
+    recommendations: [],
+    customer_count_included: 0,
+    customer_count_excluded: 0,
+    excluded_customers: []
+  };
+}
+
+async function writeSnapshot(snap, triggeredBy) {
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const docToWrite = Object.assign({}, snap, {
+    snapshot_at:   sts,
+    triggered_by:  String(triggeredBy || "schedule")
+  });
+  await db.doc(ECONOMICS_CURRENT_DOC).set(docToWrite);
+  // History is keyed by snapshot date — re-running on same day overwrites.
+  // This is intentional: a manual refresh later in the day produces a
+  // single authoritative snapshot for that date.
+  await db.collection(ECONOMICS_HISTORY_COLL).doc(snap.snapshot_date).set(docToWrite);
+  return docToWrite;
+}
+
+// Shared core — used by both the scheduled function and the manual
+// refresh endpoint.
+async function runFinancialPulseSync(opts) {
+  const triggeredBy = String((opts && opts.triggeredBy) || "schedule");
+  const periodEndYmd   = pacificYmd(new Date());
+  const periodStartYmd = addDaysYmd(periodEndYmd, -30);
+  const targetRplh = await readTargetRplh();
+
+  // Preflight — if OAuth isn't connected OR secrets are empty, write the
+  // not_connected snapshot and return. This is the path admins will hit
+  // until they complete the Intuit OAuth handshake.
+  const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+  const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+  if (!clientId || !clientSecret) {
+    logger.warn("[economics] QBO secrets missing — writing not_connected");
+    const snap = buildNotConnectedSnapshot("QBO secrets not configured.");
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: "secrets_missing" };
+  }
+
+  let probe;
+  try {
+    probe = await qboApi.probeConnection({ clientId: clientId, clientSecret: clientSecret });
+  } catch (err) {
+    probe = { connected: false, error: err && err.message };
+  }
+  if (!probe.connected) {
+    logger.warn("[economics] QBO not connected — writing not_connected", { reason: probe.error });
+    const snap = buildNotConnectedSnapshot(probe.error || "Not connected.");
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: probe.error };
+  }
+
+  // Pull everything we need in parallel.
+  let qboCustomers, qboInvoices, pioneerSessions, aliasDocs;
+  try {
+    [qboCustomers, qboInvoices, pioneerSessions, aliasDocs] = await Promise.all([
+      qboApi.fetchActiveCustomers({ clientId: clientId, clientSecret: clientSecret }),
+      qboApi.fetchInvoicesInWindow({ clientId: clientId, clientSecret: clientSecret }, periodStartYmd, periodEndYmd),
+      readPioneerSessionsInWindow(periodStartYmd, periodEndYmd),
+      readAliasDocs()
+    ]);
+  } catch (err) {
+    logger.error("[economics] data fetch failed", { error: err && err.message });
+    const snap = Object.assign(buildNotConnectedSnapshot("QBO data fetch failed: " + (err && err.message)), {
+      status: "error"
+    });
+    await writeSnapshot(snap, triggeredBy);
+    return { ok: false, status: "error", error: err && err.message };
+  }
+
+  const snap = customerEconomics.buildSnapshot({
+    targetRplh:      targetRplh,
+    qboCustomers:    qboCustomers,
+    qboInvoices:     qboInvoices,
+    pioneerSessions: pioneerSessions,
+    aliasDocs:       aliasDocs,
+    periodStartYmd:  periodStartYmd,
+    periodEndYmd:    periodEndYmd
+  });
+  snap.status = "fresh";
+
+  await writeSnapshot(snap, triggeredBy);
+
+  logger.info("[economics] sync ok", {
+    triggered_by: triggeredBy,
+    included:     snap.customer_count_included,
+    excluded:     snap.customer_count_excluded,
+    avg_rplh:     snap.company && snap.company.avg_rplh,
+    target_rplh:  snap.target_rplh
+  });
+  return {
+    ok: true,
+    status: "fresh",
+    included: snap.customer_count_included,
+    excluded: snap.customer_count_excluded,
+    avg_rplh: snap.company && snap.company.avg_rplh
+  };
+}
+
+exports.syncFinancialPulseV1 = onSchedule(
+  {
+    schedule: "0 7 * * *",
+    timeZone: "America/Los_Angeles",
+    timeoutSeconds: 300,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (_event) => {
+    try {
+      await runFinancialPulseSync({ triggeredBy: "schedule" });
+    } catch (err) {
+      logger.error("[economics] scheduled sync crashed", { error: err && err.message });
+    }
+  }
+);
+
+exports.refreshFinancialPulseV1 = onRequest(
+  {
+    cors: false,
+    timeoutSeconds: 300,
+    secrets: [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    if (staff.role !== "admin") {
+      logger.warn("[economics.refresh] non-admin denied", { email: staff.email });
+      res.status(403).json({ ok: false, error: "Admin access required." });
+      return;
+    }
+
+    try {
+      const result = await runFinancialPulseSync({ triggeredBy: "manual:" + staff.email });
+      res.json(result);
+    } catch (err) {
+      logger.error("[economics.refresh] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+
+/* ============================================================================
+   Phase 30 — CEO Dashboard Financial Pulse pipeline
+   ============================================================================
+
+   Distinct from the existing syncFinancialPulseV1 (which despite its name
+   syncs Customer Economics / RPLH and writes customer_economics/current).
+   That function is NOT renamed per scope direction.
+
+   New pipeline:
+     syncCeoFinancialPulseV1     scheduled 07:05 PT daily (5 min after
+                                 the economics sync to space out OAuth
+                                 token-refresh contention).
+     refreshCeoFinancialPulseV1  admin + executive HTTPS for manual refresh
+                                 from the CEO dashboard "↻ Refresh" button.
+
+   Both call runCeoFinancialPulse(opts) which:
+     1. Probes QBO connection. Writes a not-connected snapshot if absent.
+     2. Fetches in parallel:
+          - bank accounts (CurrentBalance per account)
+          - BalanceSheet Report at today, today-30, today-90
+          - open invoices (Balance > 0)
+          - payments in last 30d
+          - last 2 payroll_exports docs (Pioneer-side)
+     3. Hands the raw rows to financialPulse.buildSnapshot() which is a
+        pure function — no I/O.
+     4. Writes financial_pulse/current + financial_pulse_history/{YYYY-MM-DD}.
+
+   Writes immediately even on partial failure (graceful degradation): if
+   BalanceSheet Report fails for one date, trends mark themselves
+   unavailable and Cash Today still renders.
+============================================================================ */
+
+const financialPulse = require("./financialPulse");
+const CEO_PULSE_CURRENT_DOC = "financial_pulse/current";
+const CEO_PULSE_HISTORY_COLL = "financial_pulse_history";
+
+// Pacific YYYY-MM-DD already defined as pacificYmd() near line 10095.
+
+// Read Pioneer's two most recent active payroll exports for the payroll
+// snapshot card. status="active" matches the same filter used by the
+// admin's voidPayrollExportV1 + the existing Workflow bar.
+async function readLastPayrollExports(limitN) {
+  try {
+    const snap = await db.collection("payroll_exports")
+      .where("status", "==", "active")
+      .orderBy("generated_at", "desc")
+      .limit(limitN || 2)
+      .get();
+    return snap.docs.map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); });
+  } catch (err) {
+    logger.warn("[ceo-pulse] payroll_exports read failed (non-fatal)", { error: err && err.message });
+    return [];
+  }
+}
+
+// Compute "days until close of current semi-monthly period" + blocker
+// count, used by Needs Nick payroll rule. Periods are 1-15 (A) and
+// 16-EOM (B), matching the rest of the codebase. Blocker count comes
+// from a quick scan of in-window pioneer_service_sessions.
+async function readCurrentPayrollCycleStatus() {
+  try {
+    const todayYmd = pacificYmd(new Date());
+    const parts = todayYmd.split("-");
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    const mm = String(month).padStart(2, "0");
+    let startDate, endDate, periodLabel;
+    if (day <= 15) {
+      startDate = year + "-" + mm + "-01";
+      endDate   = year + "-" + mm + "-15";
+      periodLabel = "Period A (1-15)";
+    } else {
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      startDate = year + "-" + mm + "-16";
+      endDate   = year + "-" + mm + "-" + String(lastDay).padStart(2, "0");
+      periodLabel = "Period B (16-EOM)";
+    }
+    const daysUntilClose = (function () {
+      const today = Date.parse(todayYmd + "T12:00:00Z");
+      const close = Date.parse(endDate  + "T12:00:00Z");
+      if (!Number.isFinite(today) || !Number.isFinite(close)) return null;
+      return Math.max(0, Math.round((close - today) / 86400000));
+    }());
+    const sessSnap = await db.collection("pioneer_service_sessions")
+      .where("service_date", ">=", startDate)
+      .where("service_date", "<=", endDate)
+      .get();
+    let blockerCount = 0;
+    sessSnap.docs.forEach(function (d) {
+      const s = d.data() || {};
+      const b = payrollIsBlocker(s);
+      if (b) blockerCount += 1;
+    });
+    return {
+      period_label:     periodLabel,
+      period_start:     startDate,
+      period_end:       endDate,
+      days_until_close: daysUntilClose,
+      blocker_count:    blockerCount
+    };
+  } catch (err) {
+    logger.warn("[ceo-pulse] payroll cycle status failed (non-fatal)", { error: err && err.message });
+    return null;
+  }
+}
+
+async function readLastSyncAgeHours() {
+  try {
+    const cur = await db.doc(CEO_PULSE_CURRENT_DOC).get();
+    if (!cur.exists) return null;
+    const data = cur.data() || {};
+    const ms = data.snapshot_at && data.snapshot_at.toMillis ? data.snapshot_at.toMillis() : 0;
+    if (!ms) return null;
+    return (Date.now() - ms) / 3600000;
+  } catch (_e) { return null; }
+}
+
+async function writeCeoPulseSnapshot(snap, triggeredBy) {
+  const sts = admin.firestore.FieldValue.serverTimestamp();
+  const doc = Object.assign({}, snap, {
+    snapshot_at:  sts,
+    triggered_by: String(triggeredBy || "schedule")
+  });
+  await db.doc(CEO_PULSE_CURRENT_DOC).set(doc);
+  await db.collection(CEO_PULSE_HISTORY_COLL).doc(snap.snapshot_date).set(doc);
+  return doc;
+}
+
+async function runCeoFinancialPulse(opts) {
+  const triggeredBy = String((opts && opts.triggeredBy) || "schedule");
+  const todayYmd = pacificYmd(new Date());
+  const day30Ymd = addDaysYmd(todayYmd, -30);
+  const day90Ymd = addDaysYmd(todayYmd, -90);
+
+  const clientId     = (QBO_CLIENT_ID.value()     || "").trim();
+  const clientSecret = (QBO_CLIENT_SECRET.value() || "").trim();
+  if (!clientId || !clientSecret) {
+    logger.warn("[ceo-pulse] QBO secrets missing - writing not_connected");
+    const snap = financialPulse.buildNotConnectedSnapshot("QBO secrets not configured.", todayYmd);
+    await writeCeoPulseSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: "secrets_missing" };
+  }
+
+  let probe;
+  try {
+    probe = await qboApi.probeConnection({ clientId: clientId, clientSecret: clientSecret });
+  } catch (err) {
+    probe = { connected: false, error: err && err.message };
+  }
+  if (!probe.connected) {
+    logger.warn("[ceo-pulse] QBO not connected - writing not_connected", { reason: probe.error });
+    const snap = financialPulse.buildNotConnectedSnapshot(probe.error || "Not connected.", todayYmd);
+    await writeCeoPulseSnapshot(snap, triggeredBy);
+    return { ok: true, status: "not_connected", reason: probe.error };
+  }
+
+  // Parallel fetch. Each is wrapped in catch so one failure doesn't poison
+  // the whole snapshot - the snapshot builder degrades gracefully.
+  const qboOpts = { clientId: clientId, clientSecret: clientSecret };
+  const settle = function (p) { return p.then(function (v) { return { ok: true, value: v }; },
+                                              function (e) { return { ok: false, error: e && e.message }; }); };
+  const [
+    bankAccountsR, bsTodayR, bs30R, bs90R, openInvR, paymentsR, payrollExportsR, cycleStatusR
+  ] = await Promise.all([
+    settle(qboApi.fetchBankAccounts(qboOpts)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, todayYmd)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, day30Ymd)),
+    settle(qboApi.fetchBalanceSheetReport(qboOpts, day90Ymd)),
+    settle(qboApi.fetchOpenInvoices(qboOpts)),
+    settle(qboApi.fetchPaymentsInWindow(qboOpts, day30Ymd, todayYmd)),
+    settle(readLastPayrollExports(2)),
+    settle(readCurrentPayrollCycleStatus())
+  ]);
+
+  // Log non-fatal failures so we can investigate without breaking the snapshot.
+  [["bankAccounts", bankAccountsR], ["balanceSheetToday", bsTodayR],
+   ["balanceSheet30", bs30R], ["balanceSheet90", bs90R],
+   ["openInvoices", openInvR], ["payments", paymentsR],
+   ["payrollExports", payrollExportsR], ["cycleStatus", cycleStatusR]
+  ].forEach(function (pair) {
+    if (!pair[1].ok) logger.warn("[ceo-pulse] partial fetch failure", { what: pair[0], error: pair[1].error });
+  });
+
+  const lastSyncAgeHours = await readLastSyncAgeHours();
+
+  const snap = financialPulse.buildSnapshot({
+    todayYmd:           todayYmd,
+    day30Ymd:           day30Ymd,
+    day90Ymd:           day90Ymd,
+    bankAccounts:       bankAccountsR.ok      ? bankAccountsR.value      : [],
+    balanceSheetToday:  bsTodayR.ok           ? bsTodayR.value           : null,
+    balanceSheet30:     bs30R.ok              ? bs30R.value              : null,
+    balanceSheet90:     bs90R.ok              ? bs90R.value              : null,
+    openInvoices:       openInvR.ok           ? openInvR.value           : [],
+    paidPayments:       paymentsR.ok          ? paymentsR.value          : [],
+    payrollExports:     payrollExportsR.ok    ? payrollExportsR.value    : [],
+    payrollCycle:       cycleStatusR.ok       ? cycleStatusR.value       : null,
+    qboStatus:          "fresh",
+    qboErrorMessage:    null,
+    hoursSinceLastSync: lastSyncAgeHours
+  });
+  snap.status = "fresh";
+
+  await writeCeoPulseSnapshot(snap, triggeredBy);
+  logger.info("[ceo-pulse] sync ok", {
+    triggered_by:           triggeredBy,
+    total_cash:             snap.cash_today && snap.cash_today.total_cash_on_hand,
+    runway_state:           snap.cash_runway && snap.cash_runway.state,
+    open_total:             snap.invoices && snap.invoices.open_total_amount,
+    overdue_total:          snap.invoices && snap.invoices.overdue_total_amount,
+    collections_watch_size: (snap.collections_watch || []).length,
+    needs_nick_size:        (snap.needs_nick || []).length
+  });
+  return { ok: true, status: "fresh" };
+}
+
+exports.syncCeoFinancialPulseV1 = onSchedule(
+  {
+    schedule:       "5 7 * * *",
+    timeZone:       "America/Los_Angeles",
+    timeoutSeconds: 300,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT]
+  },
+  async (_event) => {
+    try {
+      await runCeoFinancialPulse({ triggeredBy: "schedule" });
+    } catch (err) {
+      logger.error("[ceo-pulse.schedule] crashed", { error: err && err.message });
+    }
+  }
+);
+
+exports.refreshCeoFinancialPulseV1 = onRequest(
+  {
+    cors:           false,
+    timeoutSeconds: 300,
+    secrets:        [QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENVIRONMENT],
+    invoker:        "public"
+  },
+  async (req, res) => {
+    res.set("Access-Control-Allow-Origin",  "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set("Vary", "Origin");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+    const staff = await verifyStaffOrReject(req, res);
+    if (!staff) return;
+    // Executive + owner emails always pass; admins pass via role. The CEO
+    // surface refresh button shows up for any signed-in caller in this set.
+    if (staff.role !== "admin" && staff.role !== "executive" && staff.role !== "owner") {
+      logger.warn("[ceo-pulse.refresh] denied", { email: staff.email, role: staff.role });
+      res.status(403).json({ ok: false, error: "Executive or admin access required." });
+      return;
+    }
+    try {
+      const result = await runCeoFinancialPulse({ triggeredBy: "manual:" + staff.email });
+      res.json(result);
+    } catch (err) {
+      logger.error("[ceo-pulse.refresh] crashed", { error: err && err.message });
+      res.status(500).json({ ok: false, error: err && err.message });
+    }
+  }
+);
+

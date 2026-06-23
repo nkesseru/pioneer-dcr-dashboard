@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Report a concern · Pioneer Commercial Cleaning</title>
+  <link rel="stylesheet" href="/styles/feedback.css" />
+  <!-- PWA — installable on mobile home screens. Auth + DCR flow unchanged. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PioneerOps" />
+  <link rel="apple-touch-icon" href="/icons/pioneerops-icon-180.png" />
+</head>
+<body>
+  <main class="fb-page">
+    <div class="fb-brand-strip">
+      <a href="https://pioneer-dcr-hub.web.app" aria-label="Pioneer Commercial Cleaning">
+        <img src="/assets/pioneer-logo2.png" alt="Pioneer Commercial Cleaning" />
+      </a>
+      <span class="fb-eyebrow">Concern</span>
+    </div>
+
+    <div class="fb-card">
+      <h1 class="fb-headline">Something wasn’t quite right?</h1>
+      <p class="fb-subhead">
+        We’re sorry something missed the mark. We take cleaning concerns
+        seriously. Tell us what you noticed and our office team will
+        review it promptly.
+      </p>
+
+      <div id="fb-context" class="fb-context" style="display:none;"></div>
+
+      <form id="fb-form" novalidate>
+        <!-- Honeypot -->
+        <div class="fb-hp" aria-hidden="true">
+          <label>Website
+            <input type="text" name="_hp_website" tabindex="-1" autocomplete="off" />
+          </label>
+        </div>
+
+        <label class="fb-field">
+          <span class="fb-label">What kind of issue is this?</span>
+          <select class="fb-select" name="category" required>
+            <option value="">— Choose a category —</option>
+            <option value="missed-area">Missed area</option>
+            <option value="trash-recycling">Trash / recycling</option>
+            <option value="restroom">Restroom issue</option>
+            <option value="supplies-restocking">Supplies / restocking</option>
+            <option value="floor">Floor issue</option>
+            <option value="damage">Damage concern</option>
+            <option value="access-security">Access / security concern</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+
+        <label class="fb-field">
+          <span class="fb-label">Tell us what you noticed</span>
+          <textarea class="fb-textarea" name="details" required minlength="5" maxlength="4000"
+                    placeholder="Where in the building and what was the issue? A couple sentences is plenty."></textarea>
+        </label>
+
+        <fieldset class="fb-field" style="border:none;padding:0;margin:14px 0;">
+          <legend class="fb-label" style="padding:0;">How urgent is this?</legend>
+          <div class="fb-radio-group">
+            <label class="fb-radio-row">
+              <input type="radio" name="urgency" value="wait" />
+              <span class="fb-radio-label-text"><strong>Can wait</strong> — handle it by next service.</span>
+            </label>
+            <label class="fb-radio-row">
+              <input type="radio" name="urgency" value="contact" />
+              <span class="fb-radio-label-text"><strong>Please contact me</strong> — let's talk in the next day or two.</span>
+            </label>
+            <label class="fb-radio-row">
+              <input type="radio" name="urgency" value="asap" />
+              <span class="fb-radio-label-text"><strong>Needs attention ASAP</strong> — please reach out today.</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="fb-field">
+          <span class="fb-label">Add photos <span class="fb-optional">(optional, max 3)</span></span>
+          <input id="fb-photo-input" class="fb-photo-input" type="file" accept="image/*" multiple />
+          <label class="fb-photo-trigger" for="fb-photo-input">
+            + Add photo
+          </label>
+          <div id="fb-photo-list" class="fb-photo-list"></div>
+          <div id="fb-photo-error" style="font-size:12.5px;color:#8A2A2A;margin-top:6px;"></div>
+        </div>
+
+        <label class="fb-field">
+          <span class="fb-label">Your name <span class="fb-optional">(optional)</span></span>
+          <input class="fb-input" type="text" name="contactName" maxlength="200" autocomplete="name" />
+        </label>
+
+        <label class="fb-field">
+          <span class="fb-label">Your email <span class="fb-optional">(if you'd like us to follow up)</span></span>
+          <input class="fb-input" type="email" name="contactEmail" maxlength="200" autocomplete="email" />
+        </label>
+
+        <label class="fb-field">
+          <span class="fb-label">Your phone <span class="fb-optional">(optional)</span></span>
+          <input class="fb-input" type="tel" name="contactPhone" maxlength="50" autocomplete="tel" />
+        </label>
+
+        <button id="fb-submit" type="submit" class="fb-submit">Send Concern</button>
+
+        <div id="fb-result" aria-live="polite"></div>
+      </form>
+    </div>
+
+    <p class="fb-footnote">
+      Pioneer Commercial Cleaning &middot;
+      <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a>
+    </p>
+  </main>
+
+  <script src="/feedback-issue.js"></script>
+  <script src="/pwa-register.js?v=20260528-pwa-v1"></script>
+</body>
+</html>

@@ -66,6 +66,20 @@
 }
 .work-filter-btn.is-active:hover { background: var(--text-strong); }
 
+/* Phase 3 polish: subtle "this bucket has items" hint for the two
+   attention-worthy filters (Not Started, Unassigned). Lower priority
+   than `.is-active` so a selected pill still wins visually. The hint
+   is a soft amber tint on the unselected pill — calm, not alarming. */
+.work-filter-btn.has-items:not(.is-active) {
+  background: var(--status-attention-soft);
+  border-color: transparent;
+  color: var(--status-attention-ink);
+}
+.work-filter-btn.has-items:not(.is-active) .work-filter-count {
+  background: rgba(180, 83, 9, 0.14);
+  color: var(--status-attention-ink);
+}
+
 .work-filter-count {
   display: inline-block;
   min-width: 18px;
@@ -195,3 +209,514 @@
 @media (max-width: 520px) {
   .assign-card-tech-chip { max-width: 140px; }
 }
+
+/* ====================================================================
+   Pioneer Time Clock (Phase 1b → 1c.1 Employee Command Center)
+   Service-assignment clock-in/out surface. Visually distinct from the
+   Deputy ".assign-card" cards so techs see this as the new Pioneer-
+   native flow during the beta. Scoped under .pioneer-time-clock so it
+   doesn't bleed into the Deputy section below.
+   ==================================================================== */
+
+.pioneer-time-clock {
+  margin-bottom: var(--space-4, 16px);
+  border-left: 4px solid var(--accent, #2f6dd6);
+}
+
+/* Phase 1c.1 — Hero greeting card.
+   The hero takes over the section's identity (no eyebrow / "Pioneer
+   Time Clock" header above it). Apple-style: confident typography,
+   restrained color, no border or shadow. The hero IS the page header. */
+.pioneer-time-clock .ptc-hero {
+  padding: 4px 4px 8px;
+  margin-bottom: 18px;
+}
+.ptc-hero-greeting {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
+  line-height: 1.15;
+}
+.ptc-hero-date {
+  margin: 4px 0 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted, #555);
+}
+.ptc-hero-progress-line {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong, #1a1a1a);
+}
+.ptc-hero-progress-bar {
+  height: 6px;
+  width: 100%;
+  background: linear-gradient(90deg, #eef3fb 0%, #e6f4f1 100%);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.ptc-hero-progress-fill {
+  height: 100%;
+  /* Phase 1c polish — gradient + soft glow for a calm "alive" feel. */
+  background: linear-gradient(90deg, #2f6dd6 0%, #0d9488 100%);
+  box-shadow: 0 0 10px rgba(47, 109, 214, 0.22);
+  border-radius: 999px;
+  transition: width 240ms ease-out;
+}
+.ptc-hero-status {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted, #555);
+}
+@media (min-width: 960px) {
+  .ptc-hero-greeting { font-size: 32px; }
+  .ptc-hero-date     { margin-bottom: 22px; }
+}
+
+/* Phase 1c.1 — Four-up stat cards: Today, Period, Sick Leave, Payday.
+   2×2 on mobile, 1×4 on desktop. Apple aesthetic: big value, small
+   muted label, optional caption underneath when state warrants. */
+.pioneer-time-clock .ptc-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+@media (min-width: 600px) {
+  .pioneer-time-clock .ptc-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+.ptc-stat-card {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 10px);
+  padding: 14px 14px 12px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  position: relative;
+  overflow: hidden;
+}
+/* Phase 1c polish — 3px top accent strip + very subtle gradient wash
+   per stat card. Apple/Uber: color carries meaning without overpowering. */
+.ptc-stat-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--stat-accent, var(--accent, #2f6dd6));
+}
+.ptc-stat-card--today  { --stat-accent: #0d9488; background: linear-gradient(180deg, rgba(13,148,136,0.04) 0%, #fff 60%); }
+.ptc-stat-card--period { --stat-accent: #4f46e5; background: linear-gradient(180deg, rgba(79,70,229,0.04) 0%, #fff 60%); }
+.ptc-stat-card--sick   { --stat-accent: #7c3aed; background: linear-gradient(180deg, rgba(124,58,237,0.04) 0%, #fff 60%); }
+.ptc-stat-card--payday { --stat-accent: #b8862e; background: linear-gradient(180deg, rgba(184,134,46,0.05) 0%, #fff 60%); }
+.ptc-stat-card .ptc-stat-label { color: var(--stat-accent, var(--text-muted, #555)); opacity: 0.85; }
+.ptc-stat-value {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.ptc-stat-label {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #555);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ptc-stat-caption {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted, #777);
+  font-style: italic;
+}
+@media (min-width: 600px) {
+  .ptc-stat-value { font-size: 24px; }
+}
+
+.pioneer-time-clock .ptc-balance-card {
+  background: var(--surface-card-soft, #f4f6fb);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 10px);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.ptc-balance-empty p { margin: 4px 0 0; color: var(--text-muted, #555); }
+.ptc-balance-head .ptc-balance-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--text-muted, #555);
+}
+.ptc-balance-list { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 8px 0 0; }
+@media (min-width: 520px) {
+  .ptc-balance-list { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+}
+.ptc-balance-row { display: flex; flex-direction: column; gap: 2px; }
+.ptc-balance-row dt {
+  font-size: 11.5px; color: var(--text-muted, #555);
+  text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700;
+}
+.ptc-balance-row dd {
+  font-size: 18px; font-weight: 800; color: var(--text-strong, #1a1a1a); margin: 0;
+}
+.ptc-balance-row--preliminary dd { color: var(--text-muted, #555); font-weight: 700; }
+.ptc-balance-row em { font-style: italic; font-weight: 500; opacity: 0.7; }
+
+.pioneer-time-clock .ptc-assignments { display: flex; flex-direction: column; gap: 16px; }
+
+/* Phase 1c.2 — Current Stop card refresh.
+   Premium, calm, proud-to-use. Bigger title, scorecard pattern,
+   prominent progress bar, single primary CTA per state. */
+.ptc-card {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  border-radius: var(--radius-lg, 12px);
+  padding: 18px 18px 16px 22px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+/* Phase 1c polish — left state strip (4px) carries the card's mood.
+   The working-state card also gets the existing accent border + soft
+   glow as the primary focus indicator. */
+.ptc-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 4px;
+  background: var(--card-accent, var(--border-soft, #e2e6ee));
+}
+.ptc-card[data-state="ready"]       { --card-accent: #14b8a6; }   /* teal */
+.ptc-card[data-state="working"]     {
+  --card-accent: #0d9488;
+  border-color: #0d9488;
+  box-shadow: 0 0 0 1px #0d9488, 0 4px 16px rgba(13, 148, 136, 0.12);
+}
+.ptc-card[data-state="paused"]      { --card-accent: #64748b; }   /* slate */
+.ptc-card[data-state="dcr_pending"] { --card-accent: #d8a23d; }   /* gold */
+.ptc-card[data-state="complete"]    { --card-accent: #10b981; }   /* green */
+.ptc-card[data-state="missed"],
+.ptc-card[data-state="canceled"]    { --card-accent: #dc2626; }   /* red */
+.ptc-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 6px;
+}
+.ptc-card-eyebrow {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--accent, #2f6dd6);
+}
+.ptc-card-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--text-strong, #1a1a1a);
+}
+.ptc-card-loc {
+  margin: 4px 0 8px;
+  color: var(--text-muted, #555);
+  font-size: 14px; font-weight: 500;
+}
+
+/* Meta strip — service date + window + deadline, separated by bullets.
+   Calm single line. */
+.ptc-card-meta-strip {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--text-muted, #555);
+  font-weight: 500;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.ptc-card-meta-sep { color: #c8cdd6; }
+.ptc-card-meta-tag {
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+.ptc-card-meta-tag.is-early { background: #e4eefc; color: #1f4488; }
+.ptc-card-meta-tag.is-late  { background: #f6e0e0; color: #8a2a2a; }
+
+/* Phase 1d Lite — small location chip alongside other meta tags. */
+.ptc-geo-chip {
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+.ptc-geo-chip.is-onsite  { background: #d1fae5; color: #065f46; }
+.ptc-geo-chip.is-nearby  { background: #fef3c7; color: #78350f; }
+.ptc-geo-chip.is-offsite { background: #fee2e2; color: #991b1b; }
+.ptc-geo-chip.is-unknown { background: #e2e8f0; color: #475569; }
+
+/* Scorecard — Worked / Budget / Remaining. Big values, small labels. */
+.ptc-scorecard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.ptc-scorecard:has(.ptc-score-cell:nth-child(2):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ptc-score-cell {
+  background: var(--surface-card-soft, #f4f6fb);
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 12px 9px;
+}
+.ptc-score-cell.is-active {
+  background: #d6e8ff;
+}
+.ptc-score-cell.is-over .ptc-score-value { color: #8a2a2a; }
+.ptc-score-value {
+  margin: 0;
+  font-size: 20px; font-weight: 800; line-height: 1.1;
+  color: var(--text-strong, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+}
+.ptc-score-label {
+  margin: 3px 0 0;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-muted, #555);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* Progress bar — color tiers shift as worked vs. budget grows. */
+.ptc-progress {
+  position: relative;
+  height: 8px;
+  background: var(--border-soft, #e2e6ee);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 4px 0 14px;
+}
+.ptc-progress-fill {
+  height: 100%; border-radius: 999px;
+  background: var(--accent, #2f6dd6);
+  transition: width 240ms ease-out, background 240ms ease;
+}
+.ptc-progress.is-cool .ptc-progress-fill { background: var(--accent, #2f6dd6); }
+.ptc-progress.is-warn .ptc-progress-fill { background: #d8a23d; }
+.ptc-progress.is-hot  .ptc-progress-fill { background: #a83232; }
+.ptc-progress.is-done .ptc-progress-fill { background: #2a6b3a; }
+.ptc-progress-label {
+  position: absolute; right: 0; top: 12px;
+  font-size: 12px; font-weight: 700;
+  color: #8a2a2a;
+}
+
+.ptc-live-line {
+  margin: 0 0 14px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-muted, #555);
+  font-style: italic;
+}
+
+/* Buttons — single primary, optional secondary stacked beneath.
+   Full-width, 48px minimum tap target (Apple HIG). */
+.ptc-card-actions {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ptc-btn {
+  appearance: none; -webkit-appearance: none;
+  display: block; width: 100%;
+  border: none; border-radius: var(--radius-md, 10px);
+  padding: 14px 18px; font-size: 16px; font-weight: 700;
+  cursor: pointer; text-align: center; text-decoration: none;
+  min-height: 48px;
+  /* Phase 1c polish — soft elevation + inset highlight for a premium
+     "physical" feel. Not glossy, just dimensional. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: background 180ms ease, box-shadow 180ms ease, transform 90ms ease;
+}
+.ptc-btn:active { transform: translateY(1px); }
+.ptc-btn:disabled, .ptc-btn.ptc-btn-disabled {
+  cursor: not-allowed; opacity: 0.65;
+  box-shadow: none;
+}
+.ptc-btn-primary {
+  background: linear-gradient(180deg, #3b7be0 0%, #2f6dd6 100%);
+  color: #fff;
+}
+.ptc-btn-primary:hover {
+  background: linear-gradient(180deg, #2f6dd6 0%, #275bb3 100%);
+  box-shadow: 0 2px 6px rgba(47,109,214,0.22), inset 0 1px 0 rgba(255,255,255,0.16);
+}
+.ptc-btn-start {
+  background: linear-gradient(180deg, #3b7be0 0%, #2f6dd6 100%);
+  color: #fff;
+}
+.ptc-btn-stop {
+  background: linear-gradient(180deg, #c14747 0%, #a83232 100%);
+  color: #fff;
+}
+.ptc-btn-stop:hover {
+  background: linear-gradient(180deg, #a83232 0%, #8e2828 100%);
+  box-shadow: 0 2px 6px rgba(168,50,50,0.22), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.ptc-btn-dcr {
+  background: linear-gradient(180deg, #e6b04e 0%, #d8a23d 100%);
+  color: #3b2c00;
+}
+.ptc-btn-dcr:hover {
+  background: linear-gradient(180deg, #d8a23d 0%, #c38f2c 100%);
+  box-shadow: 0 2px 6px rgba(216,162,61,0.28), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.ptc-btn-secondary {
+  background: var(--surface-card-soft, #f4f6fb);
+  color: var(--text-strong, #1a1a1a);
+  border: 1px solid var(--border-soft, #e2e6ee);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.ptc-btn-secondary:hover { background: #eaeef5; }
+.ptc-btn-disabled {
+  background: var(--surface-card-soft, #f4f6fb);
+  color: var(--text-muted, #555);
+}
+
+/* V20260614 — Multi-shift: helper text under a disabled Start button
+   that explains why the tech can't start this shift right now. Soft
+   contrast so it informs without screaming. */
+.ptc-card-blocked-msg {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.45;
+}
+
+/* V20260614 — Multi-shift: completion summary block on cards whose
+   shift has been clocked out. Replaces the old "no button — chip
+   says it all" treatment with explicit clocked-out time, total time,
+   and DCR status so a finished shift is unmistakable in a long list. */
+.ptc-completion-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 8px;
+  padding: 12px 14px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+}
+.ptc-completion-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #047857;
+  letter-spacing: 0.2px;
+}
+.ptc-completion-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12.5px;
+  color: #166534;
+}
+.ptc-completion-grid > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ptc-completion-label {
+  color: var(--text-muted, #6b7280);
+  font-weight: 600;
+}
+.ptc-completion-grid strong {
+  color: #064e3b;
+  font-weight: 700;
+}
+.ptc-dcr-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ptc-dcr-pill.is-ok      { background: #d1fae5; color: #065f46; }
+.ptc-dcr-pill.is-warn    { background: #fef3c7; color: #92400e; }
+.ptc-dcr-pill.is-neutral { background: #e2e8f0; color: #475569; }
+
+/* State chip palette — five live (ready/working/paused/dcr/complete)
+   + two terminal (missed/canceled). */
+.ptc-status-chip {
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px;
+  padding: 4px 12px; border-radius: var(--radius-pill, 999px);
+  border: 1px solid transparent;
+}
+/* Phase 1c polish — palette refreshed toward teal/indigo/gold so the
+   command center feels colorful but quiet. */
+.ptc-status-chip.is-ready    { background: #e0f2fe; color: #075985; }   /* sky/teal blue */
+.ptc-status-chip.is-working  { background: #ccfbf1; color: #115e59; }   /* teal */
+.ptc-status-chip.is-paused   { background: #e2e8f0; color: #334155; }   /* slate */
+.ptc-status-chip.is-dcr      { background: #fef3c7; color: #78350f; }   /* gold */
+.ptc-status-chip.is-complete { background: #d1fae5; color: #065f46; }   /* green */
+.ptc-status-chip.is-missed,
+.ptc-status-chip.is-canceled { background: #fee2e2; color: #991b1b; }   /* red */
+
+/* "Next Step: Complete DCR" banner above the assignment list. */
+.ptc-next-step {
+  background: #fff7e0;
+  border: 1px solid #d8b85d;
+  color: #5a4400;
+  border-radius: var(--radius-lg, 10px);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13.5px;
+}
+
+/* Phase 1b.3 — cross-link badge on the legacy Deputy card when the
+   same customer + date is currently active in the Pioneer Time Clock. */
+.assign-card-pioneer-badge {
+  background: #fff7e0;
+  color: #5a4400;
+  border: 1px solid #d8b85d;
+  border-radius: var(--radius-md, 8px) var(--radius-md, 8px) 0 0;
+  margin: -1px -1px 8px;
+  padding: 6px 12px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.2px;
+}
+
+.ptc-fallback-note {
+  margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted, #555);
+  border-top: 1px dashed var(--border-soft, #e2e6ee); padding-top: 10px;
+}
+
+.ptc-empty,
+.ptc-status {
+  padding: 14px 16px; border-radius: var(--radius-lg, 10px);
+  background: var(--surface-card-soft, #f4f6fb);
+  border: 1px dashed var(--border-soft, #c8cdd6);
+  color: var(--text-muted, #555);
+}
+.ptc-empty p { margin: 4px 0; }
+.ptc-status-loading { background: transparent; border: none; padding: 8px 0; }
+.ptc-status-warn  { background: #fff7e0; border-color: #d8b85d; color: #5a4400; }
+.ptc-status-error { background: #faebeb; border-color: #c98080; color: #6b1a1a; }
+
+/* Phase 1g hotfix — fallback banner sits above the legacy Today's Work
+   list when this tech has no Pioneer service_assignments tonight.
+   Toggled by service-clock.js toggleLegacyFallbackBanner(). */
+.ptc-legacy-fallback-banner {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #78350f;
+}
+.ptc-legacy-fallback-banner p { margin: 0; font-size: 13px; }

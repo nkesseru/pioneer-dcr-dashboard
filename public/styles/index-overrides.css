@@ -100,3 +100,345 @@
   padding: 2px 8px;
   color: var(--text-strong);
 }
+
+/* ====================================================================
+ * Phase 3 — DCR workflow clarity
+ *
+ * Three additions:
+ *   1. Sticky visit-context bar (#dcr-sticky-context) — pinned under
+ *      the brand-header once customer/tech/date are all filled. Shows
+ *      who/what/when and a slim completion-progress bar.
+ *   2. Submit-bar progress chip (.submit-bar-progress) — "N of M
+ *      sections complete" next to the sticky-mobile Submit button.
+ *   3. Issue-row "Add photo for this issue" CTA (.issue-photo-cta) —
+ *      active affordance that scrolls to the Photos block and opens
+ *      the file picker.
+ *
+ * The brand-header is `position: sticky; top: 0; z-index: 20`. The
+ * new bar uses z-index: 30 so it overlays the brand-header as the
+ * user scrolls — operational context wins over branding once a DCR
+ * is open.
+ * ================================================================== */
+
+#dcr-sticky-context {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(15, 23, 42, 0.94);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+  backdrop-filter: saturate(140%) blur(8px);
+  color: var(--text-on-dark);
+  border-bottom: 1px solid #1e293b;
+  margin: 0 -16px var(--space-4);   /* break out of the form's padding so the bar spans full-width */
+  padding: 10px 16px 8px;
+  box-shadow: 0 8px 20px -16px rgba(15, 23, 42, 0.6);
+}
+#dcr-sticky-context[hidden] { display: none; }
+.dcr-sticky-context-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 100%;
+}
+.dcr-sticky-context-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.dcr-sticky-context-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: #5eead4;             /* foundation accent-glow, calm on dark */
+}
+.dcr-sticky-context-customer {
+  font-size: var(--text-md);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-on-dark);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dcr-sticky-context-meta {
+  font-size: var(--text-xs);
+  color: var(--text-on-dark-muted);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+.dcr-sticky-context-sep { opacity: 0.55; }
+
+.dcr-sticky-context-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 88px;
+}
+.dcr-sticky-context-progress-pct {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-on-dark);
+  letter-spacing: 0.2px;
+}
+.dcr-sticky-context-progress-bar {
+  width: 88px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.dcr-sticky-context-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: var(--radius-pill);
+  background: #5eead4;
+  transition: width 220ms var(--ease-out), background-color 180ms var(--ease-out);
+}
+.dcr-sticky-context-progress-bar[data-state="complete"] .dcr-sticky-context-progress-fill {
+  background: #34d399;
+}
+.dcr-sticky-context-progress-bar[data-state="moving"]   .dcr-sticky-context-progress-fill {
+  background: #5eead4;
+}
+.dcr-sticky-context-progress-bar[data-state="started"]  .dcr-sticky-context-progress-fill {
+  background: #fbbf24;
+}
+.dcr-sticky-context-progress-bar[data-state="idle"]     .dcr-sticky-context-progress-fill {
+  background: #475569;
+}
+
+@media (max-width: 480px) {
+  #dcr-sticky-context { padding: 8px 14px 6px; margin: 0 -14px var(--space-3); }
+  .dcr-sticky-context-customer { font-size: var(--text-base); }
+  .dcr-sticky-context-progress-bar { width: 72px; }
+}
+
+/* ---------- Submit-bar progress chip ---------- */
+.submit-bar-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.submit-bar-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+.submit-bar-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: #475569;
+  flex-shrink: 0;
+  transition: background-color 180ms var(--ease-out);
+}
+.submit-bar-progress[data-state="started"]  .submit-bar-progress-dot { background: var(--status-attention); }
+.submit-bar-progress[data-state="moving"]   .submit-bar-progress-dot { background: var(--status-info); }
+.submit-bar-progress[data-state="complete"] .submit-bar-progress-dot { background: var(--status-success); }
+.submit-bar-progress[data-state="complete"] {
+  color: var(--status-success-ink);
+}
+.submit-bar-progress[data-state="started"] {
+  color: var(--status-attention-ink);
+}
+.submit-bar-progress[data-state="moving"] {
+  color: var(--status-info-ink);
+}
+
+@media (max-width: 480px) {
+  /* On phones the existing .submit-bar is sticky at the bottom.
+     Let the progress chip stack above the button so it's readable
+     without being squeezed. */
+  .submit-bar-left { width: 100%; justify-content: center; margin-bottom: 4px; }
+  .submit-bar-progress { font-size: 11px; }
+}
+
+/* ---------- Draft-restored toast: calmer Phase 3 styling ---------- */
+.draft-toast-icon {
+  font-size: 16px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* ---------- Issue-row "Add photo for this issue" CTA ---------- */
+.issue-photo-cta {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent-soft);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out);
+}
+.issue-photo-cta:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.issue-photo-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.issue-photo-cta-icon { font-size: 14px; line-height: 1; }
+.issue-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--text-subtle);
+  font-style: normal;
+}
+
+/* When the user clicks the issue CTA, briefly flash the Photos
+   drop-target so they see WHERE the picker landed before iOS opens
+   the camera/gallery sheet. */
+label.file-drop.is-flashing {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+  transition: outline-color 240ms var(--ease-out);
+}
+
+/* ====================================================================
+ * Phase 4 — Single-focus validation guidance
+ *
+ * Replaces the legacy bullet-wall (.validation-list) with a calm
+ * single-focus card. The whole card is a soft tap target; the right-
+ * side button is the explicit CTA. The legacy `.validation-list`
+ * rules in styles.css are now inert (no list element in markup).
+ *
+ * Tone goal: supportive, not scolding. Coral → warm amber to match
+ * the foundation status-attention palette used elsewhere.
+ * ================================================================== */
+.validation-summary {
+  /* Override the legacy coral-tint look (styles.css line 324) with a
+     calmer amber tile that matches the foundation status-attention
+     palette. */
+  background: var(--status-attention-soft);
+  border: 1px solid #fde68a;
+  border-left: 4px solid var(--status-attention);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--status-attention-ink);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: box-shadow var(--motion-fast) var(--ease-out),
+              transform var(--motion-fast) var(--ease-out);
+}
+.validation-summary:hover {
+  box-shadow: var(--shadow-card);
+  transform: translateY(-1px);
+}
+.validation-summary[hidden] { display: none; }
+
+.validation-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--status-attention);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+  /* Subtle right-pointing arrow uses the existing → glyph. */
+}
+.validation-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.validation-eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--status-attention-ink);
+  opacity: 0.78;
+}
+.validation-message {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  color: var(--status-attention-ink);
+  line-height: var(--leading-snug);
+}
+.validation-cta {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--status-attention);
+  color: #fff;
+  border: none;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.validation-cta:hover { background: #92400e; }
+.validation-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.32);
+}
+
+@media (max-width: 480px) {
+  .validation-summary {
+    flex-wrap: wrap;
+    padding: var(--space-3);
+  }
+  .validation-body { flex-basis: calc(100% - 44px); }
+  .validation-cta  {
+    flex-basis: 100%;
+    justify-content: center;
+    margin-top: var(--space-2);
+  }
+}
+
+/* Target glow — applied on the destination card for ~1.4s after the
+   user taps the CTA. Calm amber pulse that fades; calmer than a
+   "lit-up red error" treatment. Removed by JS via animationend OR a
+   defensive 1.6s timeout. */
+.is-validation-glow {
+  animation: dcr-validation-glow 1.4s var(--ease-out) 1;
+}
+@keyframes dcr-validation-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(180, 83, 9, 0); }
+  25%  { box-shadow: 0 0 0 8px rgba(180, 83, 9, 0.18); }
+  100% { box-shadow: 0 0 0 0 rgba(180, 83, 9, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-validation-glow { animation: none; }
+  .validation-summary { transition: none; }
+}

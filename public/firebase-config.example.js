@@ -82,4 +82,37 @@
   // supply_notifications reminder doc with April's contact info attached
   // server-side, so the tech-facing JS bundle never sees the phone.
   window.SUPPLY_STATION_ORDER_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `refreshGhlHiringV1`.
+  // Used by /manager.html (Hiring Health → "Refresh GHL" button) to trigger
+  // an on-demand pull of the GHL Applicant Tracking pipeline. Admin-only
+  // (server-side role check). The GHL integration token is held only in
+  // the GHL_PRIVATE_INTEGRATION_TOKEN Firebase secret — never exposed here.
+  window.REFRESH_GHL_HIRING_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `sendTwilioMessageV1`.
+  // Used by /manager.html (thread detail modal → "Send SMS" button) to
+  // trigger one manual outbound SMS to the employee's phone on file.
+  // Admin-only (server-side role check). Twilio credentials live only in
+  // the TWILIO_* Firebase Secrets — never exposed here.
+  window.SEND_TWILIO_MESSAGE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `quickbooksOAuthStartV1`.
+  // Used by /manager.html (Financial Pulse card → "Connect QuickBooks"
+  // button) to initiate the OAuth 2 handshake with Intuit. Returns an
+  // authorize URL the admin must visit in a new tab.
+  window.QUICKBOOKS_OAUTH_START_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `refreshFinancialPulseV1`.
+  // Used by /manager.html and /ceo.html refresh buttons to trigger an
+  // on-demand Customer Economics sync. Daily scheduled sync runs at
+  // 07:00 PT without this URL.
+  window.REFRESH_FINANCIAL_PULSE_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
+
+  // HTTPS endpoint of the deployed Cloud Function `waiveDcrV1`. POST
+  // { assignment_id, service_session_id, reason_code, reason_detail }
+  // with Firebase Auth bearer token. The signed-in tech / admin marks
+  // the session's dcr_status: "waived" with full audit fields. Used
+  // by /work.html (the "No DCR Needed" button on dcr_pending cards).
+  window.WAIVE_DCR_URL = "REPLACE_WITH_HTTPS_FUNCTION_URL";
 })();
