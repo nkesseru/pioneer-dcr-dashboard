@@ -2190,6 +2190,172 @@ service cloud.firestore {
     // existing pioneer_config rules block above (line ~288). No change
     // needed — admins already read + write that collection.
 
+    // ============================================================
+    // SessionV2 — Operation One Truth (Phase 33)
+    // ============================================================
+    //
+    // The Session becomes the truth. One doc per stop. See
+    //   docs/sessionsV2/SCHEMA.md for field-by-field specification.
+    //
+    // Phase 33 lands rules + indexes + emulator tests ONLY. No
+    // product writers attached yet. These rules are designed so that
+    // when writers arrive in Phase 34+ they cannot accidentally
+    // grant tech write access to payroll or effective-correction
+    // fields. The rule-test suite at test/sessionsV2.rules.test.js
+    // exercises every allow/deny path.
+    //
+    // Helpers below are scoped to sessionsV2 collections only — they
+    // do NOT change behavior of any existing collection rule.
+
+    // ----- sessionsV2 helpers -----
+
+    // Tech-allowed client field writes on /sessionsV2/{id} update.
+    // Tech can only touch lifecycle bits + their own clock evidence
+    // + components flipping to true + audit-log appends. Anything
+    // payroll, effective_*, supersede, identity is admin/CF only.
+    function sessionsV2_clientWriteAllowed() {
+      let allowed = [
+        'status',
+        'status_changed_at',
+        'status_version',
+        'clock_in_at',
+        'clock_out_at',
+        'paused_intervals',
+        'clock_in_gps',
+        'clock_out_gps',
+        'max_distance_from_site_m',
+        'components',
+        'completion_pct',
+        'blockers',
+        'refs',
+        'audit_log',
+        'updated_at',
+        'client_intent_at',
+        'client_app_version'
+      ];
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    }
+
+    // Tech-allowed status transitions only. Admin + CF can do any
+    // transition. Tech can only push the session forward through
+    // their own lifecycle states; cannot leap to complete/approved/locked.
+    function sessionsV2_techStatusTransitionOk() {
+      let from = resource.data.status;
+      let to   = request.resource.data.status;
+      return (from == to)
+        || (from == 'assigned'    && to == 'ready')
+        || (from == 'ready'       && to == 'in_progress')
+        || (from == 'in_progress' && to == 'paused')
+        || (from == 'paused'      && to == 'in_progress')
+        || (from == 'in_progress' && to == 'awaiting_completion')
+        || (from == 'paused'      && to == 'awaiting_completion');
+    }
+
+    // status must not be locked/archived for client edits.
+    function sessionsV2_notLockedOrArchived() {
+      return resource.data.status != 'locked'
+          && resource.data.status != 'archived'
+          && resource.data.admin_removed != true;
+    }
+
+    // ----- sessionsV2/{sessionId} -----
+    //
+    // Primary collection. Read: admin OR own session. Create: tech
+    // for own staff_uid at status in {assigned, ready} with no
+    // payroll/effective fields. Update: admin OR own + tight gate.
+    // Delete: never.
+    match /sessionsV2/{sessionId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null && resource.data.staff_uid == request.auth.uid);
+
+      // Two-path create:
+      //   1. Admin can create anything that passes base validation
+      //      (schema_version + source enum). Used for admin_manual,
+      //      auto_recovery, scheduled_shell, etc.
+      //   2. Tech can ONLY create their own tech_clock session at
+      //      status assigned|ready with no payroll/effective/supersede
+      //      fields. This is the offline-first path.
+      allow create: if request.resource.data.schema_version == 2
+                    && request.resource.data.source in ['tech_clock', 'admin_manual', 'auto_recovery', 'scheduled_shell']
+                    && (
+                      isPioneerAdmin()
+                      || (
+                        isActiveCleaningTech()
+                        && request.resource.data.staff_uid == request.auth.uid
+                        && request.resource.data.status in ['assigned', 'ready']
+                        && request.resource.data.source == 'tech_clock'
+                        && request.resource.data.admin_removed != true
+                        && !('payroll'                in request.resource.data.keys())
+                        && !('effective_clock_in'     in request.resource.data.keys())
+                        && !('effective_clock_out'    in request.resource.data.keys())
+                        && !('effective_minutes'      in request.resource.data.keys())
+                        && !('supersedes_session_ids'   in request.resource.data.keys())
+                        && !('superseded_by_session_id' in request.resource.data.keys())
+                      )
+                    );
+
+      allow update: if isPioneerAdmin()
+                    || (
+                      request.auth != null
+                      && resource.data.staff_uid == request.auth.uid
+                      && sessionsV2_notLockedOrArchived()
+                      && sessionsV2_clientWriteAllowed()
+                      && sessionsV2_techStatusTransitionOk()
+                    );
+
+      allow delete: if false;
+    }
+
+    // ----- sessionsV2_open/{sessionId} -----
+    //
+    // Mirror of in_progress|paused|awaiting_completion only. Maintained
+    // by Cloud Function trigger (Phase 34+). Clients READ only.
+    match /sessionsV2_open/{sessionId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null && resource.data.staff_uid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // ----- sessionsV2_active_by_tech/{staffUid} -----
+    //
+    // Single pointer per tech to their current open session. Maintained
+    // by CF trigger. Clients READ only.
+    match /sessionsV2_active_by_tech/{staffUid} {
+      allow read: if isPioneerAdmin() || isOwnUid(staffUid);
+      allow write: if false;
+    }
+
+    // ----- session_audit_log/{sessionId}/entries/{entryId} -----
+    //
+    // Overflow store when embedded audit_log[] > 50 entries.
+    // Cloud Function writers only.
+    match /session_audit_log/{sessionId}/entries/{entryId} {
+      allow read: if isPioneerAdmin();
+      allow write: if false;
+    }
+
+    // ----- pending_session_writes/{queueId} -----
+    //
+    // Unified offline queue. Replaces dcr_pending_uploads +
+    // pending_clock_events in Phase 34. Tech creates queue entries
+    // for their own staff_uid; CF processor reads them. Tech can
+    // mark entries as uploading/failed locally; admin can purge.
+    match /pending_session_writes/{queueId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null && resource.data.staff_uid == request.auth.uid);
+      allow create: if isActiveStaff()
+                    && request.resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.status == 'queued';
+      allow update: if request.auth != null
+                    && resource.data.staff_uid == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'status', 'attempt_count', 'next_attempt_at', 'last_error', 'updated_at'
+                       ])
+                    && request.resource.data.staff_uid == resource.data.staff_uid;
+      allow delete: if isPioneerAdmin()
+                    || (request.auth != null && resource.data.staff_uid == request.auth.uid);
+    }
+
     // Default-deny everything else.
     match /{document=**} {
       allow read, write: if false;

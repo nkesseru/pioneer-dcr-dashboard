@@ -322,6 +322,57 @@
         { "fieldPath": "status",    "order": "ASCENDING"  },
         { "fieldPath": "queued_at", "order": "DESCENDING" }
       ]
+    },
+
+    {
+      "_comment": "SessionV2 indexes (Phase 33). Inert — no queries hit these yet. See docs/sessionsV2/SCHEMA.md.",
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING"  },
+        { "fieldPath": "updated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",    "order": "ASCENDING"  },
+        { "fieldPath": "service_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "service_date",          "order": "ASCENDING" },
+        { "fieldPath": "payroll.payroll_state", "order": "ASCENDING" },
+        { "fieldPath": "admin_removed",         "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignment_id", "order": "ASCENDING" },
+        { "fieldPath": "service_date",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionsV2_open",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "staff_uid",  "order": "ASCENDING" },
+        { "fieldPath": "updated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pending_session_writes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",          "order": "ASCENDING" },
+        { "fieldPath": "next_attempt_at", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

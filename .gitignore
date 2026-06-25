@@ -57,3 +57,4 @@ scripts/opening-balances.json
 # Claude Code session lock — created automatically when a session is
 # open in this repo. Never committable.
 .claude/scheduled_tasks.lock
+/Users/nicholaskesseru/Projects/pioneer-dcr-hub/.tools/

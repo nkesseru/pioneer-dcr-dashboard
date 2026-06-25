@@ -1,11 +1,15 @@
 {
   "scripts": {
-    "test:dcr-email":      "node scripts/test-dcr-email-local.js",
-    "seed:rich-dcr-test":  "node scripts/seed-rich-dcr-email-test.js",
-    "test:dcr-email:rich": "DCR_ID=test-rich-dcr-nick CUSTOMER_ID=pioneer-commercial-cleaning-test TEST_RECIPIENT=nick@pioneercomclean.com node scripts/test-dcr-email-local.js"
+    "test:dcr-email": "node scripts/test-dcr-email-local.js",
+    "seed:rich-dcr-test": "node scripts/seed-rich-dcr-email-test.js",
+    "test:dcr-email:rich": "DCR_ID=test-rich-dcr-nick CUSTOMER_ID=pioneer-commercial-cleaning-test TEST_RECIPIENT=nick@pioneercomclean.com node scripts/test-dcr-email-local.js",
+    "test:rules:sessionsV2": "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.rules.test.mjs\""
   },
   "dependencies": {
     "firebase": "^12.13.0",
     "firebase-admin": "^13.9.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1"
   }
 }
