@@ -2211,8 +2211,12 @@ service cloud.firestore {
 
     // Tech-allowed client field writes on /sessionsV2/{id} update.
     // Tech can only touch lifecycle bits + their own clock evidence
-    // + components flipping to true + audit-log appends. Anything
-    // payroll, effective_*, supersede, identity is admin/CF only.
+    // + components flipping to next-state + timeline appends. Anything
+    // payroll, effective_*, supersede, identity, environment is admin/CF only.
+    //
+    // Phase 34 update (2026-06-26): renamed audit_log -> timeline;
+    // removed completion_pct + blockers (derived, never persisted);
+    // added actual_sequence (tech stamps when starting work).
     function sessionsV2_clientWriteAllowed() {
       let allowed = [
         'status',
@@ -2225,10 +2229,9 @@ service cloud.firestore {
         'clock_out_gps',
         'max_distance_from_site_m',
         'components',
-        'completion_pct',
-        'blockers',
         'refs',
-        'audit_log',
+        'timeline',
+        'actual_sequence',
         'updated_at',
         'client_intent_at',
         'client_app_version'
@@ -2270,13 +2273,22 @@ service cloud.firestore {
 
       // Two-path create:
       //   1. Admin can create anything that passes base validation
-      //      (schema_version + source enum). Used for admin_manual,
-      //      auto_recovery, scheduled_shell, etc.
+      //      (schema_version + source enum + environment enum).
+      //      Used for admin_manual, auto_recovery, scheduled_shell, debug.
       //   2. Tech can ONLY create their own tech_clock session at
-      //      status assigned|ready with no payroll/effective/supersede
-      //      fields. This is the offline-first path.
+      //      status assigned|ready with environment="production" and
+      //      no payroll/effective/supersede/debug fields. This is the
+      //      offline-first path.
+      //
+      // Phase 34 update (2026-06-26): added environment field gate.
+      // Tech can only create production sessions. Debug/emulator
+      // sessions require admin or Cloud Function (Admin SDK bypasses rules).
       allow create: if request.resource.data.schema_version == 2
                     && request.resource.data.source in ['tech_clock', 'admin_manual', 'auto_recovery', 'scheduled_shell']
+                    && (
+                      !('environment' in request.resource.data.keys())
+                      || request.resource.data.environment in ['production', 'debug', 'emulator']
+                    )
                     && (
                       isPioneerAdmin()
                       || (
@@ -2284,6 +2296,10 @@ service cloud.firestore {
                         && request.resource.data.staff_uid == request.auth.uid
                         && request.resource.data.status in ['assigned', 'ready']
                         && request.resource.data.source == 'tech_clock'
+                        && (
+                          !('environment' in request.resource.data.keys())
+                          || request.resource.data.environment == 'production'
+                        )
                         && request.resource.data.admin_removed != true
                         && !('payroll'                in request.resource.data.keys())
                         && !('effective_clock_in'     in request.resource.data.keys())
@@ -2325,12 +2341,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ----- session_audit_log/{sessionId}/entries/{entryId} -----
+    // ----- session_timeline/{sessionId}/entries/{entryId} -----
     //
-    // Overflow store when embedded audit_log[] > 50 entries.
-    // Cloud Function writers only.
-    match /session_audit_log/{sessionId}/entries/{entryId} {
-      allow read: if isPioneerAdmin();
+    // Overflow store when embedded timeline[] > 50 entries.
+    // Cloud Function writers only. Phase 34 update: renamed from
+    // session_audit_log to session_timeline. Timeline is now the
+    // canonical human narrative; audit + UI both read from it.
+    match /session_timeline/{sessionId}/entries/{entryId} {
+      allow read: if isPioneerAdmin()
+                  || (request.auth != null
+                      && exists(/databases/$(database)/documents/sessionsV2/$(sessionId))
+                      && get(/databases/$(database)/documents/sessionsV2/$(sessionId)).data.staff_uid == request.auth.uid);
       allow write: if false;
     }
 

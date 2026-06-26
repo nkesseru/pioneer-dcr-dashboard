@@ -20,12 +20,28 @@ const OTHER_TECH_UID   = "tech_uid_2";
 
 let env;
 
-// Minimal valid session base — tests override status, fields as needed.
+// Minimal valid session base per Phase 34 schema — tests override fields as needed.
 function baseSessionDoc(overrides = {}) {
+  function comp(status) {
+    return {
+      status:        status,
+      started_at:    null,
+      last_event_at: null,
+      completed_at:  null,
+      last_event:    null,
+      error:         null,
+      count:         null,
+      pct:           null,
+      ref:           null
+    };
+  }
   return {
     session_id:        "sess_test_assignment_2026-06-25",
     schema_version:    2,
     source:            "tech_clock",
+    environment:       "production",
+    session_type:      "office_cleaning",
+    attempt_number:    1,
     assignment_id:     "assignment_xyz",
     staff_uid:         TECH_UID,
     staff_email:       TECH_EMAIL,
@@ -33,6 +49,8 @@ function baseSessionDoc(overrides = {}) {
     customer_slug:     "cedar-llc",
     customer_name:     "Cedar LLC",
     service_date:      "2026-06-25",
+    parent_route_id:   "rt_" + TECH_UID + "_2026-06-25",
+    expected_components: ["clock", "gps", "photos", "checklist", "dcr", "customer_email", "payroll"],
     status:            "assigned",
     status_changed_at: new Date(),
     status_version:    1,
@@ -41,19 +59,24 @@ function baseSessionDoc(overrides = {}) {
     created_by:        { type: "tech", uid: TECH_UID, email: TECH_EMAIL, name: "Tech 1" },
     updated_at:        new Date(),
     components: {
-      clock_in_done: false, clock_out_done: false,
-      photos_done: false, photos_count: 0,
-      checklist_done: false, checklist_pct: 0,
-      dcr_done: false, dcr_status: null,
-      issues_logged_count: 0, customer_email_sent: false
+      clock:          comp("missing"),
+      gps:            comp("missing"),
+      photos:         comp("missing"),
+      checklist:      comp("missing"),
+      dcr:            comp("missing"),
+      customer_email: comp("missing"),
+      payroll:        comp("missing")
     },
     refs: {
       photo_paths: [], dcr_id: null, dcr_submission_id: null,
       time_punch_ids: [], pending_queue_ids: [], email_message_ids: []
     },
-    completion_pct: 0,
-    blockers:       [],
-    audit_log:      [],
+    timeline: [{
+      ts:    new Date(),
+      actor: { type: "system" },
+      event: "session.created",
+      title: "Session created"
+    }],
     ...overrides
   };
 }
@@ -567,33 +590,48 @@ describe("sessionsV2_active_by_tech pointer", () => {
 });
 
 // ============================================================
-// session_audit_log overflow — admin-read; CF-write only
+// session_timeline overflow — admin + own-tech read; CF-write only
+// Phase 34 rename from session_audit_log; Timeline is human-narrative,
+// not audit-only, so own tech can read their own session's timeline.
 // ============================================================
-describe("session_audit_log overflow", () => {
+describe("session_timeline overflow", () => {
   before(async () => {
     await clearSessions();
     await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().doc("session_audit_log/sess_x/entries/entry_1").set({
-        ts: new Date(), actor: { type: "admin" }, event: "admin.correction"
+      // Seed parent session so own-tech read rule can resolve.
+      await ctx.firestore().doc("sessionsV2/sess_x").set(baseSessionDoc({
+        session_id: "sess_x"
+      }));
+      await ctx.firestore().doc("session_timeline/sess_x/entries/entry_1").set({
+        ts:    new Date(),
+        actor: { type: "admin" },
+        event: "admin.correction",
+        title: "Admin corrected times"
       });
     });
   });
 
   test("admin can read entries", async () => {
     await assertSucceeds(
-      adminCtx().firestore().doc("session_audit_log/sess_x/entries/entry_1").get()
+      adminCtx().firestore().doc("session_timeline/sess_x/entries/entry_1").get()
     );
   });
 
-  test("tech CANNOT read entries", async () => {
+  test("own tech can read entries (Timeline is human-facing)", async () => {
+    await assertSucceeds(
+      techCtx().firestore().doc("session_timeline/sess_x/entries/entry_1").get()
+    );
+  });
+
+  test("other tech CANNOT read entries", async () => {
     await assertFails(
-      techCtx().firestore().doc("session_audit_log/sess_x/entries/entry_1").get()
+      otherCtx().firestore().doc("session_timeline/sess_x/entries/entry_1").get()
     );
   });
 
   test("admin CANNOT write (CF only)", async () => {
     await assertFails(
-      adminCtx().firestore().doc("session_audit_log/sess_x/entries/entry_2").set({
+      adminCtx().firestore().doc("session_timeline/sess_x/entries/entry_2").set({
         ts: new Date(), event: "x"
       })
     );
@@ -601,9 +639,80 @@ describe("session_audit_log overflow", () => {
 
   test("tech CANNOT write", async () => {
     await assertFails(
-      techCtx().firestore().doc("session_audit_log/sess_x/entries/entry_3").set({
+      techCtx().firestore().doc("session_timeline/sess_x/entries/entry_3").set({
         ts: new Date(), event: "x"
       })
+    );
+  });
+});
+
+// ============================================================
+// sessionsV2 environment field — Phase 34
+// ============================================================
+describe("sessionsV2 environment field", () => {
+  before(async () => { await clearSessions(); });
+
+  test("tech CAN create with environment=production explicit", async () => {
+    await assertSucceeds(
+      techCtx().firestore().doc("sessionsV2/sess_env_prod").set(baseSessionDoc({
+        session_id:  "sess_env_prod",
+        environment: "production"
+      }))
+    );
+  });
+
+  test("tech CAN create without environment field", async () => {
+    const doc = baseSessionDoc({ session_id: "sess_env_unset" });
+    delete doc.environment;
+    await assertSucceeds(
+      techCtx().firestore().doc("sessionsV2/sess_env_unset").set(doc)
+    );
+  });
+
+  test("tech CANNOT create with environment=debug", async () => {
+    await assertFails(
+      techCtx().firestore().doc("sessionsV2/sess_env_debug").set(baseSessionDoc({
+        session_id:  "sess_env_debug",
+        environment: "debug"
+      }))
+    );
+  });
+
+  test("tech CANNOT create with environment=emulator", async () => {
+    await assertFails(
+      techCtx().firestore().doc("sessionsV2/sess_env_emu").set(baseSessionDoc({
+        session_id:  "sess_env_emu",
+        environment: "emulator"
+      }))
+    );
+  });
+
+  test("tech CANNOT create with invalid environment value", async () => {
+    await assertFails(
+      techCtx().firestore().doc("sessionsV2/sess_env_bad").set(baseSessionDoc({
+        session_id:  "sess_env_bad",
+        environment: "staging"
+      }))
+    );
+  });
+
+  test("admin CAN create with environment=debug", async () => {
+    await assertSucceeds(
+      adminCtx().firestore().doc("sessionsV2/sess_env_admin_debug").set(baseSessionDoc({
+        session_id:  "sess_env_admin_debug",
+        environment: "debug",
+        source:      "admin_manual"
+      }))
+    );
+  });
+
+  test("admin CAN create with environment=emulator", async () => {
+    await assertSucceeds(
+      adminCtx().firestore().doc("sessionsV2/sess_env_admin_emu").set(baseSessionDoc({
+        session_id:  "sess_env_admin_emu",
+        environment: "emulator",
+        source:      "admin_manual"
+      }))
     );
   });
 });

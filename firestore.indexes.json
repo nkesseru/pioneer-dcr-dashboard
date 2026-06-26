@@ -373,6 +373,24 @@
         { "fieldPath": "status",          "order": "ASCENDING" },
         { "fieldPath": "next_attempt_at", "order": "ASCENDING" }
       ]
+    },
+
+    {
+      "_comment": "SessionV2 Phase 34 — route grouping + environment partition. Inert until Phase 35+ writers attach.",
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "parent_route_id",   "order": "ASCENDING" },
+        { "fieldPath": "actual_sequence",   "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sessionsV2",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "environment",   "order": "ASCENDING" },
+        { "fieldPath": "service_date",  "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

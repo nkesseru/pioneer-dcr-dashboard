@@ -7985,6 +7985,395 @@ exports.seedPilotCustomerAliasesV1 = onRequest({ cors: false, timeoutSeconds: 30
 });
 
 /* ====================================================================
+ * SessionV2 — Phase 34 (Operation One Truth)
+ * ====================================================================
+ *
+ * The Session becomes the truth. A Session is ONE customer stop.
+ *
+ * Phase 34 ships an inert createSessionV2 Cloud Function gated by the
+ * SESSION_V2_ENABLED env flag. When the flag is "false" (default),
+ * every invocation returns 503 SESSION_V2_DISABLED. When "true",
+ * admin callers can create sessionsV2 docs per the schema at
+ * docs/sessionsV2/SCHEMA.md.
+ *
+ * Phase 34 also lands a reconcileV1V2ParityV1 stub that does nothing
+ * until Phase 35+ writers attach.
+ *
+ * NO clock writes. NO DCR writes. NO payroll reads. NO Mission Control
+ * reads. Phase 35+ light up each of those independently.
+ * ==================================================================== */
+
+const SESSIONSV2_SOURCES      = ["tech_clock", "admin_manual", "auto_recovery", "scheduled_shell"];
+const SESSIONSV2_ENVIRONMENTS = ["production", "debug", "emulator"];
+const SESSIONSV2_TYPES        = ["office_cleaning", "supply_delivery", "inspection", "admin_manual_recovery", "other"];
+const SESSIONSV2_COMPONENTS   = ["clock", "gps", "photos", "checklist", "dcr", "customer_email", "payroll"];
+
+// session_type -> default expected_components per SCHEMA.md
+const SESSIONSV2_DEFAULT_EXPECTED = {
+  office_cleaning:        ["clock", "gps", "photos", "checklist", "dcr", "customer_email", "payroll"],
+  supply_delivery:        ["clock", "gps", "payroll"],
+  inspection:             ["clock", "gps", "photos", "checklist"],
+  admin_manual_recovery:  ["clock", "payroll"],
+  other:                  ["clock", "payroll"]
+};
+
+// Deterministic ID regex per SCHEMA.md.
+//   sess_<assignment_id>_<service_date>_a<n>
+//   sess_manual_<staff_uid>_<service_date>_<customer_slug>_a<n>
+//   sess_recover_<original_id>_a<n>
+const SESSIONSV2_ID_RE = /^sess_(manual_[A-Za-z0-9-]+_\d{4}-\d{2}-\d{2}_[a-z0-9-]+_a\d+|recover_sess_[A-Za-z0-9_-]+_a\d+|[A-Za-z0-9-]+_\d{4}-\d{2}-\d{2}_a\d+)$/;
+
+function sessionsV2_isEnabled() {
+  return (process.env.SESSION_V2_ENABLED || "false").toLowerCase().trim() === "true";
+}
+
+function sessionsV2_buildComponent(initialStatus) {
+  return {
+    status:        initialStatus,
+    started_at:    null,
+    last_event_at: null,
+    completed_at:  null,
+    last_event:    null,
+    error:         null,
+    count:         null,
+    pct:           null,
+    ref:           null
+  };
+}
+
+function sessionsV2_buildComponents(expected) {
+  const out = {};
+  SESSIONSV2_COMPONENTS.forEach(function (name) {
+    out[name] = sessionsV2_buildComponent(expected.indexOf(name) >= 0 ? "missing" : "not_applicable");
+  });
+  return out;
+}
+
+/* --------------- createSessionV2 ---------------
+ *
+ * Admin-only HTTPS POST that creates a sessionsV2 doc per schema.
+ * Idempotent: duplicate POST with same session_id returns the
+ * existing doc unchanged.
+ *
+ * Phase 34 behavior:
+ *   - Returns 503 when SESSION_V2_ENABLED env != "true"
+ *   - Returns 401/403 for unauth / non-admin
+ *   - Returns 400 for invalid payload
+ *   - Returns 409 when session_id collides with an archived session
+ *   - Returns 200 { created: true } on first create
+ *   - Returns 200 { created: false, idempotent: true } on replay
+ */
+exports.createSessionV2 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  // FLAG GATE — Phase 34 ships inert; only enabled callers can write.
+  if (!sessionsV2_isEnabled()) {
+    res.status(503).json({
+      ok:    false,
+      code:  "SESSION_V2_DISABLED",
+      error: "SessionV2 writes are disabled (SESSION_V2_ENABLED feature flag is off)."
+    });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    logger.warn("createSessionV2: non-admin attempt", { caller_email: staff.email });
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const errs = [];
+
+  const sessionId      = String(body.session_id || "").trim();
+  const source         = String(body.source || "").trim();
+  const sessionType    = String(body.session_type || "").trim();
+  const staffUid       = String(body.staff_uid || "").trim();
+  const staffEmail     = String(body.staff_email || "").toLowerCase().trim();
+  const customerId     = String(body.customer_id || body.customer_slug || "").trim();
+  const customerSlug   = String(body.customer_slug || body.customer_id || "").trim();
+  const customerName   = String(body.customer_name || "").trim();
+  const serviceDate    = String(body.service_date || "").trim();
+  const attemptNumber  = parseInt(body.attempt_number, 10);
+  const assignmentId   = body.assignment_id ? String(body.assignment_id).trim() : null;
+  const locationId     = body.location_id ? String(body.location_id).trim() : null;
+  const environment    = body.environment ? String(body.environment).trim() : "production";
+  const scheduled      = (body.scheduled && typeof body.scheduled === "object") ? body.scheduled : null;
+  const expectedIn     = Array.isArray(body.expected_components) ? body.expected_components : null;
+  const clientSessId   = body.client_session_id ? String(body.client_session_id) : null;
+  const clientAppVer   = body.client_app_version ? String(body.client_app_version) : null;
+
+  if (!sessionId)                           errs.push("session_id is required");
+  else if (!SESSIONSV2_ID_RE.test(sessionId)) errs.push("session_id format invalid; see docs/sessionsV2/SCHEMA.md");
+  if (SESSIONSV2_SOURCES.indexOf(source) < 0) errs.push("source must be one of " + JSON.stringify(SESSIONSV2_SOURCES));
+  if (SESSIONSV2_TYPES.indexOf(sessionType) < 0) errs.push("session_type must be one of " + JSON.stringify(SESSIONSV2_TYPES));
+  if (SESSIONSV2_ENVIRONMENTS.indexOf(environment) < 0) errs.push("environment must be one of " + JSON.stringify(SESSIONSV2_ENVIRONMENTS));
+  if (!staffUid)    errs.push("staff_uid is required");
+  if (!staffEmail)  errs.push("staff_email is required");
+  if (!customerId || !customerSlug) errs.push("customer_id / customer_slug is required");
+  if (!customerName) errs.push("customer_name is required");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) errs.push("service_date must be YYYY-MM-DD");
+  if (!Number.isInteger(attemptNumber) || attemptNumber < 1) errs.push("attempt_number must be integer >= 1");
+  if ((source === "tech_clock" || source === "scheduled_shell") && !assignmentId) {
+    errs.push("assignment_id is required when source is " + source);
+  }
+  if (expectedIn) {
+    const bad = expectedIn.filter(function (c) { return SESSIONSV2_COMPONENTS.indexOf(c) < 0; });
+    if (bad.length) errs.push("expected_components contains unknown names: " + JSON.stringify(bad));
+  }
+
+  if (errs.length) {
+    res.status(400).json({ ok: false, error: "Invalid payload", field_errors: errs });
+    return;
+  }
+
+  const expectedComponents = expectedIn || SESSIONSV2_DEFAULT_EXPECTED[sessionType] || ["clock", "payroll"];
+
+  const sessRef = db.collection("sessionsV2").doc(sessionId);
+
+  // Idempotency + archived-conflict check
+  let existing;
+  try {
+    existing = await sessRef.get();
+  } catch (err) {
+    logger.error("createSessionV2: idempotency lookup failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: "Idempotency lookup failed." });
+    return;
+  }
+  if (existing.exists) {
+    const ex = existing.data() || {};
+    if (ex.admin_removed === true) {
+      logger.info("createSessionV2: refused — session_id collides with archived", {
+        session_id: sessionId, caller_email: staff.email
+      });
+      res.status(409).json({
+        ok:    false,
+        error: "Session ID collides with an archived session. Use a different attempt_number or un-archive first.",
+        archived: true
+      });
+      return;
+    }
+    // Idempotent replay — verify identity match before accepting.
+    const identityMatch =
+      ex.staff_uid     === staffUid &&
+      ex.customer_slug === customerSlug &&
+      ex.service_date  === serviceDate;
+    if (!identityMatch) {
+      logger.warn("createSessionV2: idempotency identity mismatch", {
+        session_id: sessionId, caller_email: staff.email
+      });
+      res.status(409).json({
+        ok:    false,
+        error: "Session ID exists but identity (staff_uid/customer_slug/service_date) does not match.",
+        idempotency_mismatch: true
+      });
+      return;
+    }
+    logger.info("createSessionV2: idempotent replay", {
+      session_id: sessionId, caller_email: staff.email
+    });
+    res.status(200).json({
+      ok:         true,
+      session_id: sessionId,
+      created:    false,
+      idempotent: true
+    });
+    return;
+  }
+
+  // Build the new doc
+  const sts   = admin.firestore.FieldValue.serverTimestamp();
+  const actor = {
+    type:  "admin",
+    uid:   staff.uid,
+    email: staff.email,
+    name:  (staff.tech && staff.tech.display_name) || staff.email || "Admin"
+  };
+  const parentRouteId = "rt_" + staffUid + "_" + serviceDate;
+
+  const doc = {
+    // Identity (immutable)
+    session_id:        sessionId,
+    schema_version:    2,
+    source:            source,
+    environment:       environment,
+    attempt_number:    attemptNumber,
+    session_type:      sessionType,
+    client_session_id: clientSessId,
+
+    // Linkage (immutable)
+    assignment_id:     assignmentId,
+    staff_uid:         staffUid,
+    staff_email:       staffEmail,
+    customer_id:       customerId,
+    customer_slug:     customerSlug,
+    customer_name:     customerName,
+    location_id:       locationId,
+    service_date:      serviceDate,
+
+    // Route + scheduled context
+    parent_route_id:   parentRouteId,
+    scheduled:         scheduled,
+    actual_sequence:   null,
+
+    // Expected components + state machines
+    expected_components: expectedComponents,
+    components:          sessionsV2_buildComponents(expectedComponents),
+
+    // Lifecycle state
+    status:            "assigned",
+    status_changed_at: sts,
+    status_version:    1,
+
+    // Work timestamps (originals)
+    clock_in_at:        null,
+    clock_out_at:       null,
+    paused_intervals:   [],
+    max_distance_from_site_m: null,
+    clock_in_gps:       null,
+    clock_out_gps:      null,
+
+    // Refs
+    refs: {
+      photo_paths:        [],
+      dcr_id:             null,
+      dcr_submission_id:  null,
+      time_punch_ids:     [],
+      pending_queue_ids:  [],
+      email_message_ids:  []
+    },
+
+    // Supersede chain
+    supersedes_session_ids:    [],
+    superseded_by_session_id:  null,
+    superseded_at:             null,
+    superseded_reason:         null,
+    admin_removed:             false,
+
+    // Customer notification (initial state)
+    customer: {
+      email_sent_at:      null,
+      email_message_id:   null,
+      email_template:     null,
+      notification_state: "pending"
+    },
+
+    // Timeline (seeded with creation event)
+    timeline: [{
+      ts:           new Date(),
+      intent_ts:    null,
+      actor:        actor,
+      event:        "session.created",
+      title:        "Session created",
+      detail:       "Created by " + actor.email + " for " + customerName + " on " + serviceDate +
+                    (environment !== "production" ? " (environment: " + environment + ")" : ""),
+      icon:         "session-created",
+      field_path:   "status",
+      from:         null,
+      to:           "assigned",
+      ref:          null,
+      client:       null
+    }],
+
+    // Provenance
+    created_at:           sts,
+    created_by:           actor,
+    updated_at:           sts,
+    client_app_version:   clientAppVer,
+    client_intent_at:     null
+  };
+
+  try {
+    await sessRef.create(doc);
+  } catch (err) {
+    if (err && err.code === 6) {
+      // ALREADY_EXISTS race — return idempotent OK.
+      logger.info("createSessionV2: lost race, returning idempotent OK", { session_id: sessionId });
+      res.status(200).json({ ok: true, session_id: sessionId, created: false, idempotent: true });
+      return;
+    }
+    logger.error("createSessionV2 failed", {
+      error: err && err.message, stack: err && err.stack, session_id: sessionId
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Create failed" });
+    return;
+  }
+
+  logger.info("createSessionV2: created", {
+    session_id:    sessionId,
+    source:        source,
+    session_type:  sessionType,
+    environment:   environment,
+    staff_uid:     staffUid,
+    customer_slug: customerSlug,
+    service_date:  serviceDate,
+    caller_email:  staff.email
+  });
+
+  res.status(200).json({
+    ok:                  true,
+    session_id:          sessionId,
+    created:             true,
+    parent_route_id:     parentRouteId,
+    expected_components: expectedComponents
+  });
+});
+
+/* --------------- reconcileV1V2ParityV1 (Phase 34 stub) ---------------
+ *
+ * Placeholder Cloud Function for Phase 35+ dual-write reconciliation.
+ * In Phase 34 there are no V2 writers in production, so there is nothing
+ * to reconcile. Function logs and exits.
+ *
+ * Activated in Phase 35 when service-clock.js starts dual-writing.
+ */
+exports.reconcileV1V2ParityV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  logger.info("reconcileV1V2ParityV1: no-op (Phase 34 stub — no V2 writers in production)");
+  res.status(200).json({
+    ok:      true,
+    checked: 0,
+    skew:    0,
+    note:    "Phase 34 stub. Real reconciliation logic ships with Phase 35 dual-write."
+  });
+});
+
+/* ====================================================================
  * deputyApiDiagnosticV1 — read-only admin probe of Deputy's API.
  *
  * Purpose: confirm what entities Deputy actually exposes and what

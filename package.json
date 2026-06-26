@@ -3,7 +3,9 @@
     "test:dcr-email": "node scripts/test-dcr-email-local.js",
     "seed:rich-dcr-test": "node scripts/seed-rich-dcr-email-test.js",
     "test:dcr-email:rich": "DCR_ID=test-rich-dcr-nick CUSTOMER_ID=pioneer-commercial-cleaning-test TEST_RECIPIENT=nick@pioneercomclean.com node scripts/test-dcr-email-local.js",
-    "test:rules:sessionsV2": "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.rules.test.mjs\""
+    "test:rules:sessionsV2":  "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.rules.test.mjs\"",
+    "test:create:sessionsV2": "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.create.test.mjs\"",
+    "test:all:sessionsV2":    "npm run test:rules:sessionsV2 && npm run test:create:sessionsV2"
   },
   "dependencies": {
     "firebase": "^12.13.0",

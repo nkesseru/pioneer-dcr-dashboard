@@ -1,24 +1,40 @@
-# SessionV2 Schema — Phase 33
+# SessionV2 Schema — Phase 33 Foundation + Phase 34 Design
 
-**Status**: Schema landed 2026-06-25 (Phase 33). NO product writes. NO product reads. Inert. Backed by Firestore rules + composite indexes + Firebase Emulator rule-test suite. Slice 1 of Operation One Truth.
+**Status (2026-06-26)**: Phase 33 deployed to production (rules + indexes, no writers). Phase 34 design locked. This document is the canonical schema reference.
 
-**North Star principle (every implementation decision must serve this)**:
+**North Star** (every implementation decision must serve this):
 
-> The Session becomes the truth. A Session is ONE customer stop / assignment / job. A workday is just a container view over multiple independent Sessions. Sessions are reorderable blocks.
-
-See [[sessionsV2-architecture]] memory for the full 15-section architecture rationale.
+> The Session becomes the truth. A Session is ONE customer stop / assignment / job. A workday is just a container view over multiple independent Sessions. Sessions are reorderable blocks. Timeline is how humans understand Sessions.
 
 ---
 
-## Collections (Phase 33 scope)
+## Lifecycle principle (revised 2026-06-26)
 
-| Collection | Purpose | Phase 33 status |
+**Sessions are created when work actually begins — not when work is planned.**
+
+```
+Assignment exists                ← planned work (service_assignments)
+       │
+       │  Tech taps "Start Work"
+       ▼
+Session created                   ← actual work (sessionsV2) — this is the first durable record of reality
+```
+
+No-show signal lives on the **Assignment**, not on a missing Session. Mission Control reads BOTH collections: assignments-without-sessions = "tech missed scheduled work"; in-progress sessions stalled past threshold = "session stuck."
+
+**Session ID is pre-computable**: even though the doc isn't created until Start Work, the `session_id` is content-addressable from `assignment_id + service_date + attempt_number`. The client computes the ID the moment it loads the assignment so offline writes can target it.
+
+---
+
+## Collections (Phase 33 + 34)
+
+| Collection | Purpose | Phase 34 status |
 |---|---|---|
-| `sessionsV2/{session_id}` | **Primary** — one document per stop. Single source of truth for lifecycle, completion, payroll, supersede chain, audit. | Rules + indexes live; **no writers** |
-| `sessionsV2_open/{session_id}` | Mirror of sessions in `in_progress \| paused \| awaiting_completion` only. Cheap Mission Control query target. | Rules live; mirror Cloud Function deferred to Phase 34 |
-| `sessionsV2_active_by_tech/{staff_uid}` | Pointer to current open session per tech (max 1). Used by tech `/work` to resume. | Rules live; writer deferred to Phase 34 |
-| `session_audit_log/{session_id}/entries/{entry_id}` | Overflow store when embedded `audit_log[]` > 50 entries. | Rules live; CF writer deferred to Phase 34 |
-| `pending_session_writes/{queue_id}` | Unified offline queue (replaces `dcr_pending_uploads` + `pending_clock_events`). | Rules live; processor deferred to Phase 34 |
+| `sessionsV2/{session_id}` | **Primary** — one document per stop | Rules live; `createSessionV2` Cloud Function writes (flag-gated) |
+| `sessionsV2_open/{session_id}` | Mirror of `in_progress \| paused \| awaiting_completion`. Cheap Mission Control queries. | Rules live; mirror trigger deferred to Phase 35 |
+| `sessionsV2_active_by_tech/{staff_uid}` | Pointer to current open session per tech (max 1). | Rules live; writer deferred to Phase 35 |
+| `session_timeline/{session_id}/entries/{entry_id}` | Overflow store when embedded `timeline[]` > 50 entries | Rules live; CF writer deferred to Phase 35 |
+| `pending_session_writes/{queue_id}` | Unified offline queue (replaces `dcr_pending_uploads` + `pending_clock_events` at Phase 35) | Rules live; processor deferred to Phase 35 |
 
 ---
 
@@ -26,28 +42,35 @@ See [[sessionsV2-architecture]] memory for the full 15-section architecture rati
 
 Every Session has a content-addressable ID so the same logical stop converges to one document, even when the client is offline or two devices race.
 
-### Format by origin
+### Format
 
 | Origin | Format | Example |
 |---|---|---|
-| Tech clock (organic) | `sess_<assignment_id>_<service_date>` | `sess_aJ8kf3pQ_2026-06-25` |
-| Admin manual (Slice 1 today; will migrate at Phase 35) | `sess_manual_<staff_uid>_<service_date>_<customer_slug>` | `sess_manual_xbz4v8...PX92_2026-06-25_cedar-llc` |
-| Reschedule same assignment same day (rare) | `sess_<assignment_id>_<service_date>_<seq>` where `seq >= 2` | `sess_aJ8kf3pQ_2026-06-25_2` |
-| Auto-recovery (admin recreates lost session, Phase 35+) | `sess_recover_<original_id>_<epoch_ms>` | `sess_recover_aJ8kf3pQ_1735091200000` |
+| Tech-clock (organic, has assignment) | `sess_<assignment_id>_<service_date>_a<n>` | `sess_aJ8kf3pQ_2026-06-25_a1` |
+| Admin-manual (no assignment) | `sess_manual_<staff_uid>_<service_date>_<customer_slug>_a<n>` | `sess_manual_xbz4v8...PX92_2026-06-25_cedar-llc_a1` |
+| Auto-recovery (admin recreates lost session) | `sess_recover_<original_id>_a<n>` | `sess_recover_aJ8kf3pQ_2026-06-25_a1_a1` |
+
+### Why this format
+- **`assignment_id` is sufficient** when present — links to customer + location already. `customer_slug` is redundant for tech-clock and would cause ID drift if a customer is re-slugged.
+- **`service_date`** scopes to a calendar day (Pacific midnight), needed for biweekly/monthly recurring customers.
+- **`_a<n>` always present, starting at `_a1`**, including first attempt. Avoids forking codepaths between "first attempt" and "retry."
+- **`attempt` is for genuine redo only**, NOT for supersede. Supersede archives + creates a new ID with `_a2`. Reschedule-mid-day = `_a2`. Routine clean = `_a1` forever.
+- **`staff_uid` deliberately NOT in tech-clock ID**. A Session is ONE customer stop; the tech identity is a field, not part of identity. Tech-handoff mid-shift = same Session ID, timeline captures handoff.
+- **`staff_uid` IS in admin-manual ID** because there's no assignment to anchor identity.
 
 ### Validation rules
-
-- All four formats start with `sess_` (namespace guard against V1 collision)
+- All formats start with `sess_` (namespace guard against V1 collision)
 - ASCII only; lowercase customer slugs and dates
 - service_date format: `YYYY-MM-DD` (Pacific)
 - assignment_id, staff_uid: opaque IDs from existing collections; trust their format
-- seq: integer `>= 2` when present (first instance gets no suffix)
-- Total length cap: 256 bytes (Firestore doc-id limit is 1500; we cap lower for sanity)
+- attempt: positive integer `>= 1`; always explicitly present as `_a<n>` suffix
+- Total length cap: 256 bytes
 
-### Why deterministic
-- **Offline-first**: client computes ID before any network round trip; writes locally; syncs later
-- **Idempotency**: duplicate writes (network retry, two devices) hit the same doc
-- **Reverse lookup**: any artifact carrying `session_id` can resolve its session without joining
+### When `attempt` increments
+- First time tech starts work on this assignment+date → `_a1`
+- Tech aborts mid-session, admin marks failed, tech re-starts later same day → `_a2`
+- Admin supersede → new manual session at `_a<next>` (NOT same as original's attempt)
+- Normal biweekly clean two weeks later → different `service_date` so still `_a1`
 
 ---
 
@@ -59,94 +82,153 @@ Every Session has a content-addressable ID so the same logical stop converges to
 |---|---|---|---|
 | `session_id` | string | yes | Matches deterministic ID format |
 | `schema_version` | int | yes | Must be `2` |
-| `source` | string | yes | One of: `tech_clock`, `admin_manual`, `auto_recovery`, `scheduled_shell` |
-| `client_session_id` | string\|null | no | Device-generated UUID for offline reconciliation |
+| `source` | string | yes | `tech_clock` \| `admin_manual` \| `auto_recovery` \| `scheduled_shell` — describes HOW the session was created |
+| `environment` | string | yes | `production` \| `debug` \| `emulator` — describes WHERE the write happened; default `production`. Reconciliation/payroll/MC filter on this. |
+| `attempt_number` | int | yes | Always `>= 1`, parsed from `_a<n>` suffix |
+| `session_type` | string | yes | `office_cleaning` \| `supply_delivery` \| `inspection` \| `admin_manual_recovery` \| `other` — drives `expected_components` |
+| `client_session_id` | string \| null | no | Device-generated UUID for offline reconciliation |
+
+### Expected components (snapshot at create — historical sessions stay valid even if session_type defaults change later)
+
+| Field | Type | Notes |
+|---|---|---|
+| `expected_components` | Array<string> | Subset of `["clock", "gps", "photos", "checklist", "dcr", "customer_email", "payroll"]`. Drives derived completion. |
+
+#### `session_type` → `expected_components` defaults
+
+| session_type | expected_components |
+|---|---|
+| `office_cleaning` | `clock, gps, photos, checklist, dcr, customer_email, payroll` |
+| `supply_delivery` | `clock, gps, payroll` |
+| `inspection` | `clock, gps, photos, checklist` |
+| `admin_manual_recovery` | `clock, payroll` (admin decides on a per-session basis if more) |
+| `other` | `clock, payroll` (minimum) |
+
+Admin can override `expected_components` per-session at create or later.
 
 ### Linkage (immutable after create)
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `assignment_id` | string\|null | depends on source | Required for `tech_clock` / `scheduled_shell` |
+| `assignment_id` | string \| null | depends on source | Required for `tech_clock` / `scheduled_shell` |
 | `staff_uid` | string | yes | Firebase Auth UID |
 | `staff_email` | string | yes | Lowercase |
 | `customer_id` | string | yes | Slug (matches `customers/{id}`) |
 | `customer_slug` | string | yes | Denormalized copy of customer_id for clarity |
 | `customer_name` | string | yes | Denormalized display name at create time |
-| `location_id` | string\|null | no | If customer has multiple locations |
+| `location_id` | string \| null | no | If customer has multiple locations |
 | `service_date` | string | yes | `YYYY-MM-DD` Pacific |
+
+### Route grouping
+
+| Field | Type | Notes |
+|---|---|---|
+| `parent_route_id` | string | Deterministic: `rt_<staff_uid>_<service_date>`. No separate `routes/{id}` collection. |
+| `scheduled.sequence_planned` | int \| null | Original planned order in the route |
+| `actual_sequence` | int \| null | Order tech actually visited this stop (1 = first started, 2 = next, etc.); set when status transitions `ready → in_progress` |
+
+Sessions on the same route are reorderable. `actual_sequence != scheduled.sequence_planned` is expected and fine. Mission Control should never assume planned order equals actual order.
 
 ### Scheduled context (denormalized snapshot at create)
 
 | Field | Type | Notes |
 |---|---|---|
-| `scheduled.start_window` | Timestamp\|null | Planned arrival window start |
-| `scheduled.end_window` | Timestamp\|null | Planned arrival window end |
-| `scheduled.sequence_planned` | int\|null | Intended order in workday (informational only — actual order can differ) |
-| `scheduled.budget_minutes` | int\|null | Customer budget for this stop |
+| `scheduled.start_window` | Timestamp \| null | Planned arrival window start |
+| `scheduled.end_window` | Timestamp \| null | Planned arrival window end |
+| `scheduled.sequence_planned` | int \| null | (above) |
+| `scheduled.budget_minutes` | int \| null | Customer budget for this stop |
 
-### Lifecycle (single source of truth)
+### Lifecycle state (single source of truth)
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `status` | string | yes | See state machine below |
 | `status_changed_at` | Timestamp | yes | When current status was entered |
-| `status_version` | int | yes | Monotonic counter; CAS guard for concurrent writes |
+| `status_version` | int | yes | Monotonic; CAS guard for concurrent writes |
 
 ### Work timestamps
 
-`clock_in_at` / `clock_out_at` are **immutable originals** — once written, never overwritten. Admin corrections go to `effective_*` overlay.
+**`clock_in_at` / `clock_out_at` are immutable originals.** Admin corrections live in the `effective_*` overlay.
 
 | Field | Type | Notes |
 |---|---|---|
-| `clock_in_at` | Timestamp\|null | Tech-clock origin or admin-manual initial value |
-| `clock_out_at` | Timestamp\|null | Same |
+| `clock_in_at` | Timestamp \| null | Stamped when status transitions to `in_progress` |
+| `clock_out_at` | Timestamp \| null | Stamped when status transitions to `awaiting_completion` |
 | `paused_intervals` | Array<{start, end, reason}> | Append-only |
 
-### Admin overlay (admin/CF writes only)
+### Admin overlay (admin/Cloud Function writes only)
 
 | Field | Type | Notes |
 |---|---|---|
-| `effective_clock_in` | Timestamp\|null | Admin-corrected in-time |
-| `effective_clock_out` | Timestamp\|null | Admin-corrected out-time |
-| `effective_minutes` | int\|null | Derived: ceil((effective_out - effective_in) / 60s) |
+| `effective_clock_in` | Timestamp \| null | Admin-corrected in-time |
+| `effective_clock_out` | Timestamp \| null | Admin-corrected out-time |
+| `effective_minutes` | int \| null | Derived: `ceil((effective_out - effective_in) / 60s)` |
 
 ### GPS evidence
 
 | Field | Type | Notes |
 |---|---|---|
-| `clock_in_gps` | `{lat, lng, accuracy_m, ts, status}` | Status: `verified`, `allowed`, `denied`, `unknown` |
+| `clock_in_gps` | `{lat, lng, accuracy_m, ts, status}` | Status: `verified \| allowed \| denied \| unknown` |
 | `clock_out_gps` | same shape | |
 | `max_distance_from_site_m` | number | Computed during session |
 
-### Components (OR-merge semantics — once true, stays true unless explicitly unset by admin)
+### Components (state machines, uniform shape)
 
-| Field | Type | Notes |
-|---|---|---|
-| `components.clock_in_done` | bool | |
-| `components.clock_out_done` | bool | |
-| `components.photos_done` | bool | |
-| `components.photos_count` | int | |
-| `components.checklist_done` | bool | |
-| `components.checklist_pct` | int | 0–100 |
-| `components.dcr_done` | bool | |
-| `components.dcr_status` | string\|null | `pending`, `submitted`, `waived`, `skipped` |
-| `components.issues_logged_count` | int | |
-| `components.customer_email_sent` | bool | |
+Every Session has all component objects (uniform shape). Status starts at `not_applicable` for components not in `expected_components`. For expected components, status starts at `missing`.
 
-### Computed completion
+```
+components.<name> = {
+  status:        "not_applicable" | "missing" | "collecting" | "complete" | "failed" | "replaced",
+  started_at:    Timestamp | null,
+  last_event_at: Timestamp | null,
+  completed_at:  Timestamp | null,
+  last_event:    string | null,           // canonical timeline event name (alignment with Timeline)
+  error:         string | null,           // populated when status == "failed"
+  count:         number | null,           // photos: how many uploaded
+  pct:           number | null,           // checklist: percent complete
+  ref:           string | null            // dcr_id, email_message_id, etc.
+}
+```
 
-| Field | Type | Notes |
-|---|---|---|
-| `completion_pct` | int | 0–100. Recomputed on every component change by Cloud Function trigger (Phase 34+) |
-| `blockers` | Array<string> | Human-readable "what's missing" list, e.g. `["DCR not submitted", "Photos missing"]` |
+#### Component names (closed set)
+
+```
+clock           ← clock_in + clock_out as a single lifecycle
+gps             ← GPS evidence collected on clock_in/out
+photos          ← photo uploads
+checklist       ← task checklist items
+dcr             ← DCR submission / waiver
+customer_email  ← outbound customer notification
+payroll         ← payroll review + approval gate
+```
+
+### Derived completion (NOT persisted)
+
+There is **no `completion_pct` field**. Completion is computed dynamically by a shared `deriveCompletion(session)` function imported by every reader (admin UI, Mission Control, payroll preview, Cloud Function triggers).
+
+```
+function deriveCompletion(s) {
+  let expected = s.expected_components;
+  if (!expected || !expected.length) return { pct: 0, blockers: ["no expected_components"] };
+  let done = 0;
+  let blockers = [];
+  expected.forEach(c => {
+    if (s.components[c]?.status === "complete") done++;
+    else blockers.push(c + " (" + (s.components[c]?.status || "missing") + ")");
+  });
+  return { pct: Math.round(100 * done / expected.length), blockers };
+}
+```
+
+**Why**: future changes to `expected_components` for a session_type should not retroactively invalidate historical Sessions. Persisted completion creates drift.
 
 ### Sub-references (pointers, not data)
 
 | Field | Type | Notes |
 |---|---|---|
 | `refs.photo_paths` | Array<string> | GCS paths |
-| `refs.dcr_id` | string\|null | FK to `dcr_submissions/{id}` |
-| `refs.dcr_submission_id` | string\|null | Same as `dcr_id`; kept for back-compat |
+| `refs.dcr_id` | string \| null | FK to `dcr_submissions/{id}` |
+| `refs.dcr_submission_id` | string \| null | Same as `dcr_id`; kept for back-compat |
 | `refs.time_punch_ids` | Array<string> | FK to immutable `time_punches/{id}` |
 | `refs.pending_queue_ids` | Array<string> | Offline-queue records still draining |
 | `refs.email_message_ids` | Array<string> | Sent customer email IDs |
@@ -162,65 +244,115 @@ Every Session has a content-addressable ID so the same logical stop converges to
 | `payroll.regular_minutes` | int | OT engine output |
 | `payroll.overtime_minutes` | int | OT engine output |
 | `payroll.accrued_in_period_id` | string | e.g. `2026-06-B` |
-| `payroll.payroll_state` | string | `pending_review`, `reviewed`, `approved_for_payroll`, `exported`, `voided` |
+| `payroll.payroll_state` | string | `pending_review` \| `reviewed` \| `approved_for_payroll` \| `exported` \| `voided` \| `excluded_from_payroll` |
 | `payroll.workweek_locked_by_export` | bool | |
 | `payroll.approved_by` | `{uid, email, name}` \| null | |
-| `payroll.approved_at` | Timestamp\|null | |
-| `payroll.exported_in` | string\|null | `payroll_exports/{export_id}` |
-| `payroll.exported_at` | Timestamp\|null | |
+| `payroll.approved_at` | Timestamp \| null | |
+| `payroll.exported_in` | string \| null | `payroll_exports/{export_id}` |
+| `payroll.exported_at` | Timestamp \| null | |
+| `payroll.excluded_reason` | string \| null | When `payroll_state == "excluded_from_payroll"` |
 
 ### Supersede chain
 
 | Field | Type | Notes |
 |---|---|---|
 | `supersedes_session_ids` | Array<string> | Sessions this one replaces |
-| `superseded_by_session_id` | string\|null | Session that replaced this one |
-| `superseded_at` | Timestamp\|null | |
-| `superseded_reason` | string\|null | |
+| `superseded_by_session_id` | string \| null | Session that replaced this one |
+| `superseded_at` | Timestamp \| null | |
+| `superseded_reason` | string \| null | |
 | `admin_removed` | bool | Standard archive flag |
 
 ### Customer notification
 
 | Field | Type | Notes |
 |---|---|---|
-| `customer.email_sent_at` | Timestamp\|null | |
-| `customer.email_message_id` | string\|null | |
-| `customer.email_template` | string\|null | |
-| `customer.notification_state` | string | `pending`, `sent`, `failed`, `suppressed` |
+| `customer.email_sent_at` | Timestamp \| null | |
+| `customer.email_message_id` | string \| null | |
+| `customer.email_template` | string \| null | |
+| `customer.notification_state` | string | `pending \| sent \| failed \| suppressed` |
 
-### Audit log (append-only, capped at 50 entries)
+### Timeline (append-only, capped at 50 entries, first-class)
 
-Embedded array of:
+**Timeline is how humans understand Sessions.** Every state transition + every meaningful action emits a Timeline entry. Operators read Timeline to understand "what happened to this Session." Compliance/audit also reads Timeline — the same record serves both needs.
+
+Embedded array:
 ```
-{
-  ts: Timestamp,
-  actor: { type: "tech"|"admin"|"system", uid, email, name },
-  event: <canonical event name>,
-  field_path: string|null,
-  from: any,
-  to: any,
-  note: string|null,
-  client: { app_version, platform, network } | null
-}
+timeline = [
+  {
+    ts:           Timestamp,                                 // server time
+    intent_ts:    Timestamp | null,                          // device clock at event (offline reconciliation)
+    actor:        { type: "tech"|"admin"|"system", uid, email, name },
+    event:        string,                                    // canonical event name (see below)
+    title:        string,                                    // human-readable headline ("Tech started cleaning")
+    detail:       string | null,                             // human-readable detail ("Bonnie clocked in at 8:02 AM, 12 m from site")
+    icon:         string | null,                             // semantic key ("clock-in", "photo-upload", "warning")
+    field_path:   string | null,                             // technical: which session field changed
+    from:         any,                                       // technical: previous value
+    to:           any,                                       // technical: new value
+    ref:          string | null,                             // pointer to related artifact (photo_id, dcr_id, etc.)
+    client:       { app_version, platform, network } | null
+  },
+  ...
+]
 ```
 
-Overflow (>50 entries) moves to `session_audit_log/{session_id}/entries/{auto_id}`.
+Overflow (>50 entries) moves to `session_timeline/{session_id}/entries/{auto_id}`. Embedded array always shows the latest 50 in chronological order.
 
-#### Canonical event names
+#### Canonical Timeline events (closed enum, human-first)
 
 ```
-session.created   session.status_changed   session.client_resumed
-clock.in          clock.out                clock.intent_recorded
-pause.start       pause.end
-photos.uploaded   photos.deleted
-checklist.updated checklist.completed
-dcr.submitted     dcr.waived               dcr.skipped
-issue.logged
-payroll.approved  payroll.unapproved       payroll.exported  payroll.voided
-customer.email_sent  customer.email_failed
-admin.correction  admin.supersede          admin.recover  admin.archive
-system.recovery   system.queue_drain       system.reconciliation_alert
+# Lifecycle
+session.created            "Session created"
+session.opened             "Tech opened assignment"
+session.status_changed     "Status: <from> -> <to>"
+session.client_resumed     "Tech resumed session after disconnect"
+
+# Clock + GPS
+clock.in                   "Tech started cleaning"
+clock.out                  "Tech finished cleaning"
+clock.intent_recorded      "Clock intent recorded (offline)"
+pause.start                "Paused"
+pause.end                  "Resumed"
+
+# Components
+photos.first               "First photo uploaded"
+photos.uploaded            "Photo uploaded"
+photos.complete            "All required photos uploaded"
+photos.deleted             "Photo deleted"
+checklist.updated          "Checklist progress: <pct>%"
+checklist.complete         "Checklist completed"
+dcr.submitted              "DCR submitted to customer"
+dcr.waived                 "DCR waived"
+dcr.skipped                "DCR skipped"
+issue.logged               "Issue logged"
+
+# Payroll
+payroll.review_ready       "Ready for payroll review"
+payroll.approved           "Approved for payroll"
+payroll.unapproved         "Approval reverted"
+payroll.exported           "Sent to payroll export"
+payroll.voided             "Payroll voided"
+payroll.excluded           "Excluded from payroll"
+
+# Customer
+customer.email_sent        "Customer notified"
+customer.email_failed      "Customer email failed"
+
+# Admin actions
+admin.correction           "Admin corrected <field>"
+admin.supersede            "Superseded by manual session"
+admin.recover              "Recovered by admin"
+admin.archive              "Archived"
+admin.expected_components_changed "Required components updated"
+
+# System
+session.locked             "Locked in payroll period"
+system.recovery            "Auto-recovered from offline queue"
+system.queue_drain         "Offline queue drained"
+system.reconciliation_alert "Reconciliation alert raised"
 ```
+
+Every state transition writes a `session.status_changed` Timeline entry. Every state transition is observable to operators without reading code.
 
 ### Provenance + bookkeeping
 
@@ -230,11 +362,11 @@ system.recovery   system.queue_drain       system.reconciliation_alert
 | `created_by` | `{type, uid, email, name}` | |
 | `updated_at` | Timestamp | |
 | `client_app_version` | string | |
-| `client_intent_at` | Timestamp\|null | Device-clock at write time; skew detection |
+| `client_intent_at` | Timestamp \| null | Device-clock at write time; skew detection |
 
 ---
 
-## State machine
+## State machine (with `pending_payroll_review` and Timeline)
 
 ```
                  [admin schedule]
@@ -253,11 +385,15 @@ system.recovery   system.queue_drain       system.reconciliation_alert
                        v
               awaiting_completion
                        |
-              [all components.* true]
+              [all expected components complete]
                        v
                    complete
-                       v [admin approve]
+                       v [auto on entering complete]
+            pending_payroll_review     <-- explicit no-auto-approval gate
+                       v [admin approve from Labor Review]
               payroll_approved
+                       v [payroll export]
+                    exported
                        v [email sent / suppressed]
               customer_notified
                        v [period lock]
@@ -268,25 +404,9 @@ system.recovery   system.queue_drain       system.reconciliation_alert
   ANY state ----[admin supersede / admin remove]----> archived
 ```
 
-### Transition matrix
+**Every transition emits a Timeline entry**: `event: "session.status_changed"`, `from: <prev>`, `to: <next>`, plus a human title. Operators see the lifecycle without reading code.
 
-| From → To | Trigger | Who can do it |
-|---|---|---|
-| `assigned → ready` | Tech opens assignment | Tech (own) |
-| `ready → in_progress` | clock_in event | Tech (own) / CF |
-| `in_progress → paused` | Pause event | Tech (own) |
-| `paused → in_progress` | Resume event | Tech (own) |
-| `in_progress\|paused → awaiting_completion` | clock_out event | Tech (own) / CF |
-| `awaiting_completion → complete` | All `components.*_done` true | CF trigger only |
-| `complete → payroll_approved` | Admin approve | Admin / CF |
-| `payroll_approved → customer_notified` | Email sent / suppressed | CF trigger |
-| `customer_notified → locked` | Period lock | CF (lockPayrollPeriod) |
-| `payroll_approved → complete` | Admin unapprove | Admin |
-| `complete → awaiting_completion` | Admin "needs more" | Admin (rare) |
-| `locked → payroll_approved` | Admin unlock period | Admin |
-| ANY → `archived` | Admin supersede / remove | Admin |
-
-### Tech-allowed transitions (enforced by Firestore rules)
+### Tech-allowed transitions (rule-enforced)
 
 Tech direct-write to `status` is permitted ONLY for:
 - `assigned → ready`
@@ -296,10 +416,30 @@ Tech direct-write to `status` is permitted ONLY for:
 - `in_progress → awaiting_completion`
 - `paused → awaiting_completion`
 
-All other transitions require admin or Cloud Function.
+All other transitions require admin or Cloud Function. The `complete → pending_payroll_review` transition is CF-trigger only (auto on all-components-complete).
+
+### Transition matrix (full)
+
+| From → To | Trigger | Who can do it |
+|---|---|---|
+| `assigned → ready` | Tech opens assignment | Tech (own) |
+| `ready → in_progress` | clock_in event | Tech (own) / CF |
+| `in_progress → paused` | Pause event | Tech (own) |
+| `paused → in_progress` | Resume event | Tech (own) |
+| `in_progress\|paused → awaiting_completion` | clock_out event | Tech (own) / CF |
+| `awaiting_completion → complete` | All expected components have `status = complete` | CF trigger only |
+| `complete → pending_payroll_review` | Auto on entering `complete` | CF trigger only |
+| `pending_payroll_review → payroll_approved` | Admin clicks Approve in Labor Review | Admin only |
+| `payroll_approved → exported` | Payroll export CSV run | CF (`exportPayrollCsv`) |
+| `exported → customer_notified` | Email sent / suppressed | CF trigger |
+| `customer_notified → locked` | Period lock | CF (`lockPayrollPeriod`) |
+| `payroll_approved → pending_payroll_review` | Admin unapprove | Admin |
+| `pending_payroll_review → complete` | Admin "needs more" | Admin (rare) |
+| `locked → payroll_approved` | Admin unlock period | Admin |
+| ANY → `archived` | Admin supersede / remove | Admin |
 
 ### Forbidden once `locked`
-Direct edits to `clock_in_at`, `clock_out_at`, `effective_*`, `payroll.*`, `components.*` are denied. Admin must explicitly unlock the period first (mirrors today's Phase 29E-B pattern).
+Direct edits to `clock_in_at`, `clock_out_at`, `effective_*`, `payroll.*`, `components.*` denied at the rule layer. Admin must explicitly unlock the period first.
 
 ### Forbidden once `archived`
 All writes denied (`admin_removed === true` is the gate). Admin must un-archive first.
@@ -312,13 +452,18 @@ All writes denied (`admin_removed === true` is the gate). Admin must un-archive 
 2. **Sessions are never deleted**: `allow delete: if false` on all sessionsV2 paths. Archive only.
 3. **Locked sessions are read-only at field level**: rules block writes to time/payroll/components when `status == "locked"`.
 4. **Tech cannot write payroll**: `payroll.*` and `effective_*` field paths denied to tech writers by rule.
-5. **Schema version must be 2** at create time.
-6. **Source must be in closed enum**: `tech_clock | admin_manual | auto_recovery | scheduled_shell`.
-7. **No silent identity changes**: `staff_uid`, `assignment_id`, `customer_id`, `service_date`, `source`, `created_at`, `created_by` immutable after create.
+5. **Tech cannot write `environment`**: must default to `production`. Only Cloud Function / admin can set `debug` or `emulator`.
+6. **Schema version must be 2** at create time.
+7. **Source must be in closed enum**: `tech_clock \| admin_manual \| auto_recovery \| scheduled_shell`.
+8. **Environment must be in closed enum**: `production \| debug \| emulator`.
+9. **No silent identity changes**: `staff_uid`, `assignment_id`, `customer_id`, `service_date`, `source`, `session_type`, `attempt_number`, `parent_route_id`, `created_at`, `created_by` immutable after create.
+10. **Completion is never persisted**: no `completion_pct` field; derived at read time.
+11. **No auto-approval to payroll**: `complete → pending_payroll_review` is the gate (lesson from 2026-06-25 incident); admin must explicitly approve.
+12. **Timeline is append-only**: existing entries never modified; new entries appended.
 
 ---
 
-## Composite indexes
+## Composite indexes (Phase 33 + Phase 34 additions)
 
 | Collection | Fields | Use case |
 |---|---|---|
@@ -326,30 +471,42 @@ All writes denied (`admin_removed === true` is the gate). Admin must un-archive 
 | `sessionsV2` | `(staff_uid ASC, service_date DESC)` | Admin Labor Review per-tech view |
 | `sessionsV2` | `(service_date ASC, payroll.payroll_state ASC, admin_removed ASC)` | Payroll export filter |
 | `sessionsV2` | `(assignment_id ASC, service_date ASC)` | Uniqueness check at create |
-| `sessionsV2_open` | `(staff_uid ASC)` | Tech /work resume query |
+| `sessionsV2` | `(parent_route_id ASC, actual_sequence ASC)` | Today's route view, sorted by visit order — **NEW Phase 34** |
+| `sessionsV2` | `(environment ASC, service_date ASC)` | Reconciliation filter (`environment != "debug"`) — **NEW Phase 34** |
+| `sessionsV2_open` | `(staff_uid ASC, updated_at DESC)` | Tech /work resume query |
 | `pending_session_writes` | `(status ASC, next_attempt_at ASC)` | Queue processor scan |
 
 ---
 
-## What Phase 33 does NOT include (deferred to later phases)
+## Phase 33 completed deliverables
 
-- Tech `/work` UI writing to `sessionsV2` (Phase 34)
-- Admin UI reading from `sessionsV2` (Phase 36/37)
-- `submitDcrV1` stamping `session_id` (Phase 35)
-- Photo upload appending to `refs.photo_paths` (Phase 35)
-- Payroll export reading from `sessionsV2` (Phase 36)
-- Mission Control "Incomplete Sessions" tile (Phase 37)
-- Customer email Cloud Function trigger (Phase 38)
-- Removal of V1 reconciliation logic (Phase 39)
-- Backfill of historic V1 sessions into V2 (Phase 34 start)
+- Schema (this document)
+- Firestore rules (5 collection blocks + 3 helpers)
+- 6 composite indexes
+- 61 emulator rule tests
+- Deployed to production 2026-06-25 (`firebase deploy --only firestore:rules,firestore:indexes`)
+- Zero writers — collection is inert
 
-## Phase 33 deliverables (this slice)
+## Phase 34 scope (this slice)
 
-- [x] Schema specification (this document)
-- [x] Firestore rules (`firestore.rules` block + helpers)
-- [x] Composite indexes (`firestore.indexes.json`)
-- [x] Emulator rule-test suite (`test/sessionsV2.rules.test.js`)
-- [x] Optional inert `createSessionV2` Cloud Function (gated by `SESSION_V2_ENABLED=false`)
-- [x] Phase 34 readiness checklist (`docs/sessionsV2/PHASE34_READINESS.md`)
+- `createSessionV2` Cloud Function (admin-only, flag-gated, idempotent)
+- `SESSION_V2_ENABLED` Cloud Function env flag (default `false` → 503)
+- `SESSION_V2_DEBUG_UI_ENABLED` flag for the admin debug tab
+- `reconcileV1V2ParityV1` Cloud Function stub (logs "no V2 sessions to reconcile" until Phase 35)
+- `/admin` SessionV2 Debug tab (flag-gated) — single create button + recent debug sessions list with Timeline expanded
+- Rules updated: `timeline` replaces `audit_log`; `environment` and `expected_components` field gates added
+- 2 new composite indexes (`parent_route_id`, `environment`)
+- Functional emulator tests for `createSessionV2`
+- Admin debug-stamped sessions get `environment: "debug"` and are filtered out by reconciliation/payroll/Mission Control queries
 
-No production behavior changes. No product wiring. No deploys until emulator QA passes.
+## What Phase 34 does NOT include (deferred to later phases)
+
+- Tech `/work` writing to V2 (Phase 35)
+- `service-clock.js` modifications (Phase 35)
+- `submitDcrV1` modifications (Phase 36)
+- Photo upload modifications (Phase 36)
+- Payroll export reader (Phase 37)
+- Mission Control reader (Phase 38)
+- Customer email pipeline (Phase 39)
+- Removal of V1 reconciliation logic (Phase 40)
+- Backfill of historic V1 sessions (Phase 34b — separate slice after createSessionV2 verified safe)
