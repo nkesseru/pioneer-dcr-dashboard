@@ -1725,6 +1725,31 @@
     });
 
     logSC("clock-in OK", { assignment: assignmentId });
+
+    // 2026-06-26 Phase 35a — SessionV2 dual-write (fire-and-forget,
+    // best-effort). V1 transaction above is authoritative; this helper
+    // exits silently when the global flag is off, the per-user allowlist
+    // doesn't include the caller, or the V2 endpoint returns 503. On
+    // genuine failure the helper enqueues a retry to pending_session_writes.
+    // It never throws — V1 success path must remain unchanged.
+    try {
+      if (self.PIONEER_SESSIONS_V2) {
+        const _asgForV2 = assignments.find(function (x) { return x._id === assignmentId; }) || {};
+        self.PIONEER_SESSIONS_V2.maybeDualWriteClockIn({
+          v1_session_id: sessionRef.id,
+          assignment_id: assignmentId,
+          service_date:  today,
+          staff_uid:     currentStaff.uid,
+          staff_email:   staffEmail,
+          assignment:    _asgForV2
+        }).catch(function (e) {
+          logSC("sessionV2 dual-write failed (V1 already saved)", e && (e.message || String(e)));
+        });
+      }
+    } catch (_v2err) {
+      logSC("sessionV2 dual-write skipped (helper unavailable)", _v2err && (_v2err.message || String(_v2err)));
+    }
+
     // 2026-06-22 Phase 32A — transaction confirmed; breadcrumb served
     // its purpose. Clear it so the next page load doesn't show a
     // false-positive retry banner.

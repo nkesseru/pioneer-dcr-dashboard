@@ -571,6 +571,19 @@
     registerTabActivator("payroll-exceptions", window.__pioneerAdmin.tabs.payrollExceptions.refresh);
     registerTabActivator("sick-leave",      window.__pioneerAdmin.tabs.sickLeave.refresh);
     registerTabActivator("office-issues",   window.__pioneerAdmin.tabs.officeIssues.refresh);
+
+    // SessionV2 Canary harness (Phase 35a-canary). Tab pill + group are
+    // hidden by default in admin.html; revealed when the flag is on.
+    if (window.SESSION_V2_DEBUG_UI_ENABLED === true) {
+      const g = document.getElementById("admin-tabs-group-sessionsv2-debug");
+      const t = document.getElementById("admin-tab-sessionsv2-canary");
+      if (g) g.hidden = false;
+      if (t) t.hidden = false;
+      if (window.__pioneerAdmin.tabs.sessionsv2Canary) {
+        window.__pioneerAdmin.tabs.sessionsv2Canary.init();
+        registerTabActivator("sessionsv2-canary", window.__pioneerAdmin.tabs.sessionsv2Canary.refresh);
+      }
+    }
     registerTabActivator("tech-health",     window.__pioneerAdmin.tabs.techHealth.refresh);
     registerTabActivator("pilot-readiness", window.__pioneerAdmin.tabs.pilotReadiness.init);
     registerTabActivator("yesterday",       window.__pioneerAdmin.tabs.yesterdaysWork.init);

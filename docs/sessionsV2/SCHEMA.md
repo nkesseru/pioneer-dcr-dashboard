@@ -82,7 +82,7 @@ Every Session has a content-addressable ID so the same logical stop converges to
 |---|---|---|---|
 | `session_id` | string | yes | Matches deterministic ID format |
 | `schema_version` | int | yes | Must be `2` |
-| `source` | string | yes | `tech_clock` \| `admin_manual` \| `auto_recovery` \| `scheduled_shell` — describes HOW the session was created |
+| `source` | string | yes | `tech_clock` \| `admin_manual` \| `auto_recovery` \| `scheduled_shell` \| `canary` — describes HOW the session was created. `canary` is reserved for the Phase 35a debug harness; always paired with `environment: "debug"` |
 | `environment` | string | yes | `production` \| `debug` \| `emulator` — describes WHERE the write happened; default `production`. Reconciliation/payroll/MC filter on this. |
 | `attempt_number` | int | yes | Always `>= 1`, parsed from `_a<n>` suffix |
 | `session_type` | string | yes | `office_cleaning` \| `supply_delivery` \| `inspection` \| `admin_manual_recovery` \| `other` — drives `expected_components` |

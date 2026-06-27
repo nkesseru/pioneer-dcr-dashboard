@@ -2354,6 +2354,64 @@
       <p class="app-footer-help">Questions? <a href="mailto:info@pioneercomclean.com">info@pioneercomclean.com</a></p>
       <p>Pioneer Commercial Cleaning · <code>pioneer-dcr-hub</code> · Admin</p>
     </footer>
+
+    <!-- ================== SessionV2 Canary (Phase 35a-canary harness) ==================
+         Hidden unless window.SESSION_V2_DEBUG_UI_ENABLED === true.
+         Function-first UI. All canary writes go to sessionsV2 with
+         environment=debug AND source=canary. See docs/sessionsV2/CANARY_HARNESS.md
+    -->
+    <section class="card admin-panel" data-panel="sessionsv2-canary" role="tabpanel" hidden>
+      <header class="panel-header">
+        <div>
+          <h2 class="card-title">SessionV2 Canary</h2>
+          <p class="panel-sub">Phase 35a debug harness. All writes are environment=debug, source=canary. No V1 sessions, no time_punches, no payroll, no DCRs.</p>
+        </div>
+      </header>
+
+      <div style="padding:10px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;margin:12px 0;font-size:13px;color:#78350f;">
+        <strong>DEBUG HARNESS — admin only.</strong> Requires <code>SESSION_V2_ENABLED=true</code> on the server. All buttons exercise the same <code>sessionsV2-client.js</code> helper used by the production splice. Cleanup defaults to <code>dry_run: true</code>.
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;">
+        <button type="button" id="sv2c-btn-diagnose"      class="mc-btn">1. Diagnose</button>
+        <button type="button" id="sv2c-btn-compute-id"    class="mc-btn">2. Compute ID</button>
+        <button type="button" id="sv2c-btn-create"        class="mc-btn">3. Create canary session</button>
+        <button type="button" id="sv2c-btn-recreate"      class="mc-btn">4. Re-create same (idempotency)</button>
+        <button type="button" id="sv2c-btn-read-back"     class="mc-btn">5. Read back</button>
+        <button type="button" id="sv2c-btn-reconcile"     class="mc-btn">6. Run reconciliation</button>
+        <button type="button" id="sv2c-btn-cleanup-dry"   class="mc-btn">7. Cleanup (DRY RUN)</button>
+        <button type="button" id="sv2c-btn-cleanup-apply" class="mc-btn" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;">8. Cleanup (APPLY)</button>
+        <button type="button" id="sv2c-btn-clear-pane"    class="mc-btn">Clear result pane</button>
+      </div>
+
+      <label for="sv2c-result" style="display:block;font-size:12px;font-weight:600;color:var(--mc-ink-soft);margin-top:8px;">Result pane (latest entries at top)</label>
+      <textarea id="sv2c-result" readonly
+                style="width:100%;height:480px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:10px;border:1px solid #d1d5db;border-radius:6px;background:#0d1218;color:#e5e7eb;line-height:1.45;"
+                placeholder="Click a button to begin."></textarea>
+    </section>
+
+    <!-- ================== SessionV2 Canary cleanup confirm modal ==================
+         Replaces window.confirm() for the Cleanup APPLY action. Same text,
+         same safety, no native dialog (Chrome-automation compatible). -->
+    <div id="sv2c-confirm-modal" class="admin-modal" hidden aria-hidden="true">
+      <div class="admin-modal-backdrop" data-modal-close></div>
+      <div class="admin-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sv2c-confirm-title">
+        <header class="admin-modal-header">
+          <h2 id="sv2c-confirm-title">Confirm cleanup</h2>
+          <button class="admin-modal-close" type="button" data-modal-close aria-label="Close">&times;</button>
+        </header>
+        <div class="admin-modal-body">
+          <p>Apply cleanup? This will <strong>DELETE</strong> all <code>sessionsV2</code> docs where <code>environment=debug</code> AND <code>source=canary</code>.</p>
+          <p class="field-hint" style="margin-top:8px;">Safe: cleanup function asserts every doc matches both filters before deletion. Production data is untouched.</p>
+        </div>
+        <footer class="admin-modal-footer">
+          <div class="admin-modal-err" id="sv2c-confirm-err" hidden></div>
+          <button type="button" class="modal-btn-cancel" data-modal-close>Cancel</button>
+          <button type="button" class="modal-btn-save" id="sv2c-confirm-apply" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;">Delete canary docs</button>
+        </footer>
+      </div>
+    </div>
+
   </main>
 
   <!-- ================== Customer edit modal ================== -->
@@ -4027,7 +4085,11 @@
   <script src="admin/tab-mission-control.js?v=20260623-phase32c1"></script>
   <script src="admin/tab-sick-leave.js?v=20260614b-seed-fallback"></script>
   <script src="admin/tab-office-issues.js?v=20260616b-getcount"></script>
-  <script src="admin.js?v=20260615d-strip-logs"></script>
+  <!-- SessionV2 Canary harness — flag-gated. Always loaded; tab visibility
+       controlled by window.SESSION_V2_DEBUG_UI_ENABLED. -->
+  <script src="lib/sessionsV2-client.js?v=20260626-phase35a-canary-modal"></script>
+  <script src="admin/tab-sessionsv2-canary.js?v=20260626-phase35a-canary-modal"></script>
+  <script src="admin.js?v=20260626-phase35a-canary-modal"></script>
   <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
 </html>

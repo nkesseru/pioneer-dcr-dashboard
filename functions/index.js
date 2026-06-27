@@ -8003,7 +8003,7 @@ exports.seedPilotCustomerAliasesV1 = onRequest({ cors: false, timeoutSeconds: 30
  * reads. Phase 35+ light up each of those independently.
  * ==================================================================== */
 
-const SESSIONSV2_SOURCES      = ["tech_clock", "admin_manual", "auto_recovery", "scheduled_shell"];
+const SESSIONSV2_SOURCES      = ["tech_clock", "admin_manual", "auto_recovery", "scheduled_shell", "canary"];
 const SESSIONSV2_ENVIRONMENTS = ["production", "debug", "emulator"];
 const SESSIONSV2_TYPES        = ["office_cleaning", "supply_delivery", "inspection", "admin_manual_recovery", "other"];
 const SESSIONSV2_COMPONENTS   = ["clock", "gps", "photos", "checklist", "dcr", "customer_email", "payroll"];
@@ -8342,7 +8342,148 @@ exports.createSessionV2 = onRequest({
  *
  * Activated in Phase 35 when service-clock.js starts dual-writing.
  */
+/* Phase 35a reconcileV1V2ParityV1 — V1<->V2 parity check.
+ *
+ * Reads sessionsV2 docs from the last `lookback_hours` (default 24) where
+ * source=tech_clock AND environment=production. For each, verifies the
+ * v1_session_id back-pointer resolves to an existing V1 pioneer_service_sessions
+ * doc whose key identity fields match.
+ *
+ * Returns a JSON summary. Skew is logged at logger.warn so it surfaces in
+ * Cloud Logging dashboards. Phase 35a does NOT email summaries (Phase 35c
+ * scheduled email summary work).
+ *
+ * Phase 35a explicitly does NOT:
+ *   - check the inverse (V1-with-allowlisted-tech but missing V2) — Phase 35b
+ *   - retry queue entries — Phase 35c worker
+ *   - compare clock_in_at timestamps (V2 has serverTimestamp from create,
+ *     V1 also has serverTimestamp from clock-in transaction; small skew is
+ *     normal)
+ */
 exports.reconcileV1V2ParityV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+  const lookbackHours = (typeof body.lookback_hours === "number" && body.lookback_hours > 0 && body.lookback_hours <= 168)
+    ? body.lookback_hours
+    : 24;
+  const cutoffMs = Date.now() - (lookbackHours * 60 * 60 * 1000);
+
+  try {
+    // Query V2 docs in window. Filter on environment=production + tech_clock source.
+    const v2Snap = await db.collection("sessionsV2")
+      .where("environment", "==", "production")
+      .where("service_date", ">=", new Date(cutoffMs).toISOString().slice(0, 10))
+      .get();
+    const v2Docs = v2Snap.docs
+      .map(function (d) { return Object.assign({ _id: d.id }, d.data() || {}); })
+      .filter(function (s) { return s.source === "tech_clock"; });
+
+    let checked = 0;
+    let okCount = 0;
+    let missingV1Pointer = 0;
+    let v1NotFound = 0;
+    let identityMismatch = 0;
+    const skewDetails = [];
+
+    for (let i = 0; i < v2Docs.length; i++) {
+      const v2 = v2Docs[i];
+      checked++;
+      const v1Id = v2.v1_session_id;
+      if (!v1Id) {
+        missingV1Pointer++;
+        skewDetails.push({ kind: "missing_v1_pointer", v2_session_id: v2._id });
+        continue;
+      }
+      const v1Snap = await db.collection("pioneer_service_sessions").doc(v1Id).get();
+      if (!v1Snap.exists) {
+        v1NotFound++;
+        skewDetails.push({ kind: "v1_not_found", v2_session_id: v2._id, v1_session_id: v1Id });
+        continue;
+      }
+      const v1 = v1Snap.data() || {};
+      const mismatch = [];
+      if (v1.staff_uid !== v2.staff_uid)          mismatch.push("staff_uid");
+      if (v1.assignment_id !== v2.assignment_id)  mismatch.push("assignment_id");
+      if (v1.service_date !== v2.service_date)    mismatch.push("service_date");
+      if (mismatch.length) {
+        identityMismatch++;
+        skewDetails.push({
+          kind: "identity_mismatch",
+          v2_session_id: v2._id,
+          v1_session_id: v1Id,
+          fields: mismatch
+        });
+        continue;
+      }
+      okCount++;
+    }
+
+    const skewTotal = missingV1Pointer + v1NotFound + identityMismatch;
+    const summary = {
+      ok:                  true,
+      lookback_hours:      lookbackHours,
+      v2_docs_checked:     checked,
+      v2_matched_v1_ok:    okCount,
+      skew_total:          skewTotal,
+      missing_v1_pointer:  missingV1Pointer,
+      v1_not_found:        v1NotFound,
+      identity_mismatch:   identityMismatch,
+      skew_details:        skewDetails.slice(0, 50)   // cap embedded; full set in logs
+    };
+
+    if (skewTotal > 0) {
+      logger.warn("reconcileV1V2ParityV1: SKEW DETECTED", summary);
+    } else {
+      logger.info("reconcileV1V2ParityV1: clean", {
+        checked: checked, lookback_hours: lookbackHours
+      });
+    }
+
+    res.status(200).json(summary);
+  } catch (err) {
+    logger.error("reconcileV1V2ParityV1 failed", {
+      error: err && err.message, stack: err && err.stack
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Reconcile failed" });
+  }
+});
+
+/* --------------- cleanupSessionV2CanaryV1 ---------------
+ *
+ * Phase 35a-canary harness cleanup. Admin-only. Deletes ONLY sessionsV2
+ * docs that match BOTH environment="debug" AND source="canary".
+ *
+ * Defense in depth:
+ *   1. Admin role required
+ *   2. Query filtered on environment + source
+ *   3. Each candidate doc re-asserted before delete
+ *   4. dry_run defaults to true; operator must pass {dry_run: false}
+ *   5. Hard cap (50 docs per invocation) - canary runs shouldn't accumulate
+ *      that many; if we hit the cap something is wrong
+ *
+ * Returns: { ok, dry_run, scanned, matched, deleted, refused, ids[] }
+ */
+exports.cleanupSessionV2CanaryV1 = onRequest({
   cors:           false,
   timeoutSeconds: 30
 }, async (req, res) => {
@@ -8364,13 +8505,114 @@ exports.reconcileV1V2ParityV1 = onRequest({
     return;
   }
 
-  logger.info("reconcileV1V2ParityV1: no-op (Phase 34 stub — no V2 writers in production)");
-  res.status(200).json({
-    ok:      true,
-    checked: 0,
-    skew:    0,
-    note:    "Phase 34 stub. Real reconciliation logic ships with Phase 35 dual-write."
-  });
+  const body = req.body || {};
+  // dry_run defaults true - operator must explicitly opt in to deletion
+  const dryRun = (body.dry_run === false) ? false : true;
+  const HARD_CAP = 50;
+
+  try {
+    const snap = await db.collection("sessionsV2")
+      .where("environment", "==", "debug")
+      .where("source",      "==", "canary")
+      .limit(HARD_CAP + 1)
+      .get();
+
+    const candidates = snap.docs.map(function (d) {
+      return Object.assign({ _id: d.id, _ref: d.ref }, d.data() || {});
+    });
+
+    if (candidates.length > HARD_CAP) {
+      logger.warn("cleanupSessionV2CanaryV1: hit hard cap, refusing", {
+        cap: HARD_CAP, found: candidates.length, caller_email: staff.email
+      });
+      res.status(409).json({
+        ok:    false,
+        error: "Canary cleanup hit hard cap of " + HARD_CAP + " docs; investigate manually",
+        code:  "HARD_CAP_EXCEEDED",
+        found: candidates.length
+      });
+      return;
+    }
+
+    const matched = [];
+    const refused = [];
+    candidates.forEach(function (c) {
+      // Defense-in-depth assert: each doc must STILL match both filters.
+      // Query already filtered, but if Firestore returns something unexpected
+      // (rare race), this catches it.
+      if (c.environment === "debug" && c.source === "canary") {
+        matched.push(c);
+      } else {
+        refused.push({
+          id:          c._id,
+          environment: c.environment,
+          source:      c.source,
+          reason:      "post-query assertion failed (env or source mismatch)"
+        });
+      }
+    });
+
+    if (dryRun) {
+      logger.info("cleanupSessionV2CanaryV1: DRY RUN", {
+        scanned: candidates.length,
+        matched: matched.length,
+        refused: refused.length,
+        caller_email: staff.email
+      });
+      res.status(200).json({
+        ok:        true,
+        dry_run:   true,
+        scanned:   candidates.length,
+        matched:   matched.length,
+        deleted:   0,
+        refused:   refused.length,
+        refused_details: refused,
+        ids:       matched.map(function (m) { return m._id; })
+      });
+      return;
+    }
+
+    // Real delete - batch
+    if (matched.length === 0) {
+      res.status(200).json({
+        ok:      true,
+        dry_run: false,
+        scanned: candidates.length,
+        matched: 0,
+        deleted: 0,
+        refused: refused.length,
+        ids:     []
+      });
+      return;
+    }
+
+    const batch = db.batch();
+    matched.forEach(function (m) { batch.delete(m._ref); });
+    await batch.commit();
+
+    logger.info("cleanupSessionV2CanaryV1: DELETED", {
+      deleted: matched.length,
+      refused: refused.length,
+      ids: matched.map(function (m) { return m._id; }),
+      caller_email: staff.email
+    });
+
+    res.status(200).json({
+      ok:      true,
+      dry_run: false,
+      scanned: candidates.length,
+      matched: matched.length,
+      deleted: matched.length,
+      refused: refused.length,
+      refused_details: refused,
+      ids:     matched.map(function (m) { return m._id; })
+    });
+  } catch (err) {
+    logger.error("cleanupSessionV2CanaryV1 failed", {
+      error: err && err.message, stack: err && err.stack, caller_email: staff.email
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Cleanup failed" });
+  }
 });
 
 /* ====================================================================

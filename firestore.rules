@@ -427,6 +427,15 @@ service cloud.firestore {
     // contact phone numbers. Admin writes via Firestore console; field
     // techs never read this directly (the SOS function reads it server
     // side via Admin SDK).
+    // SessionV2 Phase 35a — dual-write config is readable by any active
+    // staff so the sessionsV2-client helper can check the allowlist
+    // without needing admin role. Writes still admin-only (falls through
+    // to wildcard rule below which denies non-admin writes).
+    match /pioneer_config/session_v2_dual_write {
+      allow read:  if isActiveStaff();
+      allow write: if isPioneerAdmin();
+    }
+
     match /pioneer_config/{key} {
       allow read:   if isPioneerAdmin();
       allow create: if isPioneerAdmin();
@@ -2284,7 +2293,7 @@ service cloud.firestore {
       // Tech can only create production sessions. Debug/emulator
       // sessions require admin or Cloud Function (Admin SDK bypasses rules).
       allow create: if request.resource.data.schema_version == 2
-                    && request.resource.data.source in ['tech_clock', 'admin_manual', 'auto_recovery', 'scheduled_shell']
+                    && request.resource.data.source in ['tech_clock', 'admin_manual', 'auto_recovery', 'scheduled_shell', 'canary']
                     && (
                       !('environment' in request.resource.data.keys())
                       || request.resource.data.environment in ['production', 'debug', 'emulator']
