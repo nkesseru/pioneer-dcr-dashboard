@@ -105,9 +105,8 @@
     return cfg.allowed_emails.indexOf(email) >= 0;
   }
 
-  /* ----- POST with hard timeout ----- */
-  async function _postCreateSessionV2(payload) {
-    var url = global.CREATE_SESSION_V2_URL;
+  /* ----- POST with hard timeout (shared helper for any V2 endpoint) ----- */
+  async function _postWithAuth(url, payload) {
     if (!url) return { ok: false, error: "no_url" };
     var user = firebase.auth().currentUser;
     if (!user) return { ok: false, error: "no_user" };
@@ -138,16 +137,22 @@
     }
   }
 
-  /* ----- Failure: enqueue retry ----- */
-  async function _enqueueRetry(payload, lastErrorSummary) {
+  // Back-compat wrapper preserved so service-clock.js's clock-in path
+  // continues working without change.
+  async function _postCreateSessionV2(payload) {
+    return _postWithAuth(global.CREATE_SESSION_V2_URL, payload);
+  }
+
+  /* ----- Failure: enqueue retry (shared) ----- */
+  async function _enqueueRetry(eventType, payload, lastErrorSummary) {
     var user = firebase.auth().currentUser;
     if (!user) return;
     var sts = firebase.firestore.FieldValue.serverTimestamp();
     try {
       await firebase.firestore().collection("pending_session_writes").add({
         session_id:       payload.session_id,
-        event_type:       "v2.create.retry",
-        event_id:         "v2create-" + payload.session_id,
+        event_type:       eventType,
+        event_id:         eventType + "-" + payload.session_id,
         payload:          payload,
         status:           "queued",
         attempt_count:    1,
@@ -162,7 +167,7 @@
         enqueued_at:      sts
       });
     } catch (err) {
-      _warn("enqueue retry failed", err && err.message);
+      _warn("enqueue retry failed (" + eventType + ")", err && err.message);
     }
   }
 
@@ -246,7 +251,7 @@
       status: status,
       error:  (result.body && result.body.error) || result.error || "unknown"
     });
-    await _enqueueRetry(payload, (result.body && result.body.error) || result.error);
+    await _enqueueRetry("v2.create.retry", payload, (result.body && result.body.error) || result.error);
     return {
       ok:        false,
       enqueued:  true,
@@ -256,11 +261,106 @@
     };
   }
 
+  /* ----- Phase 35b: dual-write a clock-OUT (status advance) -----
+   *
+   * Mirrors maybeDualWriteClockIn shape. Fire-and-forget after V1 clock-out
+   * transaction commits in service-clock.js. Never throws. V1 success
+   * path is unchanged.
+   *
+   * Required opts:
+   *   v2_session_id  string   (caller computes via deriveSessionV2Id)
+   *   v1_session_id  string   (V1 random doc id, for audit cross-ref)
+   *   staff_uid      string
+   *   staff_email    string
+   *   clock_out_at   ISO 8601 string
+   *
+   * Optional:
+   *   clock_out_gps  { lat, lng, accuracy_m, status } | null
+   *   environment    "production" | "debug" | "emulator"  (default production)
+   *   bypass_allowlist_check  boolean (canary only)
+   *
+   * Returns: { ok, body?, status?, ... } status object (same shape as clock-in).
+   */
+  async function maybeDualWriteClockOut(opts) {
+    if (!opts || !opts.v2_session_id || !opts.v1_session_id || !opts.clock_out_at) {
+      return { ok: false, skipped: true, reason: "missing_required_input" };
+    }
+
+    var bypass = opts.bypass_allowlist_check === true;
+    if (!bypass) {
+      var enabled;
+      try {
+        enabled = await isDualWriteEnabledForCurrentUser();
+      } catch (err) {
+        _warn("clock-out gate check failed", err && err.message);
+        return { ok: false, skipped: true, reason: "gate_check_failed", error: err && err.message };
+      }
+      if (!enabled) return { ok: false, skipped: true, reason: "gate_disabled" };
+    }
+
+    var environment = opts.environment || "production";
+    var payload = {
+      session_id:    opts.v2_session_id,
+      v1_session_id: opts.v1_session_id,
+      clock_out_at:  opts.clock_out_at,
+      clock_out_gps: opts.clock_out_gps || null,
+      environment:   environment
+    };
+
+    _log("clock-out dual-write firing", {
+      v2_id: opts.v2_session_id, v1_id: opts.v1_session_id, env: environment
+    });
+    var result = await _postWithAuth(global.UPDATE_SESSION_V2_CLOCK_OUT_URL, payload);
+
+    if (result.ok) {
+      _log("clock-out dual-write OK", {
+        v2_id:      opts.v2_session_id,
+        advanced:   !!(result.body && result.body.advanced),
+        idempotent: !!(result.body && result.body.idempotent)
+      });
+      return { ok: true, body: result.body, status: result.status };
+    }
+
+    var status = result.status || 0;
+    var bodyCode = result.body && result.body.code;
+
+    // 503 flag-off: soft skip, no enqueue.
+    if (status === 503 || bodyCode === "SESSION_V2_DISABLED") {
+      _log("clock-out skipped (server flag off)", { status: status });
+      return { ok: false, skipped: true, reason: "server_flag_off" };
+    }
+
+    // 409 INVALID_STATE: terminal state divergence — do NOT enqueue
+    // (Recovery Toolbox owns these, per architectural decision).
+    if (status === 409 || bodyCode === "INVALID_STATE") {
+      _warn("clock-out refused (invalid state)", {
+        status: status, current: result.body && result.body.current_status
+      });
+      return { ok: false, skipped: true, reason: "invalid_state", body: result.body };
+    }
+
+    // 404 V2_NOT_FOUND: enqueue retry (Phase 35c worker will create-then-advance).
+    // Plus any other failure → enqueue.
+    _warn("clock-out failed; enqueueing retry", {
+      status: status, code: bodyCode,
+      error:  (result.body && result.body.error) || result.error || "unknown"
+    });
+    await _enqueueRetry("v2.clockout.retry", payload, (result.body && result.body.error) || result.error);
+    return {
+      ok:       false,
+      enqueued: true,
+      status:   status,
+      code:     bodyCode || null,
+      error:    (result.body && result.body.error) || result.error || "unknown"
+    };
+  }
+
   /* ----- Public surface ----- */
   global.PIONEER_SESSIONS_V2 = {
     deriveSessionV2Id:                 deriveSessionV2Id,
     isDualWriteEnabledForCurrentUser:  isDualWriteEnabledForCurrentUser,
     maybeDualWriteClockIn:             maybeDualWriteClockIn,
+    maybeDualWriteClockOut:            maybeDualWriteClockOut,
     getConfig:                         getConfig,
     _internal: {
       CONFIG_DOC_PATH: CONFIG_DOC_PATH,

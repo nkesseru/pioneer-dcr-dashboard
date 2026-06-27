@@ -222,6 +222,23 @@ function deriveCompletion(s) {
 
 **Why**: future changes to `expected_components` for a session_type should not retroactively invalidate historical Sessions. Persisted completion creates drift.
 
+### Session Integrity Score (reserved — internal-only)
+
+**Distinct concept from completion.** Integrity is an operational health indicator, not a progress percentage. A Session can be 0% complete and still have integrity OK (work hasn't started yet). A Session can be 90% complete and have integrity DEGRADED (a component failed mid-flight).
+
+Derived (also not persisted) from `expected_components` + current component states:
+
+| Integrity state | Trigger |
+|---|---|
+| `ok` | All expected components are in `missing`, `collecting`, or `complete` |
+| `degraded` | Any expected component has `status: "failed"` |
+| `stalled` | Session is in `in_progress` or `awaiting_completion` AND any expected component has been in `collecting` past its SLA threshold |
+| `recovered` | After admin recovery (Phase 38+) the integrity flag tracks that the session passed through a recovery state |
+
+**Mission Control surface (Phase 38+)**: instead of asking "is this DCR orphaned?" it asks "what is this Session missing?" — which is the integrity report. The exact thresholds + UI come in Phase 38; the concept is reserved now so the schema doesn't need changes when it lands.
+
+**NOT exposed to users.** Internal operational use only. Future Mission Control surfaces it as "This Session is missing X" — never as a percent or letter grade.
+
 ### Sub-references (pointers, not data)
 
 | Field | Type | Notes |
@@ -273,7 +290,9 @@ function deriveCompletion(s) {
 
 ### Timeline (append-only, capped at 50 entries, first-class)
 
-**Timeline is how humans understand Sessions.** Every state transition + every meaningful action emits a Timeline entry. Operators read Timeline to understand "what happened to this Session." Compliance/audit also reads Timeline — the same record serves both needs.
+**Timeline is part of the Session itself — not a debugging feature.** Every state transition + every meaningful action emits a Timeline entry. Operators read Timeline to understand "what happened to this Session." Compliance/audit also reads Timeline. Future Mission Control, recovery tooling, and customer-facing receipts can all read from Timeline without needing a separate event log.
+
+**Invariant**: every status transition MUST append a Timeline entry. The entry's `from` + `to` fields capture the transition. If a Cloud Function or client writes to `status` without appending Timeline, that is a defect — Timeline and status are co-equal sources of truth for "what happened, when."
 
 Embedded array:
 ```
@@ -411,12 +430,16 @@ Every state transition writes a `session.status_changed` Timeline entry. Every s
 Tech direct-write to `status` is permitted ONLY for:
 - `assigned → ready`
 - `ready → in_progress`
-- `in_progress → paused`
-- `paused → in_progress`
+- `in_progress → paused` *(reserved; pause/resume not implemented through Phase 35b)*
+- `paused → in_progress` *(reserved)*
 - `in_progress → awaiting_completion`
-- `paused → awaiting_completion`
+- `paused → awaiting_completion` *(reserved)*
 
 All other transitions require admin or Cloud Function. The `complete → pending_payroll_review` transition is CF-trigger only (auto on all-components-complete).
+
+### Reserved states (locked 2026-06-26)
+
+`paused` is **reserved** in the lifecycle model but not yet wired into any production path. Phase 35b (clock-out dual-write) deliberately skips pause/resume implementation to keep the slice small. The state appears in the state machine, the transition matrix, and the rule allowlist now so that a future Phase 35b-2 (or later) can light it up without schema changes, rule changes, or migration. **Do not write `paused` from any product code until that slice ships.**
 
 ### Transition matrix (full)
 

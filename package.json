@@ -7,7 +7,8 @@
     "test:create:sessionsV2":    "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.create.test.mjs\"",
     "test:dualwrite:sessionsV2": "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.dualwrite.test.mjs\"",
     "test:canary:sessionsV2":    "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.canary.test.mjs\"",
-    "test:all:sessionsV2":       "npm run test:rules:sessionsV2 && npm run test:create:sessionsV2 && npm run test:dualwrite:sessionsV2 && npm run test:canary:sessionsV2"
+    "test:clockout:sessionsV2":  "firebase emulators:exec --only firestore --project=demo-pioneer-test \"node --test test/sessionsV2.clockout.test.mjs\"",
+    "test:all:sessionsV2":       "npm run test:rules:sessionsV2 && npm run test:create:sessionsV2 && npm run test:dualwrite:sessionsV2 && npm run test:canary:sessionsV2 && npm run test:clockout:sessionsV2"
   },
   "dependencies": {
     "firebase": "^12.13.0",

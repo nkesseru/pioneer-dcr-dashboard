@@ -1914,6 +1914,39 @@
     });
 
     logSC("clock-out OK", { assignment: assignmentId, session: sessionId });
+
+    // 2026-06-26 Phase 35b — SessionV2 clock-out dual-write (fire-and-forget,
+    // best-effort). V1 transaction above is authoritative; this helper exits
+    // silently when the flag is off, the per-user allowlist doesn't include
+    // the caller, or the V2 endpoint returns 503/404/409. On hard failure
+    // (404/500) it enqueues a retry to pending_session_writes. It never
+    // throws — V1 success path must remain unchanged.
+    try {
+      if (self.PIONEER_SESSIONS_V2 && self.PIONEER_SESSIONS_V2.maybeDualWriteClockOut) {
+        const _v2Id = self.PIONEER_SESSIONS_V2.deriveSessionV2Id(assignmentId, today, 1);
+        if (_v2Id) {
+          self.PIONEER_SESSIONS_V2.maybeDualWriteClockOut({
+            v2_session_id: _v2Id,
+            v1_session_id: sessionId,
+            staff_uid:     currentStaff.uid,
+            staff_email:   staffEmail,
+            clock_out_at:  new Date().toISOString(),
+            clock_out_gps: {
+              lat:          geo && geo.lat,
+              lng:          geo && geo.lon,
+              accuracy_m:   geo && geo.accuracy_m,
+              ts:           new Date().toISOString(),
+              status:       geo && geo.status
+            }
+          }).catch(function (e) {
+            logSC("sessionV2 clock-out dual-write failed (V1 already saved)", e && (e.message || String(e)));
+          });
+        }
+      }
+    } catch (_v2err) {
+      logSC("sessionV2 clock-out dual-write skipped (helper unavailable)", _v2err && (_v2err.message || String(_v2err)));
+    }
+
     await initialLoad();
   }
 

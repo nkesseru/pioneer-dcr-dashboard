@@ -8403,7 +8403,11 @@ exports.reconcileV1V2ParityV1 = onRequest({
     let missingV1Pointer = 0;
     let v1NotFound = 0;
     let identityMismatch = 0;
+    // Phase 35b additions — log-only status divergence detection
+    let statusLagCount = 0;
+    let statusAheadCount = 0;
     const skewDetails = [];
+    const statusLagDetails = [];
 
     for (let i = 0; i < v2Docs.length; i++) {
       const v2 = v2Docs[i];
@@ -8435,6 +8439,35 @@ exports.reconcileV1V2ParityV1 = onRequest({
         });
         continue;
       }
+
+      // Phase 35b extension — informational status_lag / status_ahead detection.
+      // Maps V1 status family to expected V2 status set; logs only, does NOT
+      // count toward skew_total in 35b. Tune thresholds in Phase 37 when
+      // payroll reads V2 and divergence has real consequences.
+      const v1Status = v1.status || "unknown";
+      const v2Status = v2.status || "unknown";
+      const V1_OPEN  = ["active", "paused"];
+      const V2_OPEN  = ["assigned", "ready", "in_progress", "paused"];
+      const V2_CLOSED = [
+        "awaiting_completion", "complete", "pending_payroll_review",
+        "payroll_approved", "exported", "customer_notified", "locked"
+      ];
+      if (V1_OPEN.indexOf(v1Status) >= 0 && V2_CLOSED.indexOf(v2Status) >= 0) {
+        statusAheadCount++;
+        statusLagDetails.push({
+          kind: "status_ahead",
+          v2_session_id: v2._id, v1_session_id: v1Id,
+          v1_status: v1Status, v2_status: v2Status
+        });
+      } else if (v1Status === "completed" && V2_OPEN.indexOf(v2Status) >= 0) {
+        statusLagCount++;
+        statusLagDetails.push({
+          kind: "status_lag",
+          v2_session_id: v2._id, v1_session_id: v1Id,
+          v1_status: v1Status, v2_status: v2Status
+        });
+      }
+
       okCount++;
     }
 
@@ -8448,6 +8481,10 @@ exports.reconcileV1V2ParityV1 = onRequest({
       missing_v1_pointer:  missingV1Pointer,
       v1_not_found:        v1NotFound,
       identity_mismatch:   identityMismatch,
+      // Phase 35b additions — informational, NOT alerting.
+      status_lag_count:    statusLagCount,
+      status_ahead_count:  statusAheadCount,
+      status_lag_details:  statusLagDetails.slice(0, 20),
       skew_details:        skewDetails.slice(0, 50)   // cap embedded; full set in logs
     };
 
@@ -8613,6 +8650,230 @@ exports.cleanupSessionV2CanaryV1 = onRequest({
     });
     res.status(500).json({ ok: false, error: (err && err.message) || "Cleanup failed" });
   }
+});
+
+/* --------------- updateSessionV2ClockOutV1 (Phase 35b) ---------------
+ *
+ * Narrow, single-purpose endpoint that advances a SessionV2 from
+ * `in_progress|paused` to `awaiting_completion`. Mirrors the V1 clock-out
+ * transition. Idempotent on terminal states. Refuses missing V2 docs
+ * (no auto-create — per architectural decision 2026-06-26).
+ *
+ * Auth: tech may advance own session; admin may advance any session.
+ *
+ * Flag: SESSION_V2_ENABLED must be true. Otherwise 503.
+ *
+ * Side effects (single Firestore update):
+ *   - status: "awaiting_completion"
+ *   - status_changed_at, status_version++
+ *   - clock_out_at, clock_out_gps (from payload)
+ *   - components.clock.status: "complete" + completed_at + last_event
+ *   - timeline: append clock.out entry
+ *   - updated_at
+ *
+ * Status transitions explicitly NOT handled here (deferred to other phases
+ * or the Recovery Toolbox — see docs/sessionsV2/RECOVERY_TOOLBOX.md):
+ *   - assigned/ready -> in_progress (Phase 35a clock-in path)
+ *   - in_progress <-> paused (Phase 35b-2, reserved)
+ *   - awaiting_completion -> complete (Cloud Function trigger, Phase 36+)
+ *   - complete -> pending_payroll_review (Cloud Function trigger, Phase 37)
+ *   - any backward / recovery transitions (Recovery Toolbox, Phase 38+)
+ */
+
+const SESSIONSV2_CLOCKOUT_PRIOR_STATES = ["in_progress", "paused"];
+const SESSIONSV2_CLOCKOUT_TERMINAL_STATES = [
+  "awaiting_completion", "complete", "pending_payroll_review",
+  "payroll_approved", "exported", "customer_notified", "locked"
+];
+
+exports.updateSessionV2ClockOutV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age",       "3600");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  // Flag gate (same pattern as createSessionV2)
+  if (!sessionsV2_isEnabled()) {
+    res.status(503).json({
+      ok:    false,
+      code:  "SESSION_V2_DISABLED",
+      error: "SessionV2 writes are disabled (SESSION_V2_ENABLED feature flag is off)."
+    });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  // Auth: admin OR own-session tech. Per-session ownership check happens
+  // below after we read the V2 doc.
+
+  const body = req.body || {};
+  const sessionId    = String(body.session_id || "").trim();
+  const v1SessionId  = body.v1_session_id ? String(body.v1_session_id).trim() : null;
+  const clockOutIso  = String(body.clock_out_at || "").trim();
+  const clockOutGps  = (body.clock_out_gps && typeof body.clock_out_gps === "object")
+    ? body.clock_out_gps
+    : null;
+
+  const errs = [];
+  if (!sessionId) errs.push("session_id is required");
+  else if (!SESSIONSV2_ID_RE.test(sessionId)) errs.push("session_id format invalid; see docs/sessionsV2/SCHEMA.md");
+  if (!clockOutIso) errs.push("clock_out_at is required (ISO 8601)");
+  else if (isNaN(Date.parse(clockOutIso))) errs.push("clock_out_at must be parseable ISO 8601");
+  if (errs.length) {
+    res.status(400).json({ ok: false, error: "Invalid payload", field_errors: errs });
+    return;
+  }
+
+  const sessRef = db.collection("sessionsV2").doc(sessionId);
+  let v2;
+  try {
+    const snap = await sessRef.get();
+    if (!snap.exists) {
+      logger.info("updateSessionV2ClockOutV1: 404 V2_NOT_FOUND", {
+        session_id: sessionId, caller_email: staff.email
+      });
+      res.status(404).json({
+        ok:    false,
+        code:  "V2_NOT_FOUND",
+        error: "SessionV2 doc does not exist. Client should enqueue retry; reconciliation will surface."
+      });
+      return;
+    }
+    v2 = snap.data() || {};
+  } catch (err) {
+    logger.error("updateSessionV2ClockOutV1: read failed", { error: err && err.message });
+    res.status(500).json({ ok: false, error: "Read failed: " + (err && err.message) });
+    return;
+  }
+
+  // Authorization: admin OR owner.
+  const isOwner = v2.staff_uid && v2.staff_uid === staff.uid;
+  const isAdmin = staff.role === "admin";
+  if (!isOwner && !isAdmin) {
+    logger.warn("updateSessionV2ClockOutV1: 403 not authorized", {
+      session_id: sessionId, caller_email: staff.email
+    });
+    res.status(403).json({ ok: false, error: "Not authorized for this session." });
+    return;
+  }
+
+  // Refuse archived sessions.
+  if (v2.admin_removed === true) {
+    res.status(409).json({
+      ok:    false,
+      code:  "INVALID_STATE",
+      error: "Session is archived (admin_removed=true).",
+      current_status: v2.status || null
+    });
+    return;
+  }
+
+  const currentStatus = v2.status || "unknown";
+
+  // Idempotency: already past clock-out → no-op success.
+  if (SESSIONSV2_CLOCKOUT_TERMINAL_STATES.indexOf(currentStatus) >= 0) {
+    logger.info("updateSessionV2ClockOutV1: idempotent (already past clock-out)", {
+      session_id: sessionId, current_status: currentStatus, caller_email: staff.email
+    });
+    res.status(200).json({
+      ok:             true,
+      session_id:     sessionId,
+      advanced:       false,
+      idempotent:     true,
+      from_status:    currentStatus,
+      to_status:      currentStatus
+    });
+    return;
+  }
+
+  // Reject states that aren't a valid prior for clock-out.
+  if (SESSIONSV2_CLOCKOUT_PRIOR_STATES.indexOf(currentStatus) < 0) {
+    res.status(409).json({
+      ok:    false,
+      code:  "INVALID_STATE",
+      error: "Cannot advance from " + currentStatus + ". Expected one of " +
+             JSON.stringify(SESSIONSV2_CLOCKOUT_PRIOR_STATES) + ".",
+      current_status: currentStatus
+    });
+    return;
+  }
+
+  // Perform the advance.
+  const sts        = admin.firestore.FieldValue.serverTimestamp();
+  const clockOutTs = admin.firestore.Timestamp.fromMillis(Date.parse(clockOutIso));
+  const actorType  = isAdmin ? "admin" : "tech";
+  const actor = {
+    type:  actorType,
+    uid:   staff.uid,
+    email: staff.email,
+    name:  (staff.tech && staff.tech.display_name) || staff.email || actorType
+  };
+
+  const timelineEntry = {
+    ts:           new Date(),
+    intent_ts:    clockOutTs,
+    actor:        actor,
+    event:        "clock.out",
+    title:        "Tech finished cleaning",
+    detail:       "Clock-out at " + clockOutIso + "; advancing " + currentStatus + " -> awaiting_completion",
+    icon:         "clock-out",
+    field_path:   "status",
+    from:         currentStatus,
+    to:           "awaiting_completion",
+    ref:          v1SessionId,
+    client:       null
+  };
+
+  try {
+    await sessRef.update({
+      status:                       "awaiting_completion",
+      status_changed_at:            sts,
+      status_version:               admin.firestore.FieldValue.increment(1),
+      clock_out_at:                 clockOutTs,
+      clock_out_gps:                clockOutGps,
+      "components.clock.status":          "complete",
+      "components.clock.last_event":      "clock.out",
+      "components.clock.last_event_at":   sts,
+      "components.clock.completed_at":    sts,
+      timeline:                     admin.firestore.FieldValue.arrayUnion(timelineEntry),
+      updated_at:                   sts
+    });
+  } catch (err) {
+    logger.error("updateSessionV2ClockOutV1: update failed", {
+      session_id: sessionId, error: err && err.message
+    });
+    res.status(500).json({ ok: false, error: (err && err.message) || "Update failed" });
+    return;
+  }
+
+  logger.info("updateSessionV2ClockOutV1: advanced", {
+    session_id:     sessionId,
+    from_status:    currentStatus,
+    to_status:      "awaiting_completion",
+    v1_session_id:  v1SessionId,
+    caller_email:   staff.email,
+    actor_type:     actorType
+  });
+
+  res.status(200).json({
+    ok:           true,
+    session_id:   sessionId,
+    advanced:     true,
+    idempotent:   false,
+    from_status:  currentStatus,
+    to_status:    "awaiting_completion"
+  });
 });
 
 /* ====================================================================

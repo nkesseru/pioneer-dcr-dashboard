@@ -2384,6 +2384,14 @@
         <button type="button" id="sv2c-btn-clear-pane"    class="mc-btn">Clear result pane</button>
       </div>
 
+      <!-- Phase 35b clock-out canary buttons -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;padding-top:8px;border-top:1px dashed #d1d5db;">
+        <span style="font-size:11px;font-weight:700;color:var(--mc-ink-soft);align-self:center;margin-right:8px;">Phase 35b clock-out flow:</span>
+        <button type="button" id="sv2c-btn-advance-inprog" class="mc-btn">3p. Admin-advance to in_progress</button>
+        <button type="button" id="sv2c-btn-clockout-cf"    class="mc-btn">3q. Call clock-out CF</button>
+        <button type="button" id="sv2c-btn-clockout-again" class="mc-btn">3r. Call again (idempotency)</button>
+      </div>
+
       <label for="sv2c-result" style="display:block;font-size:12px;font-weight:600;color:var(--mc-ink-soft);margin-top:8px;">Result pane (latest entries at top)</label>
       <textarea id="sv2c-result" readonly
                 style="width:100%;height:480px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:10px;border:1px solid #d1d5db;border-radius:6px;background:#0d1218;color:#e5e7eb;line-height:1.45;"
@@ -4087,9 +4095,9 @@
   <script src="admin/tab-office-issues.js?v=20260616b-getcount"></script>
   <!-- SessionV2 Canary harness — flag-gated. Always loaded; tab visibility
        controlled by window.SESSION_V2_DEBUG_UI_ENABLED. -->
-  <script src="lib/sessionsV2-client.js?v=20260626-phase35a-canary-modal"></script>
-  <script src="admin/tab-sessionsv2-canary.js?v=20260626-phase35a-canary-modal"></script>
-  <script src="admin.js?v=20260626-phase35a-canary-modal"></script>
+  <script src="lib/sessionsV2-client.js?v=20260626-phase35b-clockout"></script>
+  <script src="admin/tab-sessionsv2-canary.js?v=20260626-phase35b-clockout"></script>
+  <script src="admin.js?v=20260626-phase35b-clockout"></script>
   <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
 </html>

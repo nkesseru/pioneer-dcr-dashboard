@@ -65,6 +65,9 @@
     return "sess_" + fixedAssignmentId() + "_" + todayPT() + "_a1";
   }
 
+  function fakeV1Id() { return "canary_v1_fake_" + todayPT(); }
+  function fakeClockOutAt() { return new Date().toISOString(); }
+
   async function btnDiagnose() {
     const out = {
       timestamp:                          new Date().toISOString(),
@@ -183,6 +186,100 @@
     }
   }
 
+  /* ----- Phase 35b clock-out canary buttons -----
+   *
+   * Step sequence for the canary doc's status:
+   *   1. "Create canary session" -> doc at status=assigned
+   *   2. "3p. Advance to in_progress (admin write)" -> doc at status=in_progress
+   *   3. "3q. Call clock-out CF" -> doc at status=awaiting_completion (via real CF)
+   *   4. "3r. Call clock-out CF again" -> 200 idempotent (status unchanged)
+   *
+   * 3p is a direct Firestore write by admin (rules allow admin update). It
+   * simulates what Phase 35b-2 would do (in_progress transition). 3q exercises
+   * the real updateSessionV2ClockOutV1 endpoint end-to-end.
+   */
+
+  async function btnAdvanceToInProgress() {
+    const id = expectedV2Id();
+    const refTxn = firebase.firestore().doc("sessionsV2/" + id);
+    try {
+      const snap = await refTxn.get();
+      if (!snap.exists) {
+        logToPane("ADVANCE_TO_IN_PROGRESS ERROR", { v2_id: id, exists: false, hint: "Run Create canary session first." });
+        return;
+      }
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      const actor = firebase.auth().currentUser;
+      const actorEmail = (actor && actor.email) || "unknown";
+      await refTxn.update({
+        status:            "in_progress",
+        status_changed_at: sts,
+        status_version:    firebase.firestore.FieldValue.increment(1),
+        clock_in_at:       sts,
+        "components.clock.status":        "collecting",
+        "components.clock.last_event":    "clock.in",
+        "components.clock.last_event_at": sts,
+        timeline: firebase.firestore.FieldValue.arrayUnion({
+          ts:         new Date(),
+          actor:      { type: "admin", email: actorEmail },
+          event:      "clock.in",
+          title:      "Canary: admin advanced to in_progress",
+          from:       snap.data().status || "assigned",
+          to:         "in_progress",
+          field_path: "status"
+        }),
+        updated_at: sts
+      });
+      logToPane("ADVANCE_TO_IN_PROGRESS OK", { v2_id: id, advanced_to: "in_progress" });
+    } catch (err) {
+      logToPane("ADVANCE_TO_IN_PROGRESS ERROR", err && err.message);
+    }
+  }
+
+  async function btnCallClockOutCF() {
+    if (!window.PIONEER_SESSIONS_V2 || !window.PIONEER_SESSIONS_V2.maybeDualWriteClockOut) {
+      logToPane("CLOCKOUT_CF ERROR", "maybeDualWriteClockOut helper not available");
+      return;
+    }
+    try {
+      const result = await window.PIONEER_SESSIONS_V2.maybeDualWriteClockOut({
+        v2_session_id:           expectedV2Id(),
+        v1_session_id:           fakeV1Id(),
+        staff_uid:               (firebase.auth().currentUser || {}).uid || "no-user",
+        staff_email:             ((firebase.auth().currentUser || {}).email || "no-user").toLowerCase(),
+        clock_out_at:            fakeClockOutAt(),
+        clock_out_gps:           null,
+        environment:             "debug",
+        bypass_allowlist_check:  true
+      });
+      logToPane("CLOCKOUT_CF", result);
+    } catch (err) {
+      logToPane("CLOCKOUT_CF ERROR", err && err.message);
+    }
+  }
+
+  async function btnCallClockOutCFAgain() {
+    if (!window.PIONEER_SESSIONS_V2 || !window.PIONEER_SESSIONS_V2.maybeDualWriteClockOut) {
+      logToPane("CLOCKOUT_CF_IDEMPOTENT ERROR", "helper unavailable");
+      return;
+    }
+    try {
+      const result = await window.PIONEER_SESSIONS_V2.maybeDualWriteClockOut({
+        v2_session_id:           expectedV2Id(),
+        v1_session_id:           fakeV1Id(),
+        staff_uid:               (firebase.auth().currentUser || {}).uid || "no-user",
+        staff_email:             ((firebase.auth().currentUser || {}).email || "no-user").toLowerCase(),
+        clock_out_at:            fakeClockOutAt(),
+        clock_out_gps:           null,
+        environment:             "debug",
+        bypass_allowlist_check:  true
+      });
+      logToPane("CLOCKOUT_CF_IDEMPOTENT", result);
+    } catch (err) {
+      logToPane("CLOCKOUT_CF_IDEMPOTENT ERROR", err && err.message);
+    }
+  }
+
   async function btnCleanupDry() {
     const url = window.CLEANUP_SESSION_V2_CANARY_URL;
     if (!url) { logToPane("CLEANUP_DRY ERROR", "CLEANUP_SESSION_V2_CANARY_URL unset"); return; }
@@ -243,6 +340,10 @@
     bind("sv2c-btn-cleanup-dry",     btnCleanupDry);
     bind("sv2c-btn-cleanup-apply",   btnCleanupApply);
     bind("sv2c-confirm-apply",       performCleanupApply);
+    // Phase 35b clock-out canary buttons
+    bind("sv2c-btn-advance-inprog",  btnAdvanceToInProgress);
+    bind("sv2c-btn-clockout-cf",     btnCallClockOutCF);
+    bind("sv2c-btn-clockout-again",  btnCallClockOutCFAgain);
     bind("sv2c-btn-clear-pane",      function () {
       const pane = $("sv2c-result");
       if (pane) pane.value = "";
