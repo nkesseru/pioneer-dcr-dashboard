@@ -76,15 +76,17 @@ Phase 35 can proceed WITHOUT 34b if validation happens via curl.
 
 ## C. Phase 35 cutover plan (must be approved before code starts)
 
-### Rollout sequence
-1. Land Phase 35 code with `SESSION_V2_ENABLED=false` (no behavior change)
-2. Deploy to prod functions + hosting
-3. Enable flag for 1 admin tech account only (canary) via per-email allowlist
-4. Verify dual-write happens cleanly for that one tech for 24 hours
-5. Reconciliation job shows zero skew
-6. Expand to Bonnie (Phase 31 pilot account) for 7 days
-7. Reconcile + verify
-8. Expand to all techs
+### Rollout sequence (revised 2026-06-26 — canary-harness-first policy)
+
+**Live-user canary is NOT scheduled for Phase 35.** The Canary Harness (see `CANARY_HARNESS.md`) is the primary validation mechanism for Phases 35-37. Live-user canary returns only AFTER Phase 37 completes.
+
+For Phase 35 specifically:
+1. Land Phase 35 code with `SESSION_V2_ENABLED=false` (no behavior change in production)
+2. Deploy to prod functions + hosting (UI flag stays off)
+3. Run full canary-harness validation on preview channel (admin only, environment=debug, source=canary)
+4. Code-review the splice point in `service-clock.js:clockIn()`
+5. Verify zero skew via `reconcileV1V2ParityV1` against canary docs
+6. Mark Phase 35 complete; proceed to Phase 36 without live-user canary
 
 ### Rollback signals (any one triggers immediate flag-off)
 - V1↔V2 mismatch on any field except `updated_at` / `status_version` / `timeline`

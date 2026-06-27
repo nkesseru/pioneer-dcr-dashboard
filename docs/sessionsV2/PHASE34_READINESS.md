@@ -15,10 +15,10 @@ Phase 34 (dual-write tech clock-in to V2 alongside V1) cannot begin until every 
 - [ ] `docs/sessionsV2/SCHEMA.md` reviewed by Nick + signed off as canonical
 - [ ] Production Firestore `sessionsV2` collection visibly empty (no rogue writers)
 
-### Pre-requisite stability gates
-- [ ] Add Manual Shift / Supersede has been in production for ≥1 payroll cycle
-- [ ] Zero Kirby escalations or rollback signals on Add Shift / Supersede
-- [ ] Phase 31 offline DCR queue (Bonnie pilot) shows no orphan-producing failure modes
+### Pre-requisite stability gates (revised 2026-06-26)
+- Phase 35-37 explicitly DO NOT require Bonnie pilot or any live-user
+  canary; the Canary Harness (see `CANARY_HARNESS.md`) is the primary
+  validation mechanism. Live-user canary returns AFTER Phase 37.
 - [ ] Phase 32B inert clock queue not flipped on without coordinated cutover plan
 
 ### Observability ready

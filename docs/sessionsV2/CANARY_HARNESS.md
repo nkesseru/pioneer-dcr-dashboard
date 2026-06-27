@@ -2,6 +2,8 @@
 
 **Status (2026-06-26)**: Phase 35a sub-slice. Admin-only test harness for validating the SessionV2 dual-write pipeline without touching V1 payroll data, time_punches, active_service_sessions, customer emails, or DCRs.
 
+**Policy (2026-06-26)**: The Canary Harness is the **primary validation mechanism for Phases 35, 36, and 37**. No real-user (live tech) canary will be scheduled until ALL THREE of those phases are complete. This trades a small splice-coverage gap for zero immutable audit noise and zero risk of contaminating real payroll/DCR/customer flows during iteration. Real-user canary returns AFTER Phase 37 (payroll reads V2) when the full reconciliation loop is observable.
+
 **North Star alignment**: lets us iterate on SessionV2 Phases 35-40 without burning real assignments or accumulating immutable audit noise.
 
 ---
@@ -32,7 +34,7 @@ This harness exercises the same `sessionsV2-client.js` adapter and the same `cre
 
 | Surface | Why |
 |---|---|
-| The actual splice in `service-clock.js:clockIn()` | Harness calls the adapter directly, not via `clockIn()`. Code review + sanity log probe + one final live canary close this gap. |
+| The actual splice in `service-clock.js:clockIn()` | Harness calls the adapter directly, not via `clockIn()`. Mitigated by code review + sanity log probe in service-clock.js. **No live canary in Phases 35–37 per 2026-06-26 policy** — live canary returns only after Phase 37 (payroll reads V2). |
 | Real `v1_session_id` (real V1 doc exists) | Harness passes a fabricated UID; reconciliation will mark canary docs as `v1_not_found` — we filter those out by `source: "canary"`. |
 | Real GPS / `captureGeo` timing | Harness skips entirely |
 | Real `active_service_sessions` transaction race | Harness does not write V1 at all |
