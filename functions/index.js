@@ -3293,6 +3293,38 @@ exports.submitDcrV1 = onRequest({
   // request from the office if needed.
   await maybeCreateSupplyRequest(doc, submissionId);
 
+  // ---- Phase 36a.2: SessionV2 DCR dual-write + parity Timeline ----
+  // Fires after V1 dcr_submissions and downstream V1 back-writes are
+  // complete. Reads the corresponding V2 session (if any), updates
+  // components.dcr/photos/checklist, appends timeline.dcr.submitted,
+  // and (when V1/V2 disagree on the allowlisted parity fields) appends
+  // timeline.parity.diverged. Never throws. Skips when
+  // SESSION_V2_ENABLED is off or pioneer_assignment_id is absent.
+  // See docs/sessionsV2/PHASE36A_PLAN.md.
+  try {
+    const v2DualWrite = await sessionsV2_dualWriteFromDcrSubmit({
+      db, admin, logger,
+      submissionId: submissionId,
+      dcrDoc:       doc,
+      staff:        staff
+    });
+    logger.info("submitDcrV1 phase36a v2 dual-write", {
+      submission_id:    submissionId,
+      status:           v2DualWrite.status,
+      reason:           v2DualWrite.reason || null,
+      v2_session_id:    v2DualWrite.v2_session_id || null,
+      divergent_count:  Array.isArray(v2DualWrite.divergent_fields)
+                          ? v2DualWrite.divergent_fields.length : 0,
+      snapshot_version: v2DualWrite.snapshot_version || null
+    });
+  } catch (err) {
+    // Defense-in-depth: helper has its own try/catch, but never let any
+    // V2 work block the V1 success path.
+    logger.warn("submitDcrV1 phase36a v2 dual-write outer guard threw", {
+      submission_id: submissionId, error: err && err.message
+    });
+  }
+
   // ---- Phase 32: Native DCR email auto-send (replaces Zapier as primary) ----
   // Fires after the DCR doc is written. Wrapped in try/catch so any
   // failure (Gmail outage, OpenAI hiccup, missing customer config) NEVER
@@ -8047,6 +8079,225 @@ function sessionsV2_buildComponents(expected) {
     out[name] = sessionsV2_buildComponent(expected.indexOf(name) >= 0 ? "missing" : "not_applicable");
   });
   return out;
+}
+
+/* ====================================================================
+ * Phase 36a.2 — DCR dual-write to SessionV2 + parity Timeline.
+ *
+ * The Session is the truth. The DCR is a projection of completed work.
+ * After a successful submitDcrV1 commit, this helper:
+ *   1. Computes the deterministic V2 session id from the DCR's
+ *      pioneer_assignment_id + service_date.
+ *   2. Reads the V2 session. If absent (Phase 35 dual-write hasn't
+ *      fired yet for this assignment), skips with reason=v2_missing
+ *      and logs. NO retry queue write — V2 will catch up next clock
+ *      cycle.
+ *   3. Updates components.dcr (status=complete, ref=submissionId),
+ *      components.photos (count, status=complete if photos present),
+ *      components.checklist.pct=100 (if checklist data present).
+ *   4. Renders a SessionSnapshot from the updated V2 doc and compares
+ *      against the V1 dcrDoc on a small allowlist of stable fields.
+ *   5. Appends a timeline.dcr.submitted entry. If parity diverges,
+ *      appends a second timeline.parity.diverged entry.
+ *
+ * Guarantees:
+ *   - NEVER throws — wrapped in try/catch by caller and again here.
+ *   - Fire-and-forget from caller's perspective (caller awaits but
+ *     handles rejection silently).
+ *   - Gated by SESSION_V2_ENABLED. Off by default.
+ *   - No new collections; parity events become Timeline entries.
+ * ==================================================================== */
+
+const sessionsV2Snapshot  = require("./sessionsV2-snapshot.js");
+const sessionsV2DcrParity = require("./sessionsV2-dcr-parity.js");
+
+// Service date in Pacific timezone, YYYY-MM-DD. Mirrors the client
+// helper in public/lib/sessionsV2-client.js.
+function sessionsV2_serviceDateForPacific(date) {
+  const d = date instanceof Date ? date : new Date(date || Date.now());
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric", month: "2-digit", day: "2-digit"
+  });
+  const parts = fmt.formatToParts(d).reduce(function (a, p) {
+    a[p.type] = p.value; return a;
+  }, {});
+  return parts.year + "-" + parts.month + "-" + parts.day;
+}
+
+async function sessionsV2_dualWriteFromDcrSubmit(args) {
+  const db          = args.db;
+  const admin       = args.admin;
+  const logger      = args.logger;
+  const submissionId = args.submissionId;
+  const dcrDoc      = args.dcrDoc || {};
+  const staff       = args.staff  || {};
+
+  try {
+    // Gate 1: flag off -> skip silently.
+    if (!sessionsV2_isEnabled()) {
+      return { status: "skipped", reason: "flag_off" };
+    }
+
+    // Gate 2: require pioneer_assignment_id to compute V2 id.
+    const assignmentId = String(dcrDoc.pioneer_assignment_id || "").trim();
+    if (!assignmentId) {
+      return { status: "skipped", reason: "no_assignment_id" };
+    }
+
+    // Compute V2 session id. Service date Pacific.
+    const serviceDate = sessionsV2_serviceDateForPacific(new Date());
+    const v2Id = "sess_" + assignmentId + "_" + serviceDate + "_a1";
+    if (!SESSIONSV2_ID_RE.test(v2Id)) {
+      logger.warn("submitDcrV1 phase36a: derived v2_id does not match regex", {
+        submission_id: submissionId, v2_id: v2Id, assignment_id: assignmentId
+      });
+      return { status: "skipped", reason: "v2_id_invalid", v2_session_id: v2Id };
+    }
+
+    // Read V2 session. If missing, skip with reason — V2 will catch up
+    // on the next clock-in/out cycle. Not enqueuing a retry because the
+    // root cause is missing V2 creation, not a transient failure.
+    const ref  = db.collection("sessionsV2").doc(v2Id);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      logger.info("submitDcrV1 phase36a: v2 session not present (skip)", {
+        submission_id: submissionId, v2_session_id: v2Id
+      });
+      return { status: "skipped", reason: "v2_missing", v2_session_id: v2Id };
+    }
+    const v2Data = snap.data() || {};
+
+    // Build component updates. Use serverTimestamp for last_event_at /
+    // completed_at so Firestore stamps the write moment authoritatively.
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const update = {
+      "components.dcr.status":        "complete",
+      "components.dcr.last_event":    "dcr.submitted",
+      "components.dcr.last_event_at": sts,
+      "components.dcr.completed_at":  sts,
+      "components.dcr.ref":           submissionId,
+      "refs.dcr_id":                  submissionId,
+      "refs.dcr_submission_id":       submissionId,
+      updated_at:                     sts
+    };
+
+    const photoCount = Array.isArray(dcrDoc.photos) ? dcrDoc.photos.length : null;
+    if (photoCount != null && photoCount >= 0) {
+      update["components.photos.status"]        = photoCount > 0 ? "complete" : (v2Data.components && v2Data.components.photos && v2Data.components.photos.status) || "missing";
+      update["components.photos.count"]         = photoCount;
+      update["components.photos.last_event"]    = "photos.complete";
+      update["components.photos.last_event_at"] = sts;
+      if (photoCount > 0) {
+        update["components.photos.completed_at"] = sts;
+      }
+    }
+
+    // Checklist: V1 DCR doesn't carry a unified checklist progress field.
+    // If a `checklist` array is present and non-empty in the payload, assume
+    // submission means completion. Skip otherwise — Phase 36d wires the
+    // real per-item progression.
+    if (Array.isArray(dcrDoc.checklist) && dcrDoc.checklist.length > 0) {
+      update["components.checklist.status"]        = "complete";
+      update["components.checklist.pct"]           = 100;
+      update["components.checklist.items_total"]   = dcrDoc.checklist.length;
+      update["components.checklist.items_complete"] = dcrDoc.checklist.length;
+      update["components.checklist.last_event"]    = "checklist.complete";
+      update["components.checklist.last_event_at"] = sts;
+      update["components.checklist.completed_at"]  = sts;
+    }
+
+    // Build the post-update view of the V2 doc for snapshot rendering +
+    // parity diff. Server stamps are not resolved yet client-side but
+    // for parity we just need shape-stable fields (component statuses,
+    // counts, customer/staff identity).
+    const mergedComponents = JSON.parse(JSON.stringify(v2Data.components || {}));
+    SESSIONSV2_COMPONENTS.forEach(function (n) {
+      if (!mergedComponents[n]) mergedComponents[n] = sessionsV2_buildComponent("missing");
+    });
+    if (update["components.dcr.status"]) {
+      mergedComponents.dcr.status     = "complete";
+      mergedComponents.dcr.last_event = "dcr.submitted";
+      mergedComponents.dcr.ref        = submissionId;
+    }
+    if (update["components.photos.count"] != null) {
+      mergedComponents.photos.count = photoCount;
+      if (photoCount > 0) mergedComponents.photos.status = "complete";
+    }
+    if (update["components.checklist.pct"] != null) {
+      mergedComponents.checklist.status = "complete";
+      mergedComponents.checklist.pct    = 100;
+    }
+    const synthV2 = Object.assign({}, v2Data, { components: mergedComponents });
+    const view = sessionsV2Snapshot.renderSessionSnapshot(synthV2, {
+      generated_at_iso: new Date().toISOString()
+    });
+
+    const divergent = sessionsV2DcrParity.parityDiff(dcrDoc, view);
+
+    // Append timeline entry: dcr.submitted.
+    const dcrTlEntry = {
+      ts:         admin.firestore.Timestamp.now(),
+      actor:      {
+        type:  staff.role === "admin" ? "admin" : "tech",
+        uid:   staff.uid   || null,
+        email: staff.email || null
+      },
+      event:      "dcr.submitted",
+      title:      "DCR submitted to customer",
+      field_path: "components.dcr",
+      from:       (v2Data.components && v2Data.components.dcr && v2Data.components.dcr.status) || "missing",
+      to:         "complete",
+      ref:        submissionId,
+      client:     { app_version: "submitDcrV1-phase36a.2", platform: "cloud_function" }
+    };
+    update.timeline = admin.firestore.FieldValue.arrayUnion(dcrTlEntry);
+
+    await ref.update(update);
+
+    // Append parity.diverged Timeline entry as a SECOND write (so we
+    // don't put two arrayUnion calls on the same field in one update).
+    // The intentional skip path: parity matched -> no second write.
+    if (divergent.length > 0) {
+      const parityTlEntry = {
+        ts:         admin.firestore.Timestamp.now(),
+        actor:      { type: "system", uid: null, email: null },
+        event:      "parity.diverged",
+        title:      "V1 and V2 snapshot disagreed on " + divergent.length + " field(s)",
+        detail:     ("fields: " + divergent.join(", ")).slice(0, 500),
+        field_path: "parity",
+        ref:        submissionId,
+        client:     {
+          app_version:     "submitDcrV1-phase36a.2",
+          platform:        "cloud_function",
+          snapshot_version: sessionsV2Snapshot.SNAPSHOT_VERSION
+        }
+      };
+      await ref.update({
+        timeline:   admin.firestore.FieldValue.arrayUnion(parityTlEntry),
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    return {
+      status:           "ok",
+      v2_session_id:    v2Id,
+      divergent_fields: divergent,
+      snapshot_version: sessionsV2Snapshot.SNAPSHOT_VERSION
+    };
+  } catch (err) {
+    try {
+      args.logger.warn("sessionsV2_dualWriteFromDcrSubmit threw (swallowed)", {
+        submission_id: args.submissionId,
+        error:         err && err.message,
+        stack:         err && err.stack
+      });
+    } catch (_e) {}
+    return {
+      status: "failed",
+      error:  (err && err.message) || "unknown error"
+    };
+  }
 }
 
 /* --------------- createSessionV2 ---------------

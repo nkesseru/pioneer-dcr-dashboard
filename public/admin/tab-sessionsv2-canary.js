@@ -9,7 +9,16 @@
 
 (function () {
   "use strict";
-  if (!window.__pioneerAdmin || !window.__pioneerAdmin.utils) return;
+  try { console.log("[sessionsV2.canary] module evaluating"); } catch (_e) {}
+
+  // Phase 36a hotfix: don't early-return on missing __pioneerAdmin/utils.
+  // Initialize the namespace ourselves so handler binding still happens
+  // even if this script evaluates before admin/_utils.js (which would be
+  // surprising given the HTML load order, but the previous silent
+  // early-return swallowed all evidence). Worst case: tabs object gets
+  // pre-seeded by us and _utils.js's `|| {}` guard preserves it.
+  window.__pioneerAdmin       = window.__pioneerAdmin       || {};
+  window.__pioneerAdmin.tabs  = window.__pioneerAdmin.tabs  || {};
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -69,6 +78,11 @@
   function fakeClockOutAt() { return new Date().toISOString(); }
 
   async function btnDiagnose() {
+    // Phase 36a hotfix: immediate observability. Prove the handler
+    // fired before any async work runs. If you see DIAGNOSE_FIRED in
+    // the result pane, wiring is OK and the issue (if any) is downstream.
+    try { console.log("[sessionsV2.canary] btnDiagnose fired"); } catch (_e) {}
+    logToPane("DIAGNOSE_FIRED", { fired_at: new Date().toISOString() });
     const out = {
       timestamp:                          new Date().toISOString(),
       helper_loaded:                      typeof window.PIONEER_SESSIONS_V2 === "object",
@@ -280,6 +294,165 @@
     }
   }
 
+  /* ----- Phase 36a snapshot renderer buttons -----
+   *
+   * 5a. Render snapshot from canary V2 session  (read-only)
+   * 5b. Render snapshot from a real V2 session id (read-only, admin enters id)
+   * 5c. Reproducibility check — render twice on same canary doc, diff outputs
+   *     excluding generated_at_iso; pass iff byte-identical.
+   * 5d. Simulate DCR dual-write on canary session — admin direct write
+   *     that mimics the Phase 36a.2 server splice (stamps components.dcr,
+   *     components.photos, appends timeline.dcr.submitted). No V1
+   *     dcr_submissions doc is created.
+   *
+   * 5a/b/c are READ-ONLY. 5d writes only to the canary V2 doc.
+   * The renderer is exposed via window.PIONEER_SESSIONS_V2_SNAPSHOT.
+   */
+  function _snapHelper() {
+    return window.PIONEER_SESSIONS_V2_SNAPSHOT || null;
+  }
+
+  async function btnSnapshotCanary() {
+    const h = _snapHelper();
+    if (!h) { logToPane("SNAPSHOT_CANARY ERROR", "snapshot helper unavailable"); return; }
+    const id = expectedV2Id();
+    try {
+      const doc = await firebase.firestore().doc("sessionsV2/" + id).get();
+      if (!doc.exists) {
+        logToPane("SNAPSHOT_CANARY", { session_id: id, exists: false,
+          hint: "Run 'Create canary session' first." });
+        return;
+      }
+      const view = h.renderSessionSnapshot(doc.data(),
+        { generated_at_iso: new Date().toISOString() });
+      logToPane("SNAPSHOT_CANARY (" + h.SNAPSHOT_VERSION + ")", view);
+    } catch (err) {
+      logToPane("SNAPSHOT_CANARY ERROR", err && err.message);
+    }
+  }
+
+  async function btnSnapshotReal() {
+    const h = _snapHelper();
+    if (!h) { logToPane("SNAPSHOT_REAL ERROR", "snapshot helper unavailable"); return; }
+    var id = "";
+    try { id = window.prompt("Real V2 session id (sess_..._a1):", ""); }
+    catch (_e) { id = ""; }
+    if (!id) { logToPane("SNAPSHOT_REAL", "cancelled"); return; }
+    id = String(id).trim();
+    if (id.indexOf("sess_") !== 0) {
+      logToPane("SNAPSHOT_REAL ERROR",
+        "id must start with sess_; received: " + id);
+      return;
+    }
+    try {
+      const doc = await firebase.firestore().doc("sessionsV2/" + id).get();
+      if (!doc.exists) {
+        logToPane("SNAPSHOT_REAL", { session_id: id, exists: false });
+        return;
+      }
+      const view = h.renderSessionSnapshot(doc.data(),
+        { generated_at_iso: new Date().toISOString() });
+      logToPane("SNAPSHOT_REAL (" + h.SNAPSHOT_VERSION + ")", view);
+    } catch (err) {
+      logToPane("SNAPSHOT_REAL ERROR", err && err.message);
+    }
+  }
+
+  async function btnSnapshotRepro() {
+    const h = _snapHelper();
+    if (!h) { logToPane("SNAPSHOT_REPRO ERROR", "snapshot helper unavailable"); return; }
+    const id = expectedV2Id();
+    try {
+      const doc = await firebase.firestore().doc("sessionsV2/" + id).get();
+      if (!doc.exists) {
+        logToPane("SNAPSHOT_REPRO", { session_id: id, exists: false,
+          hint: "Run 'Create canary session' first." });
+        return;
+      }
+      const data = doc.data();
+      const a = h.renderSessionSnapshot(data, { generated_at_iso: "PIN_A" });
+      const b = h.renderSessionSnapshot(data, { generated_at_iso: "PIN_B" });
+      a.generated_at_iso = "PIN";
+      b.generated_at_iso = "PIN";
+      const aJson = JSON.stringify(a);
+      const bJson = JSON.stringify(b);
+      const identical = (aJson === bJson);
+      logToPane("SNAPSHOT_REPRO", {
+        session_id:        id,
+        snapshot_version:  h.SNAPSHOT_VERSION,
+        byte_identical:    identical,
+        a_length_bytes:    aJson.length,
+        b_length_bytes:    bJson.length,
+        result:            identical ? "PASS" : "FAIL"
+      });
+    } catch (err) {
+      logToPane("SNAPSHOT_REPRO ERROR", err && err.message);
+    }
+  }
+
+  async function btnSimulateDcrDualWrite() {
+    const h = _snapHelper();
+    if (!h) { logToPane("SIMULATE_DCR ERROR", "snapshot helper unavailable"); return; }
+    const id  = expectedV2Id();
+    const ref = firebase.firestore().doc("sessionsV2/" + id);
+    const actor = firebase.auth().currentUser;
+    const actorEmail = (actor && actor.email) || "unknown";
+    const fakeSubmissionId = "canary_dcr_" + Date.now();
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) {
+        logToPane("SIMULATE_DCR ERROR", { v2_id: id, exists: false,
+          hint: "Run 'Create canary session' first." });
+        return;
+      }
+      const sts = firebase.firestore.FieldValue.serverTimestamp();
+      const photoCount = 3;
+      const tlEntry = {
+        ts:         new Date(),
+        actor:      { type: "admin", uid: (actor && actor.uid) || null,
+                      email: actorEmail },
+        event:      "dcr.submitted",
+        title:      "Canary: simulated DCR submit",
+        field_path: "components.dcr",
+        from:       "missing",
+        to:         "complete",
+        ref:        fakeSubmissionId,
+        client:     { app_version: "canary-harness-36a", platform: "browser" }
+      };
+      await ref.update({
+        "components.dcr.status":          "complete",
+        "components.dcr.last_event":      "dcr.submitted",
+        "components.dcr.last_event_at":   sts,
+        "components.dcr.completed_at":    sts,
+        "components.dcr.ref":             fakeSubmissionId,
+        "components.photos.status":       "complete",
+        "components.photos.count":        photoCount,
+        "components.photos.last_event":   "photos.complete",
+        "components.photos.last_event_at": sts,
+        "components.photos.completed_at": sts,
+        "refs.dcr_id":                    fakeSubmissionId,
+        "refs.dcr_submission_id":         fakeSubmissionId,
+        timeline:                         firebase.firestore.FieldValue.arrayUnion(tlEntry),
+        updated_at:                       sts
+      });
+      const after = await ref.get();
+      const view = h.renderSessionSnapshot(after.data(),
+        { generated_at_iso: new Date().toISOString() });
+      logToPane("SIMULATE_DCR OK", {
+        v2_session_id:    id,
+        fake_submission:  fakeSubmissionId,
+        photo_count:      photoCount,
+        snapshot_version: h.SNAPSHOT_VERSION,
+        rendered_dcr_status:    view.components.dcr.status,
+        rendered_dcr_ref:       view.components.dcr.ref,
+        rendered_photo_count:   view.components.photos.count,
+        timeline_entries:       (after.data().timeline || []).length
+      });
+    } catch (err) {
+      logToPane("SIMULATE_DCR ERROR", err && err.message);
+    }
+  }
+
   async function btnCleanupDry() {
     const url = window.CLEANUP_SESSION_V2_CANARY_URL;
     if (!url) { logToPane("CLEANUP_DRY ERROR", "CLEANUP_SESSION_V2_CANARY_URL unset"); return; }
@@ -302,57 +475,172 @@
     if (m) { m.hidden = true; m.setAttribute("aria-hidden", "true"); }
   }
 
-  function btnCleanupApply() {
+  /* Phase 36a hotfix2 — Cleanup APPLY wiring.
+   *
+   * Original modal path proved unreliable in real Chrome (button #8
+   * appeared to do nothing). Switched to a self-contained two-step
+   * inline confirmation:
+   *   1st click  -> button text becomes "CONFIRM DELETE — click again (Ns)"
+   *                 and arms for 8 seconds; pane gets ARM line.
+   *   2nd click  -> fires cleanup POST, logs result, disarms.
+   *   no 2nd     -> auto-disarms after 8s, pane gets DISARM line.
+   *
+   * No dependency on the separate modal element. Same button id
+   * (sv2c-btn-cleanup-apply) handles both arm + confirm. Idempotent —
+   * safe to spam-click during the arm window without firing twice.
+   *
+   * The old modal (sv2c-confirm-modal) remains as orphan HTML;
+   * performCleanupApply() is kept as a back-compat fallback for the
+   * modal's "Delete canary docs" button if anyone reaches it.
+   */
+  let _cleanupArmedUntil = 0;
+  let _cleanupTimeoutId  = null;
+
+  function _resetCleanupArm() {
+    _cleanupArmedUntil = 0;
+    if (_cleanupTimeoutId) { clearTimeout(_cleanupTimeoutId); _cleanupTimeoutId = null; }
+    const btn = $("sv2c-btn-cleanup-apply");
+    if (btn) {
+      btn.textContent = "8. Cleanup (APPLY)";
+      btn.style.background = "#fee2e2";
+      btn.style.color      = "#991b1b";
+      btn.style.borderColor = "#fca5a5";
+    }
+  }
+
+  function _armCleanup(seconds) {
+    const btn = $("sv2c-btn-cleanup-apply");
+    _cleanupArmedUntil = Date.now() + seconds * 1000;
+    if (btn) {
+      btn.textContent      = "CONFIRM DELETE — click again (" + seconds + "s)";
+      btn.style.background = "#991b1b";
+      btn.style.color      = "#fff";
+      btn.style.borderColor = "#7f1d1d";
+    }
+    if (_cleanupTimeoutId) clearTimeout(_cleanupTimeoutId);
+    _cleanupTimeoutId = setTimeout(function () {
+      logToPane("CLEANUP_APPLY DISARMED", "auto-disarmed after " + seconds + "s without confirm");
+      _resetCleanupArm();
+    }, seconds * 1000);
+  }
+
+  async function btnCleanupApply() {
+    try { console.log("[sessionsV2.canary] btnCleanupApply fired"); } catch (_e) {}
     const url = window.CLEANUP_SESSION_V2_CANARY_URL;
     if (!url) {
       logToPane("CLEANUP_APPLY ERROR", "CLEANUP_SESSION_V2_CANARY_URL unset");
       return;
     }
-    openConfirmModal();
-  }
-
-  async function performCleanupApply() {
-    const url = window.CLEANUP_SESSION_V2_CANARY_URL;
-    const errEl = $("sv2c-confirm-err");
-    const btn = $("sv2c-confirm-apply");
-    if (btn) btn.disabled = true;
+    // Two-step inline arm/confirm.
+    if (Date.now() > _cleanupArmedUntil) {
+      _armCleanup(8);
+      logToPane("CLEANUP_APPLY ARMED",
+        "click the same button again within 8s to confirm deletion of all environment=debug, source=canary docs");
+      return;
+    }
+    // Confirmed click within arm window. Fire.
+    if (_cleanupTimeoutId) { clearTimeout(_cleanupTimeoutId); _cleanupTimeoutId = null; }
+    const btn = $("sv2c-btn-cleanup-apply");
+    if (btn) { btn.disabled = true; btn.textContent = "DELETING..."; }
     try {
       const result = await _postWithAuth(url, { dry_run: false });
       logToPane("CLEANUP_APPLY", result);
-      closeConfirmModal();
     } catch (err) {
-      const msg = (err && err.message) || "unknown";
-      if (errEl) { errEl.textContent = "Cleanup failed: " + msg; errEl.hidden = false; }
-      logToPane("CLEANUP_APPLY ERROR", msg);
+      logToPane("CLEANUP_APPLY ERROR", (err && err.message) || "unknown");
     } finally {
-      if (btn) btn.disabled = false;
+      _cleanupArmedUntil = 0;
+      if (btn) { btn.disabled = false; }
+      _resetCleanupArm();
     }
   }
 
-  function wire() {
-    const bind = function (id, fn) { const el = $(id); if (el) el.addEventListener("click", fn); };
-    bind("sv2c-btn-diagnose",        btnDiagnose);
-    bind("sv2c-btn-compute-id",      btnComputeId);
-    bind("sv2c-btn-create",          btnCreateCanary);
-    bind("sv2c-btn-recreate",        btnRecreateSame);
-    bind("sv2c-btn-read-back",       btnReadBack);
-    bind("sv2c-btn-reconcile",       btnReconcile);
-    bind("sv2c-btn-cleanup-dry",     btnCleanupDry);
-    bind("sv2c-btn-cleanup-apply",   btnCleanupApply);
-    bind("sv2c-confirm-apply",       performCleanupApply);
-    // Phase 35b clock-out canary buttons
-    bind("sv2c-btn-advance-inprog",  btnAdvanceToInProgress);
-    bind("sv2c-btn-clockout-cf",     btnCallClockOutCF);
-    bind("sv2c-btn-clockout-again",  btnCallClockOutCFAgain);
-    bind("sv2c-btn-clear-pane",      function () {
-      const pane = $("sv2c-result");
-      if (pane) pane.value = "";
-    });
+  // Kept for back-compat — modal "Delete canary docs" button still
+  // calls this if someone reaches it via the modal path.
+  async function performCleanupApply() {
+    try { console.log("[sessionsV2.canary] performCleanupApply fired (legacy modal path)"); } catch (_e) {}
+    const url = window.CLEANUP_SESSION_V2_CANARY_URL;
+    if (!url) {
+      logToPane("CLEANUP_APPLY ERROR", "CLEANUP_SESSION_V2_CANARY_URL unset");
+      return;
+    }
+    try {
+      const result = await _postWithAuth(url, { dry_run: false });
+      logToPane("CLEANUP_APPLY (legacy modal)", result);
+      closeConfirmModal();
+    } catch (err) {
+      logToPane("CLEANUP_APPLY ERROR", (err && err.message) || "unknown");
+    }
   }
 
-  function init() { wire(); }
-  function refresh() { /* no-op: harness is button-driven */ }
+  // Phase 36a hotfix: idempotent binding via dataset marker. Safe to
+  // call wire() multiple times — bind only fires once per element.
+  function wire() {
+    const BINDINGS = [
+      // Phase 35a
+      ["sv2c-btn-diagnose",        btnDiagnose],
+      ["sv2c-btn-compute-id",      btnComputeId],
+      ["sv2c-btn-create",          btnCreateCanary],
+      ["sv2c-btn-recreate",        btnRecreateSame],
+      ["sv2c-btn-read-back",       btnReadBack],
+      ["sv2c-btn-reconcile",       btnReconcile],
+      ["sv2c-btn-cleanup-dry",     btnCleanupDry],
+      ["sv2c-btn-cleanup-apply",   btnCleanupApply],
+      ["sv2c-confirm-apply",       performCleanupApply],
+      // Phase 35b clock-out
+      ["sv2c-btn-advance-inprog",  btnAdvanceToInProgress],
+      ["sv2c-btn-clockout-cf",     btnCallClockOutCF],
+      ["sv2c-btn-clockout-again",  btnCallClockOutCFAgain],
+      // Phase 36a snapshot (read-only)
+      ["sv2c-btn-snapshot-canary", btnSnapshotCanary],
+      ["sv2c-btn-snapshot-real",   btnSnapshotReal],
+      ["sv2c-btn-snapshot-repro",  btnSnapshotRepro],
+      // Phase 36a.2 simulated DCR dual-write (admin direct write)
+      ["sv2c-btn-simulate-dcr",    btnSimulateDcrDualWrite],
+      ["sv2c-btn-clear-pane",      function () {
+        const pane = $("sv2c-result");
+        if (pane) pane.value = "";
+      }]
+    ];
+    let bound = 0;
+    let already = 0;
+    const missing = [];
+    BINDINGS.forEach(function (pair) {
+      const id = pair[0], fn = pair[1];
+      const el = $(id);
+      if (!el) { missing.push(id); return; }
+      if (el.dataset.sv2cBound === "1") { already++; return; }
+      el.addEventListener("click", fn);
+      el.dataset.sv2cBound = "1";
+      bound++;
+    });
+    try {
+      console.log("[sessionsV2.canary] handlers bound",
+        { bound: bound, already_bound: already, missing: missing });
+    } catch (_e) {}
+    return { bound: bound, already: already, missing: missing };
+  }
 
-  window.__pioneerAdmin.tabs = window.__pioneerAdmin.tabs || {};
-  window.__pioneerAdmin.tabs.sessionsv2Canary = { init: init, refresh: refresh };
+  function init()    { try { console.log("[sessionsV2.canary] init() called"); } catch (_e) {} return wire(); }
+  function refresh() { try { console.log("[sessionsV2.canary] refresh() called"); } catch (_e) {} return wire(); }
+
+  window.__pioneerAdmin.tabs.sessionsv2Canary = { init: init, refresh: refresh, _wire: wire };
+
+  // Phase 36a safety net: bind on DOMContentLoaded too, in case admin.js's
+  // tab-activator path doesn't reach us (e.g., flag mis-set, panel
+  // re-rendered after init). Idempotent via dataset marker.
+  function safeNetBind() {
+    try {
+      const r = wire();
+      console.log("[sessionsV2.canary] DOMContentLoaded self-bind", r);
+    } catch (e) {
+      try { console.warn("[sessionsV2.canary] safeNetBind threw", e && e.message); } catch (_e) {}
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", safeNetBind, { once: true });
+  } else {
+    safeNetBind();
+  }
+
+  try { console.log("[sessionsV2.canary] module registered + safety-net armed"); } catch (_e) {}
 }());

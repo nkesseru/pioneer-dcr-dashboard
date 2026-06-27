@@ -2392,6 +2392,15 @@
         <button type="button" id="sv2c-btn-clockout-again" class="mc-btn">3r. Call again (idempotency)</button>
       </div>
 
+      <!-- Phase 36a snapshot renderer buttons (pure projection; 5a-5c are read-only, 5d simulates a DCR dual-write against the canary doc) -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;padding-top:8px;border-top:1px dashed #d1d5db;">
+        <span style="font-size:11px;font-weight:700;color:var(--mc-ink-soft);align-self:center;margin-right:8px;">Phase 36a snapshot:</span>
+        <button type="button" id="sv2c-btn-snapshot-canary"   class="mc-btn">5a. Render snapshot (canary session)</button>
+        <button type="button" id="sv2c-btn-snapshot-real"     class="mc-btn">5b. Render snapshot (real session id)</button>
+        <button type="button" id="sv2c-btn-snapshot-repro"    class="mc-btn">5c. Reproducibility check</button>
+        <button type="button" id="sv2c-btn-simulate-dcr"      class="mc-btn">5d. Simulate DCR dual-write (canary)</button>
+      </div>
+
       <label for="sv2c-result" style="display:block;font-size:12px;font-weight:600;color:var(--mc-ink-soft);margin-top:8px;">Result pane (latest entries at top)</label>
       <textarea id="sv2c-result" readonly
                 style="width:100%;height:480px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:10px;border:1px solid #d1d5db;border-radius:6px;background:#0d1218;color:#e5e7eb;line-height:1.45;"
@@ -4096,7 +4105,8 @@
   <!-- SessionV2 Canary harness — flag-gated. Always loaded; tab visibility
        controlled by window.SESSION_V2_DEBUG_UI_ENABLED. -->
   <script src="lib/sessionsV2-client.js?v=20260626-phase35b-clockout"></script>
-  <script src="admin/tab-sessionsv2-canary.js?v=20260626-phase35b-clockout"></script>
+  <script src="lib/sessionsV2-snapshot.js?v=20260627-phase36a-hotfix2"></script>
+  <script src="admin/tab-sessionsv2-canary.js?v=20260627-phase36a-hotfix2"></script>
   <script src="admin.js?v=20260626-phase35b-clockout"></script>
   <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
