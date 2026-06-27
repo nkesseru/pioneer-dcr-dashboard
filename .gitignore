@@ -57,4 +57,8 @@ scripts/opening-balances.json
 # Claude Code session lock — created automatically when a session is
 # open in this repo. Never committable.
 .claude/scheduled_tasks.lock
-/Users/nicholaskesseru/Projects/pioneer-dcr-hub/.tools/
+
+# Project-local toolchain (e.g., emulator JDK at .tools/jdk-17.../).
+# Repo-relative path — the prior /Users/... absolute path did not match
+# any actual path under the repo root, so .tools/ was leaking as untracked.
+.tools/

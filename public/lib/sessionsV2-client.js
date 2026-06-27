@@ -143,8 +143,13 @@
     return _postWithAuth(global.CREATE_SESSION_V2_URL, payload);
   }
 
-  /* ----- Failure: enqueue retry (shared) ----- */
-  async function _enqueueRetry(eventType, payload, lastErrorSummary) {
+  /* ----- Failure: enqueue retry (shared) -----
+   *
+   * Phase 35c: stamps origin_operation field. Closed enum for now —
+   * processor doesn't branch on it, but admin can query "which surface
+   * is producing the most retries?"
+   */
+  async function _enqueueRetry(eventType, payload, lastErrorSummary, originOperation) {
     var user = firebase.auth().currentUser;
     if (!user) return;
     var sts = firebase.firestore.FieldValue.serverTimestamp();
@@ -155,8 +160,8 @@
         event_id:         eventType + "-" + payload.session_id,
         payload:          payload,
         status:           "queued",
-        attempt_count:    1,
-        next_attempt_at:  sts,
+        attempt_count:    0,                                       // 0 on first enqueue; processor increments on each failed attempt
+        next_attempt_at:  sts,                                     // processor will pick up immediately on next scan
         last_error:       String(lastErrorSummary || "").slice(0, 500),
         staff_uid:        user.uid,
         intent_ts:        sts,
@@ -164,7 +169,8 @@
           app_version: String(global.APP_VERSION || "unknown"),
           platform:    (typeof navigator !== "undefined" && navigator.platform) || "unknown"
         },
-        enqueued_at:      sts
+        enqueued_at:      sts,
+        origin_operation: originOperation || "unknown"
       });
     } catch (err) {
       _warn("enqueue retry failed (" + eventType + ")", err && err.message);
@@ -251,7 +257,7 @@
       status: status,
       error:  (result.body && result.body.error) || result.error || "unknown"
     });
-    await _enqueueRetry("v2.create.retry", payload, (result.body && result.body.error) || result.error);
+    await _enqueueRetry("v2.create.retry", payload, (result.body && result.body.error) || result.error, "clockin.dual_write");
     return {
       ok:        false,
       enqueued:  true,
@@ -345,7 +351,7 @@
       status: status, code: bodyCode,
       error:  (result.body && result.body.error) || result.error || "unknown"
     });
-    await _enqueueRetry("v2.clockout.retry", payload, (result.body && result.body.error) || result.error);
+    await _enqueueRetry("v2.clockout.retry", payload, (result.body && result.body.error) || result.error, "clockout.dual_write");
     return {
       ok:       false,
       enqueued: true,

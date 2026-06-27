@@ -468,6 +468,18 @@
           </button>
         </div>
       </div>
+
+      <!-- SessionV2 Debug — hidden unless window.SESSION_V2_DEBUG_UI_ENABLED === true.
+           Phase 35a-canary harness. See docs/sessionsV2/CANARY_HARNESS.md -->
+      <div class="admin-tabs-group" data-group="sessionsv2-debug" id="admin-tabs-group-sessionsv2-debug" hidden>
+        <span class="admin-tabs-group-label">
+          <span class="admin-tabs-group-icon" aria-hidden="true">🧪</span>
+          SessionV2 Debug
+        </span>
+        <div class="admin-tabs-row">
+          <button class="admin-tab" data-tab="sessionsv2-canary" id="admin-tab-sessionsv2-canary" role="tab" aria-selected="false" hidden>SessionV2 Canary</button>
+        </div>
+      </div>
     </nav>
 
     <!-- ================== Customers ================== -->
@@ -2392,6 +2404,14 @@
         <button type="button" id="sv2c-btn-clockout-again" class="mc-btn">3r. Call again (idempotency)</button>
       </div>
 
+      <!-- Phase 35c queue processor canary buttons -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;padding-top:8px;border-top:1px dashed #d1d5db;">
+        <span style="font-size:11px;font-weight:700;color:var(--mc-ink-soft);align-self:center;margin-right:8px;">Phase 35c queue:</span>
+        <button type="button" id="sv2c-btn-queue-list"    class="mc-btn">4a. List queue (last 20)</button>
+        <button type="button" id="sv2c-btn-queue-enqueue" class="mc-btn">4b. Enqueue retry (canary.harness)</button>
+        <button type="button" id="sv2c-btn-queue-run"     class="mc-btn">4c. Run processor now</button>
+      </div>
+
       <!-- Phase 36a snapshot renderer buttons (pure projection; 5a-5c are read-only, 5d simulates a DCR dual-write against the canary doc) -->
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;padding-top:8px;border-top:1px dashed #d1d5db;">
         <span style="font-size:11px;font-weight:700;color:var(--mc-ink-soft);align-self:center;margin-right:8px;">Phase 36a snapshot:</span>
@@ -4104,10 +4124,10 @@
   <script src="admin/tab-office-issues.js?v=20260616b-getcount"></script>
   <!-- SessionV2 Canary harness — flag-gated. Always loaded; tab visibility
        controlled by window.SESSION_V2_DEBUG_UI_ENABLED. -->
-  <script src="lib/sessionsV2-client.js?v=20260626-phase35b-clockout"></script>
+  <script src="lib/sessionsV2-client.js?v=20260626-phase35c-queue"></script>
   <script src="lib/sessionsV2-snapshot.js?v=20260627-phase36a-hotfix2"></script>
   <script src="admin/tab-sessionsv2-canary.js?v=20260627-phase36a-hotfix2"></script>
-  <script src="admin.js?v=20260626-phase35b-clockout"></script>
+  <script src="admin.js?v=20260626-phase35c-queue"></script>
   <script src="/pwa-register.js?v=20260622-phase31d"></script>
 </body>
 </html>

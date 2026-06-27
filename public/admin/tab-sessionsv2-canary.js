@@ -294,6 +294,92 @@
     }
   }
 
+  /* ----- Phase 35c queue processor buttons -----
+   *
+   * 4a. List queue — read recent pending_session_writes entries (admin perm)
+   * 4b. Enqueue retry — synthesize a v2.clockout.retry against the canary
+   *     V2 id, stamped origin_operation=canary.harness so production
+   *     reconciliation can filter it out.
+   * 4c. Run processor — POST to processSessionV2QueueV1 (admin-gated,
+   *     flag-gated server-side).
+   */
+
+  async function btnListQueue() {
+    try {
+      const snap = await firebase.firestore()
+        .collection("pending_session_writes")
+        .orderBy("enqueued_at", "desc")
+        .limit(20)
+        .get();
+      const entries = snap.docs.map(function (d) {
+        const data = d.data() || {};
+        return {
+          id:              d.id,
+          session_id:      data.session_id,
+          event_type:      data.event_type,
+          status:          data.status,
+          attempt_count:   data.attempt_count,
+          origin_operation: data.origin_operation || "<unset>",
+          last_error:      (data.last_error || "").slice(0, 80),
+          next_attempt_at: data.next_attempt_at && data.next_attempt_at.toDate
+                            ? data.next_attempt_at.toDate().toISOString()
+                            : null,
+          enqueued_at:     data.enqueued_at && data.enqueued_at.toDate
+                            ? data.enqueued_at.toDate().toISOString()
+                            : null
+        };
+      });
+      logToPane("QUEUE_LIST (latest 20)", { count: entries.length, entries: entries });
+    } catch (err) {
+      logToPane("QUEUE_LIST ERROR", err && err.message);
+    }
+  }
+
+  async function btnEnqueueRetry() {
+    const u = firebase.auth().currentUser;
+    if (!u) { logToPane("QUEUE_ENQUEUE ERROR", "not signed in"); return; }
+    const sts = firebase.firestore.FieldValue.serverTimestamp();
+    const v2Id = expectedV2Id();
+    const payload = {
+      session_id:    v2Id,
+      v1_session_id: fakeV1Id(),
+      clock_out_at:  fakeClockOutAt(),
+      clock_out_gps: null,
+      environment:   "debug"
+    };
+    try {
+      const ref = await firebase.firestore().collection("pending_session_writes").add({
+        session_id:       v2Id,
+        event_type:       "v2.clockout.retry",
+        event_id:         "canary-clockout-" + Date.now(),
+        payload:          payload,
+        status:           "queued",
+        attempt_count:    0,
+        next_attempt_at:  sts,
+        last_error:       null,
+        staff_uid:        u.uid,
+        intent_ts:        sts,
+        device:           { app_version: "canary", platform: "harness" },
+        enqueued_at:      sts,
+        origin_operation: "canary.harness"
+      });
+      logToPane("QUEUE_ENQUEUE OK", { queue_id: ref.id, v2_session_id: v2Id });
+    } catch (err) {
+      logToPane("QUEUE_ENQUEUE ERROR", err && err.message);
+    }
+  }
+
+  async function btnRunProcessor() {
+    const url = window.PROCESS_SESSION_V2_QUEUE_URL;
+    if (!url) { logToPane("PROCESSOR_RUN ERROR", "PROCESS_SESSION_V2_QUEUE_URL unset"); return; }
+    try {
+      const result = await _postWithAuth(url, {});
+      logToPane("PROCESSOR_RUN", result);
+    } catch (err) {
+      logToPane("PROCESSOR_RUN ERROR", err && err.message);
+    }
+  }
+
   /* ----- Phase 36a snapshot renderer buttons -----
    *
    * 5a. Render snapshot from canary V2 session  (read-only)
@@ -590,6 +676,10 @@
       ["sv2c-btn-advance-inprog",  btnAdvanceToInProgress],
       ["sv2c-btn-clockout-cf",     btnCallClockOutCF],
       ["sv2c-btn-clockout-again",  btnCallClockOutCFAgain],
+      // Phase 35c queue
+      ["sv2c-btn-queue-list",      btnListQueue],
+      ["sv2c-btn-queue-enqueue",   btnEnqueueRetry],
+      ["sv2c-btn-queue-run",       btnRunProcessor],
       // Phase 36a snapshot (read-only)
       ["sv2c-btn-snapshot-canary", btnSnapshotCanary],
       ["sv2c-btn-snapshot-real",   btnSnapshotReal],

@@ -34,7 +34,7 @@ No-show signal lives on the **Assignment**, not on a missing Session. Mission Co
 | `sessionsV2_open/{session_id}` | Mirror of `in_progress \| paused \| awaiting_completion`. Cheap Mission Control queries. | Rules live; mirror trigger deferred to Phase 35 |
 | `sessionsV2_active_by_tech/{staff_uid}` | Pointer to current open session per tech (max 1). | Rules live; writer deferred to Phase 35 |
 | `session_timeline/{session_id}/entries/{entry_id}` | Overflow store when embedded `timeline[]` > 50 entries | Rules live; CF writer deferred to Phase 35 |
-| `pending_session_writes/{queue_id}` | Unified offline queue (replaces `dcr_pending_uploads` + `pending_clock_events` at Phase 35) | Rules live; processor deferred to Phase 35 |
+| `pending_session_writes/{queue_id}` | Unified retry queue. Populated when V2 dual-write fails (35a + 35b). Drained by `processSessionV2QueueV1` (35c). See doc shape below. | Rules live; processor shipped Phase 35c |
 
 ---
 
@@ -498,6 +498,36 @@ All writes denied (`admin_removed === true` is the gate). Admin must un-archive 
 | `sessionsV2` | `(environment ASC, service_date ASC)` | Reconciliation filter (`environment != "debug"`) — **NEW Phase 34** |
 | `sessionsV2_open` | `(staff_uid ASC, updated_at DESC)` | Tech /work resume query |
 | `pending_session_writes` | `(status ASC, next_attempt_at ASC)` | Queue processor scan |
+
+### `pending_session_writes/{queue_id}` field shape
+
+```
+{
+  queue_id:        string,                              // doc id mirror
+  session_id:      string,                              // target SessionV2 doc
+  event_type:      "v2.create.retry" | "v2.clockout.retry",
+  event_id:        string,                              // deterministic; idempotency key
+  payload:         object,                              // full request body for the downstream CF
+  status:          "queued" | "uploading" | "failed_will_retry" | "applied" | "failed_permanent",
+  attempt_count:   number,                              // 0 on first enqueue
+  next_attempt_at: Timestamp,                           // serverTimestamp on enqueue; processor advances per backoff schedule
+  last_error:      string | null,                       // last failure summary (max 500 chars)
+  staff_uid:       string,                              // auth gate for tech-create
+  intent_ts:       Timestamp,                           // when the original V1 write completed
+  device:          { app_version, platform } | null,
+  enqueued_at:     Timestamp,
+  applied_at:      Timestamp | null,                    // set on success
+  failed_at:       Timestamp | null,                    // set on dead-letter
+  origin_operation: "clockin.dual_write"                // NEW Phase 35c — diagnostic only
+                  | "clockout.dual_write"
+                  | "canary.harness"                    // future: "addshift.dual_write", "reconcile.auto_repair"
+                  | string                              // open for future enum additions
+}
+```
+
+**Backoff schedule** (Phase 35c): 1m, 5m, 15m, 30m, 60m between attempts. After 5 attempts → `failed_permanent`. Processor invocation cap: 25 entries per call.
+
+**`origin_operation`** is a diagnostic field stamped at enqueue time. Identifies WHICH upstream operation produced the failed write. Processor does NOT branch on it. Used by admin to answer "which surface is producing the most retries?" Closed enum today; new values added in their owning phase.
 
 ---
 

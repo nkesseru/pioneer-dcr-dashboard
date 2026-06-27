@@ -9127,6 +9127,417 @@ exports.updateSessionV2ClockOutV1 = onRequest({
   });
 });
 
+/* --------------- processSessionV2QueueV1 (Phase 35c) ---------------
+ *
+ * Drains pending_session_writes entries that 35a + 35b enqueue on
+ * V2 write failure. Two triggers share one internal worker:
+ *   1. processSessionV2QueueV1  — HTTP, admin-callable (canary harness)
+ *   2. scheduledSessionV2QueueDrainV1 — onSchedule every 5 minutes
+ *
+ * Event-type dispatcher routes each queued entry to its downstream CF:
+ *   v2.create.retry   -> internal call to createSessionV2 logic
+ *   v2.clockout.retry -> internal call to updateSessionV2ClockOutV1 logic
+ *   unknown event_type -> marked failed_permanent immediately
+ *
+ * Both downstream CFs are idempotent (createSessionV2 returns
+ * idempotent:true on replay; updateSessionV2ClockOutV1 returns
+ * idempotent:true on terminal states). So if the same entry is
+ * processed twice, no harm.
+ *
+ * Backoff: 1m, 5m, 15m, 30m, 60m. After 5 attempts -> failed_permanent.
+ *
+ * Hard cap: 25 entries per invocation. Prevents runaway. Scheduled
+ * trigger picks up overflow on next cycle.
+ *
+ * Flag-gated. When SESSION_V2_ENABLED=false, returns 200 with skipped:true.
+ *
+ * See docs/sessionsV2/PHASE35C_PLAN.md for the full design.
+ */
+
+const SESSIONSV2_QUEUE_HARD_CAP = 25;
+const SESSIONSV2_QUEUE_MAX_ATTEMPTS = 5;
+// Backoff in seconds: index = attempt_count just completed (0 = first failure)
+const SESSIONSV2_QUEUE_BACKOFF_SEC = [60, 300, 900, 1800, 3600];
+
+function sessionsV2_nextAttemptAtFor(attemptCount) {
+  // attemptCount has just been incremented for this failure
+  // attempt 1 -> wait 60s, attempt 2 -> 300s, ...
+  const idx = Math.min(attemptCount - 1, SESSIONSV2_QUEUE_BACKOFF_SEC.length - 1);
+  const secs = SESSIONSV2_QUEUE_BACKOFF_SEC[idx];
+  return admin.firestore.Timestamp.fromMillis(Date.now() + secs * 1000);
+}
+
+// Replays createSessionV2 logic against the payload.
+// Reuses the public function's contract: returns {ok, status, body}.
+async function sessionsV2_replayCreate(payload, callerLabel) {
+  // Minimal validation; createSessionV2 itself does full validation.
+  const sessionId = payload && payload.session_id;
+  if (!sessionId || !SESSIONSV2_ID_RE.test(sessionId)) {
+    return { ok: false, status: 400, body: { error: "invalid session_id" }, terminal: true };
+  }
+  const sessRef = db.collection("sessionsV2").doc(sessionId);
+  try {
+    const existing = await sessRef.get();
+    if (existing.exists) {
+      const ex = existing.data() || {};
+      if (ex.admin_removed === true) {
+        return { ok: false, status: 409, body: { error: "archived" }, terminal: true };
+      }
+      // Idempotent: existing matches expected identity -> success
+      const identityMatch =
+        ex.staff_uid     === payload.staff_uid &&
+        ex.customer_slug === payload.customer_slug &&
+        ex.service_date  === payload.service_date;
+      if (identityMatch) {
+        return { ok: true, status: 200, body: { idempotent: true } };
+      }
+      return { ok: false, status: 409, body: { error: "identity_mismatch" }, terminal: true };
+    }
+    // Doc doesn't exist — build via the createSessionV2 schema and write.
+    // Reuse helpers from createSessionV2.
+    const sts        = admin.firestore.FieldValue.serverTimestamp();
+    const expectedComponents = Array.isArray(payload.expected_components)
+      ? payload.expected_components
+      : (SESSIONSV2_DEFAULT_EXPECTED[payload.session_type] || ["clock", "payroll"]);
+    const parentRouteId = "rt_" + payload.staff_uid + "_" + payload.service_date;
+    const actor = {
+      type:  "system",
+      uid:   callerLabel + ":queue-replay",
+      email: callerLabel + ":queue-replay",
+      name:  "queue-worker replay (" + callerLabel + ")"
+    };
+    await sessRef.create({
+      session_id:        sessionId,
+      schema_version:    2,
+      source:            payload.source,
+      environment:       payload.environment || "production",
+      attempt_number:    payload.attempt_number || 1,
+      session_type:      payload.session_type,
+      client_session_id: payload.client_session_id || null,
+      assignment_id:     payload.assignment_id || null,
+      staff_uid:         payload.staff_uid,
+      staff_email:       payload.staff_email,
+      customer_id:       payload.customer_id,
+      customer_slug:     payload.customer_slug,
+      customer_name:     payload.customer_name,
+      location_id:       payload.location_id || null,
+      service_date:      payload.service_date,
+      parent_route_id:   parentRouteId,
+      scheduled:         payload.scheduled || null,
+      actual_sequence:   null,
+      expected_components: expectedComponents,
+      components:        sessionsV2_buildComponents(expectedComponents),
+      status:            "assigned",
+      status_changed_at: sts,
+      status_version:    1,
+      clock_in_at:       null,
+      clock_out_at:      null,
+      paused_intervals:  [],
+      max_distance_from_site_m: null,
+      clock_in_gps:      null,
+      clock_out_gps:     null,
+      refs: {
+        photo_paths: [], dcr_id: null, dcr_submission_id: null,
+        time_punch_ids: [], pending_queue_ids: [], email_message_ids: []
+      },
+      supersedes_session_ids:   [],
+      superseded_by_session_id: null,
+      superseded_at:            null,
+      superseded_reason:        null,
+      admin_removed:            false,
+      customer: {
+        email_sent_at: null, email_message_id: null, email_template: null,
+        notification_state: "pending"
+      },
+      timeline: [{
+        ts:           new Date(),
+        intent_ts:    null,
+        actor:        actor,
+        event:        "session.created",
+        title:        "Session created (queue replay)",
+        detail:       "Recovered from queue by " + callerLabel,
+        icon:         "session-created",
+        field_path:   "status",
+        from:         null,
+        to:           "assigned",
+        ref:          payload.v1_session_id || null,
+        client:       null
+      }],
+      v1_session_id:        payload.v1_session_id || null,
+      created_at:           sts,
+      created_by:           actor,
+      updated_at:           sts,
+      client_app_version:   payload.client_app_version || null,
+      client_intent_at:     null
+    });
+    return { ok: true, status: 200, body: { created: true } };
+  } catch (err) {
+    if (err && err.code === 6) {
+      return { ok: true, status: 200, body: { idempotent: true, race: true } };
+    }
+    return { ok: false, status: 500, body: { error: (err && err.message) || "create_failed" } };
+  }
+}
+
+// Replays updateSessionV2ClockOutV1 logic against the payload.
+async function sessionsV2_replayClockOut(payload, callerLabel) {
+  const sessionId = payload && payload.session_id;
+  if (!sessionId || !SESSIONSV2_ID_RE.test(sessionId)) {
+    return { ok: false, status: 400, body: { error: "invalid session_id" }, terminal: true };
+  }
+  const clockOutIso = payload.clock_out_at;
+  if (!clockOutIso || isNaN(Date.parse(clockOutIso))) {
+    return { ok: false, status: 400, body: { error: "invalid clock_out_at" }, terminal: true };
+  }
+  const sessRef = db.collection("sessionsV2").doc(sessionId);
+  try {
+    const snap = await sessRef.get();
+    if (!snap.exists) {
+      // V2 missing — likely chained from a still-pending v2.create.retry.
+      // Don't mark terminal; queue worker will retry per normal backoff.
+      return { ok: false, status: 404, body: { error: "V2_NOT_FOUND" } };
+    }
+    const v2 = snap.data() || {};
+    if (v2.admin_removed === true) {
+      return { ok: false, status: 409, body: { error: "archived" }, terminal: true };
+    }
+    const currentStatus = v2.status || "unknown";
+    if (SESSIONSV2_CLOCKOUT_TERMINAL_STATES.indexOf(currentStatus) >= 0) {
+      return { ok: true, status: 200, body: { idempotent: true, current_status: currentStatus } };
+    }
+    if (SESSIONSV2_CLOCKOUT_PRIOR_STATES.indexOf(currentStatus) < 0) {
+      // Not in a valid prior state. Mark terminal — queue can't fix this; needs admin/recovery.
+      return {
+        ok: false, status: 409,
+        body: { error: "INVALID_STATE", current_status: currentStatus },
+        terminal: true
+      };
+    }
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+    const clockOutTs = admin.firestore.Timestamp.fromMillis(Date.parse(clockOutIso));
+    const actor = {
+      type:  "system",
+      uid:   callerLabel + ":queue-replay",
+      email: callerLabel + ":queue-replay",
+      name:  "queue-worker replay (" + callerLabel + ")"
+    };
+    await sessRef.update({
+      status:                       "awaiting_completion",
+      status_changed_at:            sts,
+      status_version:               admin.firestore.FieldValue.increment(1),
+      clock_out_at:                 clockOutTs,
+      clock_out_gps:                payload.clock_out_gps || null,
+      "components.clock.status":          "complete",
+      "components.clock.last_event":      "clock.out",
+      "components.clock.last_event_at":   sts,
+      "components.clock.completed_at":    sts,
+      timeline: admin.firestore.FieldValue.arrayUnion({
+        ts:         new Date(),
+        intent_ts:  clockOutTs,
+        actor:      actor,
+        event:      "clock.out",
+        title:      "Tech finished cleaning (queue replay)",
+        detail:     "Recovered from queue by " + callerLabel,
+        icon:       "clock-out",
+        field_path: "status",
+        from:       currentStatus,
+        to:         "awaiting_completion",
+        ref:        payload.v1_session_id || null,
+        client:     null
+      }),
+      updated_at: sts
+    });
+    return { ok: true, status: 200, body: { advanced: true } };
+  } catch (err) {
+    return { ok: false, status: 500, body: { error: (err && err.message) || "update_failed" } };
+  }
+}
+
+const SESSIONSV2_QUEUE_DISPATCH = {
+  "v2.create.retry":   sessionsV2_replayCreate,
+  "v2.clockout.retry": sessionsV2_replayClockOut
+};
+
+async function sessionsV2_processQueueBatch(callerLabel) {
+  if (!sessionsV2_isEnabled()) {
+    return { ok: true, skipped: true, reason: "flag_off" };
+  }
+
+  const nowTs = admin.firestore.Timestamp.now();
+  let snap;
+  try {
+    snap = await db.collection("pending_session_writes")
+      .where("status", "in", ["queued", "failed_will_retry"])
+      .where("next_attempt_at", "<=", nowTs)
+      .orderBy("next_attempt_at", "asc")
+      .limit(SESSIONSV2_QUEUE_HARD_CAP + 1)
+      .get();
+  } catch (err) {
+    logger.error("processSessionV2QueueV1: query failed", { error: err && err.message });
+    return { ok: false, error: (err && err.message) || "query_failed" };
+  }
+
+  const candidates = snap.docs;
+  const hitCap = candidates.length > SESSIONSV2_QUEUE_HARD_CAP;
+  const toProcess = candidates.slice(0, SESSIONSV2_QUEUE_HARD_CAP);
+
+  let processed = 0;
+  let succeeded = 0;
+  let failed = 0;
+  let deadLettered = 0;
+  const ids = [];
+
+  for (let i = 0; i < toProcess.length; i++) {
+    const docSnap = toProcess[i];
+    const entry = Object.assign({ _id: docSnap.id, _ref: docSnap.ref }, docSnap.data() || {});
+    processed++;
+    ids.push(entry._id);
+
+    const dispatcher = SESSIONSV2_QUEUE_DISPATCH[entry.event_type];
+    const sts = admin.firestore.FieldValue.serverTimestamp();
+
+    if (!dispatcher) {
+      // Unknown event_type -> immediate dead-letter
+      try {
+        await entry._ref.update({
+          status:      "failed_permanent",
+          last_error:  "unknown_event_type: " + (entry.event_type || "<missing>"),
+          failed_at:   sts,
+          updated_at:  sts
+        });
+      } catch (_e) { /* best effort */ }
+      deadLettered++;
+      continue;
+    }
+
+    // Attempt the replay
+    let result;
+    try {
+      result = await dispatcher(entry.payload || {}, callerLabel);
+    } catch (err) {
+      result = { ok: false, status: 500, body: { error: (err && err.message) || "dispatcher_threw" } };
+    }
+
+    if (result.ok) {
+      try {
+        await entry._ref.update({
+          status:     "applied",
+          last_error: null,
+          applied_at: sts,
+          updated_at: sts
+        });
+      } catch (_e) { /* best effort */ }
+      succeeded++;
+      continue;
+    }
+
+    // Failure path
+    const newAttempt = (entry.attempt_count || 0) + 1;
+    const errorSummary = String(
+      (result.body && result.body.error) || result.error || "unknown"
+    ).slice(0, 500);
+
+    if (result.terminal === true || newAttempt >= SESSIONSV2_QUEUE_MAX_ATTEMPTS) {
+      try {
+        await entry._ref.update({
+          status:        "failed_permanent",
+          attempt_count: newAttempt,
+          last_error:    errorSummary + " (terminal=" + (!!result.terminal) + ")",
+          failed_at:     sts,
+          updated_at:    sts
+        });
+      } catch (_e) { /* best effort */ }
+      deadLettered++;
+    } else {
+      try {
+        await entry._ref.update({
+          status:          "failed_will_retry",
+          attempt_count:   newAttempt,
+          next_attempt_at: sessionsV2_nextAttemptAtFor(newAttempt),
+          last_error:      errorSummary,
+          updated_at:      sts
+        });
+      } catch (_e) { /* best effort */ }
+      failed++;
+    }
+  }
+
+  const summary = {
+    ok:            true,
+    skipped:       false,
+    scanned:       candidates.length,
+    hit_cap:       hitCap,
+    processed:     processed,
+    succeeded:     succeeded,
+    failed:        failed,
+    dead_lettered: deadLettered,
+    ids:           ids,
+    caller:        callerLabel
+  };
+
+  if (deadLettered > 0 || failed > 0) {
+    logger.warn("processSessionV2QueueV1: batch with failures", summary);
+  } else {
+    logger.info("processSessionV2QueueV1: batch clean", summary);
+  }
+
+  return summary;
+}
+
+exports.processSessionV2QueueV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 60
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  if (!sessionsV2_isEnabled()) {
+    res.status(503).json({
+      ok:    false,
+      code:  "SESSION_V2_DISABLED",
+      error: "SessionV2 writes are disabled (SESSION_V2_ENABLED feature flag is off)."
+    });
+    return;
+  }
+
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const summary = await sessionsV2_processQueueBatch("http:" + staff.email);
+  res.status(200).json(summary);
+});
+
+exports.scheduledSessionV2QueueDrainV1 = onSchedule({
+  schedule: "every 5 minutes",
+  timeZone: "America/Los_Angeles",
+  timeoutSeconds: 120
+}, async (_event) => {
+  if (!sessionsV2_isEnabled()) {
+    logger.info("scheduledSessionV2QueueDrainV1: skipped (flag off)");
+    return;
+  }
+  try {
+    const summary = await sessionsV2_processQueueBatch("scheduler");
+    logger.info("scheduledSessionV2QueueDrainV1: completed", summary);
+  } catch (err) {
+    logger.error("scheduledSessionV2QueueDrainV1 failed", {
+      error: err && err.message, stack: err && err.stack
+    });
+  }
+});
+
 /* ====================================================================
  * deputyApiDiagnosticV1 — read-only admin probe of Deputy's API.
  *
