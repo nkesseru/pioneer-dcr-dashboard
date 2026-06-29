@@ -716,7 +716,11 @@
        Flag-off behavior is identical to the 2026-06-18 hotfix. -->
   <script src="queue/queue-db.js?v=20260618-retry-budget"></script>
   <script src="queue/queue-worker.js?v=20260622-shadow"></script>
-  <script src="app.js?v=20260622-phase32d"></script>
+  <!-- SessionV2 client helper — Phase 36c.3a wires maybeRecordSessionPhoto
+       so app.js::uploadPhoto can fire-and-forget into the Session at upload
+       time. Flag-gated (window.SESSION_V2_ENABLED). No-op when flag off. -->
+  <script src="lib/sessionsV2-client.js?v=20260629-phase36c3a-photo"></script>
+  <script src="app.js?v=20260629-phase36c3a-photo"></script>
   <script src="/pwa-register.js?v=20260622-phase32d"></script>
   <script src="sos.js?v=20260528-sosv1"></script>
 </body>

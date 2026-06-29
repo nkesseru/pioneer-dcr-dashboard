@@ -2187,7 +2187,7 @@
     if (onTask) onTask(task);
     return wrapUploadWithGuards(task, onProgress, async function () {
       const url = await task.snapshot.ref.getDownloadURL();
-      return {
+      const meta = {
         id: `ph_${index + 1}`,
         storage_path: path,
         download_url: url,
@@ -2198,6 +2198,38 @@
         caption: "",
         tag: "general"
       };
+      // Phase 36c.3a — fire-and-forget Session photo record.
+      //
+      // Operation One Truth Rule 2: the Session learns about photos at
+      // upload time, not at DCR submit. Closure access to
+      // `pioneerAssignmentParams` (parsed from URL at page load) gives
+      // us the V2 session linkage; if absent (no URL handoff), the
+      // helper skips with "missing_assignment_id" and the V1 path
+      // continues exactly as before.
+      //
+      // Guarantees:
+      //   - NEVER blocks meta return (we do not await)
+      //   - NEVER throws to caller (helper has try/catch + .catch noop)
+      //   - With SESSION_V2_ENABLED=false (current prod): skips at the
+      //     client-side flag mirror; zero HTTP call; zero behavior change
+      try {
+        if (window.PIONEER_SESSIONS_V2 && window.PIONEER_SESSIONS_V2.maybeRecordSessionPhoto) {
+          const assignmentId = pioneerAssignmentParams && pioneerAssignmentParams.pioneer_assignment_id;
+          const serviceDate  = (pioneerAssignmentParams && pioneerAssignmentParams.sync_date) || "";
+          window.PIONEER_SESSIONS_V2.maybeRecordSessionPhoto({
+            assignment_id: assignmentId || null,
+            service_date:  serviceDate || null,    // null → helper falls back to today (Pacific)
+            submission_id: submissionId,
+            photo: {
+              storage_path: path,
+              content_type: file.type || null,
+              size_bytes:   file.size,
+              position:     index + 1
+            }
+          }).catch(function () { /* swallow */ });
+        }
+      } catch (_e) { /* swallow */ }
+      return meta;
     });
   }
 

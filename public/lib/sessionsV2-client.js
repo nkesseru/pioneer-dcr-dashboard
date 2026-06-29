@@ -361,13 +361,156 @@
     };
   }
 
+  /* ====================================================================
+   * Phase 36c.3a — maybeRecordSessionPhoto
+   *
+   * Operation One Truth Rule 2: Session owns photos. Fire-and-forget
+   * call to recordSessionPhotoV1 after the browser finishes uploading
+   * a photo to GCS. NEVER blocks the caller; NEVER throws.
+   *
+   * Inputs:
+   *   {
+   *     assignment_id,    // string — derives session_id
+   *     service_date,     // YYYY-MM-DD Pacific; falls back to today
+   *     submission_id,    // string — DCR submissionId; derives photo_id
+   *     photo: {
+   *       storage_path,   // GCS path returned by upload
+   *       content_type,   // mime
+   *       size_bytes,
+   *       position        // 1-based index in upload batch
+   *     }
+   *   }
+   *
+   * Returns Promise<{ status, reason?, ... }>. Status values:
+   *   - "skipped" reason="flag_off_client"  — client-side flag mirror false
+   *   - "skipped" reason="url_unset"        — RECORD_SESSION_PHOTO_URL missing
+   *   - "skipped" reason="missing_<field>"  — input invalid
+   *   - "skipped" reason="server_flag_off"  — server returned 503
+   *   - "ok"                                — server accepted (200 from helper)
+   *   - "failed"  reason=...                — any other failure (swallowed)
+   *
+   * Idempotency: photo_id derived as `${submission_id}_ph_${position}`.
+   * Same upload retried with same submission+position → same photo_id →
+   * server's transaction sees it in items[] and skips.
+   * ==================================================================== */
+
+  // Pure: Pacific YYYY-MM-DD for fallback service_date.
+  function _todayPacific() {
+    try {
+      var d = new Date();
+      var fmt = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        year: "numeric", month: "2-digit", day: "2-digit"
+      });
+      var parts = fmt.formatToParts(d).reduce(function (a, p) {
+        a[p.type] = p.value; return a;
+      }, {});
+      return parts.year + "-" + parts.month + "-" + parts.day;
+    } catch (_e) { return ""; }
+  }
+
+  // Pure: build photo_id from submission + position.
+  function _derivePhotoId(submissionId, position) {
+    if (!submissionId) return null;
+    var pos = (typeof position === "number" && position >= 1) ? Math.round(position) : null;
+    if (!pos) return null;
+    return String(submissionId) + "_ph_" + pos;
+  }
+
+  // Pure: validate opts; returns { ok, reason }.
+  function _classifyRecordPhotoOpts(opts) {
+    if (!opts || typeof opts !== "object") return { ok: false, reason: "missing_opts" };
+    if (!opts.assignment_id)                 return { ok: false, reason: "missing_assignment_id" };
+    if (!opts.submission_id)                 return { ok: false, reason: "missing_submission_id" };
+    var p = opts.photo;
+    if (!p || typeof p !== "object")         return { ok: false, reason: "missing_photo" };
+    if (!p.storage_path)                     return { ok: false, reason: "missing_storage_path" };
+    if (typeof p.position !== "number" || p.position < 1) {
+      return { ok: false, reason: "missing_position" };
+    }
+    return { ok: true };
+  }
+
+  async function maybeRecordSessionPhoto(opts) {
+    try {
+      // Gate 1: client-side flag mirror. Avoids wasted HTTP when off.
+      if (global.SESSION_V2_ENABLED !== true) {
+        return { status: "skipped", reason: "flag_off_client" };
+      }
+      // Gate 2: URL must be configured (gitignored firebase-config.js).
+      var url = global.RECORD_SESSION_PHOTO_URL;
+      if (!url) {
+        return { status: "skipped", reason: "url_unset" };
+      }
+      // Gate 3: input validation.
+      var cls = _classifyRecordPhotoOpts(opts);
+      if (!cls.ok) {
+        return { status: "skipped", reason: cls.reason };
+      }
+
+      var serviceDate = opts.service_date || _todayPacific();
+      var sessionId   = deriveSessionV2Id(opts.assignment_id, serviceDate, 1);
+      if (!sessionId) {
+        return { status: "skipped", reason: "session_id_derive_failed" };
+      }
+
+      var photoId = _derivePhotoId(opts.submission_id, opts.photo.position);
+      if (!photoId) {
+        return { status: "skipped", reason: "photo_id_derive_failed" };
+      }
+
+      var payload = {
+        session_id: sessionId,
+        photo_id:   photoId,
+        gcs_path:   opts.photo.storage_path,
+        position:   Math.round(opts.photo.position),
+        mime_type:  opts.photo.content_type || null,
+        size_bytes: (typeof opts.photo.size_bytes === "number") ? opts.photo.size_bytes : null,
+        platform:   "browser"
+      };
+
+      var result = await _postWithAuth(url, payload);
+      var status   = result.status || 0;
+      var bodyCode = result.body && result.body.code;
+
+      if (status === 200) {
+        return { status: "ok", server: result.body || {} };
+      }
+      if (status === 503 || bodyCode === "SESSION_V2_DISABLED") {
+        return { status: "skipped", reason: "server_flag_off" };
+      }
+      // Anything else: log + return failed; do NOT enqueue retry yet.
+      // Retry semantics for photo writes are a future slice (Phase 36c.3b
+      // queue worker will handle this when the offline path lands).
+      _warn("recordSessionPhoto failed", {
+        status: status, code: bodyCode,
+        error:  (result.body && result.body.error) || result.error || "unknown"
+      });
+      return {
+        status: "failed",
+        http:   status,
+        code:   bodyCode || null,
+        error:  (result.body && result.body.error) || result.error || "unknown"
+      };
+    } catch (err) {
+      // Never throw to caller.
+      try { _warn("recordSessionPhoto threw (swallowed)", err && err.message); } catch (_e) {}
+      return { status: "failed", reason: "exception", error: (err && err.message) || "unknown" };
+    }
+  }
+
   /* ----- Public surface ----- */
   global.PIONEER_SESSIONS_V2 = {
     deriveSessionV2Id:                 deriveSessionV2Id,
     isDualWriteEnabledForCurrentUser:  isDualWriteEnabledForCurrentUser,
     maybeDualWriteClockIn:             maybeDualWriteClockIn,
     maybeDualWriteClockOut:            maybeDualWriteClockOut,
+    maybeRecordSessionPhoto:           maybeRecordSessionPhoto,
     getConfig:                         getConfig,
+    // Pure helpers exposed for testability (Phase 36c.3a)
+    _todayPacific:                     _todayPacific,
+    _derivePhotoId:                    _derivePhotoId,
+    _classifyRecordPhotoOpts:          _classifyRecordPhotoOpts,
     _internal: {
       CONFIG_DOC_PATH: CONFIG_DOC_PATH,
       CONFIG_CACHE_MS: CONFIG_CACHE_MS,

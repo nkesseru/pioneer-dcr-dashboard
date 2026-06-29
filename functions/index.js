@@ -9708,16 +9708,12 @@ exports.recordSessionPhotoV1 = onRequest({
   // Staff auth.
   const staff = await verifyStaffOrReject(req, res);
   if (!staff) return;
-  // Phase 36c.2 = admin-only. Tech callers may be added later.
-  if (staff.role !== "admin") {
-    res.status(403).json({ ok: false, error: "Admin access required." });
-    return;
-  }
 
   const body = req.body || {};
 
   // Pre-validate via helper's classifier so we return a clean 400
-  // rather than relying on the helper to skip with a reason.
+  // rather than relying on the helper to skip with a reason. (Validation
+  // BEFORE auth ownership check so we have a valid session_id to query.)
   const classifyArgs = {
     sessionId: body.session_id,
     photoId:   body.photo_id,
@@ -9729,6 +9725,36 @@ exports.recordSessionPhotoV1 = onRequest({
       ok:    false,
       code:  "INVALID_PAYLOAD",
       error: "Missing or invalid: " + cls.reason
+    });
+    return;
+  }
+
+  // Phase 36c.3a — auth: admin OR cleaning_tech-own.
+  // Admin skips the session load (allowed regardless). Tech callers
+  // require a session-ownership read; we look up the session here so
+  // canRecordSessionPhoto has data to decide. The downstream helper
+  // does its own read+transaction; the duplicate read is acceptable
+  // (sub-100ms; auth correctness > one extra Firestore op).
+  let authSessionData = null;
+  if (staff.role !== "admin") {
+    try {
+      const authSessSnap = await db.collection("sessionsV2").doc(body.session_id).get();
+      authSessionData = authSessSnap.exists ? (authSessSnap.data() || {}) : null;
+    } catch (err) {
+      logger.warn("recordSessionPhotoV1: auth-time session read failed", {
+        caller_email: staff.email, session_id: body.session_id, error: err && err.message
+      });
+      // Treat read failure as deny — fail closed.
+      authSessionData = null;
+    }
+  }
+  const authDecision = sessionsV2RecordPhoto.canRecordSessionPhoto(staff, authSessionData);
+  if (!authDecision.allowed) {
+    res.status(403).json({
+      ok:    false,
+      code:  "FORBIDDEN",
+      error: "Not authorized to record photo to this session",
+      reason: authDecision.reason
     });
     return;
   }

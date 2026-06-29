@@ -245,6 +245,44 @@ async function recordSessionPhoto(args) {
   }
 }
 
+/* ---------- Auth decision (Phase 36c.3a) ----------
+ *
+ * Pure function. Decides whether `staff` may record a photo into the
+ * Session represented by `sessionData`.
+ *
+ * Rules:
+ *   - admin                                 → allowed (scope: "admin")
+ *   - cleaning_tech AND own session         → allowed (scope: "tech_own")
+ *   - cleaning_tech AND someone else's      → denied  (reason: "not_session_owner")
+ *   - missing session data                  → denied  (reason: "session_not_found")
+ *   - missing/unknown staff role            → denied  (reason: "no_staff" / "wrong_role")
+ *
+ * Defensive: never throws, never assumes shape. Use at the HTTP
+ * endpoint AFTER the session has been read (one extra Firestore
+ * read; acceptable cost vs intermixing auth into the write
+ * transaction).
+ */
+function canRecordSessionPhoto(staff, sessionData) {
+  if (!staff || typeof staff !== "object") {
+    return { allowed: false, reason: "no_staff" };
+  }
+  if (staff.role === "admin") {
+    return { allowed: true, scope: "admin" };
+  }
+  if (staff.role !== "cleaning_tech") {
+    return { allowed: false, reason: "wrong_role" };
+  }
+  if (!sessionData || typeof sessionData !== "object") {
+    return { allowed: false, reason: "session_not_found" };
+  }
+  const sessionStaffUid = String(sessionData.staff_uid || "").trim();
+  const staffUid        = String(staff.uid             || "").trim();
+  if (!sessionStaffUid || !staffUid || sessionStaffUid !== staffUid) {
+    return { allowed: false, reason: "not_session_owner" };
+  }
+  return { allowed: true, scope: "tech_own" };
+}
+
 module.exports = {
   // I/O entry point
   recordSessionPhoto:        recordSessionPhoto,
@@ -254,6 +292,7 @@ module.exports = {
   nextPhotosStatus:          nextPhotosStatus,
   buildPhotoTimelineEntry:   buildPhotoTimelineEntry,
   classifyRecordPhotoInput:  classifyRecordPhotoInput,
+  canRecordSessionPhoto:     canRecordSessionPhoto,
   // ID regex re-exported for caller's pre-validation if desired
   SESSIONSV2_ID_RE:          SESSIONSV2_ID_RE
 };
