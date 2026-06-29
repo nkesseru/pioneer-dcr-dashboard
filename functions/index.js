@@ -9636,6 +9636,146 @@ exports.onDcrSubmissionCreatedV36b = onDocumentCreated(
   }
 );
 
+/* --------------- recordSessionPhotoV1 (Phase 36c) ---------------
+ *
+ * Session owns photos (Operation One Truth Constitution Rule 2).
+ *
+ * HTTPS POST that records ONE photo into the matching V2 session.
+ * Idempotent on photo_id. Embedded items[] array — no new collection
+ * (Rule 7). State transition missing -> collecting on first photo
+ * (Rule 8). Timeline event photo.uploaded appended (Rule 9).
+ *
+ * Phase 36c.2 scope:
+ *   - Admin-only auth (canary harness caller)
+ *   - Flag-gated by SESSION_V2_ENABLED → 503 when off (matches
+ *     existing Phase 35c queue-processor + Phase 34a createSessionV2
+ *     pattern)
+ *   - Calls in-process sessionsV2-record-photo.js helper
+ *
+ * Phase 36c.3 will splice the helper directly into techMediaUpload.js
+ * (in-process call, not HTTP). This endpoint exists for canary +
+ * future remote callers.
+ *
+ * Request body:
+ *   {
+ *     session_id:        string,    REQUIRED
+ *     photo_id:          string,    REQUIRED (client-generated UUID)
+ *     gcs_path:          string,    REQUIRED
+ *     position:          int,       optional (1-based upload order)
+ *     mime_type:         string,    optional
+ *     size_bytes:        int,       optional
+ *     uploaded_by_uid:   string,    optional (defaults to staff.uid)
+ *     uploaded_by_email: string,    optional (defaults to staff.email)
+ *     platform:          string,    optional ("browser", "canary", etc.)
+ *   }
+ *
+ * Response:
+ *   200 { ok: true, status: "ok" | "skipped", reason?, photo_id?,
+ *         items_count_after?, status_after? }
+ *   401/403 on auth fail
+ *   400 on payload validation fail
+ *   503 when SESSION_V2_ENABLED=false
+ *   500 on unexpected error
+ */
+const sessionsV2RecordPhoto = require("./sessionsV2-record-photo.js");
+
+exports.recordSessionPhotoV1 = onRequest({
+  cors:           false,
+  timeoutSeconds: 30
+}, async (req, res) => {
+  res.set("Access-Control-Allow-Origin",  "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Vary",                          "Origin");
+
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  // Flag gate FIRST. Returns 503 like other SessionV2 endpoints when
+  // SESSION_V2_ENABLED is off. Matches Phase 35c / Phase 34a pattern.
+  if (!sessionsV2_isEnabled()) {
+    res.status(503).json({
+      ok:    false,
+      code:  "SESSION_V2_DISABLED",
+      error: "SessionV2 writes are disabled (SESSION_V2_ENABLED feature flag is off)."
+    });
+    return;
+  }
+
+  // Staff auth.
+  const staff = await verifyStaffOrReject(req, res);
+  if (!staff) return;
+  // Phase 36c.2 = admin-only. Tech callers may be added later.
+  if (staff.role !== "admin") {
+    res.status(403).json({ ok: false, error: "Admin access required." });
+    return;
+  }
+
+  const body = req.body || {};
+
+  // Pre-validate via helper's classifier so we return a clean 400
+  // rather than relying on the helper to skip with a reason.
+  const classifyArgs = {
+    sessionId: body.session_id,
+    photoId:   body.photo_id,
+    gcsPath:   body.gcs_path
+  };
+  const cls = sessionsV2RecordPhoto.classifyRecordPhotoInput(classifyArgs);
+  if (!cls.ok) {
+    res.status(400).json({
+      ok:    false,
+      code:  "INVALID_PAYLOAD",
+      error: "Missing or invalid: " + cls.reason
+    });
+    return;
+  }
+
+  // Build helper args. Default uploaded_by_* from staff context (only
+  // overridable by admin caller — useful when admin replays a tech's
+  // upload).
+  const helperArgs = {
+    db, admin, logger,
+    sessionsV2_isEnabled: sessionsV2_isEnabled,
+    sessionId:       String(body.session_id),
+    photoId:         String(body.photo_id),
+    gcsPath:         String(body.gcs_path),
+    position:        body.position,
+    mimeType:        body.mime_type,
+    sizeBytes:       body.size_bytes,
+    uploadedByUid:   body.uploaded_by_uid   || staff.uid,
+    uploadedByEmail: body.uploaded_by_email || staff.email,
+    platform:        body.platform          || "http:recordSessionPhotoV1"
+  };
+
+  try {
+    const out = await sessionsV2RecordPhoto.recordSessionPhoto(helperArgs);
+    logger.info("recordSessionPhotoV1: handled", {
+      caller_email:      staff.email,
+      session_id:        helperArgs.sessionId,
+      photo_id:          helperArgs.photoId,
+      status:            out.status,
+      reason:            out.reason || null,
+      items_count_after: out.items_count_after || null,
+      status_after:      out.status_after || null
+    });
+    res.status(200).json(Object.assign({ ok: out.status === "ok" }, out));
+  } catch (err) {
+    logger.error("recordSessionPhotoV1: outer guard threw", {
+      caller_email: staff.email,
+      error:        err && err.message,
+      stack:        err && err.stack
+    });
+    res.status(500).json({
+      ok:    false,
+      code:  "INTERNAL_ERROR",
+      error: (err && err.message) || "unknown error"
+    });
+  }
+});
+
 /* ====================================================================
  * deputyApiDiagnosticV1 — read-only admin probe of Deputy's API.
  *

@@ -190,6 +190,52 @@ components.<name> = {
 }
 ```
 
+#### components.photos extensions (Phase 36c)
+
+Phase 36c (Photos as Session Components — Operation One Truth Rule 2) adds embedded per-photo metadata, authored at upload time (not at DCR submit). Session is the ownership site for photo state.
+
+```
+components.photos = {
+  status:           "not_applicable" | "missing" | "collecting" | "complete" | "failed" | "replaced",
+  started_at:       Timestamp | null,
+  last_event_at:    Timestamp | null,
+  completed_at:     Timestamp | null,
+  last_event:       "photo.uploaded" | "photos.batch_complete" | null,
+  error:            string | null,
+  count:            number | null,        // == items.length once Phase 36c writes are live
+  pct:              null,
+  ref:              null,
+  // Phase 36c additions:
+  items:            Array<PhotoEntry>,    // embedded; cap ~50 photos before considering subcollection
+  primary_photo_id: string | null         // RESERVED — set by future slice; not authored in 36c
+}
+```
+
+`PhotoEntry` shape (closed; new fields require SNAPSHOT_VERSION bump if rendered):
+
+```
+{
+  photo_id:           string,             // client-generated UUID; idempotency key
+  gcs_path:           string,             // "pioneerdcr/<...>/<filename>" — V2 path scheme
+  uploaded_at:        Timestamp,
+  uploaded_by_uid:    string,
+  uploaded_by_email:  string,             // lowercase
+  position:           int,                // 1-based order in tech's upload batch
+  mime_type:          string,             // "image/jpeg" | "image/png" | etc.
+  size_bytes:         int,
+  status:             "uploaded"          // closed enum in Phase 36c; future: "failed" | "replaced"
+}
+```
+
+State transitions on `components.photos` (Phase 36c):
+- `missing` → `collecting` on first photo arrival (helper sets `started_at` + `last_event: "photo.uploaded"`)
+- `collecting` → `collecting` on each subsequent upload (last_event_at advances, count++)
+- `collecting` → `complete` on DCR submit (Phase 36a/b path — unchanged, still owned by trigger)
+
+Idempotency: `photo_id` is the natural key. Re-upload of the same photo updates the existing entry rather than appending. Firestore transaction wraps read-modify-write.
+
+`primary_photo_id` is RESERVED in Phase 36c — field exists with value `null`, but no writer sets it. Future slice can flip it to one of the `items[].photo_id` values to designate the customer-facing hero shot.
+
 #### Component names (closed set)
 
 ```
@@ -335,7 +381,8 @@ pause.end                  "Resumed"
 
 # Components
 photos.first               "First photo uploaded"
-photos.uploaded            "Photo uploaded"
+photo.uploaded             "Photo uploaded" (Phase 36c — singular; one event per individual photo, carries ref=photo_id)
+photos.uploaded            "Photo uploaded" (legacy; superseded by photo.uploaded in Phase 36c)
 photos.complete            "All required photos uploaded"
 photos.deleted             "Photo deleted"
 checklist.updated          "Checklist progress: <pct>%"

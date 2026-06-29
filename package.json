@@ -12,7 +12,8 @@
     "test:snapshot:sessionsV2":  "node --test test/sessionsV2.snapshot.test.mjs",
     "test:dcr:sessionsV2":       "node --test test/sessionsV2.dcr.test.mjs",
     "test:snapshot-parity:sessionsV2": "node --test test/sessionsV2.snapshot-parity.test.mjs",
-    "test:all:sessionsV2":       "npm run test:rules:sessionsV2 && npm run test:create:sessionsV2 && npm run test:dualwrite:sessionsV2 && npm run test:canary:sessionsV2 && npm run test:clockout:sessionsV2 && npm run test:queue:sessionsV2 && npm run test:snapshot:sessionsV2 && npm run test:dcr:sessionsV2 && npm run test:snapshot-parity:sessionsV2"
+    "test:photo:sessionsV2":     "node --test test/sessionsV2.photo.test.mjs",
+    "test:all:sessionsV2":       "npm run test:rules:sessionsV2 && npm run test:create:sessionsV2 && npm run test:dualwrite:sessionsV2 && npm run test:canary:sessionsV2 && npm run test:clockout:sessionsV2 && npm run test:queue:sessionsV2 && npm run test:snapshot:sessionsV2 && npm run test:dcr:sessionsV2 && npm run test:snapshot-parity:sessionsV2 && npm run test:photo:sessionsV2"
   },
   "dependencies": {
     "firebase": "^12.13.0",

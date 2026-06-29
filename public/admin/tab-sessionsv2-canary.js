@@ -539,6 +539,154 @@
     }
   }
 
+  /* 5e. Test photo recorder (Phase 36c).
+   *
+   * Two-phase canary in a single button:
+   *   Phase 1 — HTTP wiring check:
+   *     POST a synthesized photo payload to recordSessionPhotoV1.
+   *     With SESSION_V2_ENABLED=false on prod, expect HTTP 503 with
+   *     code=SESSION_V2_DISABLED. That proves: function deployed,
+   *     auth gate passes, flag gate works.
+   *   Phase 2 — admin-direct write fallback:
+   *     Admin-direct Firestore write that mimics what the helper
+   *     would do (status missing->collecting, items[] arrayUnion,
+   *     Timeline photo.uploaded entry, count++). Validates the write
+   *     SHAPE end-to-end without depending on the flag.
+   *
+   * Both outcomes log to the result pane. Together they validate
+   * the full canary picture without flipping the flag.
+   */
+  async function btnPhotoRecord() {
+    const id = expectedV2Id();
+    const photoId = "canary_photo_" + Date.now();
+    const gcsPath = "canary/photos/test_" + Date.now() + ".jpg";
+    const platform = "canary-harness";
+
+    // ----- Phase 1: HTTP wiring -----
+    const httpUrl = window.RECORD_SESSION_PHOTO_URL;
+    let httpResult;
+    if (!httpUrl) {
+      httpResult = { skipped: true, reason: "RECORD_SESSION_PHOTO_URL unset (configure firebase-config.js)" };
+    } else {
+      try {
+        httpResult = await _postWithAuth(httpUrl, {
+          session_id: id,
+          photo_id:   photoId,
+          gcs_path:   gcsPath,
+          position:   1,
+          mime_type:  "image/jpeg",
+          size_bytes: 12345,
+          platform:   platform
+        });
+      } catch (err) {
+        httpResult = { error: (err && err.message) || "unknown" };
+      }
+    }
+
+    // ----- Phase 2: admin-direct write (mimics helper) -----
+    let directResult;
+    try {
+      const ref = firebase.firestore().doc("sessionsV2/" + id);
+      const actor = firebase.auth().currentUser;
+      const actorEmail = (actor && actor.email) || "unknown";
+      const actorUid   = (actor && actor.uid)   || null;
+
+      // Transaction matching the helper's read-modify-write pattern.
+      const txnResult = await firebase.firestore().runTransaction(async function (txn) {
+        const snap = await txn.get(ref);
+        if (!snap.exists) {
+          return { status: "skipped", reason: "v2_missing", v2_session_id: id };
+        }
+        const data       = snap.data() || {};
+        const components = (data.components && typeof data.components === "object") ? data.components : {};
+        const photosCmp  = (components.photos && typeof components.photos === "object") ? components.photos : {};
+        const itemsNow   = Array.isArray(photosCmp.items) ? photosCmp.items : [];
+
+        // Idempotency.
+        if (itemsNow.some(function (it) { return it && it.photo_id === photoId; })) {
+          return {
+            status:            "skipped",
+            reason:            "already_recorded",
+            v2_session_id:     id,
+            photo_id:          photoId,
+            items_count_after: itemsNow.length
+          };
+        }
+
+        const sts    = firebase.firestore.FieldValue.serverTimestamp();
+        const nowJs  = firebase.firestore.Timestamp.now();
+        const entry  = {
+          photo_id:          photoId,
+          gcs_path:          gcsPath,
+          uploaded_at:       nowJs,
+          uploaded_by_uid:   actorUid,
+          uploaded_by_email: actorEmail.toLowerCase(),
+          position:          1,
+          mime_type:         "image/jpeg",
+          size_bytes:        12345,
+          status:            "uploaded"
+        };
+        const tlEntry = {
+          ts:         nowJs,
+          intent_ts:  null,
+          actor:      { type: "admin", uid: actorUid, email: actorEmail, name: null },
+          event:      "photo.uploaded",
+          title:      "Canary: photo uploaded (admin-direct)",
+          detail:     null,
+          icon:       "photo-upload",
+          field_path: "components.photos.items",
+          from:       null,
+          to:         photoId,
+          ref:        photoId,
+          client:     { app_version: "canary-harness-36c", platform: platform }
+        };
+        const update = {
+          "components.photos.items":         firebase.firestore.FieldValue.arrayUnion(entry),
+          "components.photos.status":        (photosCmp.status === "missing" || !photosCmp.status) ? "collecting" : photosCmp.status,
+          "components.photos.count":         itemsNow.length + 1,
+          "components.photos.last_event":    "photo.uploaded",
+          "components.photos.last_event_at": sts,
+          timeline:                          firebase.firestore.FieldValue.arrayUnion(tlEntry),
+          updated_at:                        sts
+        };
+        if (!photosCmp.started_at || photosCmp.status === "missing" || !photosCmp.status) {
+          update["components.photos.started_at"] = sts;
+        }
+        if (itemsNow.length === 0 && photosCmp.primary_photo_id === undefined) {
+          update["components.photos.primary_photo_id"] = null;
+        }
+        txn.update(ref, update);
+
+        return {
+          status:            "ok",
+          v2_session_id:     id,
+          photo_id:          photoId,
+          items_count_after: itemsNow.length + 1
+        };
+      });
+
+      directResult = txnResult;
+    } catch (err) {
+      directResult = { error: (err && err.message) || "unknown" };
+    }
+
+    logToPane("PHOTO_RECORD (5e)", {
+      photo_id:           photoId,
+      gcs_path:           gcsPath,
+      session_id:         id,
+      http_check:         httpResult,
+      admin_direct_write: directResult,
+      verdict_http:       (httpResult && httpResult.status === 503 && httpResult.body && httpResult.body.code === "SESSION_V2_DISABLED") ? "PASS (503 flag-off, endpoint healthy)"
+                          : (httpResult && httpResult.status === 200) ? "PASS (flag ON, full write)"
+                          : (httpResult && httpResult.skipped) ? "SKIPPED (no URL configured)"
+                          : "FAIL (check pane output)",
+      verdict_direct:     (directResult && directResult.status === "ok") ? "PASS (write applied)"
+                          : (directResult && directResult.status === "skipped" && directResult.reason === "v2_missing") ? "SKIPPED (run 'Create canary session' first)"
+                          : (directResult && directResult.status === "skipped" && directResult.reason === "already_recorded") ? "PASS (idempotent skip)"
+                          : "FAIL (check pane output)"
+    });
+  }
+
   async function btnCleanupDry() {
     const url = window.CLEANUP_SESSION_V2_CANARY_URL;
     if (!url) { logToPane("CLEANUP_DRY ERROR", "CLEANUP_SESSION_V2_CANARY_URL unset"); return; }
@@ -686,6 +834,8 @@
       ["sv2c-btn-snapshot-repro",  btnSnapshotRepro],
       // Phase 36a.2 simulated DCR dual-write (admin direct write)
       ["sv2c-btn-simulate-dcr",    btnSimulateDcrDualWrite],
+      // Phase 36c photos (HTTP wiring + admin-direct write)
+      ["sv2c-btn-photo-record",    btnPhotoRecord],
       ["sv2c-btn-clear-pane",      function () {
         const pane = $("sv2c-result");
         if (pane) pane.value = "";
