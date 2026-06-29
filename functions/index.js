@@ -8168,6 +8168,16 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
     }
     const v2Data = snap.data() || {};
 
+    // Phase 36b — idempotency by submissionId. See predicate in
+    // functions/sessionsV2-dcr-parity.js for the rule.
+    if (sessionsV2DcrParity.isAlreadyProcessedByDcrSubmissionId(v2Data, submissionId)) {
+      return {
+        status:        "skipped",
+        reason:        "already_processed",
+        v2_session_id: v2Id
+      };
+    }
+
     // Build component updates. Use serverTimestamp for last_event_at /
     // completed_at so Firestore stamps the write moment authoritatively.
     const sts = admin.firestore.FieldValue.serverTimestamp();
@@ -9537,6 +9547,94 @@ exports.scheduledSessionV2QueueDrainV1 = onSchedule({
     });
   }
 });
+
+/* --------------- onDcrSubmissionCreatedV36b (Phase 36b) ---------------
+ *
+ * V2 watches V1 DCR creation instead of V1 reaching into V2.
+ *
+ * Fires on every new dcr_submissions/{id} write. Reads the doc, calls
+ * the shared sessionsV2_dualWriteFromDcrSubmit helper to update the
+ * matching V2 session's components.dcr / components.photos and append
+ * timeline.dcr.submitted + (when divergent) timeline.parity.diverged.
+ *
+ * Phase 36b ships in DUAL-WRITER mode: this trigger runs ALONGSIDE
+ * the inline submitDcrV1 splice. Both call the same helper. The
+ * helper's idempotency guard (components.dcr.ref === submissionId)
+ * ensures only the FIRST writer takes effect; the second is a no-op.
+ * Once canary proves the trigger reliable, a follow-up slice removes
+ * the inline splice (the user must explicitly approve that step).
+ *
+ * Guarantees:
+ *   - Flag-gated by SESSION_V2_ENABLED. Off on prod → helper returns
+ *     { status: "skipped", reason: "flag_off" } before any read/write.
+ *   - Idempotent on replay (at-least-once delivery from Firestore).
+ *   - Never throws (helper has its own try/catch; this handler adds
+ *     an outer try/catch for defense in depth).
+ *   - Reads the freshly-created dcr_submissions doc out of the event
+ *     snapshot; does NOT re-read Firestore for it.
+ *
+ * The user's `staff` context is reconstructed from the V1 doc's
+ * submitted_by_email + submitted_by_uid + auth_role fields (server-
+ * stamped by submitDcrV1 from the authenticated ID token, so they are
+ * trustworthy). Timeline actor.type derives from the same role check
+ * as the inline splice ("admin" -> "admin", otherwise "tech").
+ *
+ * See docs/sessionsV2/PHASE36B_PLAN.md.
+ */
+exports.onDcrSubmissionCreatedV36b = onDocumentCreated(
+  {
+    document:       FIRESTORE_COLLECTION + "/{submissionId}",
+    region:         "us-central1",
+    timeoutSeconds: 60
+  },
+  async (event) => {
+    const submissionId = event.params && event.params.submissionId;
+    if (!submissionId) {
+      logger.warn("onDcrSubmissionCreatedV36b: missing submissionId in event params");
+      return;
+    }
+    const snap = event.data;
+    if (!snap) {
+      logger.warn("onDcrSubmissionCreatedV36b: missing snapshot (no event.data)", {
+        submission_id: submissionId
+      });
+      return;
+    }
+    const dcrDoc = snap.data() || {};
+
+    // Reconstruct staff context from the V1 doc's server-stamped fields.
+    // submitDcrV1 writes these from the verified ID token; trusted.
+    const staff = {
+      uid:   dcrDoc.submitted_by_uid   || null,
+      email: dcrDoc.submitted_by_email || null,
+      role:  dcrDoc.auth_role          || null
+    };
+
+    try {
+      const result = await sessionsV2_dualWriteFromDcrSubmit({
+        db, admin, logger,
+        submissionId: submissionId,
+        dcrDoc:       dcrDoc,
+        staff:        staff
+      });
+      logger.info("onDcrSubmissionCreatedV36b: handled", {
+        submission_id:    submissionId,
+        status:           result.status,
+        reason:           result.reason || null,
+        v2_session_id:    result.v2_session_id || null,
+        divergent_count:  Array.isArray(result.divergent_fields)
+                            ? result.divergent_fields.length : 0,
+        snapshot_version: result.snapshot_version || null
+      });
+    } catch (err) {
+      // Helper already swallows; this is defense in depth.
+      logger.warn("onDcrSubmissionCreatedV36b: outer guard threw", {
+        submission_id: submissionId,
+        error:         err && err.message
+      });
+    }
+  }
+);
 
 /* ====================================================================
  * deputyApiDiagnosticV1 — read-only admin probe of Deputy's API.

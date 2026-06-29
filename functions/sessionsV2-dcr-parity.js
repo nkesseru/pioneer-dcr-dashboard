@@ -82,7 +82,26 @@ function parityDiff(v1Doc, snapshot) {
   return out;
 }
 
+// Phase 36b — idempotency predicate for the DCR -> Session dual-write.
+// Both the inline submitDcrV1 splice AND the new onDcrSubmissionCreatedV36b
+// trigger call sessionsV2_dualWriteFromDcrSubmit; either may fire more than
+// once for the same submissionId (Firestore at-least-once delivery; dual-
+// writer overlap during Phase 36b). This predicate is the natural idempotency
+// key: if components.dcr.ref === submissionId AND components.dcr.status is
+// "complete", the event has already been applied. Caller should skip.
+//
+// Pure function. No I/O. Defensive on shape: returns false (= don't skip)
+// for any malformed input rather than erroring.
+function isAlreadyProcessedByDcrSubmissionId(v2Data, submissionId) {
+  if (!v2Data || typeof v2Data !== "object") return false;
+  if (!submissionId) return false;
+  const dcr = (v2Data.components && v2Data.components.dcr) || null;
+  if (!dcr || typeof dcr !== "object") return false;
+  return dcr.ref === submissionId && dcr.status === "complete";
+}
+
 module.exports = {
-  parityDiff:                       parityDiff,
-  extractAssignmentIdFromSessionId: extractAssignmentIdFromSessionId
+  parityDiff:                          parityDiff,
+  extractAssignmentIdFromSessionId:    extractAssignmentIdFromSessionId,
+  isAlreadyProcessedByDcrSubmissionId: isAlreadyProcessedByDcrSubmissionId
 };

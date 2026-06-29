@@ -271,3 +271,81 @@ describe("parityDiff — intentional non-comparisons", () => {
     assert.deepEqual(parity.parityDiff(v1, v2snap), []);
   });
 });
+
+// ============================================================
+// Phase 36b — idempotency-by-submissionId predicate
+// ============================================================
+//
+// Guards both the inline submitDcrV1 splice and the new
+// onDcrSubmissionCreatedV36b trigger against double-processing the
+// same DCR write. Predicate: V2's components.dcr.ref already matches
+// THIS submissionId AND components.dcr.status is "complete".
+// ============================================================
+describe("isAlreadyProcessedByDcrSubmissionId — idempotency predicate", () => {
+  const fn = parity.isAlreadyProcessedByDcrSubmissionId;
+
+  test("skip when ref matches AND status is complete", () => {
+    const v2 = { components: { dcr: { ref: "dcr_abc", status: "complete" } } };
+    assert.equal(fn(v2, "dcr_abc"), true);
+  });
+
+  test("do NOT skip when ref matches but status is collecting", () => {
+    const v2 = { components: { dcr: { ref: "dcr_abc", status: "collecting" } } };
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when ref matches but status is missing", () => {
+    const v2 = { components: { dcr: { ref: "dcr_abc", status: "missing" } } };
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when ref does not match (different submission)", () => {
+    const v2 = { components: { dcr: { ref: "dcr_xyz", status: "complete" } } };
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when components.dcr is absent", () => {
+    const v2 = { components: {} };
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when components is absent", () => {
+    const v2 = {};
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when v2Data is null", () => {
+    assert.equal(fn(null, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when v2Data is undefined", () => {
+    assert.equal(fn(undefined, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when submissionId is null", () => {
+    const v2 = { components: { dcr: { ref: null, status: "complete" } } };
+    assert.equal(fn(v2, null), false);
+  });
+
+  test("do NOT skip when submissionId is empty string", () => {
+    const v2 = { components: { dcr: { ref: "", status: "complete" } } };
+    assert.equal(fn(v2, ""), false);
+  });
+
+  test("do NOT skip when components.dcr is a non-object scalar", () => {
+    const v2 = { components: { dcr: "garbage" } };
+    assert.equal(fn(v2, "dcr_abc"), false);
+  });
+
+  test("do NOT skip when v2Data is a non-object scalar", () => {
+    assert.equal(fn("garbage", "dcr_abc"), false);
+  });
+
+  test("calling twice with the same processed state is stable", () => {
+    const v2 = { components: { dcr: { ref: "dcr_abc", status: "complete" } } };
+    assert.equal(fn(v2, "dcr_abc"), true);
+    assert.equal(fn(v2, "dcr_abc"), true);
+    // Different submissionId on same v2Data -> still not skipped
+    assert.equal(fn(v2, "dcr_other"), false);
+  });
+});
