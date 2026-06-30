@@ -242,7 +242,7 @@
     });
   }
 
-  function uploadOnePhoto(storage, photo, customerSlug, submissionId, photoIndex, onProgress) {
+  function uploadOnePhoto(storage, photo, customerSlug, submissionId, photoIndex, onProgress, opts) {
     // The planned_path is set at enqueue time so the queue row is
     // self-describing. Recompute as a fallback for backward compat if
     // an older row was enqueued without it.
@@ -253,7 +253,7 @@
     const task = ref.put(photo.blob, { contentType: photo.content_type || photo.blob.type });
     return wrapUploadWithGuards(task, onProgress, async function () {
       const url = await task.snapshot.ref.getDownloadURL();
-      return {
+      const meta = {
         id: "ph_" + (photoIndex + 1),
         storage_path: path,
         download_url: url,
@@ -264,6 +264,41 @@
         caption: "",
         tag: "general"
       };
+      // Phase 36c.3b — fire-and-forget Session photo record (offline path).
+      //
+      // Operation One Truth Rule 2: the Session learns about photos at
+      // upload time even when the DCR was submitted offline. Mirrors the
+      // online splice in public/app.js::uploadPhoto. assignment_id +
+      // service_date come from the queue row's payload (captured at
+      // Submit-click time by app.js, persisted in IDB, replayed here).
+      //
+      // photo_id is deterministically `${submissionId}_ph_${position}` —
+      // identical to the online path — so if both ever ran for the same
+      // photo (e.g., queue retry after a successful online upload), the
+      // server-side isPhotoAlreadyRecorded predicate skips the second
+      // call cleanly.
+      //
+      // Guarantees:
+      //   - NEVER blocks meta return (we do not await)
+      //   - NEVER throws to caller (helper has its own try/catch + .catch noop)
+      //   - With SESSION_V2_ENABLED=false (current prod): skips at client
+      //     flag mirror; zero HTTP call; zero behavior change
+      try {
+        if (self.PIONEER_SESSIONS_V2 && self.PIONEER_SESSIONS_V2.maybeRecordSessionPhoto) {
+          self.PIONEER_SESSIONS_V2.maybeRecordSessionPhoto({
+            assignment_id: (opts && opts.assignment_id) || null,
+            service_date:  (opts && opts.service_date)  || null,  // null → helper falls back to today
+            submission_id: submissionId,
+            photo: {
+              storage_path: path,
+              content_type: photo.content_type || photo.blob.type || null,
+              size_bytes:   photo.blob.size,
+              position:     photoIndex + 1
+            }
+          }).catch(function () { /* swallow */ });
+        }
+      } catch (_e) { /* swallow */ }
+      return meta;
     });
   }
 
@@ -346,13 +381,24 @@
     let uploadedPhotos = [];
     if (Array.isArray(row.photos) && row.photos.length) {
       await DB.markStatus(row.submission_id, DB.STATUS.UPLOADING_PHOTOS);
+      // Phase 36c.3b — V2 session linkage from the queued payload.
+      // assignment_id + sync_date were captured at Submit-click time
+      // (app.js parses them from the URL handoff and stamps them into
+      // the payload); pass them through to uploadOnePhoto so the
+      // fire-and-forget Session photo record can derive the correct
+      // session_id even on stale-replay (queue drained next day).
+      const photoOpts = {
+        assignment_id: (row.payload && row.payload.pioneer_assignment_id) || null,
+        service_date:  (row.payload && row.payload.sync_date)             || null
+      };
       uploadedPhotos = await runWithConcurrency(row.photos, MAX_PARALLEL_PHOTOS, function (photo, i) {
         return uploadOnePhoto(
           storage, photo, row.payload.customer_slug || row.payload.customer.slug,
           row.submission_id, i,
           function (pct) {
             if (onProgress) onProgress({ stage: "photo", index: i, pct: pct });
-          }
+          },
+          photoOpts
         );
       });
     }
