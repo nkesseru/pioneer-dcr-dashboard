@@ -203,6 +203,156 @@ function projectChecklistForSession(dcrChecklist) {
   };
 }
 
+// Phase 36e — notes projection (session-level field, reserved-null).
+//
+// Operation One Truth Rule 2: Session owns notes. There is no V1 source
+// for tech-written session notes today; this projection ships as a
+// pass-through / placeholder so future writers (admin correction tool,
+// tech-side notes UI) can populate without schema-breaking changes.
+//
+// Reads dcrDoc for a top-level `notes` field (does not exist today; V1
+// admins occasionally add notes to dcr_submissions via ad-hoc edits).
+// Returns null if no writer stamped a value.
+//
+// Pure. Never throws.
+function projectNotesForSession(dcrDoc) {
+  if (!dcrDoc || typeof dcrDoc !== "object") return { text: null };
+  const raw = dcrDoc.notes;
+  if (typeof raw !== "string") return { text: null };
+  const trimmed = raw.trim();
+  return { text: trimmed || null };
+}
+
+// Phase 36e — occupancy projection (session-level field).
+//
+// Operation One Truth Rule 2: Session owns occupancy observation.
+// Reads dcrDoc.anyone_in_building + dcrDoc.occupancy_level (V1 buildFormData
+// stamps both when the "Anyone in building?" segment is filled).
+//
+// Returns:
+//   null                              — DCR did not carry occupancy fields
+//   { anyone_in_building: bool | null,
+//     occupancy_level:    string | null }
+//
+// V1 sends anyone_in_building as "yes" | "no" (string). We normalize to
+// boolean here so consumers don't need to reparse. occupancy_level is
+// kept as string; enum validation is a Phase 37 read-side concern.
+//
+// Pure. Never throws.
+function projectOccupancyForSession(dcrDoc) {
+  if (!dcrDoc || typeof dcrDoc !== "object") return null;
+  const rawAnyone = dcrDoc.anyone_in_building;
+  const rawLevel  = dcrDoc.occupancy_level;
+
+  // If neither field is present in any recognizable form, treat as absent.
+  const hasAnyone = rawAnyone === true || rawAnyone === false ||
+                    rawAnyone === "yes" || rawAnyone === "no";
+  const hasLevel  = typeof rawLevel === "string" && rawLevel.trim().length > 0;
+  if (!hasAnyone && !hasLevel) return null;
+
+  let anyone = null;
+  if (rawAnyone === true || rawAnyone === "yes") anyone = true;
+  else if (rawAnyone === false || rawAnyone === "no") anyone = false;
+
+  const level = hasLevel ? rawLevel.trim() : null;
+
+  return {
+    anyone_in_building: anyone,
+    occupancy_level:    level
+  };
+}
+
+// Phase 36e — supplies projection (components.supplies).
+//
+// Operation One Truth Rule 2 + Rule 8: components.supplies has its own
+// lifecycle (`not_applicable` / `requested` / `fulfilled`).
+//
+// Reads dcrDoc.needs_supplies + dcrDoc.supply_request_text. In V1's
+// buildFormData shape (public/app.js), needs_supplies is `boolean`; the
+// supply_request_text is a trimmed string (present only when
+// needs_supplies is true).
+//
+// Returns:
+//   { status: "not_applicable", request_text: null } — no supply request
+//   { status: "requested",      request_text: str | null } — tech asked
+//
+// Phase 36e does NOT wire the "fulfilled" transition (Phase 37+ admin
+// tool territory). request_ref (link to V1 supply_requests doc id) is
+// deliberately deferred to a Phase 40 slice — no query at splice time.
+//
+// Pure. Never throws.
+function projectSuppliesForSession(dcrDoc) {
+  const NA = { status: "not_applicable", request_text: null };
+  if (!dcrDoc || typeof dcrDoc !== "object") return NA;
+  if (dcrDoc.needs_supplies !== true) return NA;
+
+  let text = null;
+  if (typeof dcrDoc.supply_request_text === "string") {
+    const t = dcrDoc.supply_request_text.trim();
+    text = t || null;
+  }
+  return { status: "requested", request_text: text };
+}
+
+// Phase 36e — problem projection (components.problem).
+//
+// Operation One Truth Rule 2 + Rule 8: components.problem has its own
+// lifecycle (`not_applicable` / `reported` / `resolved`).
+//
+// Reads dcrDoc.has_problem + dcrDoc.problem. V1 buildFormData shape:
+//   has_problem: bool
+//   problem:     { category, summary, details, location, our_fault } | null
+//                   (populated only when has_problem is true)
+//
+// Returns:
+//   { status: "not_applicable", report: null }
+//   { status: "reported",       report: { category, summary, details,
+//                                          location, our_fault } }
+//
+// Phase 36e does NOT wire the "resolved" transition (Phase 37+ admin
+// action). Defensive on inner report shape — every field defaults to
+// null when malformed.
+//
+// Pure. Never throws.
+function projectProblemForSession(dcrDoc) {
+  const NA = { status: "not_applicable", report: null };
+  if (!dcrDoc || typeof dcrDoc !== "object") return NA;
+  if (dcrDoc.has_problem !== true) return NA;
+
+  const p = dcrDoc.problem;
+  if (!p || typeof p !== "object") {
+    // has_problem === true but no problem detail object — record the
+    // reported status with an empty report shell so downstream readers
+    // can distinguish "problem was flagged" from "no problem".
+    return {
+      status: "reported",
+      report: { category: null, summary: null, details: null,
+                location: null, our_fault: null }
+    };
+  }
+
+  const strOrNull = function (v) {
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    return t || null;
+  };
+  const boolOrNull = function (v) {
+    if (v === true || v === false) return v;
+    return null;
+  };
+
+  return {
+    status: "reported",
+    report: {
+      category:  strOrNull(p.category),
+      summary:   strOrNull(p.summary),
+      details:   strOrNull(p.details),
+      location:  strOrNull(p.location),
+      our_fault: boolOrNull(p.our_fault)
+    }
+  };
+}
+
 // Phase 36b — idempotency predicate for the DCR -> Session dual-write.
 // Both the inline submitDcrV1 splice AND the new onDcrSubmissionCreatedV36b
 // trigger call sessionsV2_dualWriteFromDcrSubmit; either may fire more than
@@ -225,5 +375,10 @@ module.exports = {
   parityDiff:                          parityDiff,
   extractAssignmentIdFromSessionId:    extractAssignmentIdFromSessionId,
   isAlreadyProcessedByDcrSubmissionId: isAlreadyProcessedByDcrSubmissionId,
-  projectChecklistForSession:          projectChecklistForSession
+  projectChecklistForSession:          projectChecklistForSession,
+  // Phase 36e
+  projectNotesForSession:              projectNotesForSession,
+  projectOccupancyForSession:          projectOccupancyForSession,
+  projectSuppliesForSession:           projectSuppliesForSession,
+  projectProblemForSession:            projectProblemForSession
 };

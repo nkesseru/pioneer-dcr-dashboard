@@ -493,7 +493,7 @@
       }
       const sts = firebase.firestore.FieldValue.serverTimestamp();
       const photoCount = 3;
-      const tlEntry = {
+      const dcrTl = {
         ts:         new Date(),
         actor:      { type: "admin", uid: (actor && actor.uid) || null,
                       email: actorEmail },
@@ -504,6 +504,46 @@
         to:         "complete",
         ref:        fakeSubmissionId,
         client:     { app_version: "canary-harness-36a", platform: "browser" }
+      };
+      // Phase 36e — supplies + problem synth entries (D1). Exercises
+      // components.supplies.status = "requested" and
+      // components.problem.status  = "reported" transitions +
+      // corresponding Timeline entries.
+      const suppliesTl = {
+        ts:         new Date(),
+        actor:      { type: "admin", uid: (actor && actor.uid) || null,
+                      email: actorEmail },
+        event:      "supplies.requested",
+        title:      "Canary: simulated supplies request",
+        field_path: "components.supplies",
+        from:       "not_applicable",
+        to:         "requested",
+        ref:        fakeSubmissionId,
+        client:     { app_version: "canary-harness-36e", platform: "browser" }
+      };
+      const problemTl = {
+        ts:         new Date(),
+        actor:      { type: "admin", uid: (actor && actor.uid) || null,
+                      email: actorEmail },
+        event:      "problem.reported",
+        title:      "Canary: simulated problem reported",
+        field_path: "components.problem",
+        from:       "not_applicable",
+        to:         "reported",
+        ref:        fakeSubmissionId,
+        client:     { app_version: "canary-harness-36e", platform: "browser" }
+      };
+      const synthSuppliesText = "canary: toilet paper x2, hand soap x1";
+      const synthProblem = {
+        category:  "customer-complaint",
+        summary:   "Canary synthetic problem summary",
+        details:   "Simulated: customer noticed a smudge on lobby glass",
+        location:  "lobby",
+        our_fault: true
+      };
+      const synthOccupancy = {
+        anyone_in_building: false,
+        occupancy_level:    "empty"
       };
       await ref.update({
         "components.dcr.status":          "complete",
@@ -516,14 +556,33 @@
         "components.photos.last_event":   "photos.complete",
         "components.photos.last_event_at": sts,
         "components.photos.completed_at": sts,
+        // Phase 36e stamps (D1):
+        "components.supplies.status":       "requested",
+        "components.supplies.request_text": synthSuppliesText,
+        "components.supplies.last_event":   "supplies.requested",
+        "components.supplies.last_event_at": sts,
+        "components.supplies.started_at":   sts,
+        "components.problem.status":        "reported",
+        "components.problem.report":        synthProblem,
+        "components.problem.last_event":    "problem.reported",
+        "components.problem.last_event_at": sts,
+        "components.problem.started_at":    sts,
+        occupancy:                          synthOccupancy,
+        // (session.notes intentionally NOT stamped — Phase 36e ships it
+        // as a reserved-null field with no writer.)
         "refs.dcr_id":                    fakeSubmissionId,
         "refs.dcr_submission_id":         fakeSubmissionId,
-        timeline:                         firebase.firestore.FieldValue.arrayUnion(tlEntry),
+        timeline:                         firebase.firestore.FieldValue.arrayUnion(
+                                            dcrTl, suppliesTl, problemTl
+                                          ),
         updated_at:                       sts
       });
       const after = await ref.get();
       const view = h.renderSessionSnapshot(after.data(),
         { generated_at_iso: new Date().toISOString() });
+      const afterData = after.data() || {};
+      const supComp = (afterData.components && afterData.components.supplies) || {};
+      const probComp = (afterData.components && afterData.components.problem) || {};
       logToPane("SIMULATE_DCR OK", {
         v2_session_id:    id,
         fake_submission:  fakeSubmissionId,
@@ -532,7 +591,14 @@
         rendered_dcr_status:    view.components.dcr.status,
         rendered_dcr_ref:       view.components.dcr.ref,
         rendered_photo_count:   view.components.photos.count,
-        timeline_entries:       (after.data().timeline || []).length
+        // Phase 36e verifications (D1):
+        supplies_status:        supComp.status,
+        supplies_request_text:  supComp.request_text,
+        problem_status:         probComp.status,
+        problem_report:         probComp.report,
+        occupancy:              afterData.occupancy,
+        notes:                  afterData.notes || null,
+        timeline_entries:       (afterData.timeline || []).length
       });
     } catch (err) {
       logToPane("SIMULATE_DCR ERROR", err && err.message);

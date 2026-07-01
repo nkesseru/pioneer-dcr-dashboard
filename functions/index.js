@@ -8224,6 +8224,52 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
       update["components.checklist.completed_at"]    = sts;
     }
 
+    // Phase 36e — Notes (session-top-level field, RESERVED).
+    //
+    // V1 DCR does not carry a `notes` field today; this projection
+    // reserves the field so future writers (admin correction tool,
+    // tech-side notes UI) can populate without schema changes. Only
+    // stamps when a non-null text is present. See SCHEMA.md
+    // "Session-top-level fields (Phase 36e additions)".
+    const notesProjection = sessionsV2DcrParity.projectNotesForSession(dcrDoc);
+    if (notesProjection.text != null) {
+      update.notes = notesProjection.text;
+    }
+
+    // Phase 36e — Occupancy (session-top-level field).
+    //
+    // Stamps { anyone_in_building, occupancy_level } when the DCR
+    // carried either field. Passive observation; no Timeline event
+    // (occupancy is state, not a transition).
+    const occupancyProjection = sessionsV2DcrParity.projectOccupancyForSession(dcrDoc);
+    if (occupancyProjection) {
+      update.occupancy = occupancyProjection;
+    }
+
+    // Phase 36e — Supplies component (state machine: not_applicable →
+    // requested; fulfilled RESERVED for Phase 37+ admin action).
+    // Fires supplies.requested Timeline event on transition.
+    const suppliesProjection = sessionsV2DcrParity.projectSuppliesForSession(dcrDoc);
+    if (suppliesProjection.status !== "not_applicable") {
+      update["components.supplies.status"]        = suppliesProjection.status;
+      update["components.supplies.request_text"]  = suppliesProjection.request_text;
+      update["components.supplies.last_event"]    = "supplies.requested";
+      update["components.supplies.last_event_at"] = sts;
+      update["components.supplies.started_at"]    = sts;
+    }
+
+    // Phase 36e — Problem component (state machine: not_applicable →
+    // reported; resolved RESERVED for Phase 37+ admin action).
+    // Fires problem.reported Timeline event on transition.
+    const problemProjection = sessionsV2DcrParity.projectProblemForSession(dcrDoc);
+    if (problemProjection.status !== "not_applicable") {
+      update["components.problem.status"]        = problemProjection.status;
+      update["components.problem.report"]        = problemProjection.report;
+      update["components.problem.last_event"]    = "problem.reported";
+      update["components.problem.last_event_at"] = sts;
+      update["components.problem.started_at"]    = sts;
+    }
+
     // Build the post-update view of the V2 doc for snapshot rendering +
     // parity diff. Server stamps are not resolved yet client-side but
     // for parity we just need shape-stable fields (component statuses,
@@ -8245,7 +8291,21 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
       mergedComponents.checklist.status = "complete";
       mergedComponents.checklist.pct    = checklistProjection.pct;
     }
+    // Phase 36e — reflect supplies + problem in the parity view.
+    if (update["components.supplies.status"]) {
+      if (!mergedComponents.supplies) mergedComponents.supplies = sessionsV2_buildComponent("not_applicable");
+      mergedComponents.supplies.status       = suppliesProjection.status;
+      mergedComponents.supplies.request_text = suppliesProjection.request_text;
+    }
+    if (update["components.problem.status"]) {
+      if (!mergedComponents.problem) mergedComponents.problem = sessionsV2_buildComponent("not_applicable");
+      mergedComponents.problem.status = problemProjection.status;
+      mergedComponents.problem.report = problemProjection.report;
+    }
     const synthV2 = Object.assign({}, v2Data, { components: mergedComponents });
+    // Phase 36e — reflect notes + occupancy on the top-level view.
+    if (update.notes != null)      synthV2.notes     = update.notes;
+    if (update.occupancy != null)  synthV2.occupancy = update.occupancy;
     const view = sessionsV2Snapshot.renderSessionSnapshot(synthV2, {
       generated_at_iso: new Date().toISOString()
     });
@@ -8268,7 +8328,52 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
       ref:        submissionId,
       client:     { app_version: "submitDcrV1-phase36a.2", platform: "cloud_function" }
     };
-    update.timeline = admin.firestore.FieldValue.arrayUnion(dcrTlEntry);
+
+    // Phase 36e — Timeline entries for supplies.requested + problem.reported.
+    // Both fire only when the corresponding component transitions
+    // (not_applicable → requested / reported). No per-item events.
+    const timelineEntries = [dcrTlEntry];
+    if (update["components.supplies.status"] === "requested") {
+      const priorSupStatus = (v2Data.components && v2Data.components.supplies &&
+                              v2Data.components.supplies.status) || "not_applicable";
+      timelineEntries.push({
+        ts:         admin.firestore.Timestamp.now(),
+        actor: {
+          type:  staff.role === "admin" ? "admin" : "tech",
+          uid:   staff.uid   || null,
+          email: staff.email || null
+        },
+        event:      "supplies.requested",
+        title:      "Tech requested supply restock",
+        field_path: "components.supplies",
+        from:       priorSupStatus,
+        to:         "requested",
+        ref:        submissionId,
+        client:     { app_version: "submitDcrV1-phase36e", platform: "cloud_function" }
+      });
+    }
+    if (update["components.problem.status"] === "reported") {
+      const priorProbStatus = (v2Data.components && v2Data.components.problem &&
+                                v2Data.components.problem.status) || "not_applicable";
+      timelineEntries.push({
+        ts:         admin.firestore.Timestamp.now(),
+        actor: {
+          type:  staff.role === "admin" ? "admin" : "tech",
+          uid:   staff.uid   || null,
+          email: staff.email || null
+        },
+        event:      "problem.reported",
+        title:      "Tech reported a problem",
+        field_path: "components.problem",
+        from:       priorProbStatus,
+        to:         "reported",
+        ref:        submissionId,
+        client:     { app_version: "submitDcrV1-phase36e", platform: "cloud_function" }
+      });
+    }
+    update.timeline = admin.firestore.FieldValue.arrayUnion.apply(
+      admin.firestore.FieldValue, timelineEntries
+    );
 
     await ref.update(update);
 

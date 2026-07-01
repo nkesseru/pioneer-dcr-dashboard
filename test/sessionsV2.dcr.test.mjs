@@ -1033,3 +1033,627 @@ describe("projectChecklistForSession — explicit malformed/partial + never-thro
     });
   });
 });
+
+// ============================================================
+// projectNotesForSession (Phase 36e)
+// ============================================================
+describe("projectNotesForSession — happy path (Phase 36e)", () => {
+  const fn = parity.projectNotesForSession;
+
+  test("string notes returned as { text }", () => {
+    assert.deepEqual(fn({ notes: "left key under mat" }),
+                     { text: "left key under mat" });
+  });
+
+  test("string with surrounding whitespace is trimmed", () => {
+    assert.deepEqual(fn({ notes: "  hello  " }), { text: "hello" });
+  });
+
+  test("empty string returns null text", () => {
+    assert.deepEqual(fn({ notes: "" }), { text: null });
+  });
+
+  test("whitespace-only string returns null text", () => {
+    assert.deepEqual(fn({ notes: "   \t\n  " }), { text: null });
+  });
+
+  test("very long notes preserved verbatim (after trim)", () => {
+    const long = "x".repeat(10000);
+    assert.equal(fn({ notes: long }).text, long);
+  });
+
+  test("multi-line notes preserved (only outer trim)", () => {
+    assert.deepEqual(fn({ notes: "line1\nline2\nline3" }),
+                     { text: "line1\nline2\nline3" });
+  });
+
+  test("unicode notes preserved", () => {
+    assert.deepEqual(fn({ notes: "café · résumé · 中文 · 😀" }),
+                     { text: "café · résumé · 中文 · 😀" });
+  });
+});
+
+describe("projectNotesForSession — malformed/partial + never-throws (Phase 36e)", () => {
+  const fn = parity.projectNotesForSession;
+
+  test("missing dcrDoc field (no notes) returns null", () => {
+    assert.deepEqual(fn({ customer_slug: "x" }), { text: null });
+  });
+
+  test("undefined input never throws + returns null", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(undefined); });
+    assert.deepEqual(r, { text: null });
+  });
+
+  test("null input never throws + returns null", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(null); });
+    assert.deepEqual(r, { text: null });
+  });
+
+  test("no args never throws + returns null", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(); });
+    assert.deepEqual(r, { text: null });
+  });
+
+  test("non-object primitives never throw", () => {
+    [42, true, false, "string", Symbol("s"), 0n].forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on primitive idx " + idx);
+    });
+  });
+
+  test("number notes returns null (must be string)", () => {
+    assert.deepEqual(fn({ notes: 42 }), { text: null });
+  });
+
+  test("boolean notes returns null", () => {
+    assert.deepEqual(fn({ notes: true }),  { text: null });
+    assert.deepEqual(fn({ notes: false }), { text: null });
+  });
+
+  test("array notes returns null (must be string)", () => {
+    assert.deepEqual(fn({ notes: ["a", "b"] }), { text: null });
+  });
+
+  test("object notes returns null (must be string)", () => {
+    assert.deepEqual(fn({ notes: { text: "hi" } }), { text: null });
+  });
+
+  test("sweep: adversarial values never throw", () => {
+    const inputs = [
+      undefined, null, true, false, 0, 42, NaN, Infinity, -Infinity,
+      "", "garbage", [], [null], {}, { notes: null }, { notes: [] },
+      { notes: {} }, { notes: 0 }, { notes: NaN },
+      () => {}, Symbol("s"), 0n, new Map(), new Set(), new Date(), /r/,
+      Buffer.from("bytes")
+    ];
+    inputs.forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on idx " + idx);
+    });
+  });
+});
+
+// ============================================================
+// projectOccupancyForSession (Phase 36e)
+// ============================================================
+describe("projectOccupancyForSession — happy path (Phase 36e)", () => {
+  const fn = parity.projectOccupancyForSession;
+
+  test("V1 string 'yes' + level string -> { true, level }", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: "yes", occupancy_level: "high" }),
+      { anyone_in_building: true, occupancy_level: "high" }
+    );
+  });
+
+  test("V1 string 'no' + level 'empty'", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: "no", occupancy_level: "empty" }),
+      { anyone_in_building: false, occupancy_level: "empty" }
+    );
+  });
+
+  test("boolean true + level", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: true, occupancy_level: "medium" }),
+      { anyone_in_building: true, occupancy_level: "medium" }
+    );
+  });
+
+  test("boolean false + level", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: false, occupancy_level: "low" }),
+      { anyone_in_building: false, occupancy_level: "low" }
+    );
+  });
+
+  test("only anyone_in_building present (level missing)", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: "yes" }),
+      { anyone_in_building: true, occupancy_level: null }
+    );
+  });
+
+  test("only occupancy_level present (anyone missing)", () => {
+    assert.deepEqual(
+      fn({ occupancy_level: "high" }),
+      { anyone_in_building: null, occupancy_level: "high" }
+    );
+  });
+
+  test("level string trimmed", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: "no", occupancy_level: "  empty  " }),
+      { anyone_in_building: false, occupancy_level: "empty" }
+    );
+  });
+});
+
+describe("projectOccupancyForSession — malformed/partial + never-throws (Phase 36e)", () => {
+  const fn = parity.projectOccupancyForSession;
+
+  test("neither field present returns null (dcr has no occupancy at all)", () => {
+    assert.equal(fn({ customer_slug: "x" }), null);
+  });
+
+  test("empty string level treated as absent", () => {
+    assert.equal(fn({ occupancy_level: "" }), null);
+  });
+
+  test("whitespace-only level treated as absent", () => {
+    assert.equal(fn({ occupancy_level: "   " }), null);
+  });
+
+  test("undefined input never throws", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(undefined); });
+    assert.equal(r, null);
+  });
+
+  test("null input never throws", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(null); });
+    assert.equal(r, null);
+  });
+
+  test("no args never throws", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(); });
+    assert.equal(r, null);
+  });
+
+  test("non-object primitives never throw", () => {
+    [42, true, "s", Symbol("s"), 0n].forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on idx " + idx);
+    });
+  });
+
+  test("anyone_in_building as unrecognized string ('maybe') treated as absent", () => {
+    assert.equal(fn({ anyone_in_building: "maybe" }), null);
+  });
+
+  test("anyone as unrecognized string but level present -> anyone=null, level=str", () => {
+    assert.deepEqual(
+      fn({ anyone_in_building: "maybe", occupancy_level: "low" }),
+      { anyone_in_building: null, occupancy_level: "low" }
+    );
+  });
+
+  test("anyone as number 1 treated as absent (only true/false/'yes'/'no')", () => {
+    assert.equal(fn({ anyone_in_building: 1 }), null);
+  });
+
+  test("anyone as object treated as absent", () => {
+    assert.equal(fn({ anyone_in_building: { yes: true } }), null);
+  });
+
+  test("occupancy_level as number treated as absent (must be string)", () => {
+    assert.equal(fn({ occupancy_level: 5 }), null);
+  });
+
+  test("occupancy_level as array treated as absent", () => {
+    assert.equal(fn({ occupancy_level: ["high"] }), null);
+  });
+
+  test("occupancy_level as object treated as absent", () => {
+    assert.equal(fn({ occupancy_level: { value: "high" } }), null);
+  });
+
+  test("sweep: adversarial values never throw", () => {
+    const inputs = [
+      undefined, null, true, false, 0, 42, NaN, Infinity, -Infinity,
+      "", "garbage", [], [null], {}, { anyone_in_building: null },
+      { occupancy_level: null }, { anyone_in_building: {}, occupancy_level: {} },
+      () => {}, Symbol("s"), 0n, new Map(), new Set(), new Date(), /r/,
+      Buffer.from("bytes")
+    ];
+    inputs.forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on idx " + idx);
+    });
+  });
+});
+
+// ============================================================
+// projectSuppliesForSession (Phase 36e)
+// ============================================================
+describe("projectSuppliesForSession — happy path (Phase 36e)", () => {
+  const fn = parity.projectSuppliesForSession;
+
+  test("needs_supplies=true + text -> requested + trimmed text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: "TP x2" }),
+      { status: "requested", request_text: "TP x2" }
+    );
+  });
+
+  test("needs_supplies=true + whitespace text is trimmed", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: "  gloves  " }),
+      { status: "requested", request_text: "gloves" }
+    );
+  });
+
+  test("needs_supplies=true + empty text -> requested with null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: "" }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("needs_supplies=true + missing text -> requested with null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("needs_supplies=false -> not_applicable", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: false, supply_request_text: "ignored" }),
+      { status: "not_applicable", request_text: null }
+    );
+  });
+
+  test("needs_supplies field absent -> not_applicable", () => {
+    assert.deepEqual(
+      fn({ customer_slug: "x" }),
+      { status: "not_applicable", request_text: null }
+    );
+  });
+
+  test("very long request_text preserved (after trim)", () => {
+    const long = "supply " + "x".repeat(5000);
+    assert.equal(fn({ needs_supplies: true, supply_request_text: long })
+                   .request_text, long);
+  });
+});
+
+describe("projectSuppliesForSession — malformed/partial + never-throws (Phase 36e)", () => {
+  const fn = parity.projectSuppliesForSession;
+
+  test("undefined input never throws + returns not_applicable", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(undefined); });
+    assert.deepEqual(r, { status: "not_applicable", request_text: null });
+  });
+
+  test("null input never throws + returns not_applicable", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(null); });
+    assert.deepEqual(r, { status: "not_applicable", request_text: null });
+  });
+
+  test("no args never throws", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(); });
+    assert.deepEqual(r, { status: "not_applicable", request_text: null });
+  });
+
+  test("needs_supplies as truthy non-true ('true' string) -> not_applicable", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: "true", supply_request_text: "x" }),
+      { status: "not_applicable", request_text: null }
+    );
+  });
+
+  test("needs_supplies as truthy number (1) -> not_applicable (strict === true)", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: 1, supply_request_text: "x" }),
+      { status: "not_applicable", request_text: null }
+    );
+  });
+
+  test("needs_supplies=true + text is number -> requested with null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: 42 }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("needs_supplies=true + text is array -> requested with null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: ["a"] }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("needs_supplies=true + text is object -> requested with null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: { note: "hi" } }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("needs_supplies=true + text is whitespace-only -> null text", () => {
+    assert.deepEqual(
+      fn({ needs_supplies: true, supply_request_text: "   \t  " }),
+      { status: "requested", request_text: null }
+    );
+  });
+
+  test("non-object primitives never throw", () => {
+    [42, true, false, "string", Symbol("s"), 0n].forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on primitive idx " + idx);
+    });
+  });
+
+  test("sweep: adversarial values never throw", () => {
+    const inputs = [
+      undefined, null, true, false, 0, 42, NaN, Infinity, -Infinity,
+      "", "garbage", [], [null], {}, { needs_supplies: null },
+      { needs_supplies: "yes" }, { needs_supplies: {} },
+      { needs_supplies: true, supply_request_text: null },
+      { needs_supplies: true, supply_request_text: {} },
+      () => {}, Symbol("s"), 0n, new Map(), new Set(), new Date(), /r/,
+      Buffer.from("bytes")
+    ];
+    inputs.forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on idx " + idx);
+    });
+  });
+});
+
+// ============================================================
+// projectProblemForSession (Phase 36e)
+// ============================================================
+describe("projectProblemForSession — happy path (Phase 36e)", () => {
+  const fn = parity.projectProblemForSession;
+
+  test("has_problem=true + full report -> reported + normalized report", () => {
+    const r = fn({
+      has_problem: true,
+      problem: {
+        category: "customer-complaint",
+        summary:  "Smudge on lobby glass",
+        details:  "Customer walked in and noticed streak",
+        location: "lobby",
+        our_fault: true
+      }
+    });
+    assert.equal(r.status, "reported");
+    assert.deepEqual(r.report, {
+      category: "customer-complaint",
+      summary:  "Smudge on lobby glass",
+      details:  "Customer walked in and noticed streak",
+      location: "lobby",
+      our_fault: true
+    });
+  });
+
+  test("has_problem=true + our_fault=false", () => {
+    const r = fn({
+      has_problem: true,
+      problem: {
+        category: "site-condition",
+        summary:  "Broken window",
+        details:  "Existed before we arrived",
+        location: "back-office",
+        our_fault: false
+      }
+    });
+    assert.equal(r.status, "reported");
+    assert.equal(r.report.our_fault, false);
+  });
+
+  test("has_problem=true + strings trimmed", () => {
+    const r = fn({
+      has_problem: true,
+      problem: {
+        category: "  broken-equipment  ",
+        summary:  "  short summary  ",
+        details:  "  full details  ",
+        location: "  garage  ",
+        our_fault: true
+      }
+    });
+    assert.equal(r.report.category, "broken-equipment");
+    assert.equal(r.report.summary,  "short summary");
+    assert.equal(r.report.details,  "full details");
+    assert.equal(r.report.location, "garage");
+  });
+
+  test("has_problem=true + empty strings normalize to null", () => {
+    const r = fn({
+      has_problem: true,
+      problem: {
+        category: "",
+        summary:  "",
+        details:  "",
+        location: "",
+        our_fault: null
+      }
+    });
+    assert.equal(r.status, "reported");
+    assert.deepEqual(r.report, {
+      category: null, summary: null, details: null,
+      location: null, our_fault: null
+    });
+  });
+
+  test("has_problem=true + partial report (only summary) fills nulls elsewhere", () => {
+    const r = fn({
+      has_problem: true,
+      problem: { summary: "just this" }
+    });
+    assert.equal(r.status, "reported");
+    assert.deepEqual(r.report, {
+      category: null, summary: "just this", details: null,
+      location: null, our_fault: null
+    });
+  });
+
+  test("has_problem=false -> not_applicable", () => {
+    assert.deepEqual(fn({ has_problem: false, problem: { category: "x" } }),
+                     { status: "not_applicable", report: null });
+  });
+
+  test("has_problem field absent -> not_applicable", () => {
+    assert.deepEqual(fn({ customer_slug: "x" }),
+                     { status: "not_applicable", report: null });
+  });
+
+  test("has_problem=true + problem missing -> reported with null shell", () => {
+    assert.deepEqual(fn({ has_problem: true }), {
+      status: "reported",
+      report: { category: null, summary: null, details: null,
+                location: null, our_fault: null }
+    });
+  });
+
+  test("has_problem=true + problem=null -> reported with null shell", () => {
+    assert.deepEqual(fn({ has_problem: true, problem: null }), {
+      status: "reported",
+      report: { category: null, summary: null, details: null,
+                location: null, our_fault: null }
+    });
+  });
+});
+
+describe("projectProblemForSession — malformed/partial + never-throws (Phase 36e)", () => {
+  const fn = parity.projectProblemForSession;
+
+  test("undefined input never throws + returns not_applicable", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(undefined); });
+    assert.deepEqual(r, { status: "not_applicable", report: null });
+  });
+
+  test("null input never throws + returns not_applicable", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(null); });
+    assert.deepEqual(r, { status: "not_applicable", report: null });
+  });
+
+  test("no args never throws", () => {
+    let r;
+    assert.doesNotThrow(() => { r = fn(); });
+    assert.deepEqual(r, { status: "not_applicable", report: null });
+  });
+
+  test("has_problem as string 'true' -> not_applicable (strict === true)", () => {
+    assert.deepEqual(
+      fn({ has_problem: "true", problem: { category: "x" } }),
+      { status: "not_applicable", report: null }
+    );
+  });
+
+  test("has_problem as truthy number (1) -> not_applicable", () => {
+    assert.deepEqual(
+      fn({ has_problem: 1, problem: { category: "x" } }),
+      { status: "not_applicable", report: null }
+    );
+  });
+
+  test("has_problem=true + problem is array -> reported with null shell", () => {
+    assert.deepEqual(fn({ has_problem: true, problem: ["a"] }), {
+      status: "reported",
+      report: { category: null, summary: null, details: null,
+                location: null, our_fault: null }
+    });
+  });
+
+  test("has_problem=true + problem is string -> reported with null shell", () => {
+    assert.deepEqual(fn({ has_problem: true, problem: "garbage" }), {
+      status: "reported",
+      report: { category: null, summary: null, details: null,
+                location: null, our_fault: null }
+    });
+  });
+
+  test("has_problem=true + numeric fields inside problem normalize to null", () => {
+    const r = fn({
+      has_problem: true,
+      problem: { category: 42, summary: 7, details: [], location: {}, our_fault: 1 }
+    });
+    assert.equal(r.report.category,  null);
+    assert.equal(r.report.summary,   null);
+    assert.equal(r.report.details,   null);
+    assert.equal(r.report.location,  null);
+    assert.equal(r.report.our_fault, null);
+  });
+
+  test("has_problem=true + our_fault as string 'yes' -> null (strict bool)", () => {
+    const r = fn({
+      has_problem: true,
+      problem: { summary: "s", our_fault: "yes" }
+    });
+    assert.equal(r.report.our_fault, null);
+  });
+
+  test("has_problem=true + all fields whitespace -> nulls", () => {
+    const r = fn({
+      has_problem: true,
+      problem: {
+        category: "   ", summary: "\t\n", details: "  ",
+        location: " ", our_fault: null
+      }
+    });
+    assert.deepEqual(r.report, {
+      category: null, summary: null, details: null,
+      location: null, our_fault: null
+    });
+  });
+
+  test("non-object dcrDoc primitives never throw", () => {
+    [42, true, false, "string", Symbol("s"), 0n].forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on primitive idx " + idx);
+    });
+  });
+
+  test("nested cycles inside problem don't crash (we don't walk them)", () => {
+    const p = { summary: "s" };
+    p.self = p;
+    let r;
+    assert.doesNotThrow(() => {
+      r = fn({ has_problem: true, problem: p });
+    });
+    assert.equal(r.status, "reported");
+    assert.equal(r.report.summary, "s");
+  });
+
+  test("sweep: adversarial values never throw", () => {
+    const inputs = [
+      undefined, null, true, false, 0, 42, NaN, Infinity, -Infinity,
+      "", "garbage", [], [null], {},
+      { has_problem: null },
+      { has_problem: "yes" },
+      { has_problem: {} },
+      { has_problem: true, problem: null },
+      { has_problem: true, problem: undefined },
+      { has_problem: true, problem: "" },
+      { has_problem: true, problem: 42 },
+      { has_problem: true, problem: true },
+      { has_problem: true, problem: [] },
+      { has_problem: true, problem: {} },
+      { has_problem: true, problem: { category: {}, summary: [], details: 0,
+                                       location: null, our_fault: "x" } },
+      () => {}, Symbol("s"), 0n, new Map(), new Set(), new Date(), /r/,
+      Buffer.from("bytes")
+    ];
+    inputs.forEach((v, idx) => {
+      assert.doesNotThrow(() => fn(v), "threw on idx " + idx);
+    });
+  });
+});

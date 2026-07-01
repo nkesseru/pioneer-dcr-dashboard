@@ -287,6 +287,86 @@ State semantics at DCR submit:
 
 Per-item Timeline events are deliberately NOT emitted. Timeline is for STATE TRANSITIONS, not field-by-field captures; 40+ checklist toggles per DCR would create Timeline noise. The single existing `checklist.complete` event fires at DCR submit.
 
+#### components.supplies (Phase 36e — NEW component)
+
+Phase 36e (Supplies as Session Component — Operation One Truth Rule 2) captures a tech's supply-restock request at DCR submit time. Session owns the request lifecycle.
+
+```
+components.supplies = {
+  status:        "not_applicable" | "requested" | "fulfilled",
+  started_at:    Timestamp | null,      // set on missing → requested
+  last_event_at: Timestamp | null,
+  completed_at:  Timestamp | null,      // set on status → "fulfilled" (Phase 37+ admin action)
+  last_event:    "supplies.requested" | "supplies.fulfilled" | null,
+  error:         string | null,
+  count:         null,
+  pct:           null,
+  ref:           null,
+  // Phase 36e specifics:
+  request_text:  string | null          // freeform tech-typed request
+}
+```
+
+State transitions:
+- `not_applicable` → `requested` on DCR submit when `dcrDoc.needs_supplies === true`
+- `requested` → `fulfilled` — RESERVED for Phase 37+ (admin-side "mark fulfilled" action)
+
+Deliberately excluded:
+- `request_ref` (link to V1 `supply_requests` doc id) — the V1 supply doc is written BEFORE the phase36a splice fires but its id isn't stamped back on `dcr_submissions`. Deferred to a Phase 40 slice where V1 `supply_requests` is retired.
+
+#### components.problem (Phase 36e — NEW component)
+
+Phase 36e captures a tech-reported incident from a visit. Session owns the report lifecycle.
+
+```
+components.problem = {
+  status:        "not_applicable" | "reported" | "resolved",
+  started_at:    Timestamp | null,      // set on not_applicable → reported
+  last_event_at: Timestamp | null,
+  completed_at:  Timestamp | null,      // set on status → "resolved" (Phase 37+ admin action)
+  last_event:    "problem.reported" | "problem.resolved" | null,
+  error:         string | null,
+  count:         null,
+  pct:           null,
+  ref:           null,
+  // Phase 36e specifics:
+  report: {
+    category:  string | null,           // e.g. "customer-complaint", "equipment", "safety"
+    summary:   string | null,
+    details:   string | null,
+    location:  string | null,           // where in the building
+    our_fault: bool | null              // whether the tech attributes fault to Pioneer
+  } | null
+}
+```
+
+State transitions:
+- `not_applicable` → `reported` on DCR submit when `dcrDoc.has_problem === true`
+- `reported` → `resolved` — RESERVED for Phase 37+ (admin close action)
+
+If `has_problem === true` but the inner `problem` object is missing/malformed, status still advances to `reported` but `report` becomes an empty-shell object (all fields null) — the tech flagged something even if payload validation dropped the detail.
+
+### Session-top-level fields (Phase 36e additions)
+
+`session.notes` (RESERVED — no writer in Phase 36e)
+
+```
+notes: string | null
+```
+
+Reserved for future writers (admin session correction tool, tech-side notes UI). Default `null`. Phase 36e stamps null-passthrough (the projection reads `dcrDoc.notes` in case an admin later injects it; V1 DCR does not carry a `notes` field today).
+
+`session.occupancy` (Phase 36e)
+
+```
+occupancy: {
+  anyone_in_building: bool | null,   // normalized from V1's "yes" | "no" string
+  occupancy_level:    string | null  // "empty" | "sparse" | "moderate" | "full" | ... — enum validation is a Phase 37 read-side concern
+} | null
+```
+
+Stamped by splice when DCR submit carries `dcrDoc.anyone_in_building` OR `dcrDoc.occupancy_level`. `null` when session had no DCR submit yet OR the DCR carried neither field.
+
 #### Component names (closed set)
 
 ```
@@ -294,6 +374,8 @@ clock           ← clock_in + clock_out as a single lifecycle
 gps             ← GPS evidence collected on clock_in/out
 photos          ← photo uploads
 checklist       ← task checklist items
+supplies        ← tech supply-restock request (Phase 36e)
+problem         ← tech-reported incident (Phase 36e)
 dcr             ← DCR submission / waiver
 customer_email  ← outbound customer notification
 payroll         ← payroll review + approval gate
@@ -442,6 +524,10 @@ dcr.submitted              "DCR submitted to customer"
 dcr.waived                 "DCR waived"
 dcr.skipped                "DCR skipped"
 issue.logged               "Issue logged"
+supplies.requested         "Tech requested supply restock" (Phase 36e — fires at DCR submit when needs_supplies=true; carries ref=submissionId)
+supplies.fulfilled         "Supply restock delivered" (RESERVED for Phase 37+ admin action)
+problem.reported           "Tech reported a problem" (Phase 36e — fires at DCR submit when has_problem=true; carries ref=submissionId)
+problem.resolved           "Problem resolved" (RESERVED for Phase 37+ admin action)
 
 # Payroll
 payroll.review_ready       "Ready for payroll review"
