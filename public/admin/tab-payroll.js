@@ -644,8 +644,12 @@
    */
   function computeWorkflowState() {
     const blockers = computeBlockers(sessions);
+    // Payroll Gate V2 (2026-07-01) — DCR is recovery work, NOT a payroll
+    // blocker. Only labor-integrity signals gate workflow progression.
+    // blockers.dcr_pending is still counted for the recovery-view
+    // display but excluded from totalBlockers.
     const totalBlockers = blockers.needs_review + blockers.active +
-                          blockers.dcr_pending + blockers.missing_clockout;
+                          blockers.missing_clockout;
     const nonArchived = (sessions || []).filter(function (s) {
       return !adminRemovedFlag(s) && !isQaTestSession(s);
     });
@@ -808,10 +812,8 @@
         key: "needs_review",
         text: w.blockers.needs_review + ' session' + (w.blockers.needs_review === 1 ? '' : 's') + ' need review'
       });
-      if (w.blockers.dcr_pending > 0) lines.push({
-        key: "dcr_pending",
-        text: w.blockers.dcr_pending + ' session' + (w.blockers.dcr_pending === 1 ? '' : 's') + ' DCR pending'
-      });
+      // Payroll Gate V2 — DCR pending is NOT a payroll blocker.
+      // Surfaces via the Recovery card/filter, not as a workflow gate.
       if (w.blockers.active > 0) lines.push({
         key: "active",
         text: w.blockers.active + ' active session' + (w.blockers.active === 1 ? '' : 's')
@@ -1190,8 +1192,9 @@
     const wrap = $("payroll-banner");
     if (!wrap) return;
     const blockers = computeBlockers(sessions);
+    // Payroll Gate V2 — DCR is recovery work, NOT a payroll blocker.
     const totalBlockers = blockers.needs_review + blockers.active +
-                          blockers.dcr_pending + blockers.missing_clockout;
+                          blockers.missing_clockout;
     const nonArchived = sessions.filter(function (s) { return !adminRemovedFlag(s); });
     const approvedCount = nonArchived.filter(isApproved).length;
 
@@ -1224,10 +1227,8 @@
         lines.push({ key: "active",
           text: blockers.active + ' active session' + (blockers.active === 1 ? '' : 's') });
       }
-      if (blockers.dcr_pending > 0) {
-        lines.push({ key: "dcr_pending",
-          text: blockers.dcr_pending + ' session' + (blockers.dcr_pending === 1 ? '' : 's') + ' DCR pending' });
-      }
+      // Payroll Gate V2 — DCR pending is surfaced elsewhere (Recovery
+      // view / filter), not as a payroll banner blocker.
       if (blockers.missing_clockout > 0) {
         lines.push({ key: "missing_clockout",
           text: blockers.missing_clockout + ' session' + (blockers.missing_clockout === 1 ? '' : 's') + ' missing clock-out' });

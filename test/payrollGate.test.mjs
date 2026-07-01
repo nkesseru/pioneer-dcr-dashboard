@@ -1,15 +1,16 @@
 // Payroll Gate V2 — pure-JS tests for the labor-integrity gate.
 //
-// Two functions are gated by the same principle (post-2026-07-01):
+// Three functions are gated by the same principle (post-2026-07-01):
 //   1. functions/index.js :: payrollIsBlocker(s)
 //      — server-side; called by exportPayrollCsvV1 + lockPayrollPeriodV1
 //   2. public/admin/tab-labor-review.js :: approveGatePasses(s)
 //      — client-side; hides the Approve button per row
+//   3. public/admin/tab-payroll.js :: totalBlockers (workflow + banner)
+//      — client-side; gates the Payroll Workflow bar + PAYROLL READY banner
 //
-// Both are pure functions from a session document to a boolean/label.
-// This file mirrors the prod source EXACTLY. Any divergence is a bug —
-// the copies below should be diff'd against the prod source when either
-// is changed.
+// All three are pure and this file mirrors the prod source EXACTLY.
+// Any divergence is a bug — the copies below should be diff'd against
+// the prod source when either is changed.
 //
 // Run: node --test test/payrollGate.test.mjs
 
@@ -331,5 +332,116 @@ describe("Real-world regression — the 4 morning payroll blockers", () => {
     };
     assert.equal(payrollIsBlocker(s), null);
     assert.equal(approveGatePasses(s), true);
+  });
+});
+
+// ============================================================
+// MIRROR of public/admin/tab-payroll.js :: totalBlockers formula
+// used by both computeWorkflowState() (Payroll Workflow bar) AND
+// renderBanner() (PAYROLL READY / BLOCKED banner).
+// ============================================================
+//
+// blockers shape from computeBlockers():
+//   { needs_review, active, dcr_pending, missing_clockout }
+//
+// V2 formula intentionally excludes dcr_pending — DCR is recovery
+// work, not a payroll gate. The dcr_pending field is still counted
+// for the per-employee recovery view + tile display, but is not
+// summed into totalBlockers.
+function totalBlockersV2(blockers) {
+  return blockers.needs_review + blockers.active + blockers.missing_clockout;
+}
+
+describe("totalBlockers V2 — Payroll Workflow + Banner gate", () => {
+  test("all-zeros blockers → totalBlockers = 0 (banner shows READY)", () => {
+    const b = { needs_review: 0, active: 0, dcr_pending: 0, missing_clockout: 0 };
+    assert.equal(totalBlockersV2(b), 0);
+  });
+
+  test("4 dcr_pending only → totalBlockers = 0 (this morning's scenario)", () => {
+    const b = { needs_review: 0, active: 0, dcr_pending: 4, missing_clockout: 0 };
+    assert.equal(totalBlockersV2(b), 0,
+      "4 DCR-pending sessions must NOT trigger BLOCKED banner under V2");
+  });
+
+  test("1 needs_review + 4 dcr_pending → totalBlockers = 1 (real blocker still fires)", () => {
+    const b = { needs_review: 1, active: 0, dcr_pending: 4, missing_clockout: 0 };
+    assert.equal(totalBlockersV2(b), 1);
+  });
+
+  test("2 active + 3 dcr_pending → totalBlockers = 2", () => {
+    const b = { needs_review: 0, active: 2, dcr_pending: 3, missing_clockout: 0 };
+    assert.equal(totalBlockersV2(b), 2);
+  });
+
+  test("1 missing_clockout + 10 dcr_pending → totalBlockers = 1", () => {
+    const b = { needs_review: 0, active: 0, dcr_pending: 10, missing_clockout: 1 };
+    assert.equal(totalBlockersV2(b), 1);
+  });
+
+  test("all four buckets populated → sums only 3 (dcr_pending excluded)", () => {
+    const b = { needs_review: 2, active: 1, dcr_pending: 5, missing_clockout: 3 };
+    assert.equal(totalBlockersV2(b), 6, "2 + 1 + 3 = 6; dcr_pending's 5 is not counted");
+  });
+
+  test("50 dcr_pending sessions alone still returns 0 (recovery workqueue only)", () => {
+    const b = { needs_review: 0, active: 0, dcr_pending: 50, missing_clockout: 0 };
+    assert.equal(totalBlockersV2(b), 0);
+  });
+});
+
+// ============================================================
+// Convergence: server-side blocker counts + client-side
+// totalBlockers formula should always agree on whether the
+// period is BLOCKED or READY.
+// ============================================================
+describe("Cross-check: server payrollIsBlocker + client totalBlockers agree", () => {
+  // Simulate a period as sessions[] fed through server-side per-session
+  // classification. Sum the same buckets. Assert they equal what the
+  // client-side totalBlockers formula would compute from the same shape.
+
+  function serverSideBlockerCounts(sessions) {
+    const b = { needs_review: 0, active: 0, dcr_pending: 0, missing_clockout: 0 };
+    sessions.forEach(s => {
+      const key = payrollIsBlocker(s);
+      if (key === "needs_review")     b.needs_review     += 1;
+      if (key === "active")           b.active           += 1;
+      if (key === "dcr_pending")      b.dcr_pending      += 1;
+      if (key === "missing_clockout") b.missing_clockout += 1;
+    });
+    return b;
+  }
+
+  test("4 DCR-pending-only sessions: server counts = client counts = 0 blocked", () => {
+    const sessions = [
+      cleanCompletedSession({ dcr_status: undefined }),
+      cleanCompletedSession({ dcr_status: undefined, assignment_id: "sa_deputy_2" }),
+      cleanCompletedSession({ dcr_status: undefined, assignment_id: "sa_deputy_3" }),
+      cleanCompletedSession({ dcr_status: undefined, assignment_id: "sa_deputy_4" })
+    ];
+    const serverB = serverSideBlockerCounts(sessions);
+    assert.equal(serverB.needs_review,     0);
+    assert.equal(serverB.active,           0);
+    assert.equal(serverB.dcr_pending,      0, "V2 server no longer classifies DCR-pending");
+    assert.equal(serverB.missing_clockout, 0);
+    assert.equal(totalBlockersV2(serverB), 0,
+      "Client formula on server counts must agree: 0 blockers");
+  });
+
+  test("mixed period with real blockers: server + client agree on total", () => {
+    const sessions = [
+      cleanCompletedSession(),                                            // clean
+      cleanCompletedSession({ needs_review: true }),                       // needs_review
+      cleanCompletedSession({ status: "active", clock_out_at: null }),     // active
+      cleanCompletedSession({ clock_out_at: null }),                       // missing_clockout
+      cleanCompletedSession({ dcr_status: undefined }),                    // dcr-pending (not blocker)
+      cleanCompletedSession({ dcr_status: undefined, needs_review: true }),// double: needs_review wins
+    ];
+    const serverB = serverSideBlockerCounts(sessions);
+    assert.equal(serverB.needs_review,     2);
+    assert.equal(serverB.active,           1);
+    assert.equal(serverB.missing_clockout, 1);
+    assert.equal(serverB.dcr_pending,      0);
+    assert.equal(totalBlockersV2(serverB), 4);
   });
 });
