@@ -236,6 +236,57 @@ Idempotency: `photo_id` is the natural key. Re-upload of the same photo updates 
 
 `primary_photo_id` is RESERVED in Phase 36c — field exists with value `null`, but no writer sets it. Future slice can flip it to one of the `items[].photo_id` values to designate the customer-facing hero shot.
 
+#### components.checklist extensions (Phase 36d)
+
+Phase 36d (Checklist as Session Component — Operation One Truth Rule 2) replaces Phase 36a's thin checklist stamp (which silently mis-counted sections as items + assumed all items "done") with a full per-section, per-item projection authored at DCR submit time. The data flows through the existing `sessionsV2_dualWriteFromDcrSubmit` helper (called from both the inline `submitDcrV1` splice AND the `onDcrSubmissionCreatedV36b` trigger).
+
+```
+components.checklist = {
+  status:           "not_applicable" | "missing" | "collecting" | "complete" | "failed" | "replaced",
+  started_at:       Timestamp | null,
+  last_event_at:    Timestamp | null,
+  completed_at:     Timestamp | null,
+  last_event:       "checklist.complete" | "checklist.updated" | null,
+  error:            string | null,
+  count:            null,
+  pct:              int (0-100),                    // (items_complete / items_total) × 100, or 0 when items_total === 0
+  ref:              null,
+  // Phase 36d additions:
+  items_total:      int,                            // count of items across all sections
+  items_complete:   int,                            // count where status === "done"
+  items_issue:      int,                            // count where status === "issue"
+  items_na:         int,                            // count where status === "na"
+  items_untouched:  int,                            // count where status was null / not yet answered
+  sections:         Array<SectionSnapshot>          // see below
+}
+```
+
+`SectionSnapshot` shape (closed; new fields require helper version bump):
+
+```
+{
+  section_id:   string,
+  items: Array<{
+    item_id: string,
+    status:  "done" | "issue" | "na" | "untouched",  // never null in projection
+    note:    string | null                            // present only when status === "issue"
+                                                      // (matches buildFormData's `status === "issue" && note.trim()` rule)
+  }>
+}
+```
+
+Deliberately excluded from `components.checklist.sections`:
+- `section_label` (lives in `public/dcr-form-config.js`; storing per-session would bloat + drift if config changes)
+- `item.label` (same reason)
+
+State semantics at DCR submit:
+- `status` is set to `"complete"` regardless of `pct` value — DCR submit is the canonical "tech declared this done" moment.
+- `pct` reflects the **actual** percentage of items marked `"done"` — may be less than 100 when items are `"issue"`, `"na"`, or `"untouched"`. This is by design: status and pct are two different facts.
+
+`checklist_config_version` is RESERVED at the session-top-level — initially `null`; future slice can stamp the config version that was active at submit time so historical sessions can be re-rendered against the right labels.
+
+Per-item Timeline events are deliberately NOT emitted. Timeline is for STATE TRANSITIONS, not field-by-field captures; 40+ checklist toggles per DCR would create Timeline noise. The single existing `checklist.complete` event fires at DCR submit.
+
 #### Component names (closed set)
 
 ```

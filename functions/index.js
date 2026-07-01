@@ -8203,18 +8203,25 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
       }
     }
 
-    // Checklist: V1 DCR doesn't carry a unified checklist progress field.
-    // If a `checklist` array is present and non-empty in the payload, assume
-    // submission means completion. Skip otherwise — Phase 36d wires the
-    // real per-item progression.
-    if (Array.isArray(dcrDoc.checklist) && dcrDoc.checklist.length > 0) {
-      update["components.checklist.status"]        = "complete";
-      update["components.checklist.pct"]           = 100;
-      update["components.checklist.items_total"]   = dcrDoc.checklist.length;
-      update["components.checklist.items_complete"] = dcrDoc.checklist.length;
-      update["components.checklist.last_event"]    = "checklist.complete";
-      update["components.checklist.last_event_at"] = sts;
-      update["components.checklist.completed_at"]  = sts;
+    // Checklist (Phase 36d) — project the V1 dcr_submissions.checklist
+    // array into the per-item Session shape. Status is "complete"
+    // because DCR submit is the canonical "tech declared this done"
+    // moment; pct reflects the actual count of "done" items (may be
+    // less than 100 when items are issue / na / untouched). See
+    // SCHEMA.md "components.checklist extensions (Phase 36d)".
+    const checklistProjection = sessionsV2DcrParity.projectChecklistForSession(dcrDoc.checklist);
+    if (checklistProjection.items_total > 0) {
+      update["components.checklist.status"]          = "complete";
+      update["components.checklist.pct"]             = checklistProjection.pct;
+      update["components.checklist.items_total"]     = checklistProjection.items_total;
+      update["components.checklist.items_complete"]  = checklistProjection.items_complete;
+      update["components.checklist.items_issue"]     = checklistProjection.items_issue;
+      update["components.checklist.items_na"]        = checklistProjection.items_na;
+      update["components.checklist.items_untouched"] = checklistProjection.items_untouched;
+      update["components.checklist.sections"]        = checklistProjection.sections;
+      update["components.checklist.last_event"]      = "checklist.complete";
+      update["components.checklist.last_event_at"]   = sts;
+      update["components.checklist.completed_at"]    = sts;
     }
 
     // Build the post-update view of the V2 doc for snapshot rendering +
@@ -8236,7 +8243,7 @@ async function sessionsV2_dualWriteFromDcrSubmit(args) {
     }
     if (update["components.checklist.pct"] != null) {
       mergedComponents.checklist.status = "complete";
-      mergedComponents.checklist.pct    = 100;
+      mergedComponents.checklist.pct    = checklistProjection.pct;
     }
     const synthV2 = Object.assign({}, v2Data, { components: mergedComponents });
     const view = sessionsV2Snapshot.renderSessionSnapshot(synthV2, {

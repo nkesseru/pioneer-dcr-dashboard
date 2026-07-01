@@ -82,6 +82,127 @@ function parityDiff(v1Doc, snapshot) {
   return out;
 }
 
+// Phase 36d — checklist projection for components.checklist.
+//
+// Operation One Truth Rule 2: Session owns checklist reality. At DCR
+// submit time, the V1 dcr_submissions doc carries a full per-section,
+// per-item checklist (built by app.js::buildFormData). This pure helper
+// projects that into the Session's components.checklist shape: counts +
+// pct + per-item snapshot.
+//
+// Pure function. No I/O. Defensive on all shapes. Returns the canonical
+// projection that sessionsV2_dualWriteFromDcrSubmit stamps onto V2.
+//
+// Output shape (closed; new fields require helper version bump):
+//   {
+//     items_total:     int,
+//     items_complete:  int,                    // status === "done"
+//     items_issue:     int,                    // status === "issue"
+//     items_na:        int,                    // status === "na"
+//     items_untouched: int,                    // status was null / unknown
+//     pct:             int (0-100),            // (items_complete / items_total) × 100,
+//                                              // or 0 if items_total === 0
+//     sections:        Array<SectionSnapshot>  // see below
+//   }
+//
+// SectionSnapshot shape (closed):
+//   {
+//     section_id: string,
+//     items: Array<{
+//       item_id: string,
+//       status:  "done" | "issue" | "na" | "untouched",   // never null
+//       note:    string | null                            // only when status === "issue"
+//     }>
+//   }
+//
+// Deliberately excluded (live in dcr-form-config.js):
+//   - section_label, item_label
+//
+// Status normalization:
+//   - "done"      -> "done"
+//   - "issue"     -> "issue"
+//   - "na"        -> "na"
+//   - null/missing/unknown string -> "untouched"
+//
+// Note is preserved on output only when status === "issue" (matches the
+// V1 buildFormData logic at app.js: `if (status === "issue" && note.trim())`).
+const _CHECKLIST_STATUS_DONE      = "done";
+const _CHECKLIST_STATUS_ISSUE     = "issue";
+const _CHECKLIST_STATUS_NA        = "na";
+const _CHECKLIST_STATUS_UNTOUCHED = "untouched";
+
+function _normalizeChecklistItemStatus(raw) {
+  if (raw === _CHECKLIST_STATUS_DONE)  return _CHECKLIST_STATUS_DONE;
+  if (raw === _CHECKLIST_STATUS_ISSUE) return _CHECKLIST_STATUS_ISSUE;
+  if (raw === _CHECKLIST_STATUS_NA)    return _CHECKLIST_STATUS_NA;
+  return _CHECKLIST_STATUS_UNTOUCHED;
+}
+
+function projectChecklistForSession(dcrChecklist) {
+  const empty = {
+    items_total:     0,
+    items_complete:  0,
+    items_issue:     0,
+    items_na:        0,
+    items_untouched: 0,
+    pct:             0,
+    sections:        []
+  };
+
+  if (!Array.isArray(dcrChecklist)) return empty;
+
+  const sections = [];
+  let total = 0, done = 0, issue = 0, na = 0, untouched = 0;
+
+  for (let s = 0; s < dcrChecklist.length; s++) {
+    const sec = dcrChecklist[s];
+    if (!sec || typeof sec !== "object") continue;
+
+    const sectionId = (sec.section_id != null) ? String(sec.section_id) : "";
+    if (!sectionId) continue;
+
+    const items = [];
+    if (Array.isArray(sec.items)) {
+      for (let i = 0; i < sec.items.length; i++) {
+        const it = sec.items[i];
+        if (!it || typeof it !== "object") continue;
+
+        const itemId = (it.item_id != null) ? String(it.item_id) : "";
+        if (!itemId) continue;
+
+        const status = _normalizeChecklistItemStatus(it.status);
+        const entry  = { item_id: itemId, status: status, note: null };
+
+        if (status === _CHECKLIST_STATUS_ISSUE) {
+          // Preserve note only on issue. Trim like buildFormData does;
+          // empty/whitespace-only -> null.
+          const noteRaw = (it.note != null) ? String(it.note).trim() : "";
+          entry.note = noteRaw || null;
+        }
+
+        items.push(entry);
+        total++;
+        if      (status === _CHECKLIST_STATUS_DONE)  done++;
+        else if (status === _CHECKLIST_STATUS_ISSUE) issue++;
+        else if (status === _CHECKLIST_STATUS_NA)    na++;
+        else                                          untouched++;
+      }
+    }
+
+    sections.push({ section_id: sectionId, items: items });
+  }
+
+  return {
+    items_total:     total,
+    items_complete:  done,
+    items_issue:     issue,
+    items_na:        na,
+    items_untouched: untouched,
+    pct:             total > 0 ? Math.round((done * 100) / total) : 0,
+    sections:        sections
+  };
+}
+
 // Phase 36b — idempotency predicate for the DCR -> Session dual-write.
 // Both the inline submitDcrV1 splice AND the new onDcrSubmissionCreatedV36b
 // trigger call sessionsV2_dualWriteFromDcrSubmit; either may fire more than
@@ -103,5 +224,6 @@ function isAlreadyProcessedByDcrSubmissionId(v2Data, submissionId) {
 module.exports = {
   parityDiff:                          parityDiff,
   extractAssignmentIdFromSessionId:    extractAssignmentIdFromSessionId,
-  isAlreadyProcessedByDcrSubmissionId: isAlreadyProcessedByDcrSubmissionId
+  isAlreadyProcessedByDcrSubmissionId: isAlreadyProcessedByDcrSubmissionId,
+  projectChecklistForSession:          projectChecklistForSession
 };
