@@ -6730,9 +6730,14 @@ exports.lockPayrollPeriodV1 = onRequest({
       else if (a.status === "correction_requested") correctionCount += 1;
     });
 
+    // Firestore rejects `FieldValue.serverTimestamp()` inside array
+    // elements. `lock_history` is an array (arrayUnion below), so the
+    // per-entry `at` field must be a real Timestamp value stamped at
+    // Cloud Function execution time. The top-level `locked_at` /
+    // `updated_at` still use serverTimestamp() where they're allowed.
     const lockEntry = {
       action:                  "locked",
-      at:                      sts,
+      at:                      admin.firestore.Timestamp.now(),
       by:                      actor,
       session_count:           counted.length,
       approved_count:          approved.length,
@@ -6891,9 +6896,11 @@ exports.unlockPayrollPeriodV1 = onRequest({
                     ? periodDoc.locked_state_snapshot.auto_finalized_ack_ids
                     : [];
 
+    // Same Firestore constraint: `at` inside an arrayUnion element
+    // must be a real Timestamp, not a serverTimestamp() sentinel.
     const unlockEntry = {
       action:               "unlocked",
-      at:                   sts,
+      at:                   admin.firestore.Timestamp.now(),
       by:                   actor,
       reverted_ack_count:   ackIds.length
     };
