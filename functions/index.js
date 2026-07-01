@@ -5834,9 +5834,17 @@ function payrollGeoLabel(s) {
   return inG + " / " + outG;
 }
 function payrollIsBlocker(s) {
-  // Mirrors tab-payroll.js computeBlockers semantics. Returns one of the
-  // 4 blocker keys, or null if clean. Used both for verification refusal
-  // and for the verification_snapshot stored on payroll_exports.
+  // Payroll Gate V2 (2026-07-01) — DCR is recovery work, NOT a payroll
+  // blocker. Payroll approval / export / period-lock depend ONLY on
+  // labor integrity signals: needs_review, active/paused, and
+  // missing_clockout. `dcr_pending` sessions still surface elsewhere
+  // (Labor Review filter chip, tile count) as a recovery workqueue,
+  // but they no longer refuse export or lock.
+  //
+  // Previously (Phase 28A + Timeclock Add-On) this helper also gated
+  // on `dcr_status === "submitted" | "waived" | dcr_id present`. That
+  // rule is removed. Sessions with DCR pending but complete labor
+  // records are now approvable + exportable.
   if (s.admin_removed === true) return null;
   // Phase 29A — QA / test sessions never count as blockers. They are also
   // already excluded from the exportable filter (payroll_state !==
@@ -5845,15 +5853,6 @@ function payrollIsBlocker(s) {
   if (s.needs_review === true) return "needs_review";
   if (s.status === "active" || s.status === "paused") return "active";
   if (s.status === "completed" && !s.clock_out_at) return "missing_clockout";
-  // Phase Timeclock Add-On — DCR requirement applies only to cleaning
-  // labor. Inspection + supply-station sessions never produce a DCR, so
-  // they pass this gate. Absent labor_type defaults to cleaning for
-  // back-compat with every session written before the field existed.
-  const isCleaning = !s.labor_type || s.labor_type === "cleaning";
-  if (!isCleaning) return null;
-  const dcrSubmitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
-  if (s.status === "dcr_pending") return "dcr_pending";
-  if (s.status === "completed" && !dcrSubmitted) return "dcr_pending";
   return null;
 }
 

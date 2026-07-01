@@ -563,6 +563,13 @@
   }
   // Approve gate: row can move pending_review|reviewed → approved_for_payroll.
   // Refuses if any signal says "not clean payroll data."
+  //
+  // Payroll Gate V2 (2026-07-01) — DCR is recovery work, NOT a payroll
+  // blocker. Cleaning sessions still require assignment_id (Deputy /
+  // shift-linkage integrity), but the DCR-submitted check is removed.
+  // Sessions with DCR pending but complete labor records are now
+  // approvable. DCR pending sessions still surface via the filter
+  // chip + tile count as a recovery workqueue.
   function approveGatePasses(s) {
     if (!s) return false;
     const state = payrollState(s);
@@ -571,14 +578,11 @@
     if (s.needs_review === true) return false;
     if (s.status !== "completed") return false;     // active/paused/dcr_pending blocked
     if (typeof s.work_minutes !== "number" || s.work_minutes <= 0) return false;
-    // Phase Timeclock Add-On — non-cleaning labor (inspection / supply
-    // station) has no assignment_id and no DCR. Skip both checks for
-    // those rows; cleaning sessions still require both.
+    // Cleaning labor still requires assignment_id (Deputy linkage). Non-
+    // cleaning (inspection / supply station) has no assignment_id.
     const isCleaning = !s.labor_type || s.labor_type === "cleaning";
     if (isCleaning) {
       if (!s.assignment_id) return false;
-      const dcrSubmitted = (s.dcr_status === "submitted") || s.dcr_status === "waived" || !!s.dcr_id;
-      if (!dcrSubmitted) return false;
     }
     return true;
   }
@@ -986,7 +990,7 @@
   // Phase 2A.2 regression instrumentation — visible build marker so admin
   // can confirm in one glance which code path is actually rendering the
   // Labor panel. Bumped any time the table render path changes.
-  const LABOR_BUILD_TAG = "Labor v29E-period-lock";
+  const LABOR_BUILD_TAG = "Labor v30-payroll-gate-v2";
 
   function renderHeader() {
     const sub = $("labor-sub");
